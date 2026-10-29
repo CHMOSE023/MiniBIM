@@ -30,43 +30,43 @@ msgstr ""
 msgid "Redo"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Level"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Grid"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Wall"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Door"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Window"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Floor"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Ceiling"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Room"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Room Separator"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr ""
 
@@ -82,7 +82,7 @@ msgstr ""
 msgid "Load Family"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Component"
 msgstr ""
 
@@ -306,6 +306,38 @@ msgstr ""
 msgid "Exit"
 msgstr ""
 
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
+msgid "3D View"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the model in 3D"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor Plan"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of a level: the one shown last, or the lowest"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Level Above"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of the level above"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Level Below"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of the level below"
+msgstr ""
+
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Home View"
 msgstr ""
@@ -353,15 +385,15 @@ msgid "Could not build the sample house"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
-msgid "3D View"
-msgstr ""
-
-#: apps/Common/src/GUI/MainFrame.cpp
 msgid "System Default"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Interface description file:"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Click to select, drag or middle-drag to pan, scroll to zoom"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
@@ -415,6 +447,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Language: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Plan: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Selected: {0} {1}"
 msgstr ""
 
 #: apps/Win32/src/Host/Win32Window.cpp

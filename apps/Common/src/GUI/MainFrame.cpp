@@ -73,6 +73,9 @@ namespace MiniBIM
 
         InitUI();
         OpenSample();
+        for (const std::string& id : m_startupCommands)
+            if (!m_commands.Execute(id))
+                LOG_WARN("启动参数 --run：没有界面命令 %s", id.c_str());
         OnResize(width, height, pixelScale);
         return true;
     }
@@ -285,6 +288,8 @@ namespace MiniBIM
             m_statusHint->SetText(Tr("Interface description file:") + " " + m_uiError);
         else if (!m_sceneError.empty())
             m_statusHint->SetText(Tr(m_sceneError));
+        else if (m_planLevel)
+            m_statusHint->SetText(Tr("Click to select, drag or middle-drag to pan, scroll to zoom"));
         else if (m_scene.Empty())
             m_statusHint->SetText(Tr("The project has nothing to show in 3D yet; open a project or the sample house from the File menu"));
         else
@@ -292,7 +297,9 @@ namespace MiniBIM
 
         const ModelScene::Counts& c = m_scene.GetCounts();
         std::string info;
-        if (!m_scene.Empty())
+        if (m_planLevel)
+            info = PlanStatus() + "    ";
+        else if (!m_scene.Empty())
         {
             // 列表的分隔符也随语言（中文用"，"）
             const std::string walls   = Format(TrN("{0} wall", "{0} walls", c.walls), { std::to_string(c.walls) });
@@ -339,6 +346,9 @@ namespace MiniBIM
 
     void MainFrame::HomeView()
     {
+        // 主视图是三维的
+        if (m_planLevel)
+            ShowModel3D();
         if (!m_scene.Empty())
             m_camera.HomeView(m_scene.GetBounds());
         m_viewport->RequestRender();
@@ -346,7 +356,9 @@ namespace MiniBIM
 
     void MainFrame::ZoomToFit()
     {
-        if (!m_scene.Empty())
+        if (m_planLevel)
+            m_planView.reset();
+        else if (!m_scene.Empty())
             m_camera.ZoomToFit(m_scene.GetBounds());
         m_viewport->RequestRender();
     }
@@ -354,6 +366,11 @@ namespace MiniBIM
     void MainFrame::OnViewportPointer(const MiniGUI::ViewportPointerEvent& e)
     {
         using namespace MiniGUI;
+        if (m_planLevel)
+        {
+            OnPlanPointer(e);
+            return;
+        }
         switch (e.type)
         {
         case PointerEventType::Down:
@@ -417,7 +434,9 @@ namespace MiniBIM
         };
         renderer.Submit(bg, Math::Mat4::Identity(), PrimitiveType::Triangle, false);
 
-        if (!m_scene.Empty())
+        if (m_planLevel)
+            RenderPlan(renderer, pixelWidth, pixelHeight);
+        else if (!m_scene.Empty())
         {
             const Math::Mat4 viewProj = m_camera.GetViewProj();
             renderer.SubmitCached(0, m_sceneVersion, m_scene.GetTriangles(), viewProj, PrimitiveType::Triangle, true);

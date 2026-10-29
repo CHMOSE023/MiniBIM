@@ -39,6 +39,10 @@ namespace MiniBIM
         add("file.exit", N_("Exit"), "", [this] { RequestExit(); });
 
         // ── 视图 ─────────────────────────────────────────────────
+        add("view.3d", N_("3D View"), N_("Show the model in 3D"), [this] { ShowModel3D(); });
+        add("view.plan", N_("Floor Plan"), N_("Show the plan of a level: the one shown last, or the lowest"), [this] { ShowPlan(std::nullopt); });
+        add("view.levelUp", N_("Level Above"), N_("Show the plan of the level above"), [this] { StepLevel(1); });
+        add("view.levelDown", N_("Level Below"), N_("Show the plan of the level below"), [this] { StepLevel(-1); });
         add("view.home", N_("Home View"), N_("Southwest isometric view of the whole model"), [this] { HomeView(); });
         add("view.zoomFit", N_("Zoom to Fit"), N_("Fit the whole model in the view without changing the direction"), [this] { ZoomToFit(); });
 
@@ -138,6 +142,7 @@ namespace MiniBIM
     {
         if (m_session.Snapshot() != m_sceneModel)
             RebuildScene();
+        OnPlanModelChanged();
         // 换了项目（新建、打开、示例）：相机重新框住模型
         if (m_session.Resets() != m_sceneResets)
         {

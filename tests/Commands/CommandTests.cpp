@@ -5,6 +5,7 @@
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
 #include "Model/ModelJson.h"
+#include "Model/Render.h"
 #include "Model/Walls.h"
 #include <algorithm>
 #include <cmath>
@@ -1152,6 +1153,128 @@ window {"at": [8000, 3000], "family": "Fixed Window", "type": "600 x 900"})", ou
         }
     }
 
+    // ── 平面图（第 2d 步，render.rs 的测试）──────────────────────
+    Session PlanHouse()
+    {
+        Session s;
+        std::vector<Json> out;
+        std::string error;
+        if (!s.Script(R"(wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+door {"at": [2000, 0]}
+window {"at": [8000, 3000]}
+room {"point": [4000, 3000], "name": "Living"}
+grid {"start": [0, -2000], "end": [0, 8000]})", out, error))
+            std::printf("  平面图的房子：%s\n", error.c_str());
+        return s;
+    }
+
+    void TestPlan()
+    {
+        const Guid level1 = Session().GetModel().GuidOf(Id(100000));
+        {
+            Session s = PlanHouse();
+            const Model& m = s.GetModel();
+            const Render::Drawing d = Render::Plan(m, m.GuidOf(Id(100000)), 800, 600);
+            bool ok = d.owners.size() == d.prims.size();
+            // 墙 100002 到 100005，然后是门、窗、房间、轴网
+            for (Id id = 100002; id <= 100009; ++id)
+                ok = ok && std::find(d.owners.begin(), d.owners.end(), std::optional<Id>(id)) != d.owners.end();
+            Check(ok, "平面图：每一项都写着它画的元素");
+            (void)level1;
+        }
+        {
+            Session s = PlanHouse();
+            const Model& m = s.GetModel();
+            const Render::Drawing d = Render::Plan(m, m.GuidOf(Id(100000)), 800, 600);
+            const auto at = [&](double x, double y) { return d.view.ToPx(P2(x, y)); };
+            bool ok = d.Pick(at(2000, 0), 4.0f) == Id(100006) && d.Pick(at(6000, 0), 4.0f) == Id(100002) && d.Pick(at(0, 3000), 4.0f) == Id(100005);
+            const auto [x, y] = at(6000, -100);
+            ok = ok && d.Pick({ x, y + 3.0f }, 4.0f) == Id(100002) && d.Pick(at(8000, 3000), 4.0f) == Id(100007) && d.Pick(at(4000, 3000), 10.0f) == Id(100008) &&
+                 d.Pick(at(0, -1500), 4.0f) == Id(100009) && !d.Pick(at(4000, 1200), 4.0f);
+            const auto all = d.PickAll(at(2000, 0), 4.0f);
+            ok = ok && all == std::vector<Id>{ 100006, 100002 };
+            Check(ok, "平面图：拾取画得离点最近的元素，门在墙上面");
+        }
+        {
+            Session s = PlanHouse();
+            const Model& m = s.GetModel();
+            const Render::Drawing d = Render::Plan(m, m.GuidOf(Id(100001)), 800, 600);
+            const bool poche = std::any_of(d.prims.begin(), d.prims.end(), [](const Render::Prim& p) { return p.kind == Render::Prim::Kind::Fill && p.color == Render::Poche; });
+            Check(!d.prims.empty() && !poche, "平面图：别的标高的平面不画这些墙");
+        }
+        {
+            Session s = PlanHouse();
+            const Model& m = s.GetModel();
+            const Render::Drawing fitted = Render::Plan(m, m.GuidOf(Id(100000)), 800, 600);
+            const Render::Drawing again = Render::Draw(m, m.GuidOf(Id(100000)), fitted.view);
+            Render::View view = fitted.view;
+            view.scale *= 2.0;
+            view.cx = 8000.0;
+            view.cy = 6000.0;
+            const P2 back = view.ToMm(view.ToPx(P2(1234, -567)));
+            Check(again.owners == fitted.owners && back.Dist(P2(1234, -567)) < 0.01, "平面图：按给的视图画同一张显示列表，像素与毫米互换");
+        }
+        {
+            // 门族的开启线画在平面上，随门翻转（tests.rs 的原样：看平面图里门画的、不闭合的长折线）
+            Session s = FamilyHouse();
+            const auto swing = [&]
+            {
+                const Model& m = s.GetModel();
+                const Render::Drawing d = Render::Plan(m, m.GuidOf(Id(100000)), 1600, 1000);
+                std::vector<std::vector<P2>> lines;
+                for (size_t i = 0; i < d.prims.size(); ++i)
+                    if (d.owners[i] == Id(100006) && d.prims[i].kind == Render::Prim::Kind::Line && !d.prims[i].closed && d.prims[i].pts.size() > 10)
+                    {
+                        std::vector<P2> pts;
+                        for (const auto& q : d.prims[i].pts)
+                            pts.push_back(d.view.ToMm(q));
+                        lines.push_back(std::move(pts));
+                    }
+                return lines;
+            };
+            const auto arc = [&](P2 hinge, P2 sign)
+            {
+                const auto lines = swing();
+                bool ok = lines.size() == 1;
+                for (const P2& p : ok ? lines[0] : std::vector<P2>{})
+                    ok = ok && std::abs(p.Dist(hinge) - 700.0) < 1.5 && (p.x - hinge.x) * sign.x >= -1.5 && (p.y - hinge.y) * sign.y >= -1.5;
+                return ok;
+            };
+            bool ok = arc(P2(1650, 100), P2(1, 1));
+            Run(s, "modify", R"({"id": 100006, "flip_hand": true})");
+            ok = ok && arc(P2(2350, 100), P2(-1, 1));
+            Run(s, "modify", R"({"id": 100006, "flip_facing": true})");
+            ok = ok && arc(P2(2350, -100), P2(-1, -1));
+            Run(s, "modify", R"({"id": 100006, "flip_hand": false})");
+            ok = ok && arc(P2(1650, -100), P2(1, -1));
+            // 项目自己类型的门照旧画开启线：24 段弦
+            Run(s, "modify", R"({"id": 100006, "family": null, "type": "Single 800 x 2100"})");
+            Check(ok && swing().size() == 1, "平面图：门族的开启线画在平面上，随门翻转");
+        }
+        {
+            // 示例房屋的平面：每面墙、门、窗、房间、轴网、家具都画出来，屋顶在上一层的平面上画屋脊
+            Session s;
+            std::vector<Json> out;
+            std::string error;
+            s.Script(SampleScript, out, error);
+            const Model& m = s.GetModel();
+            const Render::Drawing d = Render::Plan(m, m.GuidOf(Id(100000)), 1200, 900);
+            bool ok = true;
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const bool drawn = std::find(d.owners.begin(), d.owners.end(), std::optional<Id>(id)) != d.owners.end();
+                if ((e->As<Wall>() || e->AsOpening() || e->As<Room>() || e->As<Grid>() || e->As<Component>() || e->As<Floor>()) && !drawn)
+                {
+                    std::printf("  %s %llu 没画出来\n", e->Category(), static_cast<unsigned long long>(id));
+                    ok = false;
+                }
+            }
+            const Render::Drawing up = Render::Plan(m, m.GuidOf(Id(100001)), 1200, 900);
+            ok = ok && std::find(up.owners.begin(), up.owners.end(), std::optional<Id>(100024)) != up.owners.end();
+            Check(ok, "平面图：示例房屋的墙、门窗、房间、轴网、家具都画出来，屋顶在它的标高上");
+        }
+    }
+
     void TestSample()
     {
         Session s;
@@ -1242,6 +1365,7 @@ int main()
     TestFiles();
     TestRoofsRoomsCeilings();
     TestFamiliesAndComponents();
+    TestPlan();
     TestSample();
     TestHostileParams();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);

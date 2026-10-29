@@ -15,6 +15,10 @@
     "file.saveAs":  { "icon": "SaveAs.png", "shortcut": "Ctrl+Shift+S" },
     "file.sample":  { "icon": "SampleHouse.png" },
     "file.exit":    { "icon": "Exit.png" },
+    "view.3d":        { "icon": "View3D.png" },
+    "view.plan":      { "icon": "FloorPlan.png" },
+    "view.levelUp":   { "icon": "LevelUp.png", "shortcut": "PageUp" },
+    "view.levelDown": { "icon": "LevelDown.png", "shortcut": "PageDown" },
     "view.home":    { "icon": "HomeView.png" },
     "view.zoomFit": { "icon": "ZoomFit.png" },
     "help.about":   { "icon": "About.png" }
@@ -22,7 +26,7 @@
   "menus": [
     { "title": "File", "items": [ "file.new", "file.open", "file.save", "file.saveAs", "-", "file.sample", "-",
                                   { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
-    { "title": "View", "items": [ "view.home", "view.zoomFit" ] },
+    { "title": "View", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown", "-", "view.home", "view.zoomFit" ] },
     { "title": "Help", "items": [ "help.about" ] }
   ],
   "layout": {

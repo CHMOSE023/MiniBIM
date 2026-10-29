@@ -12,9 +12,11 @@ covers: .agents/skills/ui-check/*, apps/Win32/src/Host/GuiMain.cpp
 pwsh -NoProfile -ExecutionPolicy Bypass -File .agents/skills/ui-check/scripts/shot.ps1 -Lang zh_CN
 pwsh -NoProfile -ExecutionPolicy Bypass -File .agents/skills/ui-check/scripts/shot.ps1 -Lang en
 pwsh -NoProfile -ExecutionPolicy Bypass -File .agents/skills/ui-check/scripts/shot.ps1 -Lang zh_CN -Keys "{F10}{DOWN}{RIGHT}" -Name lang-menu   # 文件 > 语言 子菜单
+pwsh -NoProfile -ExecutionPolicy Bypass -File .agents/skills/ui-check/scripts/shot.ps1 -Lang zh_CN -Run "view.plan,view.levelUp" -Name plan    # 启动后执行界面命令：Level 2 的平面
 ```
 
-截图在 `out/tmp/shots/<Name>.png`，用 Read 工具看。选项：`-Keys`（SendKeys 语法：`{F10}` 激活菜单栏并停在第一个菜单，`{RIGHT}` / `{LEFT}` 换菜单，
+截图在 `out/tmp/shots/<Name>.png`，用 Read 工具看。选项：`-Run`（启动参数 `--run`：打开示例房屋后依次执行的界面命令 ID，逗号分隔；
+不用按键、不抢焦点，能用命令到达的界面优先用它）、`-Keys`（SendKeys 语法：`{F10}` 激活菜单栏并停在第一个菜单，`{RIGHT}` / `{LEFT}` 换菜单，
 `{DOWN}` 展开、在菜单里往下，`{RIGHT}` 打开子菜单，`{ENTER}`、`{ESC}`；菜单没有助记符，Alt+字母打不开）、
 `-Wait`（窗口出现后等多久再截，默认 3000 毫秒）、`-Name`、`-Release`。
 

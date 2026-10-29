@@ -1,6 +1,7 @@
 #pragma once
 #include "Commands/Session.h"
 #include "GUI/AppPlatform.h"
+#include "Model/Render.h"
 #include "View/ModelScene.h"
 #include "View/OrbitCamera.h"
 #include "Data/CommandRegistry.h"
@@ -8,6 +9,7 @@
 #include "Widgets/Menu.h"
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,7 +31,8 @@ namespace MiniBIM
     //     保存后自动重新加载
     //   - 模型：Bim::Session（移植自 BIMCraft 的命令与撤销），界面只经命令改它；启动时打开示例房屋
     //   - 三维视口（面板 "viewport"）：模型经 ModelScene 用实体内核建成三角形；OrbitCamera，拖动左键环绕、拖动中键或右键平移、
-    //     Shift + 拖动环绕、滚轮缩放
+    //     Shift + 拖动环绕、滚轮缩放。"视图 > 楼层平面"把视口换成一个标高的平面（Bim::Render 的显示列表，PlanView.cpp）：
+    //     拖动中键或右键平移、滚轮缩放、单击左键选中元素
     //   - 状态栏（面板 "statusbar"）：操作提示、模型统计、语言、图形接口、版本
     //   - 多语言：界面文字经 MiniGUI::Tr / MiniBIM::Tr 翻译（I18n/Translator.h），"文件 > 语言"切换后整个界面按新语言重建；
     //     选择保存在 AppPlatform::GetUserDataDir() 下的 settings.json，没有保存过时跟随系统语言
@@ -46,6 +49,8 @@ namespace MiniBIM
         void SetUiFile(std::string utf8Path) { m_uiPath = std::move(utf8Path); }
         // 启动参数指定的语言（--lang），优先于用户设置，不保存
         void SetLanguageOverride(std::string code) { m_languageOverride = std::move(code); }
+        // 启动参数 --run 给的界面命令（如 view.plan）：打开示例房屋之后依次执行，看界面效果时用
+        void AddStartupCommand(std::string id) { m_startupCommands.push_back(std::move(id)); }
 
         // 平台对象必须比 MainFrame 活得久。尺寸为逻辑像素，pixelScale = 物理像素 / 逻辑像素
         bool Initialize(AppPlatform& platform, float width, float height, float pixelScale);
@@ -92,6 +97,19 @@ namespace MiniBIM
         void HomeView();
         void ZoomToFit();
 
+        // ── 平面视图（PlanView.cpp）──────────────────────────────
+        void ShowModel3D();
+        // 显示 level 的平面；没给时为正在显示的，或最低的标高
+        void ShowPlan(std::optional<Bim::Guid> level);
+        // 上一层（by = 1）、下一层（by = -1）的平面
+        void StepLevel(int by);
+        // 模型变了：显示的标高不在了就换到最低的，下次画时重画显示列表
+        void OnPlanModelChanged();
+        void RenderPlan(IRenderer& renderer, int pixelWidth, int pixelHeight);
+        void OnPlanPointer(const MiniGUI::ViewportPointerEvent& e);
+        // 平面的名称（标高名），以及选中的元素：状态栏用
+        std::string PlanStatus() const;
+
         void LoadSettings();
         void SaveSettings() const;
         std::string SettingsPath() const;
@@ -113,6 +131,7 @@ namespace MiniBIM
 
         std::string m_languageSetting;                        // 用户选的语言，空 = 跟随系统
         std::string m_languageOverride;
+        std::vector<std::string> m_startupCommands;
 
         Bim::Session m_session;
         std::shared_ptr<const Bim::Model> m_sceneModel;      // 场景是按哪一份模型建的
@@ -131,5 +150,14 @@ namespace MiniBIM
         enum class Drag { None, Orbit, Pan };
         Drag         m_drag = Drag::None;
         MiniGUI::Vec2 m_lastPixel;
+
+        std::optional<Bim::Guid>         m_planLevel;        // 显示哪个标高的平面；空 = 三维
+        std::optional<Bim::Render::View> m_planView;         // 平面的比例与中心；空 = 下次画时框住整个平面
+        std::unique_ptr<Bim::Render::Drawing> m_plan;        // 显示列表，按 m_planView 画的
+        bool                             m_planDirty = true; // 模型或视图变了，要重画显示列表
+        std::optional<Bim::Id>           m_selected;         // 平面上单击选中的元素
+        bool                             m_planClick = false;// 左键按下后没拖动：松开时拾取
+        MiniGUI::Vec2                    m_downPixel;
+        std::vector<Vertex_P3_C4>        m_planVerts;
     };
 }

@@ -5,6 +5,7 @@
 #include "Commands/Session.h"
 #include "Model/Csg.h"
 #include "Model/Family.h"
+#include "Model/Font.h"
 #include "Model/Geom.h"
 #include "Model/Language.h"
 #include "Model/Model.h"
@@ -1408,6 +1409,53 @@ wall {"points":[[0,0],[6000,0],[6000,4000]],"level":"Level 2"})", out, error);
     }
 }
 
+namespace
+{
+    // ── font.rs ──────────────────────────────────────────────────
+    void TestFont()
+    {
+        using Font::Strokes;
+        const auto unknown = Strokes("?", 0, 0, 12);
+        Check(Strokes("living", 0, 0, 12) == Strokes("LIVING", 0, 0, 12) && Strokes("\xCF\x89", 0, 0, 12) == unknown && Strokes(" ", 0, 0, 12).empty(),
+              "单线字：小写按大写画，没有的字画成问号");
+        const auto plain = Strokes("A", 0, 0, 12), acute = Strokes("\xC3\xA1", 0, 0, 12);
+        Check(acute.size() == plain.size() + 1 && std::equal(plain.begin(), plain.end(), acute.begin()), "单线字：带附加符号的字母是基础字母加附加符号");
+        // 西里尔大写各有各的样子，小写按大写画；与拉丁字母共用的字形相同
+        const std::string all = "\xD0\x90\xD0\x91\xD0\x92\xD0\x93\xD0\x94\xD0\x95\xD0\x81\xD0\x96\xD0\x97\xD0\x98\xD0\x99\xD0\x9A\xD0\x9B\xD0\x9C\xD0\x9D\xD0\x9E"
+                                "\xD0\x9F\xD0\xA0\xD0\xA1\xD0\xA2\xD0\xA3\xD0\xA4\xD0\xA5\xD0\xA6\xD0\xA7\xD0\xA8\xD0\xA9\xD0\xAA\xD0\xAB\xD0\xAC\xD0\xAD\xD0\xAE\xD0\xAF";
+        std::vector<std::vector<std::vector<std::pair<float, float>>>> drawn;
+        for (size_t i = 0; i < all.size(); i += 2)
+            drawn.push_back(Strokes(all.substr(i, 2), 0, 0, 12));
+        bool ok = true;
+        for (size_t i = 0; i < drawn.size(); ++i)
+        {
+            ok = ok && !drawn[i].empty() && drawn[i] != unknown;
+            for (size_t j = i + 1; j < drawn.size(); ++j)
+                ok = ok && drawn[i] != drawn[j];
+        }
+        ok = ok && Strokes("\xD0\x90\xD0\x92\xD0\x95\xD0\x9A\xD0\x9C\xD0\x9D\xD0\x9E\xD0\xA0\xD0\xA1\xD0\xA2\xD0\xA5", 0, 0, 12) == Strokes("ABEKMHOPCTX", 0, 0, 12);
+        ok = ok && Strokes("\xD1\x88\xD0\xBB\xD0\xB5\xD0\xB9\xD1\x84 \xD1\x91\xD0\xB6", 0, 0, 12) ==
+                       Strokes("\xD0\xA8\xD0\x9B\xD0\x95\xD0\x99\xD0\xA4 \xD0\x81\xD0\x96", 0, 0, 12);
+        Check(ok, "单线字：西里尔大写各有各的样子，小写按大写画");
+        // 有哪些字：带附加符号的、德语的 ß、几个符号；没有希腊字母和汉字
+        ok = true;
+        for (const char32_t c : std::u32string(U"aÁőŰčŘåŁøßé€!?Жй"))
+            ok = ok && Font::Has(c);
+        for (const char32_t c : std::u32string(U"ωΣ漢"))
+            ok = ok && !Font::Has(c);
+        Check(ok && Strokes("\xC5\x90", 0, 0, 12).size() == Strokes("O", 0, 0, 12).size() + 2, "单线字：说得出哪些字有");
+        const auto s = Strokes("I", 10, 100, 24);
+        float lo = 1e9f, hi = -1e9f;
+        for (const auto& line : s)
+            for (const auto& [x, y] : line)
+            {
+                lo = std::min(lo, y);
+                hi = std::max(hi, y);
+            }
+        Check(lo == 76.0f && hi == 100.0f && Font::Width("II", 12) == 19.0f, "单线字：按高度从基线缩放");
+    }
+}
+
 int main()
 {
     // 不缓冲：崩溃时也看得到崩在哪一项之后
@@ -1421,6 +1469,7 @@ int main()
     TestLibrary();
     TestSkeleton();
     TestFamily();
+    TestFont();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

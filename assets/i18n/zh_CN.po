@@ -29,43 +29,43 @@ msgstr "撤销"
 msgid "Redo"
 msgstr "重做"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Level"
 msgstr "标高"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Grid"
 msgstr "轴网"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Wall"
 msgstr "墙"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Door"
 msgstr "门"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Window"
 msgstr "窗"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Floor"
 msgstr "楼板"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Ceiling"
 msgstr "天花板"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Room"
 msgstr "房间"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Room Separator"
 msgstr "房间分隔线"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "屋顶"
 
@@ -81,7 +81,7 @@ msgstr "材质"
 msgid "Load Family"
 msgstr "载入族"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Component"
 msgstr "构件"
 
@@ -305,6 +305,38 @@ msgstr "打开用命令搭建的示例房屋"
 msgid "Exit"
 msgstr "退出"
 
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
+msgid "3D View"
+msgstr "三维视图"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the model in 3D"
+msgstr "以三维显示模型"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor Plan"
+msgstr "楼层平面"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of a level: the one shown last, or the lowest"
+msgstr "显示一个标高的平面：上次显示的，或最低的"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Level Above"
+msgstr "上一层"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of the level above"
+msgstr "显示上一层的平面"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Level Below"
+msgstr "下一层"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of the level below"
+msgstr "显示下一层的平面"
+
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Home View"
 msgstr "主视图"
@@ -351,16 +383,16 @@ msgid "Could not build the sample house"
 msgstr "无法搭建示例房屋"
 
 #: apps/Common/src/GUI/MainFrame.cpp
-msgid "3D View"
-msgstr "三维视图"
-
-#: apps/Common/src/GUI/MainFrame.cpp
 msgid "System Default"
 msgstr "跟随系统"
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Interface description file:"
 msgstr "界面描述文件："
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Click to select, drag or middle-drag to pan, scroll to zoom"
+msgstr "单击选中，拖动左键或中键平移，滚轮缩放"
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
@@ -410,6 +442,14 @@ msgstr "按 MIT 许可证发布。第三方组件及其许可证见 THIRD_PARTY_
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Language: {0}"
 msgstr "语言：{0}"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Plan: {0}"
+msgstr "平面：{0}"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Selected: {0} {1}"
+msgstr "选中：{0} {1}"
 
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "MiniBIM project"

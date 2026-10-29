@@ -8,9 +8,9 @@ covers: .agents/features/*.md
 
 | 指南 | 内容 | 主要代码 | 测试 |
 |---|---|---|---|
-| [main-window](main-window.md) | 主窗口：界面描述文件、命令、宿主面板、帧顺序、平台接口、Win32 宿主、用户设置 | `apps/Common/src/GUI`、`apps/Win32`、`MiniGUI::UiLayout` | skill `ui-check` |
+| [main-window](main-window.md) | 主窗口：界面描述文件、命令、宿主面板、帧顺序、平台接口、Win32 宿主、用户设置、平面视图 | `apps/Common/src/GUI`、`apps/Win32`、`MiniGUI::UiLayout` | skill `ui-check` |
 | [view3d](view3d.md) | 三维视口：相机、渲染、边线、实体内核与模型的三维场景 | `src/View/OrbitCamera.h`、`src/View/ModelScene.h`、`apps/Render`、`src/Solid` | `ViewTests`、`SMLibSmokeTests`、`ModelSceneTests` |
-| [model](model.md) | 模型核心（移植自 BIMCraft）：元素与检查、墙、库与文件、命令与撤销、示例房屋 | `src/Model`、`src/Commands` | `ModelTests`、`CommandTests` |
+| [model](model.md) | 模型核心（移植自 BIMCraft）：元素与检查、墙、族、库与文件、命令与撤销、平面图、示例房屋 | `src/Model`、`src/Commands` | `ModelTests`、`CommandTests` |
 | [多语言](../../docs/i18n.md) | 词典、`Tr` 系列、界面库的翻译钩子、收集工具、字体 | `src/I18n`、`src/UI/Core/Translate.h` | `I18nTests`、skill `i18n` |
 | [porting](porting.md) | 移植 BIMCraft：顺序、来源标注、Rust → C++ 的对应写法、还没定的事 | `docs/PLAN.md` | 随模块移植 BIMCraft 的测试 |
 | [icons](icons.md) | 图标：全部由脚本生成，命令图标的风格与新增步骤，程序图标 | `tools/make_icons.py`、`assets/icons` | `make_icons.py --check`（skill `test`） |

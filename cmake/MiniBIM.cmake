@@ -10,12 +10,14 @@ add_library(MiniBIM STATIC
     src/Model/Csg.cpp
     src/Model/Family.cpp
     src/Model/FamilyLibrary.cpp
+    src/Model/Font.cpp
     src/Model/Geom.cpp
     src/Model/Ids.cpp
     src/Model/Language.cpp
     src/Model/Library.cpp
     src/Model/Model.cpp
     src/Model/ModelJson.cpp
+    src/Model/Render.cpp
     src/Model/Skeleton.cpp
     src/Model/Text.cpp
     src/Model/Units.cpp

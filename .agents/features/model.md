@@ -7,7 +7,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 ## 概述
 
 移植自 BIMCraft `crates/core`（`f3bbb33`）的建筑模型、命令与撤销，命名空间 `MiniBIM::Bim`，在核心库里（不依赖界面，Linux CI 也编译）。
-第 2a–2c 步移植了这些（进度与后续见 `docs/PLAN.md` 第 2 阶段）：
+第 2a–2d 步移植了这些（进度与后续见 `docs/PLAN.md` 第 2 阶段）：
 
 | 代码 | 来自 BIMCraft | 内容 |
 |---|---|---|
@@ -18,6 +18,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Family.h` | `family.rs` | 族（`Bim::Family` 与 `Bim::Fam` 里的参数、公式、形体、符号）：公式求值、参数取值、检查、扫掠与旋转出三角形 |
 | `src/Model/Csg.h` | `csg.rs` | 族的空心形体用的网格布尔运算（BSP，工作表不递归，`Csg::Meter` 限制花费） |
 | `src/Model/FamilyLibrary.cpp` | `family.rs` 的 library、`fixtures.rs` | 新项目带的 34 个族：家具 10、门窗 6、各专业的器具 18 |
+| `src/Model/Render.h` | `render.rs`、`pen.rs`、`styles.rs` 的平面部分 | 平面图的显示列表（像素里的填色环与折线）：墙的剖切填充与边线、门窗、房间标签、轴网、屋顶、楼板、构件；线宽（笔）；拾取 |
+| `src/Model/Font.h` | `font.rs` | 平面图注释用的单线字（拉丁、西里尔大写，附加符号；没有的字画问号） |
 | `src/Model/Skeleton.h` | `skeleton.rs` | 多边形（含天井）的直骨架：坡屋顶的斜脊、天沟、屋脊与各坡面 |
 | `src/Model/Library.h` | `library.rs` | 库条目（类型、材质）与部件（类型的层）的 ID、GUID |
 | `src/Model/ModelJson.h` | `model.rs`、`ids.rs`、`library.rs`、`lenient.rs` | 元素与项目文件的 JSON |
@@ -49,6 +51,10 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   参数值由 `Family::Values` / `Family::ValuesIn`（门窗族读墙厚 `Wall Thickness`）算出，形体由 `Family::Pieces` 扫掠、旋转成朝外的三角形，
   空心形体用 `Csg::Subtract` 切掉列在它前面的实体。`Model::ComponentPieces`、`Model::OpeningPieces` 把它们放到模型坐标里。
   库里族、族类型（"族: 类型"）、族参数（"族: 参数"）各有 ID 和 GUID，族的形体与符号是部件；文件里构件的实例参数按族参数的 GUID 存（`Model::RekeyFamilyParams`）
+- 平面图：`Render::Plan`（适配窗口）/ `Render::Draw`（给定视图）把一个标高画成 `Render::Drawing`：各项带画它的元素（拾取、高亮）、是元素的哪部分
+  （剖到的、看到的、字）和笔；画完按对象样式把 `Pen::ByCategory` 换成类别的笔（`StyleOf`，门窗剖到的用中粗），再按 1 : n 的线宽表定宽。
+  注释（轴网圆圈、房间标签）按 `AnnotationOf` 随比例放大。BIMCraft 平面图的视图图形覆盖、填充与线型图案、裁剪范围、尺寸与标记等注释、楼梯与设备、
+  反射天花板平面还没移植
 - 房间只存一个点，边界每次由点四周的线找（`Model::RoomRegion`）：墙中心线与房间分隔线，或在墙面量时（`Model::roomArea`）墙轮廓的边与分隔线。
   墙动了房间跟着变；`floor`、`roof` 沿墙铺时，里面有房间的独立的一圈墙算室内
 
@@ -76,9 +82,9 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 
 ## 测试与排查
 
-- `ModelTests`（`tests/Model/ModelTests.cpp`）：几何、单位、ID、项目语言、`Model::Check`、墙的接头与轮廓、加速索引、库、直骨架、族的公式与形体、CSG，
+- `ModelTests`（`tests/Model/ModelTests.cpp`）：几何、单位、ID、项目语言、`Model::Check`、墙的接头与轮廓、加速索引、库、直骨架、族的公式与形体、CSG、单线字，
   移植自 BIMCraft 各模块的测试
-- `CommandTests`（`tests/Commands/CommandTests.cpp`）：像前端一样经命令驱动（移植自 BIMCraft 的 `tests.rs`）：撤销、脚本、事务、建模、编辑、
+- `CommandTests`（`tests/Commands/CommandTests.cpp`）：像前端一样经命令驱动（移植自 BIMCraft 的 `tests.rs`、`render.rs` 的测试）：撤销、脚本、事务、建模、编辑、平面图与拾取、
   项目文件（含打开 BIMCraft 文件时略去的内容）、示例房屋、恶意参数扫描
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算

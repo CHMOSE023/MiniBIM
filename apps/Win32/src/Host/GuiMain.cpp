@@ -1,7 +1,7 @@
 // MiniBIMWin：MiniBIM 桌面版入口（界面由 MiniGUI 绘制）
-// 用法：MiniBIMWin.exe [--ui 界面描述文件.json] [--gpu d3d12|d3d11|warp] [--lang 语言代码]
+// 用法：MiniBIMWin.exe [--ui 界面描述文件.json] [--gpu d3d12|d3d11|warp] [--lang 语言代码] [--run 界面命令 ID]…
 // 图形接口也可以用环境变量 MINIBIM_GPU 指定（命令行优先）；指定的不可用时按默认顺序回退。
-// --lang（如 zh_CN、en）只对这一次启动有效，不改用户设置
+// --lang（如 zh_CN、en）只对这一次启动有效，不改用户设置；--run（如 view.plan，可给多个）在打开示例房屋后依次执行
 // 以 USE_WIN32 编译时为窗口程序（没有控制台，日志不可见）
 #include "Host/Win32Window.h"
 #include <shellapi.h>
@@ -41,6 +41,8 @@ namespace
                 gpu = ToUtf8(argv[++i]);
             else if (a == "--lang" && i + 1 < argc)
                 frame.SetLanguageOverride(ToUtf8(argv[++i]));
+            else if (a == "--run" && i + 1 < argc)
+                frame.AddStartupCommand(ToUtf8(argv[++i]));
         }
         LocalFree(argv);
         if (gpu.empty())
