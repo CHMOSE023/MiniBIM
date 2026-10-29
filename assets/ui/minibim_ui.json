@@ -9,13 +9,19 @@
 //   再在这里引用（python tools/make_icons.py --check 核对引用）。菜单项不显示图标，命令图标给以后的功能区、工具栏用
 {
   "commands": {
+    "file.new":     { "icon": "New.png", "shortcut": "Ctrl+N" },
+    "file.open":    { "icon": "Open.png", "shortcut": "Ctrl+O" },
+    "file.save":    { "icon": "Save.png", "shortcut": "Ctrl+S" },
+    "file.saveAs":  { "icon": "SaveAs.png", "shortcut": "Ctrl+Shift+S" },
+    "file.sample":  { "icon": "SampleHouse.png" },
     "file.exit":    { "icon": "Exit.png" },
     "view.home":    { "icon": "HomeView.png" },
     "view.zoomFit": { "icon": "ZoomFit.png" },
     "help.about":   { "icon": "About.png" }
   },
   "menus": [
-    { "title": "File", "items": [ { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
+    { "title": "File", "items": [ "file.new", "file.open", "file.save", "file.saveAs", "-", "file.sample", "-",
+                                  { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
     { "title": "View", "items": [ "view.home", "view.zoomFit" ] },
     { "title": "Help", "items": [ "help.about" ] }
   ],

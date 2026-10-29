@@ -59,6 +59,8 @@ namespace MiniBIM
 
         std::string GetResourceDir() const override;
         std::string GetUserDataDir() const override;
+        std::string PickProjectFile() override;
+        std::string ChooseProjectSavePath(const std::string& suggestedName) override;
         std::string GetSystemLanguage() const override;
         bool OpenUrl(const std::string& url) override;
         void Post(std::function<void()> fn) override;
@@ -68,6 +70,7 @@ namespace MiniBIM
         LRESULT EventProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
         bool InitWindow(const wchar_t* title, int width, int height);
+        std::string ShowProjectDialog(bool save, const std::string& suggestedName);
         void UpdateDisplaySize();
         void WatchUiFile();
 

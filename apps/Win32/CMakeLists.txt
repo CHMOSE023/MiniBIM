@@ -35,6 +35,7 @@ target_link_libraries(MiniBIMWin PRIVATE
     MiniBIM
     MiniGUI_Win32
     MiniBIMRender
+    comdlg32        # 项目文件的打开 / 保存对话框
 )
 
 # 三维实体内核（SMLib）

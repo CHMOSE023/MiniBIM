@@ -9,6 +9,138 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "New"
+msgstr "新建"
+
+#: src/Commands/Commands.cpp
+msgid "Open"
+msgstr "打开"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Save"
+msgstr "保存"
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+msgid "Undo"
+msgstr "撤销"
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+msgid "Redo"
+msgstr "重做"
+
+#: src/Commands/Commands.cpp
+msgid "Level"
+msgstr "标高"
+
+#: src/Commands/Commands.cpp
+msgid "Grid"
+msgstr "轴网"
+
+#: src/Commands/Commands.cpp
+msgid "Wall"
+msgstr "墙"
+
+#: src/Commands/Commands.cpp
+msgid "Door"
+msgstr "门"
+
+#: src/Commands/Commands.cpp
+msgid "Window"
+msgstr "窗"
+
+#: src/Commands/Commands.cpp
+msgid "Floor"
+msgstr "楼板"
+
+#: src/Commands/Commands.cpp
+msgid "Edit Type"
+msgstr "编辑类型"
+
+#: src/Commands/Commands.cpp
+msgid "Materials"
+msgstr "材质"
+
+#: src/Commands/Commands.cpp
+msgid "Flip"
+msgstr "翻转"
+
+#: src/Commands/Commands.cpp
+msgid "Modify"
+msgstr "修改"
+
+#: src/Commands/Commands.cpp
+msgid "Move"
+msgstr "移动"
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+msgid "Copy"
+msgstr "复制"
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+msgid "Delete"
+msgstr "删除"
+
+#: src/Commands/Commands.cpp
+msgid "Project Units"
+msgstr "项目单位"
+
+#: src/Commands/Commands.cpp
+msgid "Inspect"
+msgstr "检视"
+
+#: src/Commands/Commands.cpp
+msgid "Elements"
+msgstr "元素"
+
+#: src/Model/Model.cpp
+msgid "Wall Centreline"
+msgstr "墙中心线"
+
+#: src/Model/Model.cpp
+msgid "Core Centreline"
+msgstr "核心层中心线"
+
+#: src/Model/Model.cpp
+msgid "Finish Face: Exterior"
+msgstr "面层面：外部"
+
+#: src/Model/Model.cpp
+msgid "Finish Face: Interior"
+msgstr "面层面：内部"
+
+#: src/Model/Model.cpp
+msgid "Core Face: Exterior"
+msgstr "核心面：外部"
+
+#: src/Model/Model.cpp
+msgid "Core Face: Interior"
+msgstr "核心面：内部"
+
+#: src/Model/Units.cpp
+msgid "Millimetres"
+msgstr "毫米"
+
+#: src/Model/Units.cpp
+msgid "Centimetres"
+msgstr "厘米"
+
+#: src/Model/Units.cpp
+msgid "Metres"
+msgstr "米"
+
+#: src/Model/Units.cpp
+msgid "Inches"
+msgstr "英寸"
+
+#: src/Model/Units.cpp
+msgid "Feet"
+msgstr "英尺"
+
+#: src/Model/Units.cpp
+msgid "Feet and inches"
+msgstr "英尺和英寸"
+
 #: src/UI/Widgets/Binding.cpp src/UI/Widgets/NumberBox.cpp
 msgid "*Varies*"
 msgstr "*多种*"
@@ -78,28 +210,12 @@ msgid "Close All"
 msgstr "全部关闭"
 
 #: src/UI/Widgets/TextBox.cpp
-msgid "Undo"
-msgstr "撤销"
-
-#: src/UI/Widgets/TextBox.cpp
-msgid "Redo"
-msgstr "重做"
-
-#: src/UI/Widgets/TextBox.cpp
 msgid "Cut"
 msgstr "剪切"
 
 #: src/UI/Widgets/TextBox.cpp
-msgid "Copy"
-msgstr "复制"
-
-#: src/UI/Widgets/TextBox.cpp
 msgid "Paste"
 msgstr "粘贴"
-
-#: src/UI/Widgets/TextBox.cpp
-msgid "Delete"
-msgstr "删除"
 
 #: src/UI/Widgets/TextBox.cpp
 msgid "Select All"
@@ -117,13 +233,45 @@ msgstr "向下还原"
 msgid "Maximize"
 msgstr "最大化"
 
-#: apps/Common/src/GUI/DemoScene.cpp
+#: src/View/ModelScene.cpp
 msgid "This build has no solid modeling kernel (MINIBIM_WITH_SOLID is off)."
 msgstr "这个版本没有编入实体建模内核（MINIBIM_WITH_SOLID 关闭）。"
 
-#: apps/Common/src/GUI/DemoScene.cpp
-msgid "The solid modeling kernel failed to build the demo model."
-msgstr "实体建模内核没能生成演示模型。"
+#: src/View/ModelScene.cpp
+msgid "Some elements could not be modelled in 3D; see the log for which."
+msgstr "有些元素没能建成三维模型，详见日志。"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Start an empty project with two levels"
+msgstr "新建一个只有两个标高的空项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open..."
+msgstr "打开..."
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open a MiniBIM project, or a BIMCraft one"
+msgstr "打开 MiniBIM 项目，或 BIMCraft 项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save the project"
+msgstr "保存项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save As..."
+msgstr "另存为..."
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save the project under another name"
+msgstr "以另一个名称保存项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Sample House"
+msgstr "示例房屋"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open the sample house, built by commands"
+msgstr "打开用命令搭建的示例房屋"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Exit"
@@ -149,6 +297,31 @@ msgstr "方向不变，整个模型放进视图"
 msgid "About MiniBIM"
 msgstr "关于 MiniBIM"
 
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not create a project"
+msgstr "无法新建项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not open the project"
+msgstr "无法打开项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Opened with parts left out"
+msgstr "已打开，部分内容被略去"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} item of this file isn't supported by this version yet and was left out. Saving the project drops it."
+msgid_plural "{0} items of this file aren't supported by this version yet and were left out. Saving the project drops them."
+msgstr[0] "这个文件有 {0} 项内容本版本还不支持，已经略去。保存项目时这些内容会丢掉。"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not save the project"
+msgstr "无法保存项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not build the sample house"
+msgstr "无法搭建示例房屋"
+
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "3D View"
 msgstr "三维视图"
@@ -160,6 +333,10 @@ msgstr "跟随系统"
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Interface description file:"
 msgstr "界面描述文件："
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
+msgstr "项目里还没有可以在三维中显示的东西；从“文件”菜单打开项目或示例房屋"
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Drag to orbit, middle- or right-drag to pan, scroll to zoom"
@@ -176,14 +353,19 @@ msgid_plural "{0} floors"
 msgstr[0] "{0} 块楼板"
 
 #: apps/Common/src/GUI/MainFrame.cpp
-msgid "{0} column"
-msgid_plural "{0} columns"
-msgstr[0] "{0} 根柱"
+msgid "{0} door"
+msgid_plural "{0} doors"
+msgstr[0] "{0} 扇门"
 
 #: apps/Common/src/GUI/MainFrame.cpp
-msgctxt "list of three items"
-msgid "{0}, {1}, {2}"
-msgstr "{0}，{1}，{2}"
+msgid "{0} window"
+msgid_plural "{0} windows"
+msgstr[0] "{0} 扇窗"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgctxt "list of four items"
+msgid "{0}, {1}, {2}, {3}"
+msgstr "{0}，{1}，{2}，{3}"
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Graphics: {0}"
@@ -200,6 +382,22 @@ msgstr "按 MIT 许可证发布。第三方组件及其许可证见 THIRD_PARTY_
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Language: {0}"
 msgstr "语言：{0}"
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "MiniBIM project"
+msgstr "MiniBIM 项目"
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "All projects"
+msgstr "所有项目"
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "BIMCraft project"
+msgstr "BIMCraft 项目"
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "All files"
+msgstr "所有文件"
 
 #: assets/ui/minibim_ui.json
 msgid "File"

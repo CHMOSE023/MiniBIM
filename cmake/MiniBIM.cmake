@@ -1,16 +1,33 @@
 # ── MiniBIM 核心库（平台无关，源码在 src，头文件以 src 为根："I18n/Translator.h"、"Core/Math/Vec3.hpp"）──
 # 命名空间 MiniBIM。源文件逐个列出（不用通配），新增 .cpp 要加到这里。
-# 移植 BIMCraft 的模型（bimcraft-core）时按 docs/PLAN.md 的分组往下加：Model/、Commands/、Ifc/ ……
+# 移植自 BIMCraft 的模型（bimcraft-core）在命名空间 MiniBIM::Bim，按 docs/PLAN.md 的分组往下加：Model/、Commands/、Ifc/ ……
 
 add_library(MiniBIM STATIC
     # 多语言：PO 词典、当前语言（docs/i18n.md）
     src/I18n/Catalog.cpp
     src/I18n/Translator.cpp
-    # 视图
+    # 模型（移植自 BIMCraft crates/core）：几何、单位、ID、元素与类型、库、墙、项目文件
+    src/Model/Geom.cpp
+    src/Model/Ids.cpp
+    src/Model/Language.cpp
+    src/Model/Library.cpp
+    src/Model/Model.cpp
+    src/Model/ModelJson.cpp
+    src/Model/Text.cpp
+    src/Model/Units.cpp
+    src/Model/Walls.cpp
+    # 命令与会话（移植自 BIMCraft commands.rs、engine.rs、sample.rs）
+    src/Commands/Commands.cpp
+    src/Commands/Session.cpp
+    src/Commands/Sample.cpp
+    # 视图：相机，模型经实体内核生成的三维场景
     src/View/OrbitCamera.cpp
+    src/View/ModelScene.cpp
 )
 
 target_include_directories(MiniBIM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# nlohmann/json（3rd/nlohmann，MIT）：命令的参数与结果、项目文件
+target_include_directories(MiniBIM SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/3rd/nlohmann/include)
 
 if(MSVC)
     target_compile_options(MiniBIM PRIVATE /utf-8 /W4)

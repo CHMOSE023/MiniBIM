@@ -1,0 +1,485 @@
+// 移植自 BIMCraft crates/core/src/model.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
+#pragma once
+#include "Model/Geom.h"
+#include "Model/Ids.h"
+#include "Model/Json.h"
+#include "Model/Language.h"
+#include "Model/Library.h"
+#include "Model/Units.h"
+#include <array>
+#include <cstdint>
+#include <functional>
+#include <map>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+
+// 建筑模型。长度单位毫米，x 向东、y 向北、z 向上，每个标高有高程。
+// 第 2a 步移植了标高、轴网、墙、楼板、门、窗与它们的类型、材质；BIMCraft 的其余元素（房间、屋顶、天花板、构件、
+// 视图、图纸……）按 docs/PLAN.md 第 2 阶段的顺序陆续加进 Element。新增一种元素时 std::visit 会列出所有要补的分支
+namespace MiniBIM::Bim
+{
+    // 平面视图剖切面在标高以上的高度（视图范围没另设时）；房间在这个高度找围住它的墙
+    inline constexpr double CutHeight     = 1200.0;
+    // 墙端距离小于它就连接，毫米
+    inline constexpr double Tol           = 1.0;
+    // 超过 1000 km 的坐标和长度拒绝
+    inline constexpr double MaxCoord      = 1e9;
+    // 上面没有标高的墙的高度
+    inline constexpr double DefaultHeight = 3000.0;
+    // 名称、标记、编号超过这么多字符拒绝
+    inline constexpr size_t MaxText       = 256;
+    // 一条命令或一个楼板轮廓最多的点数
+    inline constexpr size_t MaxPoints     = 10000;
+    // 楼板、屋顶最大的坡度，度
+    inline constexpr double MaxSlope      = 75.0;
+    // 一个类型最多的层数
+    inline constexpr size_t MaxLayers     = 32;
+    // 标高没有自己的范围时伸出模型多远，毫米
+    inline constexpr double LevelPast     = 1000.0;
+    // 本程序写出、能读的项目文件版本，与 BIMCraft f3bbb33 相同（见 BIMCraft model.rs 的 FORMAT）。
+    // 更新的版本拒绝打开；0 是还没有 GUID 的旧文件
+    inline constexpr uint32_t FileFormat  = 9;
+
+    // 平面视图的视图范围，同 Revit：标高以上的毫米。被 cut 平面剖切，往下看到 bottom，再往下到视图深度 depth；
+    // 剖切面以上看到 top（没有时为上一个标高）为止的悬挑部分
+    struct ViewRange
+    {
+        std::optional<double> top;
+        double cut    = CutHeight;
+        double bottom = 0.0;
+        double depth  = 0.0;
+        bool operator==(const ViewRange&) const = default;
+    };
+
+    // 标高及其平面视图：视图范围与裁剪范围（西南角、东北角；没有时为全部）。作为基准它是 extent 范围上的水平面
+    //（没有时为模型的范围，再伸出 LevelPast）
+    struct Level
+    {
+        std::string name;
+        double      elevation = 0.0;
+        ViewRange   viewRange;
+        std::optional<std::array<P2, 2>> crop;
+        std::optional<std::array<P2, 2>> extent;
+        // 平面视图是否显示默认三维视图剖面框保留的部分
+        bool        sectionBox = false;
+        bool operator==(const Level&) const = default;
+    };
+
+    struct Grid
+    {
+        std::string name;
+        P2          start;
+        P2          end;
+        bool operator==(const Grid&) const = default;
+    };
+
+    // 墙的定位线，同 Revit：墙中心线、核心层中心线，或面层面、核心层面的外侧或内侧
+    enum class Location
+    {
+        Centre,
+        CoreCentre,
+        ExteriorFinish,
+        InteriorFinish,
+        ExteriorCore,
+        InteriorCore,
+    };
+
+    namespace LocationOf
+    {
+        inline constexpr std::array<Location, 6> All = { Location::Centre, Location::CoreCentre, Location::ExteriorFinish,
+                                                         Location::InteriorFinish, Location::ExteriorCore, Location::InteriorCore };
+        // 命令与文件里的名称：centre、core-centre……
+        const char* Name(Location l);
+        // 菜单上的名称（英文原文，显示前 Tr）
+        const char* Label(Location l);
+        // 也认美式拼写 center
+        std::optional<Location> FromName(std::string_view name);
+    }
+
+    // 墙的一层做什么：承重（结构，即核心层）、衬底、保温、隔汽（膜，可以薄到 0）、面层
+    enum class Function
+    {
+        Structure,
+        Substrate,
+        Thermal,
+        Membrane,
+        Finish,
+    };
+
+    namespace FunctionOf
+    {
+        const char* Name(Function f);
+        std::optional<Function> FromName(std::string_view name);
+    }
+
+    // 复合类型的一层：墙从外侧往里，楼板、屋顶、天花板从上往下。材质是项目库里的一个，或者没有
+    struct Layer
+    {
+        // 与元素一样的 ID 和 GUID：建时给出，在列表里的位置不变就一直保留
+        Id          id = 0;
+        Guid        guid;
+        Function    function = Function::Structure;
+        std::string material;
+        double      thickness = 0.0;
+        bool operator==(const Layer&) const = default;
+    };
+
+    // 制图用的填充图案，由代码画：不论比例，线与线相隔几个像素
+    enum class Pattern
+    {
+        None,
+        Solid,
+        Diagonal,
+        Crosshatch,
+        Horizontal,
+        Vertical,
+        Grid,
+        Brick,
+        Concrete,
+        Insulation,
+    };
+
+    namespace PatternOf
+    {
+        inline constexpr std::array<Pattern, 10> All = { Pattern::None, Pattern::Solid, Pattern::Diagonal, Pattern::Crosshatch,
+                                                         Pattern::Horizontal, Pattern::Vertical, Pattern::Grid, Pattern::Brick,
+                                                         Pattern::Concrete, Pattern::Insulation };
+        const char* Name(Pattern p);
+        std::optional<Pattern> FromName(std::string_view name);
+    }
+
+    // 项目库的材质：着色视图里的颜色、平面和剖面里剖切面的图案、俯视楼板（仰视天花板）时表面的图案。
+    // BIMCraft 的材质还有填充样式名称与贴图，移植图纸、贴图时再加
+    struct Material
+    {
+        std::array<uint8_t, 3> color{ 200, 200, 200 };
+        Pattern cut     = Pattern::None;
+        Pattern surface = Pattern::None;
+        bool operator==(const Material&) const = default;
+    };
+
+    // 墙：定位线从 start 到 end，直线或转过 arc 度的圆弧；location 是定位线是墙的哪条线；
+    // 外侧在 start → end 的左边，同 Revit，所以顺时针画的墙外侧朝外
+    struct Wall
+    {
+        std::string typeName;
+        Guid        level;                  // 底部标高
+        P2          start;
+        P2          end;
+        std::optional<Guid> topLevel;       // 顶部约束：一个标高；没有时为高 height 的非连接墙
+        double      height     = 0.0;
+        double      baseOffset = 0.0;
+        // 从起点到终点转过的角度，逆时针为正：0 为直墙，180 为向右凸出的半圆
+        double      arc        = 0.0;
+        Location    location   = Location::Centre;
+        // 顶部从下面贴着的屋顶或楼板（代替顶部约束）；底部立在其上的那个
+        std::optional<Guid> attachTop;
+        std::optional<Guid> attachBase;
+        bool operator==(const Wall&) const = default;
+    };
+
+    // 楼板：顶面以下的一块板，沿 boundary（逆时针），openings 处开洞（在里面、互不相交）。顶面在标高上方 offset；
+    // 有坡度箭头时（平面上从尾到头）尾部在 offset，向头部以 slope 度升高（负值下降）。厚度为类型的厚度，垂直于坡面量
+    struct Floor
+    {
+        std::string       typeName;
+        Guid              level;
+        Ring              boundary;
+        std::vector<Ring> openings;
+        double            offset = 0.0;
+        double            slope  = 0.0;
+        std::optional<std::array<P2, 2>> arrow;
+        // 承重：结构楼板，同 Revit 的"楼板：结构"
+        bool              structural = false;
+        // 顶面模型图案的起点与转角（度）：Revit 对齐、旋转图案
+        P2                patternOrigin;
+        double            patternAngle = 0.0;
+        bool operator==(const Floor&) const = default;
+    };
+
+    // 门或窗：在宿主墙里，中心离墙定位线起点 offset 毫米；sill 是底边在墙底以上的高度（门为 0）
+    struct Opening
+    {
+        std::string typeName;
+        // 族的门窗（BIMCraft 的族还没移植：带族的门窗在 Model::Check 里报"族不存在"）
+        std::optional<std::string> family;
+        Guid        host;
+        double      offset = 0.0;
+        double      sill   = 0.0;
+        std::string mark;
+        // 开向（门）或朝向（窗）翻到墙的另一侧
+        bool        flipFacing = false;
+        // 铰链在另一侧门框
+        bool        flipHand   = false;
+        bool operator==(const Opening&) const = default;
+    };
+
+    struct Door : Opening
+    {
+        bool operator==(const Door&) const = default;
+    };
+
+    struct Window : Opening
+    {
+        bool operator==(const Window&) const = default;
+    };
+
+    // 一个元素。文件里写作带 "category" 的对象：{"category": "wall", …}
+    struct Element
+    {
+        using Variant = std::variant<Level, Grid, Wall, Floor, Door, Window>;
+        Variant v;
+
+        Element() = default;
+        template <class T, class = std::enable_if_t<!std::is_same_v<std::decay_t<T>, Element> && std::is_constructible_v<Variant, T&&>>>
+        Element(T&& x) : v(std::forward<T>(x)) {}
+
+        template <class T> const T* As() const { return std::get_if<T>(&v); }
+        template <class T> T*       As()       { return std::get_if<T>(&v); }
+        // 门或窗
+        const Opening* AsOpening() const;
+        Opening*       AsOpening();
+        bool IsDoor() const   { return std::holds_alternative<Door>(v); }
+        bool IsWindow() const { return std::holds_alternative<Window>(v); }
+
+        // 类别：level、grid、wall、floor、door、window
+        const char* Category() const;
+
+        // 它指向的每个元素（GUID）交给 f，f 可以换成别的：标高、宿主、贴着的屋顶或楼板
+        void RefsMut(const std::function<void(Guid&)>& f);
+        std::vector<Guid> Refs() const;
+        // 它用到的每个库条目名称交给 f（是什么、名称），f 可以换成别的：类型
+        void LibRefsMut(const std::function<void(const Kind&, std::string&)>& f);
+
+        bool operator==(const Element&) const = default;
+    };
+
+    // 墙类型：墙多厚；复合类型还有从外侧往里的各层，加起来等于厚度。核心层从第一个结构层到最后一个（没有结构层时为全部）
+    struct WallType
+    {
+        double             thickness = 0.0;
+        std::vector<Layer> layers;
+        bool operator==(const WallType&) const = default;
+    };
+
+    // 楼板类型：板多厚；复合类型还有从上往下的各层
+    struct FloorType
+    {
+        double             thickness = 0.0;
+        std::vector<Layer> layers;
+        bool operator==(const FloorType&) const = default;
+    };
+
+    // 门窗扇怎么开，名称同 IFC 的门操作类型；铰链（或推拉、折叠的方向）在哪一侧门框由门窗的 flipHand 决定
+    enum class Operation
+    {
+        Swing,          // 一扇，铰链在一侧门框
+        DoubleSwing,    // 两扇，各自铰在两侧门框，在中间相遇
+        Sliding,        // 一扇沿墙推拉
+        DoubleSliding,  // 两扇从中间向两边推拉
+        Folding,        // 向一侧门框折叠
+        Fixed,          // 不开
+    };
+
+    namespace OperationOf
+    {
+        inline constexpr std::array<Operation, 6> All = { Operation::Swing, Operation::DoubleSwing, Operation::Sliding,
+                                                          Operation::DoubleSliding, Operation::Folding, Operation::Fixed };
+        // 文件与命令里的写法：swing、double-swing……
+        const char* Name(Operation o);
+        // 英文名称，明细表的表头用
+        const char* Label(Operation o);
+        std::optional<Operation> Parse(std::string_view name);
+    }
+
+    // 门窗类型。sill 是窗的默认窗台高度；operation 是开启方式（给出时）
+    struct OpeningType
+    {
+        double width  = 0.0;
+        double height = 0.0;
+        double sill   = 0.0;
+        std::optional<Operation> operation;
+        bool operator==(const OpeningType&) const = default;
+    };
+
+    // 项目的类型，按类别、名称。BIMCraft 还有柱、屋顶、天花板、栏杆、结构柱、基础与各种管线的类型，移植到时再加
+    struct Types
+    {
+        std::map<std::string, WallType>    wall;
+        std::map<std::string, FloorType>   floor;
+        std::map<std::string, OpeningType> door;
+        std::map<std::string, OpeningType> window;
+        bool operator==(const Types&) const = default;
+    };
+
+    // 项目在哪里量房间的面积与周长（Revit 的"面积和体积计算"）
+    enum class RoomArea
+    {
+        Centre,     // 墙中心线
+        Finish,     // 墙面层面：墙以内的面积
+    };
+
+    // 平面视图的视图范围换算成高度：顶、剖切面、底、视图深度
+    struct PlanRange
+    {
+        double top    = 0.0;
+        double cut    = 0.0;
+        double bottom = 0.0;
+        double depth  = 0.0;
+    };
+
+    // `walls` → `wall`：类别不分大小写、单复数
+    std::string NormalizeCategory(std::string_view s);
+
+    struct Model
+    {
+        // 文件版本：写出时为 FileFormat；0 为还没有 GUID 的旧文件
+        uint32_t    format = FileFormat;
+        std::string name;
+        // IFC GlobalId 的种子：同一模型每次导出 IFC 都保持不变
+        uint64_t    uid = 0;
+        // 长度、面积怎么显示和输入；模型本身用毫米
+        Units       units    = Units::Millimetres;
+        // 图纸上的字与命令起的名称用的语言
+        Language    language = Language::English;
+        RoomArea    roomArea = RoomArea::Centre;
+        Id          nextId   = FirstId;
+        Types       types;
+        // 各层用的材质，按名称
+        std::map<std::string, Material> materials;
+        Elements    elements;
+        // 库的 ID 和 GUID：类型、材质
+        Library     library;
+
+        // 空项目：两个标高，几种起步用的类型与材质
+        static Model New(std::string_view name, Language language = Language::English);
+
+        // ── 元素 ────────────────────────────────────────────────
+        // 放进一个新元素，返回它的 ID
+        Id   Insert(Element e);
+        // 取下一个 ID：比每个元素的都大（手改过的文件里 next_id 可能过时）
+        Id   FreshId();
+        // 用 ID 指向元素的地方（命令给的引用，或旧文件里的）换成它的 GUID。没有元素的 ID 原样留着，由 Check 报出
+        void Resolve();
+        // 迁移到 FileFormat：旧文件（还没有 GUID）读入时每个元素已给了 GUID，指向元素的 ID 换成 GUID，ID 平移到六位数
+        void Migrate();
+
+        // 报错里怎么称呼元素：它的 ID；项目里没有时为给出的东西本身
+        std::string Shown(Guid k) const;
+        std::string Shown(Id k) const;
+        // a、b 是项目里的同一个元素
+        bool Same(Guid a, Guid b) const;
+        // 元素的 GUID；没有时为 nil（不是任何元素的）
+        Guid GuidOf(Id k) const;
+        Guid GuidOf(Guid k) const;
+
+        const Level* GetLevel(Guid k) const;
+        const Level* GetLevel(Id k) const;
+        const Wall*  GetWall(Guid k) const;
+        const Wall*  GetWall(Id k) const;
+        // 标高，从低到高
+        std::vector<std::pair<Id, const Level*>> Levels() const;
+        double Elevation(Guid level) const;
+        // level 之上的第一个标高
+        std::optional<Guid> LevelAbove(Guid level) const;
+
+        // ── 墙 ──────────────────────────────────────────────────
+        double Thickness(const Wall& w) const;
+        // 按标高与偏移的底部（不管贴着什么）：门窗的窗台从这里量
+        double OwnBase(const Wall& w) const;
+        // 按顶部约束的顶部（不管贴着什么）
+        double OwnTop(const Wall& w) const;
+        // 最低的底部 / 最高的顶部：贴着的东西决定，或按标高与约束
+        double BaseZ(const Wall& w) const;
+        double TopZ(const Wall& w) const;
+        // level 的平面视图剖切到这面墙：墙跨过剖切面
+        bool   CutBy(const Wall& w, Guid level) const;
+        // 墙围合 level 上的房间：跨过标高以上 CutHeight（房间在这个高度找墙）
+        bool   Bounding(const Wall& w, Guid level) const;
+        bool   Spans(const Wall& w, double z) const;
+        // level 平面视图的视图范围（高度）
+        PlanRange GetPlanRange(Guid level) const;
+
+        // ── 类型 ────────────────────────────────────────────────
+        std::vector<std::string> TypeNames(std::string_view category) const;
+        // 没指定类型时新元素用的：新模型起步就有的那个，否则按名称第一个
+        std::optional<std::string> DefaultType(std::string_view category) const;
+        // 门窗的尺寸与默认窗台：它的类型的；没有时返回 false，原因放在 error
+        bool OpeningDims(const Element& e, OpeningType& out, std::string& error) const;
+        std::optional<OpeningType> OpeningTypeOf(const Element& e) const;
+        // 带层的类型：类别、名称、厚度、各层
+        struct Layered
+        {
+            const char*               category;
+            const std::string*        name;
+            double                    thickness;
+            const std::vector<Layer>* layers;
+        };
+        std::vector<Layered> LayeredTypes() const;
+
+        // 元素所在的标高
+        std::optional<Guid> LevelOf(const Element& e) const;
+        // 类型的层用到、库里还没有的材质放进库：旧项目或别处来的文件打开时
+        void AdoptMaterials();
+
+        // ── 楼板 ────────────────────────────────────────────────
+        Plane  FloorTop(const Floor& f) const;
+        // 楼板底面在顶面以下多深（铅垂）：类型的厚度，垂直于坡面量
+        double FloorDepth(const Floor& f) const;
+        // 楼板的板块：底面减去洞口（被洞切开时为凸块），各是空间里逆时针的平面多边形；以及顶面在它上面多高
+        std::vector<std::pair<std::vector<P3>, double>> FloorSlabs(const Floor& f) const;
+
+        // ── 房间找墙用的线 ──────────────────────────────────────
+        // 围合 level 上房间的墙的中心线（圆弧为弦）
+        std::vector<Segment> WallLines(Guid level) const;
+        std::vector<Segment> BoundingLines(Guid level) const;
+        // 围合 level 上房间的墙面（墙轮廓的各条边）
+        std::vector<Segment> FaceLines(Guid level) const;
+
+        // ── 检查 ────────────────────────────────────────────────
+        // 每条命令之后检查整个模型；不通过时命令回滚。error 说明要改什么，关于元素的以"类别 ID: "开头
+        bool Check(std::string& error) const;
+
+        // ── 库（Library.cpp）────────────────────────────────────
+        // 库现在有的每个条目：是什么、名称
+        std::vector<std::pair<Kind, std::string>> LibraryNames() const;
+        // 库的 ID 和 GUID 与库里的东西对得上：不缺、不多；每个部件有自己的、别的东西没有的 ID 和 GUID
+        bool LibraryInStep() const;
+        // 库的每个部件，带它存着的 ID 和 GUID，按顺序
+        std::vector<std::pair<Id, Part>> PartsNow() const;
+        // 库里没有 ID 和 GUID 的东西给上，不再有的去掉；改名保留（Library::Renamed）；没有或与别人重复的部件给新的
+        void SyncLibrary();
+        // 库的下一个 ID：从 LastId 往下数，元素从 FirstId 往上数；两者相遇时库接着元素往上
+        Id   FreshLibraryId();
+        // 模型里每个库条目名称交给 f：元素的、类型的层的材质
+        void LibRefsMut(const std::function<void(const Kind&, std::string&)>& f);
+        // text 在 kind 里指的名称：它的名称或 GUID
+        std::optional<std::string> LibraryName(const Kind& kind, std::string_view text) const;
+
+        // ── 文件（ModelJson.cpp）────────────────────────────────
+        // 项目文件的内容：库条目的名称一律写 GUID
+        bool ToFile(std::string& out, std::string& error) const;
+        Json ToJson() const;
+        // 读项目文件：本版本不认识的内容（BIMCraft 新加的字段、还没移植的元素与设置、写错的键）略去，
+        // 略去的位置以 JSON 指针列在 leftOut（/elements/100004/finish）。版本更新的文件整个拒绝
+        static bool Read(std::string_view text, Model& out, std::vector<std::string>& leftOut, std::string& error);
+
+    private:
+        bool CheckIds(std::string& error) const;
+        bool PartsInStep() const;
+        void SyncParts();
+        // 文件里的 GUID 换回名称，没有 ID 和 GUID 的给上：ToFile 的反向
+        void NamesFromFile();
+        friend struct ModelJsonAccess;
+    };
+
+    // 新模型的 uid：时钟与进程号混合
+    uint64_t FreshUid();
+    // p 到微米：本应精确的点去掉浮点误差（不写出 -0）
+    P2 Micron(P2 p);
+}

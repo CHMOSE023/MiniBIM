@@ -26,20 +26,21 @@ C++20 的开源 BIM 软件（MIT）。界面、渲染、构建、代码风格沿
 
 ### 目录
 
-- `src/`：核心库（目标 `MiniBIM`，定义在 `cmake/MiniBIM.cmake`，命名空间 `MiniBIM`）。`I18n/` 多语言，`View/` 三维相机，
+- `src/`：核心库（目标 `MiniBIM`，定义在 `cmake/MiniBIM.cmake`，命名空间 `MiniBIM`）。`I18n/` 多语言，`View/` 三维相机与模型的三维场景，
   `Core/`（数学、日志）与 `Render/`（`IRenderer` 等接口）复制自 MiniCAD
+- `src/Model/`、`src/Commands/`：移植自 BIMCraft 的模型、命令与撤销（命名空间 `MiniBIM::Bim`，`.agents/features/model.md`）
 - `src/Solid/`：三维实体内核接口 `ISolidKernel.h`（只用 MiniBIM 类型）；SMLib 实现在 `src/Solid/SMLib/`（目标 `MiniBIMSolid`，唯一包含 SMLib 头文件的地方）
 - `src/UI/`：MiniGUI（目标 `MiniGUI`，定义在 `cmake/MiniGUI.cmake`，命名空间 `MiniGUI`），复制自 MiniCAD；与 MiniCAD 的差异记在 `docs/PLAN.md`
 - `apps/Common/`：主窗口的界面与逻辑（目标 `MiniBIMApp`），平台服务经 `AppPlatform`（`apps/Common/src/GUI/AppPlatform.h`）
 - `apps/Render/`：渲染后端（`cmake/Render.cmake`），Windows 为 D3D12 / D3D11；宿主经 `IGraphicsDevice` 使用
 - `apps/Win32/`：桌面版宿主 `Win32Window`（目标 `MiniBIMWin`）
 - `assets/`：界面描述文件 `ui/minibim_ui.json`、词典 `i18n/*.po`、图标 `icons/`（全部由 `tools/make_icons.py` 生成）；构建后复制到可执行文件旁
-- `3rd/`：SMLib（Apache-2.0，本地修改见 `3rd/SMLib/README.md`，开关 `MINIBIM_WITH_SOLID`）、stb
+- `3rd/`：SMLib（Apache-2.0，本地修改见 `3rd/SMLib/README.md`，开关 `MINIBIM_WITH_SOLID`）、stb、nlohmann/json（MIT，`3rd/nlohmann`）
 - `tools/extract_messages.py`：收集界面原文、更新词典；`tools/make_icons.py`：生成全部图标；`tests/`：测试
 
 ### include 根目录（重要）
 
-MiniBIM → `src`，MiniGUI → `src/UI`，渲染后端 → `apps/Render`，共用应用 → `apps/Common/src`，桌面版 → `apps/Win32/src`。
+MiniBIM → `src`（另有 `3rd/nlohmann/include`），MiniGUI → `src/UI`，渲染后端 → `apps/Render`，共用应用 → `apps/Common/src`，桌面版 → `apps/Win32/src`。
 `src` 和 `src/UI` 下都有 `Core/`、`Render/`：不要让同一个相对路径（如 `Core/<文件>.h`）同时存在于两个根下——重名时编译器按搜索顺序悄悄选中其中一个。
 
 ### 源文件登记
@@ -56,7 +57,8 @@ MiniBIM → `src`，MiniGUI → `src/UI`，渲染后端 → `apps/Render`，共�
 - 帧顺序（同 MiniCAD）：输入到达时立即更新状态并请求重绘 → 宿主在 `WM_PAINT` 调 `MainFrame::RenderFrame`：布局 → 渲染视口 → 画界面 → 呈现
 - 三维视口：`OrbitCamera`（正交、Z 向上、单位毫米）+ `IRenderer`；`Mat4` 为行向量约定（P' = P · M）
 - 几何：只经 `Solid::ISolidKernel`（`AppPlatform::GetSolidKernel`）；SMLib 不能并发使用（适配层内部加锁）
-- 现在的模型是临时的 `DemoScene`，第 2 阶段移植 BIMCraft 的模型后删掉
+- 模型：`MainFrame` 拥有一个 `Bim::Session`，一切编辑都是命令（`Session::Execute`，命令表在 `src/Commands/Commands.cpp`），失败时回滚，撤销存整个模型的快照；
+  三维视口显示 `ModelScene` 由模型经实体内核建成的三角形。启动时打开示例房屋。第 2 阶段的进度见 `docs/PLAN.md`
 
 ## 约定
 
@@ -65,7 +67,7 @@ MiniBIM → `src`，MiniGUI → `src/UI`，渲染后端 → `apps/Render`，共�
 - 先存起来之后才翻译的（命令名称等）用 `N_("…")` 标记；带数值的句子用 `Format(Tr("{0} …"), { … })`，不要拼接译文片段
 - 界面描述文件里的 `title`、`label`、`tooltip`、`text` 也写英文原文
 - 改了界面文字后运行 `python tools/extract_messages.py`，再补 `assets/i18n/zh_CN.po` 的译文
-- 日志与开发者才看的报错不翻译，写中文
+- 日志与开发者才看的报错不翻译，写中文；移植自 BIMCraft 的命令报错照原样写英文、不经 `Tr`（给人和 AI 代理读），界面弹窗的标题翻译
 
 ### 图标（详见 `.agents/features/icons.md`）
 - 项目用到的图标**一律由 `tools/make_icons.py` 生成**，不手画、不从别处拷图片：新命令要图标时在脚本里加一个 `@icon` 函数，

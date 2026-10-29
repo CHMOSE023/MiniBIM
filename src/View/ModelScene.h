@@ -1,3 +1,4 @@
+// 移植自 BIMCraft crates/core/src/view3d.rs（f3bbb33）的实体生成部分，MIT 许可，见 THIRD_PARTY_NOTICES.md
 #pragma once
 #include "Core/GeomKernel/AABB.hpp"
 #include "Core/Math/Point3.hpp"
@@ -8,21 +9,25 @@
 namespace MiniBIM
 {
     namespace Solid { class ISolidKernel; }
+    namespace Bim { struct Model; }
 
-    // 临时的演示场景：一圈带门窗洞口的墙、一块楼板、一根圆柱，全部经 ISolidKernel（SMLib）建模、离散化。
-    // 只用来检验内核、三维视口与界面串得起来；BIMCraft 的模型（docs/PLAN.md 第 2 阶段）移植过来后删掉
-    class DemoScene
+    // 模型的三维场景：每个元素经 ISolidKernel（SMLib）建成实体，再离散成三角形与边线，交给 IRenderer 画。
+    // BIMCraft 自己拼三角形、用软件光栅化画三维视图，这里只照它决定画什么（墙扣掉门窗洞、楼板扣掉洞口、
+    // 门扇和玻璃是墙中间 50 毫米厚的板）和用什么颜色
+    class ModelScene
     {
     public:
         struct Counts
         {
             int walls   = 0;
             int floors  = 0;
-            int columns = 0;
+            int doors   = 0;
+            int windows = 0;
         };
 
-        // kernel 为空（构建时关掉了 SMLib）或建模失败时返回 false，原因（英文原文，显示前 Tr）放在 error
-        bool Build(Solid::ISolidKernel* kernel, std::string& error);
+        // kernel 为空（构建时关掉了 SMLib）时返回 false；个别元素建模失败时其余照样显示，也返回 false。
+        // 原因放在 error（英文原文，显示前 Tr；元素的失败另记日志）
+        bool Build(const Bim::Model& model, Solid::ISolidKernel* kernel, std::string& error);
 
         bool                                Empty() const { return m_triangles.empty(); }
         const AABB&                         GetBounds() const { return m_bounds; }

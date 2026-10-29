@@ -1,5 +1,5 @@
 ---
-covers: docs/PLAN.md, THIRD_PARTY_NOTICES.md
+covers: docs/PLAN.md, THIRD_PARTY_NOTICES.md, src/Model/*, src/Commands/*
 ---
 
 # 移植 BIMCraft
@@ -8,7 +8,8 @@ covers: docs/PLAN.md, THIRD_PARTY_NOTICES.md
 
 BIMCraft（Rust，基准提交 `f3bbb33`，本机在 `D:\BIMCraft`）的核心 `crates/core` 没有界面，所有编辑都是命令：`commands.rs` 的命令表 `ALL`，
 每条命令吃 JSON 参数、返回 JSON 结果或错误字符串，由 `engine.rs` 的 `Session` 执行（失败回滚、撤销）。界面、命令行、脚本都只调命令。
-MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最后在 MiniGUI 上重写。顺序见 `docs/PLAN.md` 第 2 阶段。
+MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最后在 MiniGUI 上重写。顺序见 `docs/PLAN.md` 第 2 阶段；移植过来的代码在哪、
+怎么用见 `.agents/features/model.md`。
 
 ## 动手之前
 
@@ -31,23 +32,26 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 | Rust | C++（MiniBIM） | 说明 |
 |---|---|---|
 | `f64`，毫米 | `double`，毫米 | 单位不变；角度看原代码是度还是弧度 |
-| `P2` / 三维点 | `Math::Point2` / `Math::Point3` | `src/Core/Math`，行向量约定 |
+| `P2` | `Bim::P2`（`src/Model/Geom.h`） | 点与向量同一类型，运算照 BIMCraft（`Math::Point2` 区分点和向量，照搬的代码不好写） |
+| `[f64; 3]`（三维点） | `Bim::P3`（`std::array<double, 3>`）；交给渲染、实体内核时换成 `Math::Point3` | |
 | `Vec<T>`、`HashMap`、`BTreeMap` | `std::vector`、`std::unordered_map`、`std::map` | 要求按 id 有序遍历的地方（`BTreeMap`）用 `std::map`，不要换成无序的 |
 | `Option<T>` | `std::optional<T>` | |
-| `Result<T, String>` | 返回 `bool` / `std::optional`，错误放进 `std::string& error` | 不抛异常；BIMCraft 禁止 panic，C++ 里同样不让错误输入弄崩程序 |
+| `Result<T, String>` | 返回 `bool` / `std::optional`，错误放进 `std::string& error` | 不抛异常；BIMCraft 禁止 panic，C++ 里同样不让错误输入弄崩程序。`Session::Execute` 捕获漏网的异常当作命令失败 |
+| `serde`（`#[derive(Serialize, Deserialize)]`） | `src/Model/ModelJson.cpp` 里手写的读写（nlohmann/json） | 字段名、省略默认值的规则照 serde 的标注，写出的文件 BIMCraft 能读 |
+| `Arc<Model>` + `make_mut` | `shared_ptr<const Model>` + `Session::ModelMut` | 元素同样是共享的不可变对象，`Elements::GetMut` 写时复制 |
 | 带数据的 `enum`（如 `Element`） | `std::variant` + `std::visit` | 新增一种元素时编译器能列出所有要补的分支，和 Rust 的 `match` 一样 |
 | `trait` | 抽象基类或模板 | |
 | `Arc<T>`（共享、不可变） | `std::shared_ptr<const T>` | |
 | `u64` 元素 ID、`u128` GUID | `uint64_t`、两个 `uint64_t` 的结构体 | 引用别的元素一律存 GUID，不存 ID（BIMCraft 的规则） |
-| `msg!` / `ui_msg!` 标记的原文 | `N_("…")` / `Tr("…")` | 英文原文照抄，译文以后从 BIMCraft 的 `.po` 合并（见 `docs/i18n.md`） |
+| `msg!` / `ui_msg!` 标记的原文 | `N_("…")` / `Tr("…")` | 英文原文照抄，译文以后从 BIMCraft 的 `.po` 合并（见 `docs/i18n.md`）。命令的报错不标记：照 BIMCraft 写英文 |
+| `Language::word`（项目词典 `translations/project/*.po`） | `LanguageOf::Word`（`src/Model/Language.cpp` 的词表） | 只搬了用到的词；与界面语言无关 |
 | `#[test] fn …` | `tests/<模块>/…Tests.cpp` 里的 `Check(…)` | 一条测试一个函数，名字照原来的意思写 |
 
-## 还没定的事（移植第一个用到它的模块前先问用户）
+## 已定的事（用户在第 2a 步定的）
 
-- **JSON 库**：命令的参数与结果、项目文件（`.bimcraft` 是 JSON）都要用。可选：把 MiniGUI 的 `Data/Json.h` 移进核心库（核心库不能依赖界面库），
-  或引入 nlohmann/json（MIT）。前者没有新依赖，后者功能全
-- **项目文件格式**：沿用 BIMCraft 的 `.bimcraft`（能互相打开）还是另定扩展名
-- **撤销**：BIMCraft 的 `Session` 按整个模型做快照与回滚；照搬，还是用 MiniCAD 的 `ICommand` / `CommandStack`（逐条命令的 Execute / Undo）
+- **JSON 库**：nlohmann/json 3.11.3（MIT，`3rd/nlohmann`，`ordered_json`）。没用 MiniGUI 的 `Data/Json.h`：它把数存成 `double`，项目的 `uid` 是完整的 64 位整数
+- **项目文件**：内容与 BIMCraft 的 `.bimcraft` 相同（同一个 `format` 号，两边互相打开），扩展名 `.minibim`（不用 BIMCraft 的名称），也能打开 `.bimcraft`
+- **撤销**：照 BIMCraft 存整个模型的快照（`Session`），不用 MiniCAD 的 `ICommand` / `CommandStack`
 
 ## 测试与排查
 

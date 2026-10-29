@@ -30,7 +30,9 @@ function Invoke-DocCheck {
 $rules = @(
     @('^tests/Solid/(\w+)\.cpp$',                               '$1'),
     @('^tests/I18n/|^src/I18n/|^assets/i18n/',                  'I18nTests', 'i18n'),
-    @('^tests/View/|^src/View/',                                'ViewTests', 'MiniBIMWin'),
+    @('^tests/View/|^src/View/',                                'ViewTests', 'ModelSceneTests', 'MiniBIMWin'),
+    @('^tests/Model/|^src/Model/|^3rd/nlohmann/',               'ModelTests', 'CommandTests', 'ModelSceneTests', 'MiniBIMWin'),
+    @('^tests/Commands/|^src/Commands/',                        'CommandTests', 'ModelSceneTests', 'MiniBIMWin'),
     @('^src/Solid/|^3rd/SMLib/|^cmake/SMLib',                   'SMLibSmokeTests', 'MiniBIMWin'),
     @('^src/UI/',                                               'MiniBIMWin', 'i18n'),
     @('^src/(Core|Render)/|^apps/Render/|^apps/Win32/',         'MiniBIMWin'),

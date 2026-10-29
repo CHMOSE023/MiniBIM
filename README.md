@@ -28,8 +28,9 @@
 MiniBIM reuses the user interface and renderer of [MiniCAD](https://github.com/CHMOSE023/MiniCAD), models with the SMLib
 geometry kernel, and is porting its BIM features from [BIMCraft](https://github.com/IPedrax/BIMCraft). The interface is multilingual.
 
-> MiniBIM is at stage 1 (the skeleton): the window, menus, 3D view and language switching work, and the model is a temporary
-> demo house. What comes next is in [docs/PLAN.md](docs/PLAN.md) (in Chinese).
+> MiniBIM is at stage 2, porting BIMCraft's model: levels, grids, walls, floors, doors and windows, their types and materials,
+> the command set with undo, and project files (`.minibim`, the same format as BIMCraft's `.bimcraft`) are in. The window opens
+> the sample house, built by commands and modelled in 3D with SMLib. What comes next is in [docs/PLAN.md](docs/PLAN.md) (in Chinese).
 
 ### Building on Windows
 
@@ -74,13 +75,14 @@ works.
 
 | Directory | Contents |
 |---|---|
-| `src/` | The `MiniBIM` core library: translations (`I18n/`), the camera (`View/`), math and renderer interfaces (`Core/`, `Render/`), the solid kernel interface (`Solid/`) |
+| `src/` | The `MiniBIM` core library: translations (`I18n/`), the camera and the model's 3D scene (`View/`), math and renderer interfaces (`Core/`, `Render/`), the solid kernel interface (`Solid/`) |
+| `src/Model/`, `src/Commands/` | The building model, its commands and undo, ported from BIMCraft |
 | `src/UI/` | The MiniGUI interface library (copied from MiniCAD) |
 | `apps/Common/` | The main window's interface and logic (platform-independent) |
 | `apps/Render/` | Renderers (D3D12, D3D11) |
 | `apps/Win32/` | The Windows desktop host |
 | `assets/` | The interface description `ui/minibim_ui.json`, the catalogs in `i18n/` and the icons in `icons/` |
-| `3rd/` | SMLib (NURBS B-rep solid kernel, Apache-2.0) and stb |
+| `3rd/` | SMLib (NURBS B-rep solid kernel, Apache-2.0), stb and nlohmann/json (MIT) |
 | `tools/` | `extract_messages.py`: collects interface text and updates the catalogs; `make_icons.py`: draws every icon MiniBIM uses |
 | `tests/` | Tests |
 | `.agents/` | Notes, feature guides and skills for AI coding assistants (start at [AGENTS.md](AGENTS.md)) |

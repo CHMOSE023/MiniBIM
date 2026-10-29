@@ -80,7 +80,7 @@ jobs:
         run: cmake -S . -B out/linux -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build out/linux --target I18nTests ViewTests SMLibSmokeTests
+        run: cmake --build out/linux --target I18nTests ViewTests ModelTests CommandTests SMLibSmokeTests ModelSceneTests
 
       - name: Test
         run: ctest --test-dir out/linux --output-on-failure

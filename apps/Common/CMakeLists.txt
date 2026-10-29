@@ -19,7 +19,6 @@ add_custom_target(MiniBIMVersionHeader
 add_library(MiniBIMApp STATIC
     src/GUI/MainFrame.cpp
     src/GUI/MainCommands.cpp
-    src/GUI/DemoScene.cpp
 )
 
 target_include_directories(MiniBIMApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${MINIBIM_VERSION_DIR})

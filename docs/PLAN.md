@@ -10,7 +10,7 @@ MiniBIM 把 [BIMCraft](https://github.com/IPedrax/BIMCraft)（Rust，约 13.7 �
 - 构建：CMake + Ninja + MSVC，预设 `debug` / `release`，`build.bat`、`run_tests.bat`；静态运行库，复制自 MiniCAD 的 `cmake/`
 - 界面：MiniGUI（`src/UI`），界面描述文件 `assets/ui/minibim_ui.json`，自绘标题栏 + 菜单栏 + 三维视口 + 状态栏
 - 渲染：Windows 的 D3D12 / D3D11（WARP 回退），`apps/Render`
-- 几何：SMLib（`3rd/SMLib`）经 `Solid::ISolidKernel`；临时的演示场景 `DemoScene` 检验内核与视口
+- 几何：SMLib（`3rd/SMLib`）经 `Solid::ISolidKernel`；临时的演示场景检验内核与视口（第 2a 步换成了模型的三维场景 `ModelScene`）
 - 多语言：PO 词典 + `Tr` / `TrN` / `TrC`，MiniGUI 与界面描述文件同样翻译，运行时切换（[i18n.md](i18n.md)）；简体中文、英文
 - 图标：`tools/make_icons.py` 生成全部图标（照 MiniCAD 的同名脚本）：程序图标 `app.ico` / `app.png`，现有命令的图标
 - 测试：`I18nTests`、`ViewTests`、`SMLibSmokeTests`
@@ -28,10 +28,25 @@ BIMCraft 的核心与界面分得很清楚：所有编辑都是 `commands.rs` �
 2. 模型：`model.rs`（5432，元素、类型、`Model::check`）、`library.rs`（1531，类型、材质、族）
 3. 墙：`walls.rs`（836）与 `walls/`：墙轴线、墙面、斜接、轮廓
 4. 命令与撤销：`commands.rs`（8740）、`engine.rs`（346）。C++ 里对应 MiniCAD 的 `ICommand` / `CommandStack` 思路，但以 BIMCraft 的命令表为准
-5. 文件：项目文件的保存 / 打开；`sample.rs` 的示例房屋（替换掉现在的 `DemoScene`）
+5. 文件：项目文件的保存 / 打开；`sample.rs` 的示例房屋（替换掉第 1 阶段的演示场景）
 6. 三维：`view3d.rs`（2694）的场景生成改为经 SMLib 出网格、经 `IRenderer` 绘制（BIMCraft 自带的软件光栅化不移植）
 7. 平面视图：`render.rs`（4080，显示列表、拾取）→ 视口里的二维绘制
 8. 交换：`ifc.rs`（1795，导出）、`import.rs`（3911，导入）、`step.rs`（408）；再往后是明细表、出图、DXF 导入等
+
+### 进度
+
+上面 1–8 一起移植是几万行 C++（`model.rs` 的元素引用了族、视图图形、阶段、贴图等十几个模块，示例房屋几乎用到全部命令），
+所以按元素种类分段做，每段都能编译、测试、单独提交：
+
+- **2a（已完成）先接上一部分模型，替换演示场景**：`units`、`ids`、`geom`；模型子集（标高、轴网、墙、楼板、不带族的门窗，类型与材质，
+  `Model::Check` 里与它们有关的规则）；`library` 的 ID 与 GUID（类型、材质、类型的层）；`walls` 与 `walls/index`；`Session`（快照撤销、回滚、脚本、事务）
+  与命令 `new`、`open`、`save`、`undo`、`redo`、`level`、`grid`、`wall`、`door`、`window`、`floor`、`type`、`material`、`flip`、`modify`、`move`、`copy`、`delete`、
+  `units`、`inspect`、`elements`；项目文件（`.minibim`，与 `.bimcraft` 同一格式，不认识的内容略去并列出）；示例房屋（已移植命令能做的部分）；
+  三维场景经 SMLib 建实体（`ModelScene`）；界面的文件菜单（新建、打开、保存、另存为、示例房屋）。说明见 `.agents/features/model.md`
+- **2b 屋顶与房间**：`roof`（`skeleton.rs` 直骨架、坡屋顶）、墙顶贴屋顶、`ceiling`、`room`（区域、面积）、房间分隔线、`sketch` 的轮廓
+- **2c 族与构件**：`family.rs`、`csg.rs`、`fixtures.rs`、`component`、带族的门窗，做到这里示例房屋才完整
+- **2d 平面视图**：`render.rs` 的显示列表与拾取（连带 `graphics`、`lines`、`fills`、`pen`、`styles`、`text` 的一部分）
+- **2e 交换**：`ifc.rs`、`import.rs`、`step.rs`；再往后是结构、设备、明细表、出图、DXF 导入等
 
 每个含移植代码的源文件开头写一行来源，例如：
 
@@ -66,5 +81,6 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - MiniGUI：新增 `Core/Translate.h`（`MiniGUI::Tr`、`SetTranslator`）；`UiLayout` 每次应用时翻译界面描述文件里的文字与命令名称、
   提示、面板标题；`Binding`、`NumberBox`、`ColorPicker`、`CommandConsole`、`CommandUI`、`Dialog`、`Ribbon`、`TabView`、`TextBox`、
   `TitleBar` 里写死的中文改成英文原文 + `Tr`（菜单文字去掉了助记符 `&`，不显示下划线和 `(X)`）；`Win32Fonts` 加了韩文回退字体
-- `cmake/Render.cmake` 只保留 Windows；`apps/Win32` 的宿主精简（没有浮动窗口、文件对话框、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`
+- `cmake/Render.cmake` 只保留 Windows；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`，
+  文件对话框换成项目文件用的 `PickProjectFile`、`ChooseProjectSavePath`
 - 没有复制：MiniDWG、节点图、天正、CAD 实体 / 场景 / 编辑器（`src/Core/Entity`、`src/Scene`、`src/Document`、`src/Editor`、`src/Viewport`）

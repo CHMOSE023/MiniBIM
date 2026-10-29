@@ -10,6 +10,138 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "New"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Open"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Save"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+msgid "Undo"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+msgid "Redo"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Level"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Grid"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Wall"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Door"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Window"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Floor"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Edit Type"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Materials"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Flip"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Modify"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Move"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+msgid "Copy"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+msgid "Delete"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Project Units"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Inspect"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Elements"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Wall Centreline"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Core Centreline"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Finish Face: Exterior"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Finish Face: Interior"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Core Face: Exterior"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Core Face: Interior"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Millimetres"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Centimetres"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Metres"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Inches"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Feet"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Feet and inches"
+msgstr ""
+
 #: src/UI/Widgets/Binding.cpp src/UI/Widgets/NumberBox.cpp
 msgid "*Varies*"
 msgstr ""
@@ -79,27 +211,11 @@ msgid "Close All"
 msgstr ""
 
 #: src/UI/Widgets/TextBox.cpp
-msgid "Undo"
-msgstr ""
-
-#: src/UI/Widgets/TextBox.cpp
-msgid "Redo"
-msgstr ""
-
-#: src/UI/Widgets/TextBox.cpp
 msgid "Cut"
 msgstr ""
 
 #: src/UI/Widgets/TextBox.cpp
-msgid "Copy"
-msgstr ""
-
-#: src/UI/Widgets/TextBox.cpp
 msgid "Paste"
-msgstr ""
-
-#: src/UI/Widgets/TextBox.cpp
-msgid "Delete"
 msgstr ""
 
 #: src/UI/Widgets/TextBox.cpp
@@ -118,12 +234,44 @@ msgstr ""
 msgid "Maximize"
 msgstr ""
 
-#: apps/Common/src/GUI/DemoScene.cpp
+#: src/View/ModelScene.cpp
 msgid "This build has no solid modeling kernel (MINIBIM_WITH_SOLID is off)."
 msgstr ""
 
-#: apps/Common/src/GUI/DemoScene.cpp
-msgid "The solid modeling kernel failed to build the demo model."
+#: src/View/ModelScene.cpp
+msgid "Some elements could not be modelled in 3D; see the log for which."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Start an empty project with two levels"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open a MiniBIM project, or a BIMCraft one"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save the project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save As..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save the project under another name"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Sample House"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open the sample house, built by commands"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -150,6 +298,32 @@ msgstr ""
 msgid "About MiniBIM"
 msgstr ""
 
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not create a project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not open the project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Opened with parts left out"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} item of this file isn't supported by this version yet and was left out. Saving the project drops it."
+msgid_plural "{0} items of this file aren't supported by this version yet and were left out. Saving the project drops them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not save the project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not build the sample house"
+msgstr ""
+
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "3D View"
 msgstr ""
@@ -160,6 +334,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Interface description file:"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
@@ -179,14 +357,20 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
-msgid "{0} column"
-msgid_plural "{0} columns"
+msgid "{0} door"
+msgid_plural "{0} doors"
 msgstr[0] ""
 msgstr[1] ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
-msgctxt "list of three items"
-msgid "{0}, {1}, {2}"
+msgid "{0} window"
+msgid_plural "{0} windows"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgctxt "list of four items"
+msgid "{0}, {1}, {2}, {3}"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
@@ -203,6 +387,22 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Language: {0}"
+msgstr ""
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "MiniBIM project"
+msgstr ""
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "All projects"
+msgstr ""
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "BIMCraft project"
+msgstr ""
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "All files"
 msgstr ""
 
 #: assets/ui/minibim_ui.json

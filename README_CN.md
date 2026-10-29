@@ -28,7 +28,8 @@
 MiniBIM 的界面与渲染沿用 [MiniCAD](https://github.com/CHMOSE023/MiniCAD)，几何内核使用 SMLib，
 建模功能移植自 [BIMCraft](https://github.com/IPedrax/BIMCraft)，界面支持多语言。
 
-> 目前处于第 1 阶段（骨架）：窗口、菜单、三维视口、语言切换都能用，模型是一个临时的演示房屋。
+> 目前处于第 2 阶段（移植 BIMCraft 的模型）：标高、轴网、墙、楼板、门窗及其类型与材质，带撤销的命令，项目文件（`.minibim`，
+> 与 BIMCraft 的 `.bimcraft` 同一格式）已经移植。程序启动时打开用命令搭起来的示例房屋，三维经 SMLib 建模。
 > 后面的移植计划见 [docs/PLAN.md](docs/PLAN.md)。
 
 ### Windows 版编译
@@ -70,13 +71,14 @@ GitHub Actions 在每个到 `main` 的 PR 上编译 Windows 版并运行测试�
 
 | 目录 | 内容 |
 |---|---|
-| `src/` | 核心库 `MiniBIM`：多语言（`I18n/`）、相机（`View/`）、数学与渲染接口（`Core/`、`Render/`）、实体内核接口（`Solid/`） |
+| `src/` | 核心库 `MiniBIM`：多语言（`I18n/`）、相机与模型的三维场景（`View/`）、数学与渲染接口（`Core/`、`Render/`）、实体内核接口（`Solid/`） |
+| `src/Model/`、`src/Commands/` | 建筑模型、命令与撤销（移植自 BIMCraft） |
 | `src/UI/` | 界面库 MiniGUI（复制自 MiniCAD） |
 | `apps/Common/` | 主窗口的界面与逻辑（与平台无关） |
 | `apps/Render/` | 渲染后端（D3D12、D3D11） |
 | `apps/Win32/` | Windows 桌面版宿主 |
 | `assets/` | 界面描述文件 `ui/minibim_ui.json`、词典 `i18n/`、图标 `icons/` |
-| `3rd/` | SMLib（NURBS BRep 实体内核，Apache-2.0）、stb |
+| `3rd/` | SMLib（NURBS BRep 实体内核，Apache-2.0）、stb、nlohmann/json（MIT） |
 | `tools/` | `extract_messages.py`：收集界面原文、更新词典；`make_icons.py`：生成 MiniBIM 用到的全部图标 |
 | `tests/` | 测试 |
 | `.agents/` | AI 编程助手的说明、功能指南与 skill（入口是 [AGENTS.md](AGENTS.md)） |

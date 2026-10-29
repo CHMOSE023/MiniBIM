@@ -10,6 +10,8 @@
 #include "Platform/Win32/Win32Frame.h"
 #include "Platform/Win32/Win32Input.h"
 #include "Widgets/TitleBar.h"
+#include "I18n/Translator.h"
+#include <commdlg.h>
 #include <shellapi.h>
 #include <algorithm>
 #include <filesystem>
@@ -345,6 +347,58 @@ namespace MiniBIM
             return {};
         const std::u8string u8 = (std::filesystem::path(buf) / L"MiniBIM").u8string();
         return std::string(u8.begin(), u8.end());
+    }
+
+    // 项目文件的打开 / 保存对话框（返回 UTF-8 路径，空串 = 取消）。筛选器的文字随界面语言
+    std::string Win32Window::PickProjectFile()
+    {
+        return ShowProjectDialog(false, {});
+    }
+
+    std::string Win32Window::ChooseProjectSavePath(const std::string& suggestedName)
+    {
+        return ShowProjectDialog(true, suggestedName);
+    }
+
+    std::string Win32Window::ShowProjectDialog(bool save, const std::string& suggestedName)
+    {
+        // 筛选器：名称\0模式\0……\0\0；名称经 Tr 翻译
+        std::wstring filter;
+        auto add = [&](const std::string& label, const wchar_t* pattern)
+        {
+            filter += ToWide(label);
+            filter += L'\0';
+            filter += pattern;
+            filter += L'\0';
+        };
+        if (save)
+            add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
+        else
+        {
+            add(Tr("All projects") + " (*.minibim;*.bimcraft)", L"*.minibim;*.bimcraft");
+            add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
+            add(Tr("BIMCraft project") + " (*.bimcraft)", L"*.bimcraft");
+        }
+        add(Tr("All files") + " (*.*)", L"*.*");
+        filter += L'\0';
+
+        std::vector<wchar_t> buf(32768, L'\0');
+        if (save && !suggestedName.empty())
+        {
+            const std::wstring name = ToWide(suggestedName);
+            std::copy_n(name.begin(), std::min(name.size(), buf.size() - 1), buf.begin());
+        }
+        OPENFILENAMEW ofn = {};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner   = m_hwnd;
+        ofn.lpstrFilter = filter.c_str();
+        ofn.lpstrFile   = buf.data();
+        ofn.nMaxFile    = static_cast<DWORD>(buf.size());
+        ofn.lpstrDefExt = L"minibim";
+        ofn.Flags       = OFN_NOCHANGEDIR | OFN_EXPLORER | (save ? OFN_OVERWRITEPROMPT : (OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST));
+        if (!(save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn)))
+            return {};
+        return ToUtf8(buf.data());
     }
 
     std::string Win32Window::GetSystemLanguage() const

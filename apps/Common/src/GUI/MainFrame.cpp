@@ -72,7 +72,7 @@ namespace MiniBIM
                  m_languageSetting.c_str(), platform.GetSystemLanguage().c_str());
 
         InitUI();
-        BuildDemoScene();
+        OpenSample();
         OnResize(width, height, pixelScale);
         return true;
     }
@@ -159,7 +159,7 @@ namespace MiniBIM
 
     void MainFrame::RequestExit()
     {
-        // 还没有文档，不用询问保存
+        // 界面还没有编辑命令，模型只会被新建、打开换掉，没有要保存的改动；有了编辑工具后照 MiniCAD 询问是否保存
         m_platform->Quit();
     }
 
@@ -247,7 +247,11 @@ namespace MiniBIM
     // =========================================================
     void MainFrame::UpdateTitle()
     {
-        const std::string title = "MiniBIM " MINIBIM_VERSION_STRING;
+        // 项目：保存过的显示文件名，否则显示项目名称
+        std::string project = m_session.GetModel().name;
+        if (const auto& path = m_session.Path())
+            project = ToUtf8(ToPath(*path).filename());
+        const std::string title = (project.empty() ? std::string() : project + " - ") + "MiniBIM " MINIBIM_VERSION_STRING;
         m_platform->SetTitle(title);
         if (MiniGUI::TitleBar* bar = GetTitleBar())
             bar->SetTitle(title);
@@ -281,18 +285,21 @@ namespace MiniBIM
             m_statusHint->SetText(Tr("Interface description file:") + " " + m_uiError);
         else if (!m_sceneError.empty())
             m_statusHint->SetText(Tr(m_sceneError));
+        else if (m_scene.Empty())
+            m_statusHint->SetText(Tr("The project has nothing to show in 3D yet; open a project or the sample house from the File menu"));
         else
             m_statusHint->SetText(Tr("Drag to orbit, middle- or right-drag to pan, scroll to zoom"));
 
-        const DemoScene::Counts& c = m_scene.GetCounts();
+        const ModelScene::Counts& c = m_scene.GetCounts();
         std::string info;
         if (!m_scene.Empty())
         {
             // 列表的分隔符也随语言（中文用"，"）
             const std::string walls   = Format(TrN("{0} wall", "{0} walls", c.walls), { std::to_string(c.walls) });
             const std::string floors  = Format(TrN("{0} floor", "{0} floors", c.floors), { std::to_string(c.floors) });
-            const std::string columns = Format(TrN("{0} column", "{0} columns", c.columns), { std::to_string(c.columns) });
-            info = Format(TrC("list of three items", "{0}, {1}, {2}"), { walls, floors, columns }) + "    ";
+            const std::string doors   = Format(TrN("{0} door", "{0} doors", c.doors), { std::to_string(c.doors) });
+            const std::string windows = Format(TrN("{0} window", "{0} windows", c.windows), { std::to_string(c.windows) });
+            info = Format(TrC("list of four items", "{0}, {1}, {2}, {3}"), { walls, floors, doors, windows }) + "    ";
         }
         info += Format(Tr("Graphics: {0}"), { m_platform->GetGraphicsName() });
         info += "    v" MINIBIM_VERSION_STRING;
@@ -312,13 +319,13 @@ namespace MiniBIM
     // =========================================================
     // 三维视口
     // =========================================================
-    void MainFrame::BuildDemoScene()
+    void MainFrame::RebuildScene()
     {
         m_sceneError.clear();
-        if (!m_scene.Build(m_platform->GetSolidKernel(), m_sceneError))
-            LOG_WARN("演示模型：%s", m_sceneError.c_str());
-        m_cameraFitted = false;
-        UpdateStatus();
+        m_sceneModel = m_session.Snapshot();
+        if (!m_scene.Build(*m_sceneModel, m_platform->GetSolidKernel(), m_sceneError))
+            LOG_WARN("三维场景：%s", m_sceneError.c_str());
+        ++m_sceneVersion;
     }
 
     std::unique_ptr<MiniGUI::Node> MainFrame::CreateViewport()
@@ -413,7 +420,7 @@ namespace MiniBIM
         if (!m_scene.Empty())
         {
             const Math::Mat4 viewProj = m_camera.GetViewProj();
-            renderer.SubmitCached(0, 1, m_scene.GetTriangles(), viewProj, PrimitiveType::Triangle, true);
+            renderer.SubmitCached(0, m_sceneVersion, m_scene.GetTriangles(), viewProj, PrimitiveType::Triangle, true);
 
             // 边：沿视线往相机挪一个像素对应的长度（正交投影下屏幕位置不变），免得与所在的面争深度
             const Math::Vec3 toward = m_camera.GetForward() * (-std::max(0.5, m_camera.GetViewHeight() / pixelHeight));
