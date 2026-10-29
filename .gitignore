@@ -1,0 +1,9 @@
+out/
+build/
+.vs/
+*.user
+*.suo
+*.log
+CMakeSettings.json
+__pycache__/
+.claude

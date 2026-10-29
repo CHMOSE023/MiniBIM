@@ -1,0 +1,70 @@
+# MiniBIM 开发计划
+
+MiniBIM 把 [BIMCraft](https://github.com/IPedrax/BIMCraft)（Rust，约 13.7 万行）移植为 C++20，界面、渲染、构建、代码风格沿用
+[MiniCAD](https://github.com/CHMOSE023/MiniCAD)，几何内核用 SMLib。许可与来源见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
+
+基准：BIMCraft `f3bbb33`（2026-10-28），MiniCAD `0bd1687`（2026-10-29）。
+
+## 第 1 阶段：骨架（已完成）
+
+- 构建：CMake + Ninja + MSVC，预设 `debug` / `release`，`build.bat`、`run_tests.bat`；静态运行库，复制自 MiniCAD 的 `cmake/`
+- 界面：MiniGUI（`src/UI`），界面描述文件 `assets/ui/minibim_ui.json`，自绘标题栏 + 菜单栏 + 三维视口 + 状态栏
+- 渲染：Windows 的 D3D12 / D3D11（WARP 回退），`apps/Render`
+- 几何：SMLib（`3rd/SMLib`）经 `Solid::ISolidKernel`；临时的演示场景 `DemoScene` 检验内核与视口
+- 多语言：PO 词典 + `Tr` / `TrN` / `TrC`，MiniGUI 与界面描述文件同样翻译，运行时切换（[i18n.md](i18n.md)）；简体中文、英文
+- 图标：`tools/make_icons.py` 生成全部图标（照 MiniCAD 的同名脚本）：程序图标 `app.ico` / `app.png`，现有命令的图标
+- 测试：`I18nTests`、`ViewTests`、`SMLibSmokeTests`
+- CI 与发布：`.github/workflows/build.yml`（Windows 编译、测试、打包；Linux 编译核心库与测试；词典与图标检查；推送 `v*` 标签时发布）
+- AI 编程助手：`AGENTS.md` 与 `.agents/`（skill `test`、`ui-check`、`i18n`，功能指南，排错表），结构照 MiniCAD
+
+## 第 2 阶段：模型核心（移植 `crates/core`）
+
+BIMCraft 的核心与界面分得很清楚：所有编辑都是 `commands.rs` 里的命令，由 `engine.rs` 的 `Session` 执行（回滚、撤销），
+界面、命令行、脚本都只调命令。照这个结构移植，先做不依赖界面的部分，每一步都带上对应的测试（BIMCraft 的 `*_tests.rs`）。
+
+建议顺序（括号里是 BIMCraft 的行数，供估计工作量）：
+
+1. 基础：`units.rs`（317）、`ids.rs`（495，元素 ID 与 GUID）、`geom.rs`（493，平面几何）
+2. 模型：`model.rs`（5432，元素、类型、`Model::check`）、`library.rs`（1531，类型、材质、族）
+3. 墙：`walls.rs`（836）与 `walls/`：墙轴线、墙面、斜接、轮廓
+4. 命令与撤销：`commands.rs`（8740）、`engine.rs`（346）。C++ 里对应 MiniCAD 的 `ICommand` / `CommandStack` 思路，但以 BIMCraft 的命令表为准
+5. 文件：项目文件的保存 / 打开；`sample.rs` 的示例房屋（替换掉现在的 `DemoScene`）
+6. 三维：`view3d.rs`（2694）的场景生成改为经 SMLib 出网格、经 `IRenderer` 绘制（BIMCraft 自带的软件光栅化不移植）
+7. 平面视图：`render.rs`（4080，显示列表、拾取）→ 视口里的二维绘制
+8. 交换：`ifc.rs`（1795，导出）、`import.rs`（3911，导入）、`step.rs`（408）；再往后是明细表、出图、DXF 导入等
+
+每个含移植代码的源文件开头写一行来源，例如：
+
+```cpp
+// 移植自 BIMCraft crates/core/src/walls.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
+```
+
+不移植：`crates/rvt`（Revit 读取器，只有 Apache-2.0，且依赖对 Revit 格式的逆向）、`crates/update`（自动更新，以后按 MiniCAD 的发布方式另做）。
+
+## 第 3 阶段：界面（移植 `crates/ui-egui`）
+
+`ui-egui`（约 4.5 万行）基于 egui，不能逐行翻译，要在 MiniGUI 上重写：功能区（`Ribbon`）、特性面板（`PropertyGrid`）、
+项目浏览器、平面画布与工具、剖面与图纸。MiniCAD 的 `apps/Common` 有现成的写法可参考（停靠面板、命令行、视图方块）。
+
+界面要用的图标（功能区、工具栏、项目浏览器、属性面板……）**全部由 `tools/make_icons.py` 自动生成**：移植一个命令就在脚本里给它画一个，
+不用 BIMCraft 的图标，也不手画或拷图片（做法见 `.agents/features/icons.md`）。
+
+BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界面移植之后合并进 `assets/i18n`：两边都以英文原文为键，
+同样的原文可以直接沿用译文。
+
+## 第 4 阶段：平台
+
+- 网页版（Emscripten，WebGPU / WebGL2）与 Linux 版（SDL3，Vulkan / GLES3）：从 MiniCAD 复制 `apps/Web`、`apps/Linux`、
+  `apps/Render` 里对应的后端与 `cmake/Render.cmake` 的段落，`AppPlatform` 各实现一份
+- CI：照 MiniCAD 的 `build.yml` 加上网页版（Emscripten）与 Linux 版（SDL3）的编译、打包与发布，网页版部署
+
+## 与 MiniCAD 的差异
+
+复制过来的代码在 MiniBIM 里做过这些改动，以后从 MiniCAD 同步时留意：
+
+- 命名空间 `MiniCAD` → `MiniBIM`，宏 `MINICAD_*` → `MINIBIM_*`（MiniGUI 的命名空间不变）
+- MiniGUI：新增 `Core/Translate.h`（`MiniGUI::Tr`、`SetTranslator`）；`UiLayout` 每次应用时翻译界面描述文件里的文字与命令名称、
+  提示、面板标题；`Binding`、`NumberBox`、`ColorPicker`、`CommandConsole`、`CommandUI`、`Dialog`、`Ribbon`、`TabView`、`TextBox`、
+  `TitleBar` 里写死的中文改成英文原文 + `Tr`（菜单文字去掉了助记符 `&`，不显示下划线和 `(X)`）；`Win32Fonts` 加了韩文回退字体
+- `cmake/Render.cmake` 只保留 Windows；`apps/Win32` 的宿主精简（没有浮动窗口、文件对话框、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`
+- 没有复制：MiniDWG、节点图、天正、CAD 实体 / 场景 / 编辑器（`src/Core/Entity`、`src/Scene`、`src/Document`、`src/Editor`、`src/Viewport`）

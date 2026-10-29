@@ -1,0 +1,218 @@
+# MiniBIM 简体中文词典。原文由 tools/extract_messages.py 收集，译文在这里维护。
+msgid ""
+msgstr ""
+"Project-Id-Version: MiniBIM\n"
+"Language: zh_CN\n"
+"X-Language-Name: 简体中文\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/UI/Widgets/Binding.cpp src/UI/Widgets/NumberBox.cpp
+msgid "*Varies*"
+msgstr "*多种*"
+
+#: src/UI/Widgets/ColorPicker.cpp
+msgid "Hex"
+msgstr "十六进制"
+
+#: src/UI/Widgets/CommandConsole.cpp
+msgid "Command:"
+msgstr "命令:"
+
+#: src/UI/Widgets/CommandConsole.cpp
+msgid "Show or hide the command history"
+msgstr "展开 / 收起命令历史"
+
+#: src/UI/Widgets/CommandConsole.cpp
+msgid "Type a command, then press Space or Enter"
+msgstr "输入命令，空格或回车执行"
+
+#: src/UI/Widgets/CommandUI.cpp
+msgid "More commands"
+msgstr "更多命令"
+
+#: src/UI/Widgets/CommandUI.cpp src/UI/Widgets/Ribbon.cpp
+msgid "Unknown command:"
+msgstr "没有这个命令："
+
+#: src/UI/Widgets/Dialog.h
+msgid "OK"
+msgstr "确定"
+
+#: src/UI/Widgets/Ribbon.cpp
+msgid "Collapse the ribbon (or double-click a tab)"
+msgstr "收起功能区（双击选项卡也可以）"
+
+#: src/UI/Widgets/Ribbon.cpp
+msgid "(unavailable now)"
+msgstr "（当前不可用）"
+
+#: src/UI/Widgets/Ribbon.cpp
+msgid "File menu"
+msgstr "文件菜单"
+
+#: src/UI/Widgets/Ribbon.cpp
+msgid "Expand the ribbon (or double-click a tab)"
+msgstr "展开功能区（双击选项卡也可以）"
+
+#: src/UI/Widgets/Ribbon.h
+msgid "Search commands"
+msgstr "搜索命令"
+
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Close"
+msgstr "关闭"
+
+#: src/UI/Widgets/TabView.cpp
+msgid "Close Others"
+msgstr "关闭其他"
+
+#: src/UI/Widgets/TabView.cpp
+msgid "Close to the Right"
+msgstr "关闭右侧"
+
+#: src/UI/Widgets/TabView.cpp
+msgid "Close All"
+msgstr "全部关闭"
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Undo"
+msgstr "撤销"
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Redo"
+msgstr "重做"
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Cut"
+msgstr "剪切"
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Copy"
+msgstr "复制"
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Paste"
+msgstr "粘贴"
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Delete"
+msgstr "删除"
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Select All"
+msgstr "全选"
+
+#: src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Minimize"
+msgstr "最小化"
+
+#: src/UI/Widgets/TitleBar.cpp
+msgid "Restore Down"
+msgstr "向下还原"
+
+#: src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Maximize"
+msgstr "最大化"
+
+#: apps/Common/src/GUI/DemoScene.cpp
+msgid "This build has no solid modeling kernel (MINIBIM_WITH_SOLID is off)."
+msgstr "这个版本没有编入实体建模内核（MINIBIM_WITH_SOLID 关闭）。"
+
+#: apps/Common/src/GUI/DemoScene.cpp
+msgid "The solid modeling kernel failed to build the demo model."
+msgstr "实体建模内核没能生成演示模型。"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Exit"
+msgstr "退出"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Home View"
+msgstr "主视图"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Southwest isometric view of the whole model"
+msgstr "从西南等轴测方向看整个模型"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Zoom to Fit"
+msgstr "缩放匹配"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Fit the whole model in the view without changing the direction"
+msgstr "方向不变，整个模型放进视图"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
+msgid "About MiniBIM"
+msgstr "关于 MiniBIM"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "3D View"
+msgstr "三维视图"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "System Default"
+msgstr "跟随系统"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Interface description file:"
+msgstr "界面描述文件："
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to orbit, middle- or right-drag to pan, scroll to zoom"
+msgstr "拖动左键环绕，拖动中键或右键平移，滚轮缩放"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "{0} wall"
+msgid_plural "{0} walls"
+msgstr[0] "{0} 面墙"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "{0} floor"
+msgid_plural "{0} floors"
+msgstr[0] "{0} 块楼板"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "{0} column"
+msgid_plural "{0} columns"
+msgstr[0] "{0} 根柱"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgctxt "list of three items"
+msgid "{0}, {1}, {2}"
+msgstr "{0}，{1}，{2}"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Graphics: {0}"
+msgstr "图形接口：{0}"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "MiniBIM {0}, an open-source BIM application written in C++20."
+msgstr "MiniBIM {0}，用 C++20 编写的开源 BIM 软件。"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Released under the MIT License. Third-party components and their licenses are listed in THIRD_PARTY_NOTICES.md."
+msgstr "按 MIT 许可证发布。第三方组件及其许可证见 THIRD_PARTY_NOTICES.md。"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Language: {0}"
+msgstr "语言：{0}"
+
+#: assets/ui/minibim_ui.json
+msgid "File"
+msgstr "文件"
+
+#: assets/ui/minibim_ui.json
+msgid "Language"
+msgstr "语言"
+
+#: assets/ui/minibim_ui.json
+msgid "View"
+msgstr "视图"
+
+#: assets/ui/minibim_ui.json
+msgid "Help"
+msgstr "帮助"

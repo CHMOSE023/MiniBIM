@@ -1,0 +1,125 @@
+#pragma once
+#include "Core/Node.h"
+#include "Data/Json.h"
+#include "Widgets/Menu.h"
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace MiniGUI
+{
+    class CommandRegistry;
+    class DockSpace;
+    class MenuBar;
+    class TitleBar;
+    class Ribbon;
+    class ToolBar;
+
+    // 界面描述文件（JSON）→ 界面。描述菜单、工具栏和面板布局，具体内容（视口、特性面板、状态栏…）
+    // 由宿主以"命名面板"的形式提供。格式：
+    //
+    //   {
+    //     "commands": { "file.save": { "label": "保存(&S)", "shortcut": "Ctrl+S", "icon": "Save.png", "tooltip": "…" } },
+    //     "menus":    [ { "title": "文件(&F)", "items": [ "file.new", "-", { "title": "最近打开", "items": [ … ] } ] } ],
+    //     "toolbars": { "draw": { "items": [ "draw.line", "|", { "command": "draw.text", "text": true } ], "iconSize": 20 } },
+    //     "layout":   { "type": "column", "children": [
+    //                     { "type": "menubar" },
+    //                     { "type": "toolbar", "id": "draw" },
+    //                     { "type": "row", "grow": 1, "children": [
+    //                         { "type": "panel", "name": "viewport", "grow": 1 },
+    //                         { "type": "splitter" },
+    //                         { "type": "panel", "name": "properties", "width": 260 } ] },
+    //                     { "type": "panel", "name": "statusbar" } ] }
+    //   }
+    //
+    // - commands：覆盖命令的名称、快捷键、图标、提示（只覆盖写出的字段；从文件里删掉后恢复为代码里的默认值）
+    // - 菜单 / 工具栏的项："命令 ID"，"-" 或 "|" 为分隔线；菜单项可以是 { "title", "items" } 子菜单，
+    //   或 { "title", "dynamic": "名字" } 由宿主在打开菜单时生成内容的子菜单（见 SetDynamicMenuItems）；
+    //   工具栏项可以是 { "command", "text": true }（图标旁显示名称）
+    // - 布局节点 type：row、column、menubar、toolbar（"id" 引用 toolbars，或直接写 "items"；"vertical"）、
+    //   panel（"name"）、splitter（调整前一个兄弟的尺寸；"target": "next" 调整后一个）、separator、spacer、label（"text"）、
+    //   titlebar（无边框窗口的标题栏：最小化 / 最大化 / 关闭按钮执行 window.minimize / window.maximize / window.close；
+    //   "children" 放在图标右侧，通常是 menubar；"icon" 为图标文件，"title" 为初始标题，宿主可用 GetTitleBar 修改）、
+    //   dock（停靠区："root" 为 DockSpace 的布局格式，"panels" 列出布局里没有、但可以由宿主随时显示的面板；"id" 用于 GetDock）
+    // - layouts：另外几段命名的布局（例如程序的第二种窗口），格式同 layout；宿主用 SetLayoutName 选用其中一段
+    // - 通用布局属性：width、height、minWidth、maxWidth、minHeight、maxHeight、grow、shrink、gap、
+    //   padding（数字、[水平, 竖直] 或 [左, 上, 右, 下]）、align（start/center/end/stretch）、
+    //   justify（start/center/end/space-between）、background（主题颜色名如 "Panel"，或 "#RRGGBB"）、visible
+    // - 错误不中断：未知的命令 ID、面板名、类型、属性都记入警告，界面照常生成；JSON 语法错误时保留原界面
+    // - 多语言：文件里的 title / label / tooltip / text / search 与命令在代码里的名称、提示、面板标题都写英文原文，
+    //   每次应用时经 MiniGUI::Tr 翻译（Core/Translate.h）；切换语言后重新应用即可
+    class UiLayout
+    {
+    public:
+        UiLayout(CommandRegistry& commands, std::string iconDir);
+        ~UiLayout();
+
+        // 宿主提供的面板：界面重建时会被回收、再放回新的位置（不会销毁），布局里没有引用的面板不显示
+        // title：放进停靠区时标签上显示的名称（英文原文，应用时翻译；为空时用 name）
+        void  RegisterPanel(const std::string& name, std::unique_ptr<Node> panel, std::string title = {});
+        Node* GetPanel(const std::string& name) const;
+
+        // 宿主提供的动态菜单内容：菜单项写 { "title": "最近打开", "dynamic": "recent" } 时，
+        // 每次打开菜单都调用 build 取当前内容（列表可能已经变了）。build 返回空列表则该项灰显。
+        // 界面重建（Apply）不会清掉已注册的源——宿主只注册一次
+        void SetDynamicMenuItems(const std::string& name, std::function<std::vector<MenuItem>()> build);
+
+        // 生成哪一段布局：空（默认）为顶层的 "layout"，否则为 "layouts" 里的同名一段（例如第二种窗口用的布局）。
+        // 选了命名布局时不应用 "commands"：命令表是共用的，由生成默认布局的那个 UiLayout 负责（免得互相把对方的覆盖当成默认值）
+        void SetLayoutName(std::string name) { m_layoutName = std::move(name); }
+
+        // 解析并应用：清空 parent 原有内容（推迟销毁，在事件回调里调用也安全）后按描述重建。
+        // JSON 语法错误时返回 false，界面保持不变
+        bool ApplyText(Node* parent, std::string_view jsonText);
+        bool ApplyFile(Node* parent, const std::string& utf8Path);
+        bool Apply(Node* parent, const JsonValue& doc);
+
+        const std::string&              GetError()    const { return m_error; }     // 最近一次失败的原因
+        const std::vector<std::string>& GetWarnings() const { return m_warnings; }
+
+        MenuBar*   GetMenuBar()  const { return m_menuBar; }
+        TitleBar*  GetTitleBar() const { return m_titleBar; }
+        Ribbon*    GetRibbon() const { return m_ribbon; }
+        ToolBar*   GetToolBar(const std::string& id) const;
+        DockSpace* GetDock(const std::string& id) const;
+
+    private:
+        struct BuildState;
+        void ReclaimPanels();
+        void RestoreCommandDefaults();
+        std::unique_ptr<Node> BuildNode(const JsonValue& desc, const JsonValue& doc, bool parentIsRow, BuildState& st);
+        void ApplyCommonStyle(Node* node, const JsonValue& desc, bool isPanel);
+
+        struct CommandDefaults { std::string label, tooltip, icon, shortcut; };
+
+        CommandRegistry& m_commands;
+        std::string      m_iconDir;
+        std::string      m_layoutName;
+
+        struct PanelSlot
+        {
+            Node*                 node = nullptr;   // 面板本身（无论是否在树上）
+            std::unique_ptr<Node> owned;            // 不在树上时由这里持有
+            LayoutStyle           originalStyle;    // 注册时的布局，重建前恢复（描述里删掉的属性不残留）
+            bool                  originalVisible = true;
+            bool                  originalHitTest = true;
+            std::string           title;
+        };
+        std::map<std::string, PanelSlot> m_panels;
+
+        std::unordered_map<std::string, CommandDefaults> m_commandDefaults;
+        std::unordered_map<std::string, std::function<std::vector<MenuItem>()>> m_dynamicMenus;
+
+        MenuBar*                        m_menuBar  = nullptr;
+        TitleBar*                       m_titleBar = nullptr;
+        Ribbon*                         m_ribbon   = nullptr;
+        std::string                     m_ribbonTab;        // 重新加载前选中的功能区选项卡
+        std::map<std::string, ToolBar*> m_toolBars;
+        std::map<std::string, DockSpace*> m_docks;          // id 为空的停靠区用自动生成的键
+        std::string                     m_error;
+        std::vector<std::string>        m_warnings;
+    };
+}

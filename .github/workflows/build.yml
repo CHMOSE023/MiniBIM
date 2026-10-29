@@ -1,0 +1,132 @@
+# MiniBIM 持续集成与发布（结构照 MiniCAD 的 build.yml）
+#   - 到 main 的 PR（开启、推送新提交）时：编译、测试、打包，检查词典与图标。
+#     要在仓库的规则集里设必需检查时，选 "Windows (D3D12 / D3D11)" 与 "Assets"；不要加 paths-ignore，
+#     被跳过的必需检查会一直等待，PR 合不进去
+#   - 推送 v* 标签（例如 v0.1.0）时：同上，再创建 GitHub Release 并上传 Windows 版的 zip；
+#     发布说明取自 docs/release-notes/<标签>.md（没有该文件时只写一行默认说明）。版本号只改根 CMakeLists.txt 的 MINIBIM_VERSION
+#   - 推送分支不自动运行；需要时在 Actions 页面手动运行（workflow_dispatch，只编译、测试、打包）
+# 第一阶段只有 Windows 桌面版；Linux 任务只编译核心库与测试，保证移植过来的核心代码在 GCC 上也能编译（网页版、Linux 版见 docs/PLAN.md 第 4 阶段）
+name: Build
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 打包文件名里的版本：标签构建用标签名，其余用 dev
+  PACKAGE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+
+jobs:
+  # ── 桌面版：Windows / D3D12 + D3D11 ────────────────────────────────────────
+  windows:
+    name: Windows (D3D12 / D3D11)
+    runs-on: windows-latest
+
+    steps:
+      # 完整历史：exe 版本号第四段是 git 提交数（浅克隆只有 1 个提交）
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # USE_WIN32=ON：窗口程序，启动时不带控制台（与 release 预设相同）
+      - name: Configure
+        run: cmake -S . -B out/ci -DUSE_WIN32=ON
+
+      - name: Build
+        run: cmake --build out/ci --config Release --parallel
+
+      # 测试不用显卡：多语言、相机、SMLib 冒烟测试
+      - name: Test
+        run: ctest --test-dir out/ci -C Release --output-on-failure
+
+      # 输出目录里已有 MiniBIMWin.exe、构建后复制的 assets（界面描述文件、词典）与许可文件
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "MiniBIM-$env:PACKAGE_VERSION-windows-x64"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item -Recurse out/ci/MiniBIMWin "dist/$name"
+          Get-ChildItem "dist/$name" -Recurse -Include *.pdb,*.ilk,*.exp,*.lib | Remove-Item
+          Copy-Item README*.md "dist/$name"
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniBIM-Windows
+          path: dist/*.zip
+          retention-days: 7
+
+  # ── Linux：核心库与测试（GCC）──────────────────────────────────────────────
+  # 界面与渲染还只有 Windows 版，这里不编；核心库、SMLib 与测试要能在 GCC 上编译运行
+  linux:
+    name: Linux (core + tests)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: cmake -S . -B out/linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build out/linux --target I18nTests ViewTests SMLibSmokeTests
+
+      - name: Test
+        run: ctest --test-dir out/linux --output-on-failure
+
+  # ── 资源：词典与图标 ───────────────────────────────────────────────────────
+  assets:
+    name: Assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 代码与界面描述文件里的原文都已收进 assets/i18n；需要更新时返回 1：
+      # 本地运行 python tools/extract_messages.py，补上译文后一起提交
+      - name: Check catalogs
+        run: python3 tools/extract_messages.py --check
+
+      # 界面描述文件引用的图标都由 tools/make_icons.py 定义并已生成，assets/icons 里没有别处来的图片（不需要 Pillow）
+      - name: Check icons
+        run: python3 tools/make_icons.py --check
+
+  # ── 发布：推送 v* 标签时创建 GitHub Release ────────────────────────────────
+  release:
+    name: Release
+    if: github.ref_type == 'tag'
+    needs: [windows, linux, assets]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Release notes
+        run: |
+          notes="docs/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then cp "$notes" release-notes.md; else echo "MiniBIM ${GITHUB_REF_NAME}" > release-notes.md; fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MiniBIM ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: dist/*.zip

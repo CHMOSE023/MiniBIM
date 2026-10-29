@@ -1,0 +1,30 @@
+// MiniBIM 界面描述（MiniBIMWin，界面由 MiniGUI 绘制；格式见 src/UI/Widgets/UiLayout.h，同 MiniCAD 的 minicad_ui.json）
+// 程序运行时修改并保存本文件，界面立即更新；写错时保留当前界面，状态栏显示错误位置。
+// 多语言：title / label / tooltip / text 一律写英文原文，显示时按当前语言翻译（词典在 assets/i18n）；
+//   改了这里的文字后运行 python tools/extract_messages.py 更新词典，再补上译文
+// - 菜单文字不写助记符 &：菜单上不显示下划线，也不显示 "(F)" 这样的字母（键盘用 F10 激活菜单栏、方向键选择）
+// - menus 的项是命令 ID，"-" 为分隔线；{ "title": …, "dynamic": "languages" } 是程序生成的语言列表
+// - 宿主提供的面板：viewport（三维视口）、statusbar（状态栏）
+// - 图标（commands 的 "icon"、titlebar 的 "icon"）都在 assets/icons，由 tools/make_icons.py 生成：要新图标先在脚本里加，
+//   再在这里引用（python tools/make_icons.py --check 核对引用）。菜单项不显示图标，命令图标给以后的功能区、工具栏用
+{
+  "commands": {
+    "file.exit":    { "icon": "Exit.png" },
+    "view.home":    { "icon": "HomeView.png" },
+    "view.zoomFit": { "icon": "ZoomFit.png" },
+    "help.about":   { "icon": "About.png" }
+  },
+  "menus": [
+    { "title": "File", "items": [ { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
+    { "title": "View", "items": [ "view.home", "view.zoomFit" ] },
+    { "title": "Help", "items": [ "help.about" ] }
+  ],
+  "layout": {
+    "type": "column",
+    "children": [
+      { "type": "titlebar", "icon": "app.png", "children": [ { "type": "menubar" } ] },
+      { "type": "panel", "name": "viewport", "grow": 1 },
+      { "type": "panel", "name": "statusbar" }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+// 桌面版的资源：程序图标与 exe 版本信息（版本号来自 MiniBIMVersion.h，由根 CMakeLists.txt 的 MINIBIM_VERSION 生成）。
+// 图标 assets/icons/app.ico 由 tools/make_icons.py 生成，不要手改
+#include "resource.h"
+#include "MiniBIMVersion.h"
+#include <winver.h>
+
+#pragma code_page(65001)
+
+IDI_ICON ICON "..\\..\\..\\assets\\icons\\app.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION MINIBIM_VERSION_MAJOR, MINIBIM_VERSION_MINOR, MINIBIM_VERSION_PATCH, MINIBIM_VERSION_BUILD
+PRODUCTVERSION MINIBIM_VERSION_MAJOR, MINIBIM_VERSION_MINOR, MINIBIM_VERSION_PATCH, MINIBIM_VERSION_TWEAK
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+
+#ifdef _DEBUG
+FILEFLAGS VS_FF_DEBUG
+#else
+FILEFLAGS 0x0L
+#endif
+
+FILEOS VOS__WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE 0x0L
+
+BEGIN
+BLOCK "StringFileInfo"
+BEGIN
+BLOCK "040904B0"
+BEGIN
+VALUE "FileDescription", "MiniBIM\0"
+VALUE "FileVersion", MINIBIM_FILE_VERSION_STR
+VALUE "ProductVersion", MINIBIM_PRODUCT_VERSION_STR
+VALUE "ProductName", "MiniBIM\0"
+VALUE "CompanyName", "CHMOSE023\0"
+VALUE "LegalCopyright", "Copyright (c) 2026 CHMOSE023, MIT License\0"
+END
+END
+
+BLOCK "VarFileInfo"
+BEGIN
+VALUE "Translation", 0x0409, 1200
+END
+END

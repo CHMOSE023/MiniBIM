@@ -1,0 +1,222 @@
+# MiniBIM 界面文字的原文模板，由 tools/extract_messages.py 生成，不要手改。
+# 新增语言：复制本文件为 <语言代码>.po，填好文件头再翻译。
+msgid ""
+msgstr ""
+"Project-Id-Version: MiniBIM\n"
+"Language: \n"
+"X-Language-Name: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/UI/Widgets/Binding.cpp src/UI/Widgets/NumberBox.cpp
+msgid "*Varies*"
+msgstr ""
+
+#: src/UI/Widgets/ColorPicker.cpp
+msgid "Hex"
+msgstr ""
+
+#: src/UI/Widgets/CommandConsole.cpp
+msgid "Command:"
+msgstr ""
+
+#: src/UI/Widgets/CommandConsole.cpp
+msgid "Show or hide the command history"
+msgstr ""
+
+#: src/UI/Widgets/CommandConsole.cpp
+msgid "Type a command, then press Space or Enter"
+msgstr ""
+
+#: src/UI/Widgets/CommandUI.cpp
+msgid "More commands"
+msgstr ""
+
+#: src/UI/Widgets/CommandUI.cpp src/UI/Widgets/Ribbon.cpp
+msgid "Unknown command:"
+msgstr ""
+
+#: src/UI/Widgets/Dialog.h
+msgid "OK"
+msgstr ""
+
+#: src/UI/Widgets/Ribbon.cpp
+msgid "Collapse the ribbon (or double-click a tab)"
+msgstr ""
+
+#: src/UI/Widgets/Ribbon.cpp
+msgid "(unavailable now)"
+msgstr ""
+
+#: src/UI/Widgets/Ribbon.cpp
+msgid "File menu"
+msgstr ""
+
+#: src/UI/Widgets/Ribbon.cpp
+msgid "Expand the ribbon (or double-click a tab)"
+msgstr ""
+
+#: src/UI/Widgets/Ribbon.h
+msgid "Search commands"
+msgstr ""
+
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Close"
+msgstr ""
+
+#: src/UI/Widgets/TabView.cpp
+msgid "Close Others"
+msgstr ""
+
+#: src/UI/Widgets/TabView.cpp
+msgid "Close to the Right"
+msgstr ""
+
+#: src/UI/Widgets/TabView.cpp
+msgid "Close All"
+msgstr ""
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Undo"
+msgstr ""
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Redo"
+msgstr ""
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Cut"
+msgstr ""
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Copy"
+msgstr ""
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Paste"
+msgstr ""
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Delete"
+msgstr ""
+
+#: src/UI/Widgets/TextBox.cpp
+msgid "Select All"
+msgstr ""
+
+#: src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Minimize"
+msgstr ""
+
+#: src/UI/Widgets/TitleBar.cpp
+msgid "Restore Down"
+msgstr ""
+
+#: src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Maximize"
+msgstr ""
+
+#: apps/Common/src/GUI/DemoScene.cpp
+msgid "This build has no solid modeling kernel (MINIBIM_WITH_SOLID is off)."
+msgstr ""
+
+#: apps/Common/src/GUI/DemoScene.cpp
+msgid "The solid modeling kernel failed to build the demo model."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Exit"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Home View"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Southwest isometric view of the whole model"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Zoom to Fit"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Fit the whole model in the view without changing the direction"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
+msgid "About MiniBIM"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "3D View"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "System Default"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Interface description file:"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to orbit, middle- or right-drag to pan, scroll to zoom"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "{0} wall"
+msgid_plural "{0} walls"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "{0} floor"
+msgid_plural "{0} floors"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "{0} column"
+msgid_plural "{0} columns"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgctxt "list of three items"
+msgid "{0}, {1}, {2}"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Graphics: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "MiniBIM {0}, an open-source BIM application written in C++20."
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Released under the MIT License. Third-party components and their licenses are listed in THIRD_PARTY_NOTICES.md."
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Language: {0}"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "File"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Language"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "View"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Help"
+msgstr ""
