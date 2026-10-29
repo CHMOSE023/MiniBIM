@@ -7,6 +7,9 @@ add_library(MiniBIM STATIC
     src/I18n/Catalog.cpp
     src/I18n/Translator.cpp
     # 模型（移植自 BIMCraft crates/core）：几何、单位、ID、元素与类型、库、墙、项目文件
+    src/Model/Csg.cpp
+    src/Model/Family.cpp
+    src/Model/FamilyLibrary.cpp
     src/Model/Geom.cpp
     src/Model/Ids.cpp
     src/Model/Language.cpp

@@ -184,6 +184,22 @@ namespace MiniBIM::Bim
         m_byName[{ kind, newName }] = *id;
     }
 
+    void Library::FamilyRenamed(const std::string& oldName, const std::string& newName)
+    {
+        // 名为 "旧名: …" 的族类型、族参数改为 "新名: …"
+        const std::string prefix = oldName + ": ";
+        for (const Kind kind : { Kind::Of(Kind::Tag::FamilyType), Kind::Of(Kind::Tag::FamilyParameter) })
+        {
+            std::vector<std::string> names;
+            for (const auto& [key, _] : m_byName)
+                if (key.first == kind && key.second.rfind(prefix, 0) == 0)
+                    names.push_back(key.second);
+            for (const std::string& n : names)
+                Renamed(kind, n, newName + ": " + n.substr(prefix.size()));
+        }
+        Renamed(Kind::Of(Kind::Tag::Family), oldName, newName);
+    }
+
     // ── 模型的库 ─────────────────────────────────────────────────
     std::vector<std::pair<Kind, std::string>> Model::LibraryNames() const
     {
@@ -202,6 +218,14 @@ namespace MiniBIM::Bim
             out.emplace_back(Kind::Type("ceiling"), n);
         for (const auto& [n, _] : materials)
             out.emplace_back(Kind::Of(Kind::Tag::Material), n);
+        for (const auto& [n, _] : families)
+            out.emplace_back(Kind::Of(Kind::Tag::Family), n);
+        for (const auto& [f, fam] : families)
+            for (const auto& [t, _] : fam.types)
+                out.emplace_back(Kind::Of(Kind::Tag::FamilyType), f + ": " + t);
+        for (const auto& [f, fam] : families)
+            for (const Fam::Parameter& p : fam.parameters)
+                out.emplace_back(Kind::Of(Kind::Tag::FamilyParameter), f + ": " + p.name);
         return out;
     }
 
@@ -232,6 +256,13 @@ namespace MiniBIM::Bim
             add("layer", "roof type", n, x.layers);
         for (const auto& [n, x] : types.ceiling)
             add("layer", "ceiling type", n, x.layers);
+        for (const auto& [n, f] : families)
+        {
+            for (size_t i = 0; i < f.forms.size(); ++i)
+                out.emplace_back(f.forms[i].id, Part{ "form", "family " + n, n, i, f.forms[i].guid });
+            for (size_t i = 0; i < f.symbols.size(); ++i)
+                out.emplace_back(f.symbols[i].id, Part{ "symbol", "family " + n, n, i, f.symbols[i].guid });
+        }
         return out;
     }
 
@@ -331,7 +362,7 @@ namespace MiniBIM::Bim
         }
         // 按 PartsNow 的顺序放回
         size_t k = 0;
-        auto give = [&](Layer& l)
+        auto give = [&](auto& l)
         {
             if (k < given.size())
             {
@@ -352,6 +383,13 @@ namespace MiniBIM::Bim
         for (auto& [_, x] : types.ceiling)
             for (Layer& l : x.layers)
                 give(l);
+        for (auto& [_, f] : families)
+        {
+            for (Fam::Form& x : f.forms)
+                give(x);
+            for (Fam::Symbol& x : f.symbols)
+                give(x);
+        }
         library.m_parts.clear();
         for (auto& [id, p] : PartsNow())
             library.m_parts.emplace(id, std::move(p));
@@ -440,6 +478,8 @@ namespace MiniBIM::Bim
             for (Layer& l : x.layers)
                 if (!l.material.empty())
                     f(material, l.material);
+        for (auto& [_, fam] : families)
+            fam.MaterialRefsMut([&](std::string& m) { f(material, m); });
     }
 
     std::optional<std::string> Model::LibraryName(const Kind& kind, std::string_view text) const
@@ -467,6 +507,26 @@ namespace MiniBIM::Bim
             if (e && e->second->kind == kind)
                 text = e->second->name;
         });
+        const auto name = [&](const Kind& kind, const std::string& text) -> std::optional<std::string>
+        {
+            const auto g = Guid::Parse(text);
+            if (!g || g->Pending())
+                return std::nullopt;
+            const auto e = lib.ByGuid(*g);
+            if (!e || !(e->second->kind == kind))
+                return std::nullopt;
+            return e->second->name;
+        };
+        RekeyFamilyParams(
+            [&](const std::string& family, const std::string& k) -> std::optional<std::string>
+            {
+                const auto n = name(Kind::Of(Kind::Tag::FamilyParameter), k);
+                const std::string prefix = family + ": ";
+                if (!n || n->rfind(prefix, 0) != 0)
+                    return std::nullopt;
+                return n->substr(prefix.size());
+            },
+            [&](const std::string& m) { return name(Kind::Of(Kind::Tag::Material), m); });
         SyncLibrary();
     }
 }

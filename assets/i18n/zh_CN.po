@@ -78,6 +78,14 @@ msgid "Materials"
 msgstr "材质"
 
 #: src/Commands/Commands.cpp
+msgid "Load Family"
+msgstr "载入族"
+
+#: src/Commands/Commands.cpp
+msgid "Component"
+msgstr "构件"
+
+#: src/Commands/Commands.cpp
 msgid "Flip"
 msgstr "翻转"
 

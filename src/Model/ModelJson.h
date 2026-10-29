@@ -21,4 +21,7 @@ namespace MiniBIM::Bim
     bool FromJson(const Json& v, P2& out, std::string& error);
     // 严格地读一个元素：不认识的键、类别报错
     bool FromJson(const Json& v, Element& out, std::string& error);
+    // 族：字段与写法同 BIMCraft 的 family.rs；读时严格
+    Json ToJson(const Family& f);
+    bool FromJson(const Json& v, Family& out, std::string& error);
 }

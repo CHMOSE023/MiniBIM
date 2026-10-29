@@ -258,6 +258,20 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // 参数值：{名称: 值}
+        bool ReadParams(Fields& f, std::map<std::string, Json>& out)
+        {
+            const Json* v = f.Raw("params");
+            if (!v)
+                return true;
+            if (!v->is_object())
+                return f.Fail("`params` must be an object of values by name");
+            out.clear();
+            for (auto it = v->begin(); it != v->end(); ++it)
+                out[it.key()] = it.value();
+            return true;
+        }
+
         void ReadWallLike(Fields& f, Wall& w, bool& ok)
         {
             ok = f.String("type", w.typeName, true) && f.Id("level", w.level, true) && f.Point("start", w.start, true) &&
@@ -402,22 +416,25 @@ namespace MiniBIM::Bim
             if (category == "door" || category == "window")
             {
                 Opening o;
-                if (!f.Allow({ "type", "family", "host", "offset", "sill", "mark", "flip_facing", "flip_hand" }) || !f.String("type", o.typeName, true) || !f.OptString("family", o.family) || !f.Id("host", o.host, true) ||
+                if (!f.Allow({ "type", "family", "host", "offset", "sill", "mark", "flip_facing", "flip_hand", "params" }) || !f.String("type", o.typeName, true) || !f.OptString("family", o.family) || !f.Id("host", o.host, true) ||
                     !f.Number("offset", o.offset, true) || !f.Number("sill", o.sill, false) || !f.String("mark", o.mark, false) ||
-                    !f.Bool("flip_facing", o.flipFacing) || !f.Bool("flip_hand", o.flipHand))
-                    return false;
-                // 族还没移植：读文件时带族的门窗整个略去
-                if (o.family && leftOut)
-                {
-                    skip = true;
-                    return true;
-                }
-                if (!f.Finish())
+                    !f.Bool("flip_facing", o.flipFacing) || !f.Bool("flip_hand", o.flipHand) || !ReadParams(f, o.params) || !f.Finish())
                     return false;
                 if (category == "door")
                     out = Element(Door{ std::move(o) });
                 else
                     out = Element(Window{ std::move(o) });
+                return true;
+            }
+            if (category == "component")
+            {
+                Component c;
+                if (!f.Allow({ "family", "type", "level", "at", "angle", "offset", "mirrored", "params" }) || !f.String("family", c.family, true) ||
+                    !f.String("type", c.typeName, true) || !f.Id("level", c.level, true) || !f.Point("at", c.at, true) ||
+                    !f.Number("angle", c.angle, false) || !f.Number("offset", c.offset, false) || !f.Bool("mirrored", c.mirrored) ||
+                    !ReadParams(f, c.params) || !f.Finish())
+                    return false;
+                out = Element(std::move(c));
                 return true;
             }
             if (leftOut)
@@ -426,8 +443,16 @@ namespace MiniBIM::Bim
                 return true;
             }
             error = who + ": unknown variant `" + category +
-                    "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof";
+                    "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof, component";
             return false;
+        }
+
+        Json ParamsJson(const std::map<std::string, Json>& params)
+        {
+            Json out = Json::object();
+            for (const auto& [k, v] : params)
+                out[k] = v;
+            return out;
         }
 
         Json RingJson(const Ring& ring)
@@ -622,6 +647,369 @@ namespace MiniBIM::Bim
     }
 
     // ── 元素 ─────────────────────────────────────────────────────
+    // ── 族（family.rs 的 serde）────────────────────────────────────
+    namespace
+    {
+        Json ExprJson(const Fam::Expr& e)
+        {
+            if (const double* d = std::get_if<double>(&e))
+                return *d;
+            return std::get<std::string>(e);
+        }
+
+        Json PairJson(const std::array<Fam::Expr, 2>& p) { return Json::array({ ExprJson(p[0]), ExprJson(p[1]) }); }
+
+        Json PairsJson(const std::vector<std::array<Fam::Expr, 2>>& ps)
+        {
+            Json out = Json::array();
+            for (const auto& p : ps)
+                out.push_back(PairJson(p));
+            return out;
+        }
+
+        // 数或公式（serde 的 untagged）
+        bool ExprOf(Fields& f, const std::string& what, const Json& v, Fam::Expr& out)
+        {
+            if (v.is_number())
+                out = v.get<double>();
+            else if (v.is_string())
+                out = v.get<std::string>();
+            else
+                return f.Fail("`" + what + "`: data did not match any variant of untagged enum Expr");
+            return true;
+        }
+
+        bool ReadExpr(Fields& f, const char* key, Fam::Expr& out, bool required)
+        {
+            const Json* v = f.Raw(key);
+            if (!v)
+                return required ? f.Missing(key) : true;
+            return ExprOf(f, key, *v, out);
+        }
+
+        bool ReadOptExpr(Fields& f, const char* key, std::optional<Fam::Expr>& out)
+        {
+            out.reset();
+            const Json* v = f.Raw(key);
+            if (!v)
+                return true;
+            Fam::Expr e;
+            if (!ExprOf(f, key, *v, e))
+                return false;
+            out = std::move(e);
+            return true;
+        }
+
+        bool PairOf(Fields& f, const std::string& what, const Json& v, std::array<Fam::Expr, 2>& out)
+        {
+            if (!v.is_array() || v.size() != 2)
+                return f.Fail("`" + what + "` is a pair [x, y], got " + v.dump());
+            return ExprOf(f, what, v[0], out[0]) && ExprOf(f, what, v[1], out[1]);
+        }
+
+        bool ReadPairs(Fields& f, const char* key, std::vector<std::array<Fam::Expr, 2>>& out)
+        {
+            out.clear();
+            const Json* v = f.Raw(key);
+            if (!v)
+                return true;
+            if (!v->is_array())
+                return f.Fail(std::string("`") + key + "` is a list of pairs [x, y]");
+            for (const Json& p : *v)
+            {
+                std::array<Fam::Expr, 2> pair{ 0.0, 0.0 };
+                if (!PairOf(f, key, p, pair))
+                    return false;
+                out.push_back(std::move(pair));
+            }
+            return true;
+        }
+
+        bool ReadPartIds(Fields& f, Id& id, Guid& guid)
+        {
+            if (const Json* v = f.Raw("id"))
+            {
+                const auto whole = AsWhole(*v);
+                if (!whole)
+                    return f.Fail("`id` must be a whole number");
+                id = static_cast<Id>(*whole);
+            }
+            return f.Id("guid", guid, false);
+        }
+
+        bool ReadFamily(Fields& f, Family& fam)
+        {
+            if (!f.IsObject() || !f.Allow({ "category", "parameters", "types", "forms", "symbols", "operation" }))
+                return false;
+            if (const Json* c = f.Raw("category"))
+            {
+                const auto cat = c->is_string() ? Fam::CategoryOf::FromName(c->get<std::string>()) : std::nullopt;
+                if (!cat)
+                    return f.Fail("`category`: unknown variant " + c->dump());
+                fam.category = *cat;
+            }
+            if (const Json* ps = f.Raw("parameters"))
+            {
+                if (!ps->is_array())
+                    return f.Fail("`parameters` must be a list");
+                for (size_t i = 0; i < ps->size(); ++i)
+                {
+                    Fields g((*ps)[i], f.Who().empty() ? "parameter " + std::to_string(i + 1) : f.Who() + " parameter " + std::to_string(i + 1),
+                             f.Path() + "/parameters/" + std::to_string(i), f.LeftOut(), f.Error());
+                    Fam::Parameter p;
+                    if (!g.IsObject() || !g.Allow({ "name", "kind", "instance", "value", "formula" }) || !g.String("name", p.name, true))
+                        return false;
+                    if (const Json* k = g.Raw("kind"))
+                    {
+                        const auto kind = k->is_string() ? Fam::KindOf::FromName(k->get<std::string>()) : std::nullopt;
+                        if (!kind)
+                            return g.Fail("`kind`: unknown variant " + k->dump() + ", expected one of length, number, angle, yesno, material");
+                        p.kind = *kind;
+                    }
+                    if (!g.Bool("instance", p.instance))
+                        return false;
+                    if (const Json* v = g.Raw("value"))
+                        p.value = *v;
+                    if (!g.OptString("formula", p.formula) || !g.Finish())
+                        return false;
+                    fam.parameters.push_back(std::move(p));
+                }
+            }
+            if (const Json* ts = f.Raw("types"))
+            {
+                if (!ts->is_object())
+                    return f.Fail("`types` must be an object of types by name");
+                for (auto it = ts->begin(); it != ts->end(); ++it)
+                {
+                    if (!it.value().is_object())
+                        return f.Fail("`types`: type `" + it.key() + "` must be an object of values by parameter");
+                    auto& set = fam.types[it.key()];
+                    for (auto v = it.value().begin(); v != it.value().end(); ++v)
+                        set[v.key()] = v.value();
+                }
+            }
+            if (const Json* fs = f.Raw("forms"))
+            {
+                if (!fs->is_array())
+                    return f.Fail("`forms` must be a list");
+                for (size_t i = 0; i < fs->size(); ++i)
+                {
+                    Fields g((*fs)[i], f.Who().empty() ? "form " + std::to_string(i + 1) : f.Who() + " form " + std::to_string(i + 1),
+                             f.Path() + "/forms/" + std::to_string(i), f.LeftOut(), f.Error());
+                    Fam::Form x;
+                    if (!g.IsObject() ||
+                        !g.Allow({ "id", "guid", "plane", "profile", "circle", "from", "to", "axis", "void", "material", "visible", "mesh" }) ||
+                        !ReadPartIds(g, x.id, x.guid))
+                        return false;
+                    if (const Json* pl = g.Raw("plane"))
+                    {
+                        const std::string n = pl->is_string() ? pl->get<std::string>() : std::string();
+                        if (n == "xy")
+                            x.plane = Fam::SketchPlane::Xy;
+                        else if (n == "xz")
+                            x.plane = Fam::SketchPlane::Xz;
+                        else if (n == "yz")
+                            x.plane = Fam::SketchPlane::Yz;
+                        else
+                            return g.Fail("`plane`: unknown variant " + pl->dump() + ", expected one of xy, xz, yz");
+                    }
+                    if (!ReadPairs(g, "profile", x.profile))
+                        return false;
+                    if (const Json* c = g.Raw("circle"))
+                    {
+                        Fields h(*c, g.Who() + " circle", g.Path() + "/circle", g.LeftOut(), g.Error());
+                        Fam::Circle circle;
+                        const Json* centre = h.IsObject() && h.Allow({ "centre", "radius" }) ? h.Raw("centre") : nullptr;
+                        if (!centre)
+                            return h.IsObject() ? h.Missing("centre") : false;
+                        if (!PairOf(h, "centre", *centre, circle.centre) || !ReadExpr(h, "radius", circle.radius, true) || !h.Finish())
+                            return false;
+                        x.circle = std::move(circle);
+                    }
+                    if (!ReadExpr(g, "from", x.from, false) || !ReadExpr(g, "to", x.to, false))
+                        return false;
+                    if (const Json* a = g.Raw("axis"))
+                    {
+                        if (!a->is_array() || a->size() != 2)
+                            return g.Fail("`axis` is two points [[x, y], [x, y]]");
+                        std::array<std::array<Fam::Expr, 2>, 2> axis{};
+                        if (!PairOf(g, "axis", (*a)[0], axis[0]) || !PairOf(g, "axis", (*a)[1], axis[1]))
+                            return false;
+                        x.axis = std::move(axis);
+                    }
+                    if (!g.Bool("void", x.isVoid) || !g.String("material", x.material, false) || !ReadOptExpr(g, "visible", x.visible))
+                        return false;
+                    if (const Json* m = g.Raw("mesh"))
+                    {
+                        if (!m->is_array())
+                            return g.Fail("`mesh` is a list of triangles [[x, y, z], [x, y, z], [x, y, z]]");
+                        auto tris = std::make_shared<std::vector<Tri>>();
+                        for (const Json& t : *m)
+                        {
+                            if (!t.is_array() || t.size() != 3)
+                                return g.Fail("`mesh` is a list of triangles [[x, y, z], [x, y, z], [x, y, z]]");
+                            Tri tri{};
+                            for (size_t k = 0; k < 3; ++k)
+                            {
+                                if (!t[k].is_array() || t[k].size() != 3 || !t[k][0].is_number() || !t[k][1].is_number() || !t[k][2].is_number())
+                                    return g.Fail("`mesh` is a list of triangles [[x, y, z], [x, y, z], [x, y, z]]");
+                                tri[k] = P3{ t[k][0].get<double>(), t[k][1].get<double>(), t[k][2].get<double>() };
+                            }
+                            tris->push_back(tri);
+                        }
+                        x.mesh = std::move(tris);
+                    }
+                    if (!g.Finish())
+                        return false;
+                    fam.forms.push_back(std::move(x));
+                }
+            }
+            if (const Json* ss = f.Raw("symbols"))
+            {
+                if (!ss->is_array())
+                    return f.Fail("`symbols` must be a list");
+                for (size_t i = 0; i < ss->size(); ++i)
+                {
+                    Fields g((*ss)[i], f.Who().empty() ? "symbol " + std::to_string(i + 1) : f.Who() + " symbol " + std::to_string(i + 1),
+                             f.Path() + "/symbols/" + std::to_string(i), f.LeftOut(), f.Error());
+                    Fam::Symbol y;
+                    if (!g.IsObject() || !g.Allow({ "id", "guid", "line", "arc", "visible" }) || !ReadPartIds(g, y.id, y.guid) ||
+                        !ReadPairs(g, "line", y.line))
+                        return false;
+                    if (const Json* a = g.Raw("arc"))
+                    {
+                        Fields h(*a, g.Who() + " arc", g.Path() + "/arc", g.LeftOut(), g.Error());
+                        Fam::Curve c;
+                        const Json* centre = h.IsObject() && h.Allow({ "centre", "radius", "from", "to" }) ? h.Raw("centre") : nullptr;
+                        if (!centre)
+                            return h.IsObject() ? h.Missing("centre") : false;
+                        if (!PairOf(h, "centre", *centre, c.centre) || !ReadExpr(h, "radius", c.radius, true) || !ReadExpr(h, "from", c.from, false) ||
+                            !ReadExpr(h, "to", c.to, true) || !h.Finish())
+                            return false;
+                        y.arc = std::move(c);
+                    }
+                    if (!ReadOptExpr(g, "visible", y.visible) || !g.Finish())
+                        return false;
+                    fam.symbols.push_back(std::move(y));
+                }
+            }
+            if (const Json* op = f.Raw("operation"))
+            {
+                const auto o = op->is_string() ? OperationOf::Parse(op->get<std::string>()) : std::nullopt;
+                if (!o || op->get<std::string>() != OperationOf::Name(*o))
+                    return f.Fail("`operation`: unknown variant " + op->dump() +
+                                  ", expected one of swing, double-swing, sliding, double-sliding, folding, fixed");
+                fam.operation = o;
+            }
+            return f.Finish();
+        }
+
+        Json FamilyJson(const Family& fam)
+        {
+            Json j = Json::object();
+            j["category"] = Fam::CategoryOf::Name(fam.category);
+            Json ps = Json::array();
+            for (const Fam::Parameter& p : fam.parameters)
+            {
+                Json q = Json::object();
+                q["name"] = p.name;
+                q["kind"] = Fam::KindOf::Name(p.kind);
+                if (p.instance)
+                    q["instance"] = true;
+                q["value"] = p.value;
+                if (p.formula)
+                    q["formula"] = *p.formula;
+                ps.push_back(std::move(q));
+            }
+            j["parameters"] = std::move(ps);
+            Json ts = Json::object();
+            for (const auto& [n, set] : fam.types)
+            {
+                Json t = Json::object();
+                for (const auto& [k, v] : set)
+                    t[k] = v;
+                ts[n] = std::move(t);
+            }
+            j["types"] = std::move(ts);
+            Json fs = Json::array();
+            for (const Fam::Form& x : fam.forms)
+            {
+                Json g = Json::object();
+                if (x.id != 0)
+                    g["id"] = x.id;
+                if (!x.guid.IsNil())
+                    g["guid"] = ToJson(x.guid);
+                g["plane"] = x.plane == Fam::SketchPlane::Xy ? "xy" : (x.plane == Fam::SketchPlane::Xz ? "xz" : "yz");
+                if (!x.profile.empty())
+                    g["profile"] = PairsJson(x.profile);
+                if (x.circle)
+                    g["circle"] = Json{ { "centre", PairJson(x.circle->centre) }, { "radius", ExprJson(x.circle->radius) } };
+                g["from"] = ExprJson(x.from);
+                g["to"]   = ExprJson(x.to);
+                if (x.axis)
+                    g["axis"] = Json::array({ PairJson((*x.axis)[0]), PairJson((*x.axis)[1]) });
+                if (x.isVoid)
+                    g["void"] = true;
+                if (!x.material.empty())
+                    g["material"] = x.material;
+                if (x.visible)
+                    g["visible"] = ExprJson(*x.visible);
+                if (x.HasMesh())
+                {
+                    Json m = Json::array();
+                    for (const Tri& t : *x.mesh)
+                        m.push_back(Json::array({ Json::array({ t[0][0], t[0][1], t[0][2] }), Json::array({ t[1][0], t[1][1], t[1][2] }),
+                                                  Json::array({ t[2][0], t[2][1], t[2][2] }) }));
+                    g["mesh"] = std::move(m);
+                }
+                fs.push_back(std::move(g));
+            }
+            j["forms"] = std::move(fs);
+            if (!fam.symbols.empty())
+            {
+                Json ss = Json::array();
+                for (const Fam::Symbol& y : fam.symbols)
+                {
+                    Json g = Json::object();
+                    if (y.id != 0)
+                        g["id"] = y.id;
+                    if (!y.guid.IsNil())
+                        g["guid"] = ToJson(y.guid);
+                    if (!y.line.empty())
+                        g["line"] = PairsJson(y.line);
+                    if (y.arc)
+                        g["arc"] = Json{ { "centre", PairJson(y.arc->centre) },
+                                         { "radius", ExprJson(y.arc->radius) },
+                                         { "from", ExprJson(y.arc->from) },
+                                         { "to", ExprJson(y.arc->to) } };
+                    if (y.visible)
+                        g["visible"] = ExprJson(*y.visible);
+                    ss.push_back(std::move(g));
+                }
+                j["symbols"] = std::move(ss);
+            }
+            if (fam.operation)
+                j["operation"] = OperationOf::Name(*fam.operation);
+            return j;
+        }
+    }
+
+    Json ToJson(const Family& f)
+    {
+        return FamilyJson(f);
+    }
+
+    bool FromJson(const Json& v, Family& out, std::string& error)
+    {
+        Fields f(v, "", "", nullptr, error);
+        Family fam;
+        if (!ReadFamily(f, fam))
+            return false;
+        out = std::move(fam);
+        return true;
+    }
+
+
     Json ToJson(const Element& e)
     {
         Json j = Json::object();
@@ -768,6 +1156,21 @@ namespace MiniBIM::Bim
             j["mark"]        = o->mark;
             j["flip_facing"] = o->flipFacing;
             j["flip_hand"]   = o->flipHand;
+            if (!o->params.empty())
+                j["params"] = ParamsJson(o->params);
+        }
+        else if (const Component* c = e.As<Component>())
+        {
+            j["family"] = c->family;
+            j["type"]   = c->typeName;
+            j["level"]  = ToJson(c->level);
+            j["at"]     = ToJson(c->at);
+            j["angle"]  = c->angle;
+            j["offset"] = c->offset;
+            if (c->mirrored)
+                j["mirrored"] = true;
+            if (!c->params.empty())
+                j["params"] = ParamsJson(c->params);
         }
         return j;
     }
@@ -841,6 +1244,10 @@ namespace MiniBIM::Bim
         j["next_id"] = nextId;
         j["types"]     = Bim::ToJson(types);
         j["materials"] = Bim::ToJson(materials);
+        Json fams = Json::object();
+        for (const auto& [n, f] : families)
+            fams[n] = Bim::ToJson(f);
+        j["families"] = std::move(fams);
         Json es = Json::object();
         for (const auto& [id, e] : elements.Items())
         {
@@ -871,6 +1278,18 @@ namespace MiniBIM::Bim
         Model m = *this;
         m.SyncLibrary();
         const Library lib = m.library;
+        // 族还用名称时：实例参数的值按参数的 GUID 存
+        m.RekeyFamilyParams(
+            [&](const std::string& family, const std::string& n) -> std::optional<std::string>
+            {
+                const auto g = lib.GuidOf(Kind::Of(Kind::Tag::FamilyParameter), family + ": " + n);
+                return g ? std::optional<std::string>(g->ToString()) : std::nullopt;
+            },
+            [&](const std::string& name) -> std::optional<std::string>
+            {
+                const auto g = lib.GuidOf(Kind::Of(Kind::Tag::Material), name);
+                return g ? std::optional<std::string>(g->ToString()) : std::nullopt;
+            });
         m.LibRefsMut([&](const Kind& kind, std::string& text)
         {
             if (const auto g = lib.GuidOf(kind, text))
@@ -997,6 +1416,21 @@ namespace MiniBIM::Bim
         }))
             return false;
 
+        // 族
+        if (const Json* fams = f.Raw("families"))
+        {
+            if (!fams->is_object())
+                return f.Fail("`families` must be an object of families by name");
+            for (auto it = fams->begin(); it != fams->end(); ++it)
+            {
+                Fields g(it.value(), "family `" + it.key() + "`", "/families/" + Escaped(it.key()), &leftOut, error);
+                Family fam;
+                if (!ReadFamily(g, fam))
+                    return false;
+                m.families[it.key()] = std::move(fam);
+            }
+        }
+
         // 元素：没有 GUID 的（旧文件）读的时候各给一个
         const Json* es = f.Raw("elements");
         if (!es)
@@ -1115,6 +1549,31 @@ namespace MiniBIM::Bim
 
         m.Migrate();
         m.NamesFromFile();
+        // 参数值里不是它的族的参数的（项目参数还没移植）略去
+        std::vector<Id> withParams;
+        for (const auto& [id, e] : m.elements.Items())
+            if (e->Params() && !e->Params()->empty())
+                withParams.push_back(id);
+        for (const Id id : withParams)
+        {
+            Element* e = m.elements.GetMut(id);
+            const auto fo = e->FamilyOf();
+            const auto fam = fo ? m.families.find(fo->first) : m.families.end();
+            auto& params = *e->ParamsMut();
+            for (auto it = params.begin(); it != params.end();)
+            {
+                const bool own = fam != m.families.end() &&
+                                 std::any_of(fam->second.parameters.begin(), fam->second.parameters.end(),
+                                             [&](const Fam::Parameter& p) { return p.name == it->first; });
+                if (own)
+                {
+                    ++it;
+                    continue;
+                }
+                leftOut.push_back("/elements/" + std::to_string(id) + "/params/" + Escaped(it->first));
+                it = params.erase(it);
+            }
+        }
         out = std::move(m);
         return true;
     }

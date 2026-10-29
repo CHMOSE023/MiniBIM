@@ -48,7 +48,10 @@ BIMCraft 的核心与界面分得很清楚：所有编辑都是 `commands.rs` �
   `floor`、`roof` 沿墙铺时里面有房间的一圈墙算室内；示例房屋加上屋顶、四个房间与天花板；三维场景加屋顶与天花板。
   留到后面的：画轮廓的草图（`sketch.rs`、`curves.rs`，即"编辑边界"，随 2d 的平面编辑）、老虎窗 `dormer` 与按体量面建屋顶（`roof_by_face`，要体量）、
   竖井（`shaft`），以及 `view3d::tops_at`（某点上各元素顶面的高度，随 2d 的高程点等）
-- **2c 族与构件**：`family.rs`、`csg.rs`、`fixtures.rs`、`component`、带族的门窗，做到这里示例房屋才完整
+- **2c（已完成）族与构件**：`family.rs`（公式、参数、形体的扫掠与旋转、检查）、`csg.rs`（空心形体的网格布尔运算）、`fixtures.rs` 与新项目带的
+  34 个族；构件（命令 `component`）、带族的门窗（`door`、`window` 的 `family`）、命令 `family`（新建、修改、改名、删除、从文件读、存成文件）；
+  库里的族、族类型、族参数与族的部件，文件里族参数按 GUID；示例房屋用族的门窗并放上十一件家具；三维场景画族的形体。
+  留到后面的：收藏夹（`favorite`）、镜像与旋转命令、IFC 里的构件（2e）、平面图里构件与门的开启线（2d，`Model::OpeningStrokes` 已有）
 - **2d 平面视图**：`render.rs` 的显示列表与拾取（连带 `graphics`、`lines`、`fills`、`pen`、`styles`、`text` 的一部分）
 - **2e 交换**：`ifc.rs`、`import.rs`、`step.rs`；再往后是结构、设备、明细表、出图、DXF 导入等
 

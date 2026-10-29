@@ -9,6 +9,7 @@
 #include "Solid/ISolidKernel.h"
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 namespace MiniBIM
 {
@@ -31,6 +32,8 @@ namespace MiniBIM
         constexpr Rgb kGlass = { 166 / 255.0f, 200 / 255.0f, 228 / 255.0f };
         constexpr Rgb kRoof  = { 176 / 255.0f, 118 / 255.0f, 96 / 255.0f };
         constexpr Rgb kCeiling = { 244 / 255.0f, 242 / 255.0f, 236 / 255.0f };
+        // 构件的形体用的材质库里没有时
+        constexpr Rgb kComponent = { 214 / 255.0f, 204 / 255.0f, 188 / 255.0f };
 
         // 门洞扣得比墙面再出去一点，免得布尔运算遇到重合的面
         constexpr double kPast = 50.0;
@@ -151,6 +154,48 @@ namespace MiniBIM
                     m_edges.push_back(line[i]);
                     m_edges.push_back(line[i + 1]);
                 }
+            }
+        };
+        // 族的形体：已经是朝外的三角形（族的网格与空心切割移植自 BIMCraft，不经实体内核），按面法线着色；
+        // 边只画折角处与开口的边（相邻两个三角形不共面，或只有一个三角形）
+        auto addPiece = [&](const Bim::Fam::Piece& piece, const Rgb& fallback)
+        {
+            const auto mat = m.materials.find(piece.material);
+            const Rgb c = mat == m.materials.end() ? fallback
+                                                   : Rgb{ mat->second.color[0] / 255.0f, mat->second.color[1] / 255.0f, mat->second.color[2] / 255.0f };
+            std::vector<Vec3> normals;
+            normals.reserve(piece.tris.size());
+            for (const Bim::Tri& t : piece.tris)
+            {
+                const Bim::P3 n = Bim::V3::Cross(Bim::V3::Sub(t[1], t[0]), Bim::V3::Sub(t[2], t[0]));
+                const double len = std::sqrt(Bim::V3::Dot(n, n));
+                const Vec3 unit = len > 0.0 ? Vec3{ n[0] / len, n[1] / len, n[2] / len } : Vec3{ 0, 0, 1 };
+                normals.push_back(unit);
+                const float s = Shade(unit);
+                for (const Bim::P3& p : t)
+                {
+                    m_triangles.push_back({ { static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2]) },
+                                            VertexColor(c.r * s, c.g * s, c.b * s, 1.0f) });
+                    m_bounds.Expand(Point3{ p[0], p[1], p[2] });
+                }
+            }
+            // 每条边（不分方向）挨着的三角形
+            std::map<std::pair<Bim::P3, Bim::P3>, std::vector<size_t>> sides;
+            for (size_t i = 0; i < piece.tris.size(); ++i)
+                for (size_t j = 0; j < 3; ++j)
+                {
+                    Bim::P3 a = piece.tris[i][j], b = piece.tris[i][(j + 1) % 3];
+                    if (b < a)
+                        std::swap(a, b);
+                    sides[{ a, b }].push_back(i);
+                }
+            for (const auto& [edge, tris] : sides)
+            {
+                const bool fold = tris.size() != 2 || Math::Dot(normals[tris[0]], normals[tris[1]]) < std::cos(10.0 * 3.14159265358979323846 / 180.0);
+                if (!fold)
+                    continue;
+                m_edges.push_back(Point3{ edge.first[0], edge.first[1], edge.first[2] });
+                m_edges.push_back(Point3{ edge.second[0], edge.second[1], edge.second[2] });
             }
         };
         // 斜棱柱的边：底圈、顶圈与各角的竖边
@@ -292,6 +337,20 @@ namespace MiniBIM
                 else
                     LOG_WARN("三维场景：roof %llu 没有坡面：%s", static_cast<unsigned long long>(id), why.c_str());
                 ++m_counts.roofs;
+            }
+            else if (const Bim::Component* c = e.As<Bim::Component>())
+            {
+                // 族的各个形体，按材质上色
+                for (const Bim::Fam::Piece& piece : m.ComponentPieces(*c))
+                    addPiece(piece, kComponent);
+                ++m_counts.components;
+            }
+            else if (const Bim::Opening* o = e.AsOpening(); o && o->family)
+            {
+                // 族的门窗：各个形体按材质上色，没有材质的用门或玻璃的颜色
+                for (const Bim::Fam::Piece& piece : m.OpeningPieces(e))
+                    addPiece(piece, e.IsDoor() ? kDoor : kGlass);
+                ++(e.IsDoor() ? m_counts.doors : m_counts.windows);
             }
             else if (const Bim::Opening* o = e.AsOpening())
             {

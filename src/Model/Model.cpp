@@ -23,6 +23,58 @@ namespace MiniBIM::Bim
     {
         constexpr double kPi = 3.14159265358979323846;
 
+        // 构件（或带族的门窗）的族与它的类型交给 f：类型写作 "族: 类型"，在文件里是它的 GUID。族是 GUID 时（读文件）先给族，
+        // 再给类型；否则最后给族（类型按族的名称查）
+        void FamilyAndType(std::string& family, std::string& typeName, const std::function<void(const Kind&, std::string&)>& f)
+        {
+            const auto isGuid = [](const std::string& t)
+            {
+                const auto g = Guid::Parse(t);
+                return g && !g->Pending();
+            };
+            if (isGuid(family))
+                f(Kind::Of(Kind::Tag::Family), family);
+            std::string full = isGuid(typeName) ? typeName : family + ": " + typeName;
+            f(Kind::Of(Kind::Tag::FamilyType), full);
+            if (!isGuid(family))
+                f(Kind::Of(Kind::Tag::Family), family);
+            // "族: 类型" 换回类型，用族现在的名称；GUID 仍是 GUID
+            const std::string prefix = family + ": ";
+            if (full.rfind(prefix, 0) == 0)
+                typeName = full.substr(prefix.size());
+            else if (isGuid(full))
+                typeName = full;
+            else if (const size_t at = full.find(": "); at != std::string::npos)
+                typeName = full.substr(at + 2);
+            else
+                typeName = full;
+        }
+
+        // 两个族除了形体与符号的 ID、GUID 以外都一样：族的检查结果相同
+        bool SameShape(const Family& a, const Family& b)
+        {
+            if (!(a.category == b.category && a.parameters == b.parameters && a.types == b.types && a.operation == b.operation &&
+                  a.forms.size() == b.forms.size() && a.symbols.size() == b.symbols.size()))
+                return false;
+            for (size_t i = 0; i < a.forms.size(); ++i)
+            {
+                const Fam::Form& x = a.forms[i];
+                const Fam::Form& y = b.forms[i];
+                const bool sameMesh = x.mesh == y.mesh || (!x.HasMesh() && !y.HasMesh()) || (x.HasMesh() && y.HasMesh() && *x.mesh == *y.mesh);
+                if (!(x.plane == y.plane && x.profile == y.profile && x.circle == y.circle && x.from == y.from && x.to == y.to && x.axis == y.axis &&
+                      x.isVoid == y.isVoid && x.material == y.material && x.visible == y.visible && sameMesh))
+                    return false;
+            }
+            for (size_t i = 0; i < a.symbols.size(); ++i)
+            {
+                const Fam::Symbol& x = a.symbols[i];
+                const Fam::Symbol& y = b.symbols[i];
+                if (!(x.line == y.line && x.arc == y.arc && x.visible == y.visible))
+                    return false;
+            }
+            return true;
+        }
+
         // ring 逆时针
         Ring Ccw(const Ring& ring)
         {
@@ -244,6 +296,7 @@ namespace MiniBIM::Bim
             const char* operator()(const Window&) const { return "window"; }
             const char* operator()(const Room&) const   { return "room"; }
             const char* operator()(const Roof&) const   { return "roof"; }
+            const char* operator()(const Component&) const { return "component"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -273,6 +326,7 @@ namespace MiniBIM::Bim
                 f(r.level);
                 if (r.join) f(*r.join);
             }
+            void operator()(Component& c) const { f(c.level); }
         };
         std::visit(Visitor{ f }, v);
     }
@@ -298,10 +352,58 @@ namespace MiniBIM::Bim
             f(Kind::Type(category), r->typeName);
         else if (Opening* o = AsOpening())
         {
-            // 族的门窗：类型是族的（族还没移植，名称原样保留）
-            if (!o->family)
+            if (o->family)
+                FamilyAndType(*o->family, o->typeName, f);
+            else
                 f(Kind::Type(category), o->typeName);
         }
+        else if (Component* c = As<Component>())
+            FamilyAndType(c->family, c->typeName, f);
+    }
+
+    std::optional<std::pair<std::string, std::string>> Element::FamilyOf() const
+    {
+        if (const Component* c = As<Component>())
+            return std::pair{ c->family, c->typeName };
+        if (const Opening* o = AsOpening(); o && o->family)
+            return std::pair{ *o->family, o->typeName };
+        return std::nullopt;
+    }
+
+    std::string* Element::FamilyMut()
+    {
+        if (Component* c = As<Component>())
+            return &c->family;
+        if (Opening* o = AsOpening(); o && o->family)
+            return &*o->family;
+        return nullptr;
+    }
+
+    std::optional<Fam::Category> Element::HostedCategory() const
+    {
+        if (IsDoor())
+            return Fam::Category::Door;
+        if (IsWindow())
+            return Fam::Category::Window;
+        return std::nullopt;
+    }
+
+    const std::map<std::string, Json>* Element::Params() const
+    {
+        if (const Component* c = As<Component>())
+            return &c->params;
+        if (const Opening* o = AsOpening())
+            return &o->params;
+        return nullptr;
+    }
+
+    std::map<std::string, Json>* Element::ParamsMut()
+    {
+        if (Component* c = As<Component>())
+            return &c->params;
+        if (Opening* o = AsOpening())
+            return &o->params;
+        return nullptr;
     }
 
     // ── 新模型 ───────────────────────────────────────────────────
@@ -362,6 +464,7 @@ namespace MiniBIM::Bim
         m.types.roof["Generic - 300mm"]    = RoofType{ 300.0, {} };
         m.types.ceiling["Generic - 20mm"]  = CeilingType{ 20.0, 0.0, {} };
         m.types.ceiling["Tile 600 x 600"]  = CeilingType{ 20.0, 600.0, {} };
+        m.families = FamilyLibrary(language);
         const std::string level = LanguageOf::Word(language, "Level");
         m.Insert(Level{ level + " 1", 0.0, {}, {}, {}, false });
         m.Insert(Level{ level + " 2", 3000.0, {}, {}, {}, false });
@@ -626,9 +729,44 @@ namespace MiniBIM::Bim
         }
         if (o->family)
         {
-            // 族还没移植：项目里没有任何族
-            error = "family `" + *o->family + "` doesn't exist (there are: )";
-            return false;
+            const std::string& name = *o->family;
+            const auto it = families.find(name);
+            if (it == families.end())
+            {
+                std::vector<std::string> names;
+                for (const auto& [n, f] : families)
+                    if (f.category == e.HostedCategory())
+                        names.push_back(n);
+                error = "family `" + name + "` doesn't exist (there are: " + Join(names) + ")";
+                return false;
+            }
+            const Family& f = it->second;
+            if (f.category != e.HostedCategory())
+            {
+                error = "family `" + name + "` isn't a " + e.Category() + " family";
+                return false;
+            }
+            const Wall* w = GetWall(o->host);
+            Fam::Values values;
+            if (!f.ValuesIn(o->typeName, o->params, w ? Thickness(*w) : Fam::DefaultWall, values, error))
+                return false;
+            const auto number = [&](const char* key) -> std::optional<double>
+            {
+                const auto v = values.find(key);
+                if (v == values.end())
+                    return std::nullopt;
+                if (const double* d = std::get_if<double>(&v->second))
+                    return *d;
+                return std::nullopt;
+            };
+            const auto width = number(Fam::Width), height = number(Fam::Height);
+            if (!width || !height)
+            {
+                error = "family `" + name + "` has no length `" + (width ? Fam::Height : Fam::Width) + "`";
+                return false;
+            }
+            out = OpeningType{ *width, *height, number(Fam::Sill).value_or(e.IsDoor() ? 0.0 : 900.0), f.operation };
+            return true;
         }
         const auto& map = e.IsDoor() ? types.door : types.window;
         const auto it = map.find(o->typeName);
@@ -678,6 +816,8 @@ namespace MiniBIM::Bim
             return rs->level;
         if (const Roof* r = e.As<Roof>())
             return r->level;
+        if (const Component* c = e.As<Component>())
+            return c->level;
         if (const Opening* o = e.AsOpening())
         {
             const Wall* w = GetWall(o->host);
@@ -1225,6 +1365,37 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
+        // 族的检查要把每个类型建一遍（含空心形体的切割），很费时。它只看族本身（不看形体与符号的 ID、GUID）和库里有哪些材质：
+        // 每个线程记住查过、通过的族，同样的族在同样的材质名称下不再查（BIMCraft 每次都查）
+        static thread_local std::map<std::string, Family> passed;
+        static thread_local std::vector<std::string> passedMaterials;
+        std::vector<std::string> materialNames;
+        for (const auto& [n, _] : materials)
+            materialNames.push_back(n);
+        if (materialNames != passedMaterials)
+        {
+            passed.clear();
+            passedMaterials = materialNames;
+        }
+        for (const auto& [n, f] : families)
+        {
+            if (!TextOk("family `" + n + "`", "name", n, error))
+                return false;
+            if (Text::Trim(n).empty())
+            {
+                error = "a family needs a name";
+                return false;
+            }
+            if (const auto it = passed.find(n); it != passed.end() && SameShape(it->second, f))
+                continue;
+            std::string why;
+            if (!f.Check([&](const std::string& m) { return materials.count(m) != 0; }, why))
+            {
+                error = "family `" + n + "`: " + why;
+                return false;
+            }
+            passed[n] = f;
+        }
         for (const Layered& t : LayeredTypes())
         {
             const std::string who = std::string(t.category) + " type `" + *t.name + "`";
@@ -1266,6 +1437,25 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
+        // 元素存的参数值都是它的族的参数（项目参数还没移植，别的键都不认）
+        const auto ParamsOk = [&](const std::string& who, const Element& e, std::string& err)
+        {
+            const auto* params = e.Params();
+            if (!params)
+                return true;
+            const auto fo = e.FamilyOf();
+            const auto fam = fo ? families.find(fo->first) : families.end();
+            for (const auto& [k, v] : *params)
+            {
+                (void)v;
+                if (fam != families.end() && std::any_of(fam->second.parameters.begin(), fam->second.parameters.end(),
+                                                         [&](const Fam::Parameter& p) { return p.name == k; }))
+                    continue;
+                err = who + ": `" + k + "` isn't a parameter of " + e.Category() + "s; add it with `parameter`";
+                return false;
+            }
+            return true;
+        };
         std::set<std::string> levelNames, gridNames;
         // 每面墙上的门窗，按沿墙的起点排序
         std::map<Guid, std::vector<OpeningSpan>> spans;
@@ -1331,6 +1521,35 @@ namespace MiniBIM::Bim
                 if (!levelOk(rm->level) || !Point(who, rm->point, error) || !TextOk(who, "name", rm->name, error) ||
                     !TextOk(who, "number", rm->number, error))
                     return false;
+            }
+            else if (const Component* c = e.As<Component>())
+            {
+                const auto it = families.find(c->family);
+                if (it == families.end())
+                {
+                    std::vector<std::string> names;
+                    for (const auto& [n, _] : families)
+                        names.push_back(n);
+                    error = who + ": family `" + c->family + "` doesn't exist (there are: " + Join(names) + ")";
+                    return false;
+                }
+                const Family& f = it->second;
+                if (Fam::CategoryOf::Hosted(f.category))
+                {
+                    error = who + ": family `" + c->family + "` is a door's or a window's: it stands in a wall, placed with `door` or `window`";
+                    return false;
+                }
+                if (!ParamsOk(who, e, error) || !levelOk(c->level) || !Point(who, c->at, error) || !Coord(who + " angle", c->angle, error) ||
+                    !Coord(who + " offset", c->offset, error) || !FamilyValuesOk(who, c->family, f, c->params, error))
+                    return false;
+                Fam::Values values;
+                std::vector<Fam::Piece> pieces;
+                std::string why;
+                if (!f.Values(c->typeName, c->params, values, why) || !f.Pieces(values, pieces, why))
+                {
+                    error = who + ": " + why;
+                    return false;
+                }
             }
             else if (const Roof* r = e.As<Roof>())
             {
@@ -1484,6 +1703,26 @@ namespace MiniBIM::Bim
                     error = who + ": " + why;
                     return false;
                 }
+                if (!ParamsOk(who, e, error))
+                    return false;
+                if (o->family)
+                    if (const auto it = families.find(*o->family); it != families.end())
+                    {
+                        const Family& f = it->second;
+                        if (!FamilyValuesOk(who, *o->family, f, o->params, error))
+                            return false;
+                        Fam::Values values;
+                        std::vector<Fam::Piece> pieces;
+                        std::vector<Ring> strokes;
+                        if (!f.ValuesIn(o->typeName, o->params, Thickness(*host), values, why) || !f.Pieces(values, pieces, why) ||
+                            !f.Strokes(values, strokes, why))
+                        {
+                            error = who + ": " + why;
+                            return false;
+                        }
+                        if (!Size(who + " width", t.width, error) || !Size(who + " height", t.height, error))
+                            return false;
+                    }
                 if (!Coord(who + " offset", o->offset, error) || !Coord(who + " sill", o->sill, error) || !TextOk(who, "mark", o->mark, error))
                     return false;
                 const double a = o->offset - t.width / 2.0, b = o->offset + t.width / 2.0;
@@ -1594,10 +1833,314 @@ namespace MiniBIM::Bim
 
     void Model::AdoptMaterials()
     {
+        std::vector<std::string> named;
         for (const Layered& t : LayeredTypes())
             for (const Layer& l : *t.layers)
-                if (!l.material.empty() && !materials.count(l.material))
-                    materials[l.material] = Material{};
+                named.push_back(l.material);
+        for (const auto& [_, f] : families)
+            for (std::string& m : f.Materials())
+                named.push_back(std::move(m));
+        for (const auto& [_, e] : elements.Items())
+            for (std::string& m : ComponentMaterials(*e))
+                named.push_back(std::move(m));
+        for (const std::string& n : named)
+            if (!n.empty() && !materials.count(n))
+                materials[n] = Material{};
+    }
+
+    // ── 族与构件 ─────────────────────────────────────────────────
+    std::vector<Fam::Piece> Model::ComponentLocalPieces(const Component& c) const
+    {
+        const auto it = families.find(c.family);
+        if (it == families.end())
+            return {};
+        Fam::Values values;
+        std::vector<Fam::Piece> pieces;
+        std::string error;
+        if (!it->second.Values(c.typeName, c.params, values, error) || !it->second.Pieces(values, pieces, error))
+            return {};
+        if (!c.mirrored)
+            return pieces;
+        // 镜像时 y 绕 x 翻过来，三角形与轮廓的绕向也随之翻
+        for (Fam::Piece& pc : pieces)
+        {
+            for (Tri& t : pc.tris)
+            {
+                for (P3& q : t)
+                    q[1] = -q[1];
+                std::swap(t[1], t[2]);
+            }
+            std::reverse(pc.outline.begin(), pc.outline.end());
+            for (P2& q : pc.outline)
+                q.y = -q.y;
+        }
+        return pieces;
+    }
+
+    std::vector<Fam::Piece> Model::ComponentPieces(const Component& c) const
+    {
+        const double base = Elevation(c.level) + c.offset;
+        const double a = c.angle * kPi / 180.0, sin = std::sin(a), cos = std::cos(a);
+        const auto place = [&](const P3& p) { return P3{ c.at.x + p[0] * cos - p[1] * sin, c.at.y + p[0] * sin + p[1] * cos, base + p[2] }; };
+        std::vector<Fam::Piece> out = ComponentLocalPieces(c);
+        for (Fam::Piece& pc : out)
+        {
+            for (Tri& t : pc.tris)
+                for (P3& q : t)
+                    q = place(q);
+            for (P2& q : pc.outline)
+            {
+                const P3 p = place(P3{ q.x, q.y, 0.0 });
+                q = P2(p[0], p[1]);
+            }
+            pc.bottom = base + pc.bottom;
+            pc.top    = base + pc.top;
+        }
+        return out;
+    }
+
+    std::optional<std::pair<std::string, std::string>> Model::DefaultFamily(std::string_view category) const
+    {
+        const std::string c = NormalizeCategory(category);
+        Fam::Category kind = Fam::Category::Door;
+        const char* usual = "Single Door";
+        const char* size = "900 x 2100";
+        if (c == "window")
+        {
+            kind = Fam::Category::Window;
+            usual = "Fixed Window";
+            size = "1200 x 1500";
+        }
+        else if (c != "door")
+            return std::nullopt;
+        auto it = families.find(LanguageOf::Word(language, usual));
+        if (it == families.end() || it->second.category != kind)
+            it = std::find_if(families.begin(), families.end(), [&](const auto& f) { return f.second.category == kind; });
+        if (it == families.end() || it->second.types.empty())
+            return std::nullopt;
+        const std::string ty = it->second.types.count(size) ? std::string(size) : it->second.types.begin()->first;
+        return std::pair{ it->first, ty };
+    }
+
+    std::optional<std::tuple<P2, P2, double>> Model::OpeningFrame(const Opening& o) const
+    {
+        const Wall* w = GetWall(o.host);
+        if (!w)
+            return std::nullopt;
+        const Walls::Axis axis = Walls::Axis::Of(*w);
+        return std::tuple{ axis.At(o.offset, Walls::Centre(*this, *w)), axis.Tangent(o.offset), OwnBase(*w) + o.sill };
+    }
+
+    std::optional<std::pair<std::vector<Fam::Piece>, std::vector<Ring>>> Model::OpeningLocal(const Element& e) const
+    {
+        const Opening* o = e.AsOpening();
+        if (!o || !o->family)
+            return std::nullopt;
+        const auto it = families.find(*o->family);
+        const Wall* w = GetWall(o->host);
+        if (it == families.end() || !w)
+            return std::nullopt;
+        const Family& f = it->second;
+        Fam::Values values;
+        std::vector<Fam::Piece> pieces;
+        std::vector<Ring> strokes;
+        std::string error;
+        if (!f.ValuesIn(o->typeName, o->params, Thickness(*w), values, error) || !f.Pieces(values, pieces, error) || !f.Strokes(values, strokes, error))
+            return std::nullopt;
+        // 翻转时是镜像：铰链到另一侧门框、开向墙的另一侧
+        const double fx = o->flipHand ? -1.0 : 1.0, fy = o->flipFacing ? -1.0 : 1.0;
+        const bool mirrored = fx * fy < 0.0;
+        for (Fam::Piece& pc : pieces)
+        {
+            for (Tri& t : pc.tris)
+            {
+                for (P3& q : t)
+                    q = P3{ fx * q[0] + 0.0, fy * q[1] + 0.0, q[2] };
+                if (mirrored)
+                    std::swap(t[1], t[2]);
+            }
+            for (P2& q : pc.outline)
+                q = P2(fx * q.x + 0.0, fy * q.y + 0.0);
+            if (mirrored)
+                std::reverse(pc.outline.begin(), pc.outline.end());
+        }
+        for (Ring& l : strokes)
+            for (P2& q : l)
+                q = P2(fx * q.x + 0.0, fy * q.y + 0.0);
+        return std::pair{ std::move(pieces), std::move(strokes) };
+    }
+
+    std::vector<Fam::Piece> Model::OpeningPieces(const Element& e) const
+    {
+        const Opening* o = e.AsOpening();
+        if (!o)
+            return {};
+        auto local = OpeningLocal(e);
+        const auto frame = OpeningFrame(*o);
+        if (!local || !frame)
+            return {};
+        const auto [at, u, z] = *frame;
+        const P2 a = at, d = u;
+        const double base = z;
+        const auto place = [&](const P3& p)
+        {
+            const P2 q = a + d * p[0] + d.Perp() * p[1];
+            return P3{ q.x, q.y, base + p[2] };
+        };
+        std::vector<Fam::Piece> out = std::move(local->first);
+        for (Fam::Piece& pc : out)
+        {
+            for (Tri& t : pc.tris)
+                for (P3& q : t)
+                    q = place(q);
+            for (P2& q : pc.outline)
+            {
+                const P3 p = place(P3{ q.x, q.y, 0.0 });
+                q = P2(p[0], p[1]);
+            }
+            pc.bottom = base + pc.bottom;
+            pc.top    = base + pc.top;
+        }
+        return out;
+    }
+
+    std::vector<Ring> Model::OpeningStrokes(const Element& e) const
+    {
+        const Opening* o = e.AsOpening();
+        if (!o)
+            return {};
+        auto local = OpeningLocal(e);
+        const auto frame = OpeningFrame(*o);
+        if (!local || !frame)
+            return {};
+        const P2 at = std::get<0>(*frame), u = std::get<1>(*frame);
+        std::vector<Ring> out = std::move(local->second);
+        for (Ring& l : out)
+            for (P2& q : l)
+                q = at + u * q.x + u.Perp() * q.y;
+        return out;
+    }
+
+    std::vector<std::string> Model::ComponentMaterials(const Element& e) const
+    {
+        const auto fo = e.FamilyOf();
+        const auto* params = e.Params();
+        if (!fo || !params)
+            return {};
+        const auto it = families.find(fo->first);
+        if (it == families.end())
+            return {};
+        std::vector<std::string> out;
+        for (const auto& [k, v] : *params)
+            if (it->second.MaterialParameter(k) && v.is_string())
+                out.push_back(v.get<std::string>());
+        return out;
+    }
+
+    std::optional<std::string> Model::MaterialUser(const std::string& name) const
+    {
+        for (const auto& [n, f] : families)
+        {
+            const auto ms = f.Materials();
+            if (std::find(ms.begin(), ms.end(), name) != ms.end())
+                return "family `" + n + "`";
+        }
+        for (const auto& [id, e] : elements.Items())
+        {
+            const auto ms = ComponentMaterials(*e);
+            if (std::find(ms.begin(), ms.end(), name) != ms.end())
+                return "component " + std::to_string(id);
+        }
+        return std::nullopt;
+    }
+
+    void Model::RenameMaterialInFamilies(const std::string& from, const std::string& to)
+    {
+        for (auto& [_, f] : families)
+            f.RenameMaterial(from, to);
+        std::vector<Id> touched;
+        for (const auto& [id, e] : elements.Items())
+            if (const auto ms = ComponentMaterials(*e); std::find(ms.begin(), ms.end(), from) != ms.end())
+                touched.push_back(id);
+        for (const Id id : touched)
+        {
+            Element* e = elements.GetMut(id);
+            const auto fo = e->FamilyOf();
+            const auto it = fo ? families.find(fo->first) : families.end();
+            if (it == families.end())
+                continue;
+            for (auto& [k, v] : *e->ParamsMut())
+                if (it->second.MaterialParameter(k) && v.is_string() && v.get<std::string>() == from)
+                    v = to;
+        }
+    }
+
+    bool Model::FamilyValuesOk(const std::string& who, const std::string& name, const Family& f, const std::map<std::string, Json>& params,
+                               std::string& error) const
+    {
+        for (const auto& [k, v] : params)
+        {
+            const auto p = std::find_if(f.parameters.begin(), f.parameters.end(), [&](const Fam::Parameter& q) { return q.name == k; });
+            if (p == f.parameters.end())
+                continue;
+            if (!p->instance)
+            {
+                error = who + ": `" + k + "` is a type parameter of `" + name + "`; change it in its type, with `family`";
+                return false;
+            }
+            if (p->formula)
+            {
+                error = who + ": `" + k + "` is worked out by its formula";
+                return false;
+            }
+            Fam::Val val;
+            std::string why;
+            if (!Fam::Read(*p, v, val, why))
+            {
+                error = who + ": " + why;
+                return false;
+            }
+            if (const std::string* m = std::get_if<std::string>(&val); m && !m->empty() && !materials.count(*m))
+            {
+                error = who + ": material `" + *m + "` isn't in the library; add it with `material`";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void Model::RekeyFamilyParams(const std::function<std::optional<std::string>(const std::string&, const std::string&)>& key,
+                                  const std::function<std::optional<std::string>(const std::string&)>& material)
+    {
+        std::vector<Id> ids;
+        for (const auto& [id, e] : elements.Items())
+            if (const auto fo = e->FamilyOf(); fo && families.count(fo->first) && e->Params() && !e->Params()->empty())
+                ids.push_back(id);
+        for (const Id id : ids)
+        {
+            Element* e = elements.GetMut(id);
+            const std::string family = e->FamilyOf()->first;
+            const Family& fam = families.at(family);
+            std::map<std::string, Json>& params = *e->ParamsMut();
+            std::vector<std::string> names;
+            for (const auto& [n, _] : params)
+                names.push_back(n);
+            for (const std::string& n : names)
+            {
+                const auto k = key(family, n);
+                if (!k)
+                    continue;
+                Json v = params[n];
+                params.erase(n);
+                // 参数按名称找：给的那个，或键所指的
+                const auto named = std::find_if(fam.parameters.begin(), fam.parameters.end(),
+                                                [&](const Fam::Parameter& p) { return p.name == n || p.name == *k; });
+                if (named != fam.parameters.end() && named->kind == Fam::Kind::Material && v.is_string())
+                    if (const auto to = material(v.get<std::string>()))
+                        v = *to;
+                params[*k] = std::move(v);
+            }
+        }
     }
 
     uint64_t FreshUid()

@@ -28,7 +28,7 @@
 MiniBIM reuses the user interface and renderer of [MiniCAD](https://github.com/CHMOSE023/MiniCAD), models with the SMLib
 geometry kernel, and is porting its BIM features from [BIMCraft](https://github.com/IPedrax/BIMCraft). The interface is multilingual.
 
-> MiniBIM is at stage 2, porting BIMCraft's model: levels, grids, walls, floors, ceilings, roofs, rooms, doors and windows, their types and materials,
+> MiniBIM is at stage 2, porting BIMCraft's model: levels, grids, walls, floors, ceilings, roofs, rooms, doors and windows, families and components, their types and materials,
 > the command set with undo, and project files (`.minibim`, the same format as BIMCraft's `.bimcraft`) are in. The window opens
 > the sample house, built by commands and modelled in 3D with SMLib. What comes next is in [docs/PLAN.md](docs/PLAN.md) (in Chinese).
 

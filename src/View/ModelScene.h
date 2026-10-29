@@ -13,7 +13,8 @@ namespace MiniBIM
 
     // 模型的三维场景：每个元素经 ISolidKernel（SMLib）建成实体，再离散成三角形与边线，交给 IRenderer 画。
     // BIMCraft 自己拼三角形、用软件光栅化画三维视图，这里只照它决定画什么（墙扣掉门窗洞、楼板与天花板扣掉洞口、
-    // 屋顶每个坡面一块板、门扇和玻璃是墙中间 50 毫米厚的板）和用什么颜色。房间与房间分隔线不画
+    // 屋顶每个坡面一块板、没有族的门扇和玻璃是墙中间 50 毫米厚的板，构件与带族的门窗是族的形体，按材质上色）和用什么颜色。
+    // 族的形体本来就是三角形，直接画；房间与房间分隔线不画
     class ModelScene
     {
     public:
@@ -25,6 +26,7 @@ namespace MiniBIM
             int windows = 0;
             int ceilings = 0;
             int roofs   = 0;
+            int components = 0;
         };
 
         // kernel 为空（构建时关掉了 SMLib）时返回 false；个别元素建模失败时其余照样显示，也返回 false。

@@ -503,15 +503,14 @@ namespace
             Check(saved && same && refused, "命令：项目保存后原样打开；打不开时保留已打开的项目");
         }
         {
-            // BIMCraft 的项目文件：还没移植的东西（族、阶段、柱类型、构件、带族的门、参数）略去并列出，其余照常打开，
-            // 贴着屋顶的墙仍贴着
+            // BIMCraft 的项目文件：还没移植的东西（阶段、柱类型、楼梯、墙的项目参数）略去并列出，其余照常打开，
+            // 贴着屋顶的墙仍贴着，带族的门照常
             Session s;
             House(s);
             Run(s, "door", R"({"at": [2000, 0]})");
             std::string text, error;
             s.GetModel().ToFile(text, error);
             Json file = Json::parse(text);
-            file["families"] = Json::parse(R"({"Single Door": {"category": "door"}})");
             file["phases"] = Json::array({ "Existing", "New Construction" });
             file["types"]["column"] = Json::parse(R"({"Rectangular 400 x 400": {"width": 400, "depth": 400}})");
             file["materials"]["Brick"]["texture"] = Json::parse(R"({"kind": "brick"})");
@@ -519,8 +518,9 @@ namespace
                 "boundary": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "slope": 30, "overhang": 0, "offset": 0})");
             roof["level"] = file["elements"]["100001"]["guid"];
             file["elements"]["100100"] = roof;
-            file["elements"]["100101"] = Json::parse(R"({"category": "door", "type": "900 x 2100", "family": "Single Door", "host": 100002, "offset": 6000, "sill": 0, "mark": "9", "flip_facing": false, "flip_hand": false})");
-            file["elements"]["100102"] = Json::parse(R"({"category": "component", "family": "Chair", "type": "Chair", "level": 100000, "at": [1000, 1000]})");
+            file["elements"]["100101"] = Json::parse(R"({"category": "door", "type": "900 x 2100", "family": "Single Door", "offset": 6000, "sill": 0, "mark": "9", "flip_facing": false, "flip_hand": false})");
+            file["elements"]["100101"]["host"] = file["elements"]["100002"]["guid"];
+            file["elements"]["100102"] = Json::parse(R"({"category": "stair", "level": 100000, "start": [1000, 1000], "angle": 0})");
             file["elements"]["100003"]["attach_top"] = "3f2a9c1e-1111-4000-8000-000000000001";
             file["elements"]["100003"]["params"] = Json::parse(R"({"Fire Rating": "EI 60"})");
             file["library"]["900000"] = Json::parse(R"({"kind": "phase", "name": "Existing", "guid": "3f2a9c1e-2222-4000-8000-000000000002"})");
@@ -536,10 +536,10 @@ namespace
                 for (const Json& v : r["left_out"])
                     left.push_back(v.get<std::string>());
             auto has = [&](const char* p) { return std::find(left.begin(), left.end(), p) != left.end(); };
-            const bool listed = has("/families") && has("/phases") && has("/types/column") && has("/materials/Brick/texture") && !has("/elements/100100") &&
-                                has("/elements/100101") && has("/elements/100102") && !has("/elements/100003/attach_top") && has("/elements/100003/params");
+            const bool listed = !has("/families") && has("/phases") && has("/types/column") && has("/materials/Brick/texture") && !has("/elements/100100") &&
+                                !has("/elements/100101") && has("/elements/100102") && !has("/elements/100003/attach_top") && has("/elements/100003/params");
             std::string why;
-            const bool opened = !r.is_null() && t.GetModel().Check(why) && Count(t, "wall") == 4 && Count(t, "door") == 1 && Count(t, "roof") == 1 &&
+            const bool opened = !r.is_null() && t.GetModel().Check(why) && Count(t, "wall") == 4 && Count(t, "door") == 2 && Count(t, "roof") == 1 &&
                                 t.GetModel().GetWall(Id(100003))->attachTop && !t.GetModel().library.IdOf(Kind::Of(Kind::Tag::Phase), "Existing");
             std::error_code ec;
             std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
@@ -847,6 +847,311 @@ namespace
         }
     }
 
+    // ── 族与构件（第 2c 步）──────────────────────────────────────
+    // 写字台族：顶面高 Height，宽和深按类型
+    void Desk(Session& s)
+    {
+        Run(s, "family", R"({"name": "Work Desk",
+            "parameters": [{"name": "Width", "value": 1200}, {"name": "Depth", "value": 600}, {"name": "Height", "instance": true, "value": 740},
+                           {"name": "Top", "formula": "Height - 30"}],
+            "types": {"1200 x 600": {}, "1600 x 800": {"Width": 1600, "Depth": 800}},
+            "forms": [{"profile": [[0, 0], ["Width", 0], ["Width", "Depth"], [0, "Depth"]], "from": "Top", "to": "Height", "material": "Timber"}]})");
+    }
+
+    Fam::Piece FirstPiece(const Session& s, Id id)
+    {
+        const Element* e = s.GetModel().elements.Get(id);
+        const Component* c = e ? e->As<Component>() : nullptr;
+        const auto pieces = c ? s.GetModel().ComponentPieces(*c) : std::vector<Fam::Piece>{};
+        return pieces.empty() ? Fam::Piece{} : pieces.front();
+    }
+
+    size_t FirstPieces(const Session& s, Id id)
+    {
+        const Element* e = s.GetModel().elements.Get(id);
+        const Component* c = e ? e->As<Component>() : nullptr;
+        return c ? s.GetModel().ComponentPieces(*c).size() : 0;
+    }
+
+    // 带族的门窗的房子：墙 100002–100005，门 100006，窗 100007
+    Session FamilyHouse()
+    {
+        Session s;
+        std::vector<Json> out;
+        std::string error;
+        if (!s.Script(R"(wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+door {"at": [2000, 0], "family": "Single Door", "type": "800 x 2100"}
+window {"at": [8000, 3000], "family": "Fixed Window", "type": "600 x 900"})", out, error))
+            std::printf("  带族门窗的房子：%s\n", error.c_str());
+        return s;
+    }
+
+    void TestFamiliesAndComponents()
+    {
+        {
+            Session s;
+            Desk(s);
+            const Id id = Run(s, "component", R"({"family": "Work Desk", "type": "1600 x 800", "at": [1000, 2000], "angle": 90})")["id"].get<Id>();
+            Json e = ElementJson(s.GetModel(), id);
+            bool ok = e["family"] == "Work Desk" && e["type"] == "1600 x 800" && e["values"]["Width"] == 1600.0 && e["values"]["Top"] == 710.0;
+            // 转了四分之一：它的 x 朝北
+            Fam::Piece p = FirstPiece(s, id);
+            Ring corners;
+            for (const P2& q : p.outline)
+                corners.emplace_back(std::round(q.x * 1e6) / 1e6 + 0.0, std::round(q.y * 1e6) / 1e6 + 0.0);
+            ok = ok && p.bottom == 710.0 && p.top == 740.0 && corners == Ring{ P2(1000, 2000), P2(1000, 3600), P2(200, 3600), P2(200, 2000) };
+            // 实例参数是构件自己的，类型参数是类型的
+            Run(s, "modify", Json{ { "id", id }, { "params", Json{ { "Height", 720 } } }, { "offset", 100 } });
+            p = FirstPiece(s, id);
+            ok = ok && p.bottom == 790.0 && p.top == 820.0;
+            std::string why = Refused(s, "modify", Json{ { "id", id }, { "params", Json{ { "Width", 5 } } } });
+            ok = ok && Contains(why, "Width") && Contains(why, "type parameter");
+            why = Refused(s, "modify", Json{ { "id", id }, { "params", Json{ { "Height", "tall" } } } });
+            ok = ok && Contains(why, "Height") && Contains(why, "number");
+            ok = ok && Contains(Refused(s, "family", R"({"name": "Work Desk", "types": {"1600 x 800": {"Width": 0}}})"), "no area");
+            // 族的类型改了，它的构件都跟着；改名跟着；有构件用着就删不掉
+            Run(s, "family", R"({"name": "Work Desk", "types": {"1600 x 800": {"Width": 1700}}})");
+            ok = ok && std::round(FirstPiece(s, id).outline[1].y) == 3700.0 && s.GetModel().families.at("Work Desk").types.at("1600 x 800").at("Depth") == 800;
+            Run(s, "family", R"({"name": "Work Desk", "rename": "Writing desk"})");
+            ok = ok && ElementJson(s.GetModel(), id)["family"] == "Writing desk";
+            ok = ok && Contains(Refused(s, "family", R"({"name": "Writing desk", "delete": true})"), std::to_string(id));
+            ok = ok && Contains(Refused(s, "component", R"({"family": "Work Desk", "at": [0, 0]})"), "Writing desk");
+            // 不给类型：族的第一个
+            const Id other = Run(s, "component", R"({"family": "Writing desk", "at": [0, 0]})")["id"].get<Id>();
+            ok = ok && ElementJson(s.GetModel(), other)["type"] == "1200 x 600";
+            Run(s, "delete", Json{ { "ids", { id, other } } });
+            Run(s, "family", R"({"name": "Writing desk", "delete": true})");
+            Check(ok && !s.GetModel().families.count("Writing desk"), "构件：放置族的类型，尺寸由参数定；族改了构件跟着");
+        }
+        {
+            Session s;
+            Desk(s);
+            const Json saved = Run(s, "inspect", Json::object());
+            bool ok = saved["families"]["Work Desk"]["types"] == Json::parse(R"(["1200 x 600", "1600 x 800"])");
+            // family 返回的族带上名称存成文件，另一个项目读进来
+            Json f = Run(s, "family", R"({"name": "Work Desk"})")["family"];
+            f["name"] = "Work Desk";
+            const std::string path = Temp("desk.json");
+            {
+                std::ofstream out(std::filesystem::path(std::u8string(path.begin(), path.end())), std::ios::binary | std::ios::trunc);
+                out << f.dump();
+            }
+            Session other;
+            ok = ok && Run(other, "family", Json{ { "path", path } })["name"] == "Work Desk" &&
+                 other.GetModel().families.at("Work Desk").parameters == s.GetModel().families.at("Work Desk").parameters &&
+                 other.GetModel().families.at("Work Desk").types == s.GetModel().families.at("Work Desk").types;
+            Run(other, "family", Json{ { "path", path }, { "name", "Writing Table" } });
+            ok = ok && other.GetModel().families.count("Writing Table");
+            {
+                std::ofstream out(std::filesystem::path(std::u8string(path.begin(), path.end())), std::ios::binary | std::ios::trunc);
+                out << "[1, 2]";
+            }
+            ok = ok && Contains(Refused(other, "family", Json{ { "path", path } }), "isn't an object");
+            std::error_code ec;
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+            Check(ok, "族：从文件读进来");
+        }
+        {
+            // 新项目带一套族：家具 10、门窗各三种、各专业的器具；每个类型都放得下、建得出来
+            bool ok = true;
+            for (const Language l : { Language::English, Language::Portuguese, Language::Spanish })
+            {
+                const Model m = Model::New("x", l);
+                // 家具 10、门窗 6、各专业的器具 18
+                std::string why;
+                ok = ok && m.Check(why) && m.families.size() == 10 + 6 + 18;
+                Session s;
+                s.Reset(m, std::nullopt);
+                Run(s, "wall", R"({"points": [[-30000, 5000], [30000, 5000]]})");
+                double along = -27500.0;
+                for (const auto& [family, f] : m.families)
+                    for (const auto& [t, _] : f.types)
+                    {
+                        if (Fam::CategoryOf::Hosted(f.category))
+                        {
+                            along += 2500.0;
+                            const bool door = f.category == Fam::Category::Door;
+                            const Json r = Run(s, door ? "door" : "window", Json{ { "at", Pt(along, 5000) }, { "family", family }, { "type", t } });
+                            const auto local = r.is_null() ? std::nullopt : s.GetModel().OpeningLocal(*s.GetModel().elements.Get(r["id"].get<Id>()));
+                            if (!local || local->first.empty() || (door && local->second.empty()))
+                            {
+                                std::printf("  %s：%s\n", family.c_str(), t.c_str());
+                                ok = false;
+                            }
+                        }
+                        else
+                        {
+                            const Json r = Run(s, "component", Json{ { "family", family }, { "type", t }, { "at", Pt(0, 0) } });
+                            if (r.is_null() || FirstPiece(s, r["id"].get<Id>()).tris.empty())
+                            {
+                                std::printf("  %s：%s\n", family.c_str(), t.c_str());
+                                ok = false;
+                            }
+                        }
+                    }
+            }
+            const Model pt = Model::New("x", Language::Portuguese);
+            ok = ok && pt.families.count("Cama") && std::any_of(pt.families.at("Cama").parameters.begin(), pt.families.at("Cama").parameters.end(),
+                                                                [](const Fam::Parameter& p) { return p.name == "Largura"; });
+            // 桌腿、椅腿和靠背都在桌面或座面以内
+            const Model m = Model::New("x");
+            for (const char* family : { "Table", "Chair" })
+            {
+                const Family& f = m.families.at(family);
+                for (const auto& [t, _] : f.types)
+                {
+                    Fam::Values v;
+                    std::vector<Fam::Piece> pieces;
+                    std::string why;
+                    if (!f.Values(t, {}, v, why) || !f.Pieces(v, pieces, why))
+                    {
+                        ok = false;
+                        continue;
+                    }
+                    P2 lo(1e300, 1e300), hi(-1e300, -1e300);
+                    for (const P2& q : pieces[0].outline)
+                    {
+                        lo = P2(std::min(lo.x, q.x), std::min(lo.y, q.y));
+                        hi = P2(std::max(hi.x, q.x), std::max(hi.y, q.y));
+                    }
+                    for (const Fam::Piece& p : pieces)
+                        for (const P2& q : p.outline)
+                            ok = ok && q.x >= lo.x - 1e-6 && q.x <= hi.x + 1e-6 && q.y >= lo.y - 1e-6 && q.y <= hi.y + 1e-6;
+                }
+            }
+            // 双人床两个枕头，单人床一个
+            Session s;
+            const auto bed = [&](const char* t)
+            {
+                // 先执行命令再取模型：命令换掉了会话的模型
+                const Id id = Run(s, "component", Json{ { "family", "Bed" }, { "type", t }, { "at", Pt(0, 0) } })["id"].get<Id>();
+                return FirstPieces(s, id);
+            };
+            const size_t twin = bed("1600 x 2000"), single = bed("900 x 2000");
+            Check(ok && twin - single == 1, "族：新项目带一套族，每个类型都放得下、建得出来");
+        }
+        {
+            Session s;
+            // 文件说要删除或改名：只读进它带的族
+            const std::string path = Temp("chair.json");
+            {
+                std::ofstream out(std::filesystem::path(std::u8string(path.begin(), path.end())), std::ios::binary | std::ios::trunc);
+                out << R"({"name": "Chair", "delete": true, "rename": "Gone", "types": {"Tall": {"Height": 1100}}})";
+            }
+            Run(s, "family", Json{ { "path", path } });
+            std::error_code ec;
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+            bool ok = s.GetModel().families.count("Chair") && !s.GetModel().families.count("Gone") && s.GetModel().families.at("Chair").types.at("Tall").at("Height") == 1100;
+            // 新类型里、构件自己的值里、modify 里的 null：没有值，用族的
+            Run(s, "family", R"({"name": "Chair", "types": {"Low": {"Height": null, "Width": 500}}})");
+            ok = ok && s.GetModel().families.at("Chair").types.at("Low") == std::map<std::string, Json>{ { "Width", Json(500) } };
+            Run(s, "family", R"({"name": "Stool", "parameters": [{"name": "Seat", "instance": true, "value": 450}], "types": {"A": {}},
+                "forms": [{"profile": [[0, 0], [400, 0], [400, 400], [0, 400]], "to": "Seat"}]})");
+            const Id id = Run(s, "component", R"({"family": "Stool", "at": [0, 0], "params": {"Seat": null}})")["id"].get<Id>();
+            Run(s, "modify", Json{ { "id", id }, { "params", Json{ { "Seat", nullptr } } } });
+            Check(ok && ElementJson(s.GetModel(), id)["values"]["Seat"] == 450.0, "族：文件只带来一个族，null 去掉值");
+        }
+        {
+            // 撤销步骤与模型共用族的三角形
+            Session s;
+            Run(s, "family", R"({"name": "Mesh", "types": {"A": {}}, "forms": [{"mesh": [[[0, 0, 0], [100, 0, 0], [0, 100, 0]], [[0, 0, 0], [100, 0, 0], [0, 100, 0]]]}]})");
+            const Model copy = s.GetModel();
+            Check(copy.families.at("Mesh").forms[0].mesh == s.GetModel().families.at("Mesh").forms[0].mesh, "族：复制模型时共用族的三角形");
+        }
+        {
+            Session s = FamilyHouse();
+            const Json door = ElementJson(s.GetModel(), 100006);
+            bool ok = door["family"] == "Single Door" && door["type"] == "800 x 2100" && door["width"] == 800.0 && door["height"] == 2100.0 && door["sill"] == 0.0 &&
+                      door["values"]["Wall Thickness"] == 200.0 && door["values"]["Frame Width"] == 50.0;
+            const Json window = ElementJson(s.GetModel(), 100007);
+            ok = ok && window["width"] == 600.0 && window["height"] == 900.0 && window["sill"] == 1100.0;
+            // 墙上的洞是族的尺寸：换成 1000 宽的类型
+            Run(s, "modify", R"({"id": 100006, "type": "1000 x 2100"})");
+            ok = ok && ElementJson(s.GetModel(), 100006)["width"] == 1000.0;
+            // 不是门的族、没有的族、族没有的类型：拒绝
+            const std::pair<const char*, const char*> bad[] = { { R"({"at": [4000, 0], "family": "Fixed Window"})", "no door family" },
+                                                                { R"({"at": [4000, 0], "family": "Nowhere"})", "no door family" },
+                                                                { R"({"at": [4000, 0], "family": "Single Door", "type": "9 x 9"})", "9 x 9" } };
+            for (const auto& [p, says] : bad)
+                ok = ok && Contains(Refused(s, "door", p), says);
+            // 门的族不能当家具放；有门用着就删不掉
+            ok = ok && Contains(Refused(s, "component", R"({"family": "Single Door", "at": [1000, 1000]})"), "door") &&
+                 Contains(Refused(s, "family", R"({"name": "Single Door", "delete": true})"), "100006");
+            Check(ok, "门窗：族定洞口的尺寸，窗的族给它窗台高度");
+        }
+        {
+            Session s = FamilyHouse();
+            Run(s, "family", R"({"name": "Hatch", "category": "door", "parameters": [{"name": "Width", "instance": true, "value": 600}, {"name": "Height", "value": 700}],
+                "types": {"A": {}}, "forms": [{"profile": [["-Width / 2", "-Wall Thickness / 2"], ["Width / 2", "-Wall Thickness / 2"], ["Width / 2", "Wall Thickness / 2"]], "to": "Height"}]})");
+            const Id id = Run(s, "door", R"({"at": [4000, 0], "family": "Hatch"})")["id"].get<Id>();
+            bool ok = ElementJson(s.GetModel(), id)["width"] == 600.0;
+            Run(s, "modify", Json{ { "id", id }, { "params", Json{ { "Width", 900 } } } });
+            ok = ok && ElementJson(s.GetModel(), id)["width"] == 900.0;
+            ok = ok && Contains(Refused(s, "modify", Json{ { "id", id }, { "params", Json{ { "Height", 5 } } } }), "type parameter");
+            const std::pair<const char*, const char*> bad[] = {
+                { R"({"name": "Bad", "category": "door", "types": {"A": {}}, "parameters": [{"name": "Width", "value": 1}]})", "Height" },
+                { R"({"name": "Bad", "category": "window", "types": {"A": {}}, "parameters": [{"name": "Width", "value": 1}, {"name": "Height", "value": 1}, {"name": "Wall Thickness", "value": 1}]})", "Wall Thickness" },
+                { R"({"name": "Bad", "category": "furniture", "types": {"A": {}}, "symbols": [{"line": [[0, 0], [1, 1]]}]})", "symbols" },
+                { R"({"name": "Bad", "category": "door", "types": {"A": {}}, "parameters": [{"name": "Width", "value": 1}, {"name": "Height", "value": 1}], "symbols": [{"arc": {"centre": [0, 0], "radius": 0, "to": 90}}]})", "radius" },
+            };
+            for (const auto& [p, says] : bad)
+                ok = ok && Contains(Refused(s, "family", p), says);
+            Check(ok, "门窗：门族的实例参数是门自己的，类型参数是类型的；不健全的族拒绝");
+        }
+        {
+            // 门族的开启线在平面上，随门翻转（BIMCraft 的测试看平面图，这里直接看门画的线）
+            Session s = FamilyHouse();
+            const auto arc = [&](P2 hinge, P2 sign)
+            {
+                std::vector<Ring> lines;
+                for (const Ring& l : s.GetModel().OpeningStrokes(*s.GetModel().elements.Get(100006)))
+                    if (l.size() > 10)
+                        lines.push_back(l);
+                bool ok = lines.size() == 1;
+                // 离铰链 700（800 的洞口减两边 50 的门框），在门开向的那侧
+                for (const P2& p : ok ? lines[0] : Ring{})
+                    ok = ok && std::abs(p.Dist(hinge) - 700.0) < 1.5 && (p.x - hinge.x) * sign.x >= -1.5 && (p.y - hinge.y) * sign.y >= -1.5;
+                return ok;
+            };
+            bool ok = arc(P2(1650, 100), P2(1, 1));
+            Run(s, "modify", R"({"id": 100006, "flip_hand": true})");
+            ok = ok && arc(P2(2350, 100), P2(-1, 1));
+            Run(s, "modify", R"({"id": 100006, "flip_facing": true})");
+            ok = ok && arc(P2(2350, -100), P2(-1, -1));
+            Run(s, "modify", R"({"id": 100006, "flip_hand": false})");
+            ok = ok && arc(P2(1650, -100), P2(1, -1));
+            Check(ok, "门窗：门族的开启线随门翻转");
+        }
+        {
+            // 翻转的门族形体仍朝外、大小不变
+            Session s = FamilyHouse();
+            const auto volumes = [&]
+            {
+                std::vector<double> out;
+                const auto local = s.GetModel().OpeningLocal(*s.GetModel().elements.Get(100006));
+                for (const Fam::Piece& p : local ? local->first : std::vector<Fam::Piece>{})
+                {
+                    double v = 0.0;
+                    for (const Tri& t : p.tris)
+                        v += V3::Dot(t[0], V3::Cross(t[1], t[2]));
+                    out.push_back(v / 6.0);
+                }
+                return out;
+            };
+            const auto straight = volumes();
+            bool ok = straight.size() > 3 && std::all_of(straight.begin(), straight.end(), [](double v) { return v > 0.0; });
+            for (const auto& [facing, hand] : { std::pair{ true, false }, std::pair{ false, true }, std::pair{ true, true } })
+            {
+                Run(s, "modify", Json{ { "id", 100006 }, { "flip_facing", facing }, { "flip_hand", hand } });
+                const auto now = volumes();
+                ok = ok && now.size() == straight.size();
+                for (size_t i = 0; ok && i < now.size(); ++i)
+                    ok = std::abs(straight[i] - now[i]) < 1e-6 * straight[i];
+            }
+            Check(ok, "门窗：翻转的门族形体仍朝外、大小不变");
+        }
+    }
+
     void TestSample()
     {
         Session s;
@@ -868,9 +1173,10 @@ namespace
         for (const Json& r : rooms["elements"])
             areas.push_back(r["area_m2"].get<double>());
         const Model& after = s.GetModel();
-        Check(i["counts"]["room"] == 4 && i["counts"]["ceiling"] == 4 && i["counts"]["roof"] == 1 && areas == std::vector<double>{ 24, 18, 14, 14 } &&
+        Check(i["counts"]["room"] == 4 && i["counts"]["ceiling"] == 4 && i["counts"]["roof"] == 1 && i["counts"]["component"] == 11 &&
+                  areas == std::vector<double>{ 24, 18, 14, 14 } &&
                   after.GetWall(Id(100007))->attachTop == after.GuidOf(Id(100024)),
-              "示例房屋：四个房间（24、18、14、14 m²）各有天花板，外墙贴着屋顶");
+              "示例房屋：四个房间（24、18、14、14 m²）各有天花板，外墙贴着屋顶，十一件家具");
     }
 
     // 一组不怀好意的参数逐条命令扫一遍：命令可以拒绝，但不能抛出内部错误，也不能弄坏模型
@@ -935,6 +1241,7 @@ int main()
     TestEditing();
     TestFiles();
     TestRoofsRoomsCeilings();
+    TestFamiliesAndComponents();
     TestSample();
     TestHostileParams();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);

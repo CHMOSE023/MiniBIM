@@ -1,5 +1,6 @@
 // 移植自 BIMCraft crates/core/src/model.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #pragma once
+#include "Model/Family.h"
 #include "Model/Geom.h"
 #include "Model/Ids.h"
 #include "Model/Json.h"
@@ -13,14 +14,15 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
 // 建筑模型。长度单位毫米，x 向东、y 向北、z 向上，每个标高有高程。
-// 第 2a 步移植了标高、轴网、墙、楼板、门、窗与它们的类型、材质，第 2b 步加了屋顶、天花板、房间、房间分隔线；
-// BIMCraft 的其余元素（构件、视图、图纸……）按 docs/PLAN.md 第 2 阶段的顺序陆续加进 Element。新增一种元素时 std::visit 会列出所有要补的分支
+// 第 2a 步移植了标高、轴网、墙、楼板、门、窗与它们的类型、材质，第 2b 步加了屋顶、天花板、房间、房间分隔线，第 2c 步加了族与构件；
+// BIMCraft 的其余元素（视图、图纸、结构与设备……）按 docs/PLAN.md 第 2 阶段的顺序陆续加进 Element。新增一种元素时 std::visit 会列出所有要补的分支
 namespace MiniBIM::Bim
 {
     // 平面视图剖切面在标高以上的高度（视图范围没另设时）；房间在这个高度找围住它的墙
@@ -205,8 +207,9 @@ namespace MiniBIM::Bim
     // 门或窗：在宿主墙里，中心离墙定位线起点 offset 毫米；sill 是底边在墙底以上的高度（门为 0）
     struct Opening
     {
+        // 类型：项目的门窗类型，或带族时族的类型
         std::string typeName;
-        // 族的门窗（BIMCraft 的族还没移植：带族的门窗在 Model::Check 里报"族不存在"）
+        // 族的门窗：族的名称
         std::optional<std::string> family;
         Guid        host;
         double      offset = 0.0;
@@ -216,6 +219,8 @@ namespace MiniBIM::Bim
         bool        flipFacing = false;
         // 铰链在另一侧门框
         bool        flipHand   = false;
+        // 它的族的实例参数值，按名称（BIMCraft 还在这里存项目参数的值，项目参数移植后再加）
+        std::map<std::string, Json> params;
         bool operator==(const Opening&) const = default;
     };
 
@@ -258,6 +263,21 @@ namespace MiniBIM::Bim
         std::string name;
         std::string number;
         bool operator==(const Room&) const = default;
+    };
+
+    // 构件：族 family 的类型 typeName，立在 level 上 at 处、高出 offset，转 angle 度（从东逆时针）；mirrored 时是镜像。
+    // params 是它的族的实例参数值
+    struct Component
+    {
+        std::string family;
+        std::string typeName;
+        Guid        level;
+        P2          at;
+        double      angle    = 0.0;
+        double      offset   = 0.0;
+        bool        mirrored = false;
+        std::map<std::string, Json> params;
+        bool operator==(const Component&) const = default;
     };
 
     // 拉伸屋顶的形状：底面在过 line 的竖直平面里的轮廓，各点为 [沿线距起点, 高于屋顶底部]，从线左边 from 到 to 毫米处垂直于线扫过
@@ -305,7 +325,7 @@ namespace MiniBIM::Bim
     // 一个元素。文件里写作带 "category" 的对象：{"category": "wall", …}
     struct Element
     {
-        using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof>;
+        using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component>;
         Variant v;
 
         Element() = default;
@@ -320,8 +340,16 @@ namespace MiniBIM::Bim
         bool IsDoor() const   { return std::holds_alternative<Door>(v); }
         bool IsWindow() const { return std::holds_alternative<Window>(v); }
 
-        // 类别：level、grid、roomseparator、wall、floor、ceiling、door、window、room、roof
+        // 类别：level、grid、roomseparator、wall、floor、ceiling、door、window、room、roof、component
         const char* Category() const;
+        // 它的族与类型：构件的，或带族的门窗的
+        std::optional<std::pair<std::string, std::string>> FamilyOf() const;
+        std::string* FamilyMut();
+        // 门窗立在墙里时要的族类别
+        std::optional<Fam::Category> HostedCategory() const;
+        // 它存的参数值：构件与门窗的
+        const std::map<std::string, Json>* Params() const;
+        std::map<std::string, Json>*       ParamsMut();
 
         // 它指向的每个元素（GUID）交给 f，f 可以换成别的：标高、宿主、贴着的屋顶或楼板、插进的屋顶
         void RefsMut(const std::function<void(Guid&)>& f);
@@ -444,6 +472,8 @@ namespace MiniBIM::Bim
         Types       types;
         // 各层用的材质，按名称
         std::map<std::string, Material> materials;
+        // 族，按名称：构件放置的东西
+        std::map<std::string, Family> families;
         Elements    elements;
         // 库的 ID 和 GUID：类型、材质
         Library     library;
@@ -528,6 +558,26 @@ namespace MiniBIM::Bim
         // 天花板的板块：底面减去洞口（被洞切开时为凸块），各自逆时针；以及它的厚度
         std::vector<std::pair<std::vector<P3>, double>> CeilingSlabs(const Ceiling& c) const;
 
+        // ── 族与构件 ────────────────────────────────────────────
+        // 构件在它自己坐标里的实体（是镜像时已镜像）：各可见形体的三角形、从上看的轮廓、从底到顶、用什么做；建不出来时为空
+        std::vector<Fam::Piece> ComponentLocalPieces(const Component& c) const;
+        // 构件在模型里的实体：转到、移到它所在的地方
+        std::vector<Fam::Piece> ComponentPieces(const Component& c) const;
+        // 放置族的界面给新门窗的族与类型：项目的单扇门或固定窗（常用尺寸），否则该类别的第一个族与它的第一个类型
+        std::optional<std::pair<std::string, std::string>> DefaultFamily(std::string_view category) const;
+        // 门窗族的坐标在哪里：洞口中间、墙中间的平面点，墙在那里的走向，窗台的高度
+        std::optional<std::tuple<P2, P2, double>> OpeningFrame(const Opening& o) const;
+        // 门窗族的实体与平面线，在族自己的坐标里，按门窗的翻转镜像过；不是族的或建不出来时为空
+        std::optional<std::pair<std::vector<Fam::Piece>, std::vector<Ring>>> OpeningLocal(const Element& e) const;
+        // 门窗族在它所在处的实体，在模型坐标里
+        std::vector<Fam::Piece> OpeningPieces(const Element& e) const;
+        // 门窗族在平面上画的线，在它所在处
+        std::vector<Ring> OpeningStrokes(const Element& e) const;
+        // 用到材质 name 的（类型的层以外）：族，或族的构件；没有时为空
+        std::optional<std::string> MaterialUser(const std::string& name) const;
+        // 族与它们的构件里的材质 from 改名为 to
+        void RenameMaterialInFamilies(const std::string& from, const std::string& to);
+
         // ── 屋顶 ────────────────────────────────────────────────
         // 屋顶的平面轮廓：迹线，或拉伸扫过的矩形，逆时针
         Ring   RoofOutline(const Roof& r) const;
@@ -589,6 +639,14 @@ namespace MiniBIM::Bim
 
     private:
         bool CheckIds(std::string& error) const;
+        // 族 f 的元素给的值是它的实例参数的：是实例参数、不由公式算出、材质在库里
+        bool FamilyValuesOk(const std::string& who, const std::string& name, const Family& f, const std::map<std::string, Json>& params,
+                            std::string& error) const;
+        // 构件 e 自己在材质参数里写的材质
+        std::vector<std::string> ComponentMaterials(const Element& e) const;
+        // 构件和带族门窗的族实例参数值按 key 对 "族: 参数" 换的键（文件里是 GUID）；材质参数的值按 material 换
+        void RekeyFamilyParams(const std::function<std::optional<std::string>(const std::string&, const std::string&)>& key,
+                               const std::function<std::optional<std::string>(const std::string&)>& material);
         bool PartsInStep() const;
         void SyncParts();
         // 文件里的 GUID 换回名称，没有 ID 和 GUID 的给上：ToFile 的反向

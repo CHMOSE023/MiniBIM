@@ -25,6 +25,8 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
   - 屋顶：`Model::RoofPieces` 的每块（坡面减去洞与开洞）一个实体，底面在坡面上、顶面高出 `Model::RoofRise`（铅垂量的厚度）；
     平的拉伸，斜的同贴附的墙一样围成网格。房间与房间分隔线不画
   - 门窗（没有族时）：墙中间 50 毫米厚的板，与墙正交，门为木色、窗为玻璃色
+  - 构件与带族的门窗：族的形体（`Model::ComponentPieces`、`Model::OpeningPieces`）本来就是朝外的三角形（族的扫掠、旋转与空心切割移植自 BIMCraft），
+    直接交给渲染器，不经实体内核；按形体材质的颜色着色（库里没有时构件用米色、门窗用门或玻璃的颜色），边只画折角处（相邻面夹角超过 10°）和开口处
   - `Tessellate` 出三角网格、`Edges` 出边线。顶点只有位置和颜色（`Vertex_P3_C4`），所以着色在 CPU 上按固定的平行光算好（不随视角变）
 - 什么时候重建：命令改了模型（`Bim::Session::Snapshot` 换了）之后 `MainFrame::OnModelChanged` → `MainFrame::RebuildScene`，场景版本加一
   （`IRenderer::SubmitCached` 的 version 变了，后端才重新上传）；换了项目时相机重新 `HomeView`
@@ -46,5 +48,5 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 
 - `ViewTests`（`tests/View/OrbitCameraTests.cpp`）：屏幕方向、框住包围盒、缩放与平移时点的屏幕位置
 - `SMLibSmokeTests`：SMLib 静态库能建模、布尔、求体积、离散化
-- `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗、天花板、屋顶都建出来，范围（檐口到屋脊）对，墙在窗洞处扣掉；没有内核时不建
+- `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗、天花板、屋顶、家具都建出来，范围（檐口到屋脊）对，墙在窗洞处扣掉；没有内核时不建
 - 画面不对时先用 skill `ui-check` 截图；换图形接口对比（`--gpu d3d11`、`--gpu warp`）

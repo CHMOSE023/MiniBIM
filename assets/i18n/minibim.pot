@@ -79,6 +79,14 @@ msgid "Materials"
 msgstr ""
 
 #: src/Commands/Commands.cpp
+msgid "Load Family"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Component"
+msgstr ""
+
+#: src/Commands/Commands.cpp
 msgid "Flip"
 msgstr ""
 

@@ -45,6 +45,22 @@ namespace MiniBIM::Bim
     // 空间里的点，毫米：x 向东，y 向北，z 向上
     using P3      = std::array<double, 3>;
 
+    // 三维向量运算（BIMCraft view3d.rs 的 add、sub、mul、dot、cross）
+    namespace V3
+    {
+        constexpr P3 Add(const P3& a, const P3& b) { return { a[0] + b[0], a[1] + b[1], a[2] + b[2] }; }
+        constexpr P3 Sub(const P3& a, const P3& b) { return { a[0] - b[0], a[1] - b[1], a[2] - b[2] }; }
+        constexpr P3 Mul(const P3& a, double k) { return { a[0] * k, a[1] * k, a[2] * k }; }
+        constexpr double Dot(const P3& a, const P3& b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+        constexpr P3 Cross(const P3& a, const P3& b)
+        {
+            return { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
+        }
+    }
+
+    // 空间里的三角形
+    using Tri = std::array<P3, 3>;
+
     // 平面图上方的一个平面：q 处的高度为 z + g.x · q.x + g.y · q.y（移植自 walls.rs 的 Plane）
     struct Plane
     {

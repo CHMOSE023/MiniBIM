@@ -1,8 +1,10 @@
-// 模型核心（src/Model）：平面几何、单位、ID 与 GUID、项目语言、元素与 Model::Check、墙的几何、库、屋顶的直骨架。
-// 移植自 BIMCraft crates/core/src/{geom,units,ids,language,model,walls,walls/index,library,skeleton}.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
+// 模型核心（src/Model）：平面几何、单位、ID 与 GUID、项目语言、元素与 Model::Check、墙的几何、库、屋顶的直骨架、族与 CSG。
+// 移植自 BIMCraft crates/core/src/{geom,units,ids,language,model,walls,walls/index,library,skeleton,family,csg}.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Commands/Commands.h"
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
+#include "Model/Csg.h"
+#include "Model/Family.h"
 #include "Model/Geom.h"
 #include "Model/Language.h"
 #include "Model/Model.h"
@@ -573,8 +575,11 @@ wall {"points":[[0,0],[6000,0],[6000,4000]],"level":"Level 2"})", out, error);
         {
             const Session s;
             const Model& m = s.GetModel();
-            // 类型：墙 3、楼板 1、门 2、窗 2、屋顶 1、天花板 2；材质 17
-            bool ok = m.LibraryInStep() && m.library.Size() == 3 + 1 + 2 + 2 + 1 + 2 + 17;
+            // 类型：墙 3、楼板 1、门 2、窗 2、屋顶 1、天花板 2；材质 17；族，以及每个族的类型和参数
+            size_t familyEntries = 0;
+            for (const auto& [_, f] : m.families)
+                familyEntries += 1 + f.types.size() + f.parameters.size();
+            bool ok = m.LibraryInStep() && !m.families.empty() && m.library.Size() == 3 + 1 + 2 + 2 + 1 + 2 + 17 + familyEntries;
             ok = ok && !m.library.Entries().empty() && m.library.Entries().rbegin()->first == LastId;
             for (const auto& [id, _] : m.library.Entries())
                 ok = ok && id >= FirstId && id <= LastId && !m.elements.Contains(id);
@@ -963,6 +968,444 @@ wall {"points":[[0,0],[6000,0],[6000,4000]],"level":"Level 2"})", out, error);
             Check(ok, "骨架：T 形和 U 形完整合拢");
         }
     }
+
+    // ── family.rs、csg.rs ────────────────────────────────────────
+    // 封闭曲面的体积：从原点出发的有向四面体之和，三角形朝外时为正
+    double Volume(const std::vector<Tri>& tris)
+    {
+        double v = 0.0;
+        for (const Tri& t : tris)
+            v += V3::Dot(t[0], V3::Cross(t[1], t[2])) / 6.0;
+        return v;
+    }
+
+    double Surface(const std::vector<Tri>& tris)
+    {
+        double a = 0.0;
+        for (const Tri& t : tris)
+        {
+            const P3 n = V3::Cross(V3::Sub(t[1], t[0]), V3::Sub(t[2], t[0]));
+            a += std::sqrt(V3::Dot(n, n)) / 2.0;
+        }
+        return a;
+    }
+
+    Family FamilyFrom(const Json& v)
+    {
+        Family f;
+        std::string error;
+        if (!FromJson(v, f, error))
+            std::printf("  族读不进来：%s\n", error.c_str());
+        return f;
+    }
+
+    std::optional<double> EvalOf(const std::string& formula, const std::vector<std::pair<std::string, double>>& values, std::string* why = nullptr)
+    {
+        double out = 0.0;
+        std::string error;
+        const bool ok = Fam::Eval(
+            formula,
+            [&](const std::string& n, double& v, std::string& e)
+            {
+                for (const auto& [k, x] : values)
+                    if (k == n)
+                    {
+                        v = x;
+                        return true;
+                    }
+                e = "no `" + n + "`";
+                return false;
+            },
+            out, error);
+        if (!ok)
+        {
+            if (why)
+                *why = error;
+            return std::nullopt;
+        }
+        return out;
+    }
+
+    // 一个类型的族建出的实体；失败时 why 是原因
+    std::optional<std::vector<Fam::Piece>> BuiltOf(const Json& forms, std::string* why = nullptr)
+    {
+        const Family f = FamilyFrom(Json{ { "types", Json{ { "A", Json::object() } } }, { "parameters", Json::parse(R"([{"name": "R", "value": 300}])") }, { "forms", forms } });
+        std::string error;
+        Fam::Values v;
+        std::vector<Fam::Piece> pieces;
+        if (!f.Check([](const std::string&) { return true; }, error) || !f.Values("A", {}, v, error) || !f.Pieces(v, pieces, error))
+        {
+            if (why)
+                *why = error;
+            return std::nullopt;
+        }
+        return pieces;
+    }
+
+    std::vector<Tri> Cuboid(P3 lo, P3 hi)
+    {
+        const auto v = [&](int x, int y, int z) { return P3{ x ? hi[0] : lo[0], y ? hi[1] : lo[1], z ? hi[2] : lo[2] }; };
+        const std::array<std::array<P3, 4>, 6> faces = { { { v(0, 0, 1), v(1, 0, 1), v(1, 1, 1), v(0, 1, 1) },
+                                                            { v(0, 0, 0), v(0, 1, 0), v(1, 1, 0), v(1, 0, 0) },
+                                                            { v(0, 0, 0), v(1, 0, 0), v(1, 0, 1), v(0, 0, 1) },
+                                                            { v(1, 1, 0), v(0, 1, 0), v(0, 1, 1), v(1, 1, 1) },
+                                                            { v(0, 1, 0), v(0, 0, 0), v(0, 0, 1), v(0, 1, 1) },
+                                                            { v(1, 0, 0), v(1, 1, 0), v(1, 1, 1), v(1, 0, 1) } } };
+        std::vector<Tri> out;
+        for (const auto& [a, b, c, d] : faces)
+        {
+            out.push_back(Tri{ a, b, c });
+            out.push_back(Tri{ a, c, d });
+        }
+        return out;
+    }
+
+    void TestFamily()
+    {
+        const std::vector<std::pair<std::string, double>> values{ { "Width", 1000.0 }, { "Leg Height", 700.0 } };
+        {
+            bool ok = true;
+            const std::pair<const char*, double> good[] = {
+                { "Width / 2 + 10", 510.0 }, { "2 + 3 * 4", 14.0 }, { "(2 + 3) * 4", 20.0 }, { "-Width + 1", -999.0 }, { "2 ^ 3 ^ 2", 512.0 },
+                { "Leg Height - 2*3", 694.0 }, { "if(Width > 1000, 4, 2)", 2.0 }, { "if(Width >= 1000, 4, 2)", 4.0 }, { "if (Width = 1000, 1, 0)", 1.0 },
+                { "not(Width < 1000)", 1.0 }, { "and(1, 0) + or(1, 0)", 1.0 }, { "sqrt(16) + abs(-2) + min(3, 5) + max(3, 5)", 14.0 },
+                { "round(2.5) + roundup(2.1) + rounddown(2.9)", 8.0 }, { "sin(30) + cos(60)", 1.0 }, { "pi() * 0", 0.0 },
+                // 没走的分支不算
+                { "if(Width > 0, 1, 1 / 0)", 1.0 },
+            };
+            for (const auto& [formula, want] : good)
+            {
+                const auto got = EvalOf(formula, values);
+                if (!got || std::abs(*got - want) >= 1e-9)
+                {
+                    std::printf("  %s：%s\n", formula, got ? std::to_string(*got).c_str() : "失败");
+                    ok = false;
+                }
+            }
+            const std::pair<const char*, const char*> bad[] = { { "Width +", "`Width +`" }, { "Nope + 1", "Nope" }, { "1 / 0", "isn't a number" },
+                                                                { "sqrt(-1)", "isn't a number" }, { "if(1, 2)", "if" }, { "frobnicate(1)", "frobnicate" },
+                                                                { "2 3", "`2 3`" }, { "", "empty" } };
+            for (const auto& [formula, says] : bad)
+            {
+                std::string why;
+                ok = ok && !EvalOf(formula, values, &why) && Contains(why, says);
+            }
+            // 嵌套得过深：拒绝，不让栈溢出
+            std::string why;
+            const std::string deep = std::string(10000, '(') + "1" + std::string(10000, ')');
+            Check(ok && !EvalOf(deep, values, &why) && Contains(why, "deep"), "族：公式的写法同 Revit，错的说出哪里错");
+        }
+        const Json table = Json::parse(R"({
+            "parameters": [
+                {"name": "Width", "value": 1000},
+                {"name": "Depth", "value": 600},
+                {"name": "Height", "instance": true, "value": 750},
+                {"name": "Top", "formula": "Height - 30"},
+                {"name": "Area", "kind": "number", "formula": "Width * Depth / 1e6"},
+                {"name": "Legs", "kind": "yesno", "value": true},
+                {"name": "Finish", "kind": "material", "value": "Timber"}
+            ],
+            "types": {"1000 x 600": {}, "Small": {"Width": 800}},
+            "forms": [
+                {"profile": [[0, 0], ["Width", 0], ["Width", "Depth"], [0, "Depth"]], "from": "Top", "to": "Height", "material": "Finish"},
+                {"profile": [[0, 0], [50, 0], [50, 50], [0, 50]], "from": 0, "to": "Top", "visible": "Legs"}
+            ]
+        })");
+        {
+            const Family f = FamilyFrom(table);
+            Fam::Values v;
+            std::string error;
+            const bool got = f.Values("Small", { { "Height", Json(700) } }, v, error);
+            const auto n = [&](const char* k) { return std::get<double>(v.at(k)); };
+            bool ok = got && n("Width") == 800.0 && n("Depth") == 600.0 && n("Height") == 700.0 && n("Top") == 670.0 && std::abs(n("Area") - 0.48) < 1e-12 &&
+                      n("Legs") == 1.0 && std::get<std::string>(v.at("Finish")) == "Timber";
+            Family cyclic = f;
+            cyclic.parameters[0].formula = "Depth + Top";
+            cyclic.parameters[1].formula = "Width - 1";
+            ok = ok && !cyclic.Values("Small", {}, v, error) && Contains(error, "Width") && Contains(error, "itself");
+            ok = ok && !f.Values("Huge", {}, v, error) && Contains(error, "Huge");
+            Check(ok, "族：类型与构件设定参数，公式跟着算；绕回自己的公式、没有的类型报错");
+        }
+        {
+            // 很长的平铺的和读得出；一个接一个取值的参数链太深就拒绝
+            std::string flat = "1";
+            for (int i = 0; i < 600; ++i)
+                flat += " + 1";
+            std::string terms;
+            for (int i = 0; i < 500; ++i)
+                terms += " + 1";
+            Json params = Json::array();
+            for (int i = 0; i < 64; ++i)
+                params.push_back(i == 63 ? Json{ { "name", "P63" }, { "value", 1 } } : Json{ { "name", "P" + std::to_string(i) }, { "formula", "P" + std::to_string(i + 1) + terms } });
+            const Family f = FamilyFrom(Json{ { "parameters", params }, { "types", Json{ { "A", Json::object() } } } });
+            Fam::Values v;
+            std::string error;
+            const auto sum = EvalOf(flat, {});
+            Check(sum == 601.0 && !f.Values("A", {}, v, error) && Contains(error, "deep"), "族：长公式、长的公式链不会耗尽栈");
+        }
+        {
+            const auto ring = [](size_t n)
+            {
+                Json out = Json::array();
+                for (size_t k = 0; k < n; ++k)
+                {
+                    const double a = static_cast<double>(k) * 2.0 * kPi / static_cast<double>(n);
+                    out.push_back(Json::array({ 100.0 * std::cos(a), 100.0 * std::sin(a) }));
+                }
+                return out;
+            };
+            std::string error;
+            const Family f = FamilyFrom(Json{ { "types", Json{ { "A", Json::object() } } }, { "forms", Json::array({ Json{ { "profile", ring(Fam::MaxProfile + 1) }, { "to", 10 } } }) } });
+            bool ok = !f.Check([](const std::string&) { return true; }, error) && Contains(error, "corners");
+            // 很多类型，各建一点：加起来超过一个族能建的，拒绝
+            Json types = Json::object();
+            for (size_t k = 0; k < Fam::MaxTypes; ++k)
+                types["T" + std::to_string(k)] = Json::object();
+            const Json form = Json{ { "profile", ring(Fam::MaxProfile) }, { "to", 10 } };
+            const Family g = FamilyFrom(Json{ { "types", types }, { "forms", Json::array({ form, form }) } });
+            ok = ok && !g.Check([](const std::string&) { return true; }, error) && Contains(error, "triangles");
+            Check(ok, "族：太大建不出来的拒绝");
+        }
+        {
+            const Family f = FamilyFrom(table);
+            Fam::Values v;
+            std::vector<Fam::Piece> pieces;
+            std::string error;
+            bool ok = f.Values("1000 x 600", {}, v, error) && f.Pieces(v, pieces, error) && pieces.size() == 2;
+            if (ok)
+            {
+                const Fam::Piece& top = pieces[0];
+                ok = top.bottom == 720.0 && top.top == 750.0 && top.material == "Timber" && !top.round && std::abs(Volume(top.tris) - 1000.0 * 600.0 * 30.0) < 1e-3 &&
+                     top.outline == Ring{ P2(0, 0), P2(1000, 0), P2(1000, 600), P2(0, 600) };
+            }
+            // 藏起来：没有腿
+            Fam::Values noLegs = v;
+            noLegs["Legs"] = 0.0;
+            ok = ok && f.Pieces(noLegs, pieces, error) && pieces.size() == 1;
+            // 竖着的轮廓：x、z 上的靠背沿 y 扫；y、z 上的横杆沿 x 扫；圆柱的侧面算一个曲面
+            const Family g = FamilyFrom(Json::parse(R"({"types": {"A": {}}, "forms": [
+                {"plane": "xz", "profile": [[0, 400], [500, 400], [500, 900], [0, 900]], "from": 0, "to": 40},
+                {"plane": "yz", "profile": [[0, 0], [300, 0], [300, 100]], "from": 10, "to": 210},
+                {"circle": {"centre": [100, 100], "radius": 20}, "from": 0, "to": 1000}]})"));
+            ok = ok && g.Values("A", {}, v, error) && g.Pieces(v, pieces, error) && pieces.size() == 3;
+            if (ok)
+            {
+                const Fam::Piece &back = pieces[0], &rail = pieces[1], &post = pieces[2];
+                const double ring = Geom::Area(post.outline);
+                ok = std::abs(Volume(back.tris) - 500.0 * 500.0 * 40.0) < 1e-3 && back.bottom == 400.0 && back.top == 900.0 &&
+                     back.outline == Ring{ P2(0, 0), P2(500, 0), P2(500, 40), P2(0, 40) } && std::abs(Volume(rail.tris) - 300.0 * 100.0 / 2.0 * 200.0) < 1e-3 &&
+                     rail.outline == Ring{ P2(10, 0), P2(210, 0), P2(210, 300), P2(10, 300) } && post.round &&
+                     std::abs(Volume(post.tris) - ring * 1000.0) < 1e-3 && std::abs(ring / (kPi * 400.0) - 1.0) < 0.01;
+            }
+            // 没有扫过的距离：说出是哪个形体
+            Family flat = FamilyFrom(table);
+            flat.forms[0].to = std::string("Top");
+            ok = ok && flat.Values("Small", {}, v, error) && !flat.Pieces(v, pieces, error) && Contains(error, "form 1");
+            Check(ok, "族：形体的轮廓扫过它的平面");
+        }
+        {
+            // 管：x、z 上的矩形，离 z 轴 100 到 R，绕它转一整圈
+            const Json ring = Json::parse(R"([[100, 0], ["R", 0], ["R", 500], [100, 500]])");
+            const double k = 16.0 * std::sin(2.0 * kPi / 32.0) / kPi;
+            const double want = kPi * (300.0 * 300.0 - 100.0 * 100.0) * 500.0 * k;
+            const auto tube = BuiltOf(Json::array({ Json{ { "plane", "xz" }, { "profile", ring }, { "axis", Json::parse("[[0, 0], [0, 1]]") }, { "to", 360 } } }));
+            bool ok = tube && tube->size() == 1 && std::abs(Volume((*tube)[0].tris) / want - 1.0) < 1e-6 && (*tube)[0].bottom == 0.0 && (*tube)[0].top == 500.0 &&
+                      std::abs(Geom::Area((*tube)[0].outline) / (kPi * 300.0 * 300.0 * k) - 1.0) < 1e-6;
+            // 四分之一，两端封上；轴反着给，或在 x、y 上
+            const auto quarter =
+                BuiltOf(Json::array({ Json{ { "plane", "xz" }, { "profile", ring }, { "axis", Json::parse("[[0, 1], [0, 0]]") }, { "from", 0 }, { "to", 90 } } }));
+            ok = ok && quarter && std::abs(Volume((*quarter)[0].tris) / (want / 4.0) - 1.0) < 1e-6;
+            const auto half = BuiltOf(Json::parse(R"([{"profile": [[100, 0], [300, 0], [300, 50], [100, 50]], "axis": [[0, 0], [0, 1]], "to": 180}])"));
+            const double ringOf = kPi * (300.0 * 300.0 - 100.0 * 100.0) * 50.0 * k;
+            ok = ok && half && std::abs(Volume((*half)[0].tris) / (ringOf / 2.0) - 1.0) < 1e-6 && std::abs((*half)[0].top - (*half)[0].bottom - 300.0) < 1e-6;
+            // 轮廓横过轴、轴只有一点、转了零度或超过一圈：说出来
+            const std::pair<Json, const char*> bad[] = {
+                { Json::parse(R"({"plane": "xz", "profile": [[-100, 0], [300, 0], [300, 500]], "axis": [[0, 0], [0, 1]], "to": 360})"), "crosses its axis" },
+                { Json{ { "plane", "xz" }, { "profile", ring }, { "axis", Json::parse("[[0, 0], [0, 0]]") }, { "to", 360 } }, "axis" },
+                { Json{ { "plane", "xz" }, { "profile", ring }, { "axis", Json::parse("[[0, 0], [0, 1]]") }, { "from", 90 }, { "to", 90 } }, "nothing" },
+                { Json{ { "plane", "xz" }, { "profile", ring }, { "axis", Json::parse("[[0, 0], [0, 1]]") }, { "to", 400 } }, "360" },
+            };
+            for (const auto& [form, says] : bad)
+            {
+                std::string why;
+                ok = ok && !BuiltOf(Json::array({ form }), &why) && Contains(why, says) && Contains(why, "form 1");
+            }
+            Check(ok, "族：旋转体绕轴转它的轮廓");
+        }
+        {
+            // 同一根管，100 到 300、长 500：画在哪个平面、在轴的哪一侧、轴怎么给、从哪个角度起，体积都一样，朝外
+            const double k = 16.0 * std::sin(2.0 * kPi / 32.0);
+            const double want = k * (300.0 * 300.0 - 100.0 * 100.0) * 500.0;
+            const auto across = [](double a0, double a1) { return Json::array({ Json::array({ a0, 0 }), Json::array({ a1, 0 }), Json::array({ a1, 500 }), Json::array({ a0, 500 }) }); };
+            const std::tuple<const char*, Json, Json> cases[] = {
+                { "xz", across(100, 300), Json::parse("[[0, 0], [0, 1]]") },   { "xz", across(100, 300), Json::parse("[[0, 1], [0, 0]]") },
+                { "xz", across(-300, -100), Json::parse("[[0, 0], [0, 1]]") }, { "xz", across(-300, -100), Json::parse("[[0, 1], [0, 0]]") },
+                { "yz", across(100, 300), Json::parse("[[0, 0], [0, 1]]") },   { "yz", across(-300, -100), Json::parse("[[0, 1], [0, 0]]") },
+                { "xy", Json::parse("[[0, 100], [500, 100], [500, 300], [0, 300]]"), Json::parse("[[0, 0], [1, 0]]") },
+                { "xy", Json::parse("[[0, -300], [500, -300], [500, -100], [0, -100]]"), Json::parse("[[1, 0], [0, 0]]") },
+            };
+            bool ok = true;
+            for (const auto& [plane, profile, axis] : cases)
+                for (const auto& [from, to] : { std::pair{ 0, 360 }, std::pair{ -90, 270 }, std::pair{ 30, 390 } })
+                {
+                    const auto tube = BuiltOf(Json::array({ Json{ { "plane", plane }, { "profile", profile }, { "axis", axis }, { "from", from }, { "to", to } } }));
+                    ok = ok && tube && std::abs(Volume((*tube)[0].tris) / want - 1.0) < 1e-6;
+                }
+            // 不到一圈的由两个端面封上，朝外
+            const double sector = k / 4.0 * (300.0 * 300.0 - 100.0 * 100.0) * 500.0;
+            for (const auto& [from, to] : { std::pair{ 30, 120 }, std::pair{ -120, -30 } })
+                for (const Json& axis : { Json::parse("[[1000, 0], [1000, 1]]"), Json::parse("[[1000, 1], [1000, 0]]") })
+                {
+                    const auto part = BuiltOf(Json::array({ Json{ { "plane", "xz" }, { "profile", across(1100, 1300) }, { "axis", axis }, { "from", from }, { "to", to } } }));
+                    ok = ok && part && std::abs(Volume((*part)[0].tris) / sector - 1.0) < 1e-6;
+                }
+            Check(ok, "族：旋转体不论画在哪、往哪边转都朝外");
+        }
+        {
+            const double k = 16.0 * std::sin(2.0 * kPi / 32.0);
+            const Json ring = Json::parse("[[100, 0], [300, 0], [300, 500], [100, 500]]");
+            const auto quarter = BuiltOf(Json::array({ Json{ { "plane", "xz" }, { "profile", ring }, { "axis", Json::parse("[[0, 0], [0, 1]]") }, { "to", 90 } } }));
+            bool ok = quarter && std::abs(Geom::Area((*quarter)[0].outline) / (k / 4.0 * (300.0 * 300.0 - 100.0 * 100.0)) - 1.0) < 1e-6;
+            if (ok)
+                for (const P2& p : (*quarter)[0].outline)
+                    ok = ok && p.x > -1e-6 && p.y > -1e-6;
+            const auto down = BuiltOf(Json::array({ Json{ { "plane", "xz" }, { "profile", ring }, { "axis", Json::parse("[[0, 1], [0, 0]]") }, { "to", 90 } } }));
+            ok = ok && down;
+            if (ok)
+                for (const P2& p : (*down)[0].outline)
+                    ok = ok && p.x > -1e-6 && p.y < 1e-6;
+            const auto wedge = BuiltOf(Json::parse(R"([{"plane": "xz", "profile": [[0, 0], [300, 0], [300, 500], [0, 500]], "axis": [[0, 0], [0, 1]], "to": 90}])"));
+            ok = ok && wedge && std::abs(Geom::Area((*wedge)[0].outline) / (k / 4.0 * 300.0 * 300.0) - 1.0) < 1e-6;
+            // 绕旁边的轴转的圆：圆环，体积是圆面积乘圆心走过的路
+            const auto donut = BuiltOf(Json::parse(R"([{"plane": "xz", "circle": {"centre": [500, 100], "radius": 100}, "axis": [[0, 0], [0, 1]], "to": 360}])"));
+            const double exact = 2.0 * kPi * kPi * 500.0 * 100.0 * 100.0;
+            ok = ok && donut && std::abs(Volume((*donut)[0].tris) / exact - 1.0) < 0.03 && (*donut)[0].bottom == 0.0 && (*donut)[0].top == 200.0;
+            // 网格没有轴可转
+            const Family f = FamilyFrom(Json::parse(R"({"types": {"A": {}}, "forms": [{"mesh": [[[0, 0, 0], [1, 0, 0], [0, 1, 0]]], "axis": [[0, 0], [0, 1]]}]})"));
+            std::string error;
+            ok = ok && !f.Check([](const std::string&) { return true; }, error) && Contains(error, "axis");
+            Check(ok, "族：绕竖直轴转不到一圈在平面上是一段环；圆转出圆环");
+        }
+        {
+            const Json slab = Json::parse(R"({"profile": [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "from": 0, "to": 100})");
+            const auto hole = [](int shown)
+            {
+                Json h = Json::parse(R"({"profile": [[400, 400], [600, 400], [600, 600], [400, 600]], "from": -10, "to": 110, "void": true})");
+                h["visible"] = shown;
+                return h;
+            };
+            const auto cut = BuiltOf(Json::array({ slab, hole(1) }));
+            bool ok = cut && cut->size() == 1 && std::abs(Volume((*cut)[0].tris) - (1000.0 * 1000.0 - 200.0 * 200.0) * 100.0) < 1e-3;
+            // 藏起来的什么都不切；离开板的也不切
+            const auto hidden = BuiltOf(Json::array({ slab, hole(0) }));
+            ok = ok && hidden && std::abs(Volume((*hidden)[0].tris) - 1e8) < 1e-3;
+            const Json away = Json::parse(R"({"profile": [[2000, 0], [2100, 0], [2100, 100], [2000, 100]], "to": 100, "void": true})");
+            const auto far = BuiltOf(Json::array({ slab, away }));
+            ok = ok && far && std::abs(Volume((*far)[0].tris) - 1e8) < 1e-3;
+            // 空心形体只切列在它前面的：后面的完整，同窗扇洞里的玻璃
+            const Json pane = Json::parse(R"({"profile": [[450, 450], [550, 450], [550, 550], [450, 550]], "from": 0, "to": 100})");
+            const auto both = BuiltOf(Json::array({ slab, hole(1), pane }));
+            ok = ok && both && both->size() == 2 && std::abs(Volume((*both)[0].tris) - 9.6e7) < 1e-3 && std::abs(Volume((*both)[1].tris) - 1e6) < 1e-3;
+            // 方块里挖出圆盆，同洗手盆
+            const Json block = Json::parse(R"({"profile": [[-300, -300], [300, -300], [300, 300], [-300, 300]], "from": 0, "to": 200})");
+            const Json bowl = Json::parse(R"({"plane": "xz", "profile": [[0, 50], [200, 50], [200, 250], [0, 250]], "axis": [[0, 0], [0, 1]], "to": 360, "void": true})");
+            const auto basin = BuiltOf(Json::array({ block, bowl }));
+            const double k = 16.0 * std::sin(2.0 * kPi / 32.0);
+            ok = ok && basin && std::abs(Volume((*basin)[0].tris) - (600.0 * 600.0 * 200.0 - k * 200.0 * 200.0 * 150.0)) < 1.0;
+            Check(ok, "族：空心形体切掉它穿过的形体，自己不显示");
+        }
+        {
+            // 两个 64 角的旋转体，一个切另一个：做完，而且快
+            Json ring = Json::array();
+            for (size_t k = 0; k < Fam::MaxProfile; ++k)
+            {
+                const double a = static_cast<double>(k) * 2.0 * kPi / static_cast<double>(Fam::MaxProfile);
+                ring.push_back(Json::array({ 400.0 + 100.0 * std::cos(a), 300.0 + 100.0 * std::sin(a) }));
+            }
+            const Json solid = Json{ { "plane", "xz" }, { "profile", ring }, { "axis", Json::parse("[[0, 0], [0, 1]]") }, { "to", 360 } };
+            const Json cut = Json::parse(R"({"profile": [[-1000, -1000], [1000, -1000], [1000, 0], [-1000, 0]], "from": -10, "to": 1000, "void": true})");
+            const auto pieces = BuiltOf(Json::array({ solid, cut }));
+            Check(pieces && Volume((*pieces)[0].tris) > 0.0, "族：很多三角形的空心形体也切得完");
+        }
+        {
+            // csg.rs：板减去盒子：穿过、顶面的凹槽、角上、整个一侧、里面的空腔、全包住
+            const auto slab = Cuboid(P3{ 0, 0, 0 }, P3{ 1000, 1000, 100 });
+            const std::tuple<const char*, P3, P3, double, double> cases[] = {
+                { "through", P3{ 400, 400, -10 }, P3{ 600, 600, 110 }, 1e8 - 4e6, 2.4e6 },
+                { "a pocket", P3{ 400, 400, 50 }, P3{ 600, 600, 100 }, 1e8 - 2e6, 2.44e6 },
+                { "a corner", P3{ 0, 0, 0 }, P3{ 500, 500, 50 }, 1e8 - 1.25e7, 2.4e6 },
+                { "a side", P3{ -10, 0, 0 }, P3{ 1010, 300, 100 }, 1e8 - 3e7, 1.74e6 },
+                { "a cavity", P3{ 400, 400, 40 }, P3{ 600, 600, 60 }, 1e8 - 8e5, 2.496e6 },
+                { "all of it", P3{ -1, -1, -1 }, P3{ 1001, 1001, 101 }, 0.0, 0.0 },
+            };
+            bool ok = true;
+            for (const auto& [what, lo, hi, left, surface] : cases)
+            {
+                Csg::Meter meter;
+                std::vector<Tri> got;
+                std::string error;
+                if (!Csg::Subtract(slab, Cuboid(lo, hi), meter, got, error) || std::abs(Volume(got) - left) >= 1e-3 || std::abs(Surface(got) - surface) >= 1e-3)
+                {
+                    std::printf("  %s：剩 %f，表面 %f\n", what, Volume(got), Surface(got));
+                    ok = false;
+                }
+            }
+            Check(ok, "CSG：空心形体不论在哪都从实体里拿走它的体积");
+            // 减去自己什么都不剩；减去远处的原样；只贴着一个面的不拿走什么
+            const auto a = Cuboid(P3{ 0, 0, 0 }, P3{ 100, 100, 100 });
+            Csg::Meter meter;
+            std::vector<Tri> self, away, beside;
+            std::string error;
+            ok = Csg::Subtract(a, a, meter, self, error) && self.empty() && Csg::Subtract(a, Cuboid(P3{ 500, 500, 500 }, P3{ 600, 600, 600 }), meter, away, error) &&
+                 away == a && Csg::Subtract(a, Cuboid(P3{ 100, 0, 0 }, P3{ 200, 100, 100 }), meter, beside, error) && std::abs(Volume(beside) - 1e6) < 1e-3;
+            Check(ok, "CSG：减去自己什么都不剩，减去远处的原样");
+            // 三角形太多、工夫不够的说出来，不会没完没了；不是数的角点不让它崩
+            std::vector<Tri> tube;
+            const int n = 256;
+            const auto at = [](double z, int k) { return P3{ 200.0 * std::cos(k * 2.0 * kPi / n), 200.0 * std::sin(k * 2.0 * kPi / n), z }; };
+            for (int k = 0; k < n; ++k)
+            {
+                const P3 p = at(0, k), q = at(0, k + 1), r = at(500, k), t = at(500, k + 1);
+                tube.push_back(Tri{ p, q, t });
+                tube.push_back(Tri{ p, t, r });
+                tube.push_back(Tri{ P3{ 0, 0, 500 }, r, t });
+                tube.push_back(Tri{ P3{ 0, 0, 0 }, q, p });
+            }
+            const auto half = Cuboid(P3{ -1000, -1000, -10 }, P3{ 1000, 0, 510 });
+            std::vector<Tri> got;
+            Csg::Meter plenty;
+            ok = Csg::Subtract(tube, half, plenty, got, error) && std::abs(Volume(got) / (Volume(tube) / 2.0) - 1.0) < 1e-3;
+            const std::vector<Tri> many(Csg::MaxTriangles + 1, tube[0]);
+            Csg::Meter m1, poor{ 1000, 1000 };
+            ok = ok && !Csg::Subtract(many, half, m1, got, error) && Contains(error, "20000") && !Csg::Subtract(tube, half, poor, got, error) &&
+                 Contains(error, "too many faces");
+            const std::vector<Tri> odd{ Tri{ P3{ NAN, NAN, NAN }, P3{ NAN, NAN, NAN }, P3{ NAN, NAN, NAN } },
+                                        Tri{ P3{ INFINITY, INFINITY, INFINITY }, P3{ INFINITY, INFINITY, INFINITY }, P3{ INFINITY, INFINITY, INFINITY } },
+                                        Tri{ P3{ 0, 0, 0 }, P3{ 0, 0, 0 }, P3{ 0, 0, 0 } } };
+            Csg::Meter m2, m3;
+            ok = ok && Csg::Subtract(odd, half, m2, got, error) && Csg::Subtract(half, odd, m3, got, error);
+            Check(ok, "CSG：很多面的切割做得完，恶意的说出来，不是数的角点不崩");
+        }
+        {
+            // 内置族都检查通过：每种项目语言
+            bool ok = true;
+            for (const Language l : { Language::English, Language::Portuguese, Language::Spanish })
+            {
+                const auto lib = FamilyLibrary(l);
+                ok = ok && lib.size() == 10 + 6 + 18;
+                for (const auto& [n, f] : lib)
+                {
+                    std::string error;
+                    if (!f.Check([](const std::string&) { return true; }, error))
+                    {
+                        std::printf("  %s：%s\n", n.c_str(), error.c_str());
+                        ok = false;
+                    }
+                }
+            }
+            Check(ok, "族：新项目带的族都建得出来（各项目语言）");
+        }
+    }
 }
 
 int main()
@@ -977,6 +1420,7 @@ int main()
     TestWalls();
     TestLibrary();
     TestSkeleton();
+    TestFamily();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

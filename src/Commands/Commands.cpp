@@ -764,14 +764,42 @@ namespace MiniBIM::Bim
         {
             const char* c = isDoor ? "door" : "window";
             Params P(c, p, error);
+            // 族的类型，或项目自己的类型
             std::optional<std::string> family;
             if (!P.String("family", family))
                 return false;
-            // 族还没移植：项目里没有任何族
-            if (family)
-                return P.Fail("there's no " + std::string(c) + " family `" + *family + "` (there are: )");
             std::string typeName;
-            if (!TypeParam(P, m, c, typeName))
+            std::optional<double> familySill;
+            if (family)
+            {
+                const Fam::Category kind = isDoor ? Fam::Category::Door : Fam::Category::Window;
+                const auto f = m.families.find(*family);
+                if (f == m.families.end() || f->second.category != kind)
+                {
+                    std::string names;
+                    for (const auto& [n, x] : m.families)
+                        if (x.category == kind)
+                            names += (names.empty() ? "" : ", ") + n;
+                    return P.Fail("there's no " + std::string(c) + " family `" + *family + "` (there are: " + names + ")");
+                }
+                std::optional<std::string> t;
+                if (!P.String("type", t))
+                    return false;
+                if (t)
+                    typeName = *t;
+                else if (!f->second.types.empty())
+                    typeName = f->second.types.begin()->first;
+                else
+                    return P.Fail("family `" + *family + "` has no type");
+                Fam::Values values;
+                std::string why;
+                if (!f->second.Values(typeName, {}, values, why))
+                    return P.Fail(why);
+                if (const auto v = values.find(Fam::Sill); v != values.end())
+                    if (const double* x = std::get_if<double>(&v->second))
+                        familySill = *x;
+            }
+            else if (!TypeParam(P, m, c, typeName))
                 return false;
             std::optional<P2> at;
             std::optional<Guid> wall;
@@ -806,7 +834,8 @@ namespace MiniBIM::Bim
                 return false;
             const auto& types = isDoor ? m.types.door : m.types.window;
             const auto t = types.find(typeName);
-            const double defaultSill = t == types.end() ? 0.0 : t->second.sill;
+            const double defaultSill = familySill ? *familySill : (family ? (isDoor ? 0.0 : 900.0) : (t == types.end() ? 0.0 : t->second.sill));
+            o.family   = family;
             o.typeName = typeName;
             o.host     = host;
             o.offset   = offset.value_or(alongAt);
@@ -1132,6 +1161,241 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // ── 族与构件 ─────────────────────────────────────────────
+        void Merge(Json& into, const Json& patch);
+
+        // old 里同一位置的部件把 ID 和 GUID 交给 fresh 里自己没有的：原地不动的保留它们
+        template <class T>
+        void KeepParts(const std::vector<T>& old, std::vector<T>& fresh)
+        {
+            for (size_t i = 0; i < old.size() && i < fresh.size(); ++i)
+                if (fresh[i].id == 0 && fresh[i].guid.IsNil())
+                {
+                    fresh[i].id   = old[i].id;
+                    fresh[i].guid = old[i].guid;
+                }
+        }
+
+        bool FamilyCmd(Session& s, const Json& given, Json& result, std::string& error)
+        {
+            const char* c = "family";
+            Json p = given;
+            // 从文件读：文件里的字段，名称取给出的、文件自己的，或文件名
+            {
+                Params P(c, p, error);
+                std::optional<std::string> path;
+                if (!P.String("path", path))
+                    return false;
+                if (path)
+                {
+                    std::string text, why;
+                    if (!ReadFile(*path, text, why))
+                        return P.Fail(why);
+                    Json loaded = Json::parse(text, nullptr, false);
+                    if (loaded.is_discarded())
+                        return P.Fail(*path + " is not a family: it isn't JSON");
+                    if (!loaded.is_object())
+                        return P.Fail(*path + " is not a family: it isn't an object");
+                    const std::u8string stem = ToPath(*path).stem().u8string();
+                    Json name = !Absent(p, "name") ? p["name"] : (loaded.contains("name") ? loaded["name"] : Json(std::string(stem.begin(), stem.end())));
+                    // 只取它带的族：文件说要改名或删除不算数
+                    Json fam = Json::object();
+                    for (const char* k : { "category", "parameters", "types", "forms", "symbols", "operation" })
+                        if (loaded.contains(k))
+                            fam[k] = loaded[k];
+                    fam["name"] = name;
+                    p = std::move(fam);
+                }
+            }
+            Params P(c, p, error);
+            std::optional<std::string> nameGiven;
+            if (!P.String("name", nameGiven))
+                return false;
+            const std::string name = nameGiven ? std::string(Text::Trim(*nameGiven)) : std::string();
+            if (name.empty())
+                return P.Fail("`name` is required");
+            // 项目的族存成文件：path 能把它读回来
+            std::optional<std::string> saveTo;
+            if (!P.String("save", saveTo))
+                return false;
+            if (saveTo)
+            {
+                const auto f = s.GetModel().families.find(name);
+                if (f == s.GetModel().families.end())
+                    return P.Fail("there's no family `" + name + "` to save");
+                Json v = ToJson(f->second);
+                v["name"] = name;
+                std::string why;
+                if (!AtomicWrite(*saveTo, v.dump(2), why))
+                    return P.Fail(*saveTo + ": " + why);
+                result = Json{ { "saved", name }, { "path", *saveTo } };
+                return true;
+            }
+            Model& m = s.ModelMut();
+            const auto users = [&](const std::string& n)
+            {
+                std::vector<Id> out;
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const auto fo = e->FamilyOf(); fo && fo->first == n)
+                        out.push_back(id);
+                return out;
+            };
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                if (!m.families.count(name))
+                    return P.Fail("there's no family `" + name + "`");
+                const auto used = users(name);
+                if (!used.empty())
+                {
+                    std::string ids;
+                    for (const Id id : used)
+                        ids += (ids.empty() ? "" : ", ") + std::to_string(id);
+                    return P.Fail("elements " + ids + " are of `" + name + "`; delete them first");
+                }
+                m.families.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            Family f = m.families.count(name) ? m.families.at(name) : Family{};
+            // 给出的每个字段按族读：读不懂的说是哪个字段
+            const auto part = [&](const char* key, Family& out) -> bool
+            {
+                Json one = Json::object();
+                one[key] = *Get(p, key);
+                std::string why;
+                if (!FromJson(one, out, why))
+                    return P.Fail("`" + std::string(key) + "`: " + why);
+                return true;
+            };
+            if (!Absent(p, "category"))
+            {
+                Family x;
+                if (!part("category", x))
+                    return false;
+                f.category = x.category;
+            }
+            if (!Absent(p, "parameters"))
+            {
+                Family x;
+                if (!part("parameters", x))
+                    return false;
+                f.parameters = std::move(x.parameters);
+            }
+            if (!Absent(p, "forms"))
+            {
+                Family x;
+                if (!part("forms", x))
+                    return false;
+                KeepParts(f.forms, x.forms);
+                f.forms = std::move(x.forms);
+            }
+            if (!Absent(p, "symbols"))
+            {
+                Family x;
+                if (!part("symbols", x))
+                    return false;
+                KeepParts(f.symbols, x.symbols);
+                f.symbols = std::move(x.symbols);
+            }
+            std::optional<std::string> op;
+            if (!P.String("operation", op))
+                return false;
+            if (op)
+            {
+                if (Text::Trim(*op).empty())
+                    f.operation.reset();
+                else
+                {
+                    f.operation = OperationOf::Parse(*op);
+                    if (!f.operation)
+                        return P.Fail("`operation` is one of swing, double-swing, sliding, double-sliding, folding, fixed, not `" + *op + "`");
+                }
+            }
+            if (!Absent(p, "types"))
+            {
+                Json types = ToJson(f)["types"];
+                Merge(types, *Get(p, "types"));
+                Family x;
+                Json one = Json{ { "types", types } };
+                std::string why;
+                if (!FromJson(one, x, why))
+                    return P.Fail("`types`: " + why);
+                f.types = std::move(x.types);
+            }
+            std::string now = name;
+            std::optional<std::string> rename;
+            if (!P.String("rename", rename))
+                return false;
+            if (rename)
+            {
+                const std::string to(Text::Trim(*rename));
+                if (to.empty())
+                    return P.Fail("`rename` needs a name");
+                if (to != name && m.families.count(to))
+                    return P.Fail("there's a family `" + to + "` already");
+                m.families.erase(name);
+                m.library.FamilyRenamed(name, to);
+                for (const Id id : users(name))
+                    *m.elements.GetMut(id)->FamilyMut() = to;
+                now = to;
+            }
+            m.families[now] = f;
+            result = Json{ { "name", now }, { "family", ToJson(f) } };
+            return true;
+        }
+
+        bool ComponentCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "component";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<std::string> family;
+            if (!P.String("family", family))
+                return false;
+            if (!family)
+                return P.Fail("`family` is required; `inspect` lists the families");
+            const auto f = m.families.find(*family);
+            if (f == m.families.end())
+            {
+                std::string names;
+                for (const auto& [n, _] : m.families)
+                    names += (names.empty() ? "" : ", ") + n;
+                return P.Fail("family `" + *family + "` doesn't exist (there are: " + names + ")");
+            }
+            std::optional<std::string> type;
+            if (!P.String("type", type))
+                return false;
+            Component comp;
+            comp.family = *family;
+            if (type)
+                comp.typeName = *type;
+            else if (!f->second.types.empty())
+                comp.typeName = f->second.types.begin()->first;
+            else
+                return P.Fail("family `" + *family + "` has no type");
+            if (!Absent(p, "params"))
+            {
+                const Json& v = *Get(p, "params");
+                if (!v.is_object())
+                    return P.Fail("`params` is {parameter: value}, not " + Show(v));
+                for (auto it = v.begin(); it != v.end(); ++it)
+                    if (!it.value().is_null())
+                        comp.params[it.key()] = it.value();
+            }
+            std::optional<double> angle, offset;
+            if (!LevelParam(c, m, p, "level", comp.level, error) || !P.PointReq("at", comp.at) || !P.Num("angle", angle) || !P.Num("offset", offset) ||
+                !P.Flag("mirrored", comp.mirrored))
+                return false;
+            comp.angle  = angle.value_or(0.0);
+            comp.offset = offset.value_or(0.0);
+            const Id id = s.ModelMut().Insert(std::move(comp));
+            result = Json{ { "id", id } };
+            return true;
+        }
+
         // ── 类型与材质 ───────────────────────────────────────────
         // 一层，严格地读（拼错的键报错）
         bool LayerParam(const char* c, const Json& v, Layer& l, std::string& error)
@@ -1436,6 +1700,8 @@ namespace MiniBIM::Bim
                     for (const Layer& l : *t.layers)
                         if (l.material == name)
                             return P.Fail("`" + name + "` is in " + t.category + " type `" + *t.name + "`'s layers; take it out of them first");
+                if (const auto user = m.MaterialUser(name))
+                    return P.Fail("`" + name + "` is in " + *user + "; take it out of it first");
                 m.materials.erase(name);
                 result = Json{ { "deleted", name } };
                 return true;
@@ -1491,6 +1757,7 @@ namespace MiniBIM::Bim
                     for (Layer& l : t.layers)
                         if (l.material == name)
                             l.material = to;
+                m.RenameMaterialInFamilies(name, to);
                 now = to;
             }
             m.materials[now] = mat;
@@ -1671,6 +1938,8 @@ namespace MiniBIM::Bim
             }
             else if (Room* r = out.As<Room>())
                 r->point = f(r->point);
+            else if (Component* cp = out.As<Component>())
+                std::tie(cp->at, cp->angle) = Turned(f, cp->at, cp->angle);
             else if (Roof* r = out.As<Roof>())
             {
                 // 边保持编号，山墙随之
@@ -2023,6 +2292,35 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        Json ValuesJson(const Fam::Values& values)
+        {
+            Json out = Json::object();
+            for (const auto& [k, x] : values)
+            {
+                if (const double* d = std::get_if<double>(&x))
+                    out[k] = *d;
+                else
+                    out[k] = std::get<std::string>(x);
+            }
+            return out;
+        }
+
+        // 族：各自的类别、类型与参数名
+        Json FamiliesJson(const Model& m)
+        {
+            Json all = Json::object();
+            for (const auto& [n, f] : m.families)
+            {
+                Json types = Json::array(), params = Json::array();
+                for (const auto& [t, _] : f.types)
+                    types.push_back(t);
+                for (const Fam::Parameter& q : f.parameters)
+                    params.push_back(q.name);
+                all[n] = Json{ { "category", Fam::CategoryOf::Name(f.category) }, { "types", types }, { "parameters", params } };
+            }
+            return all;
+        }
+
         bool Inspect(Session& s, const Json&, Json& result, std::string&)
         {
             const Model& m = s.GetModel();
@@ -2044,6 +2342,7 @@ namespace MiniBIM::Bim
                            { "counts", countsJson },
                            { "types", Bim::ToJson(m.types) },
                            { "materials", Bim::ToJson(m.materials) },
+                           { "families", FamiliesJson(m) },
                            { "warnings", Json::array() },
                            { "history", s.History() } };
             return true;
@@ -2107,8 +2406,8 @@ namespace MiniBIM::Bim
               "interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls drawn "
               "clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands on", WallCmd, true },
             { "door", N_("Door"), { "DR" },
-              "{at: [x,y] | wall: id, offset?, type?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, or in `wall` centred "
-              "`offset` mm from its start", DoorCmd, true },
+              "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, or in `wall` "
+              "centred `offset` mm from its start; of the project's door `type`, or of a door `family` and its `type`", DoorCmd, true },
             { "window", N_("Window"), { "WN" },
               "{at: [x,y] | wall: id, offset?, sill?, type?, level?, mark?, flip_facing?} like door; `sill` defaults to the type's", WindowCmd, true },
             { "floor", N_("Floor"), {},
@@ -2147,6 +2446,28 @@ namespace MiniBIM::Bim
             { "material", N_("Materials"), {},
               "{name, color?: \"#rrggbb\" | [r, g, b], cut?, surface?, rename?, delete?: true} a material of the project's library, created or "
               "changed: its colour in shaded 3D views, the pattern its cut shows and the one its surfaces show", MaterialCmd, true },
+            { "family", N_("Load Family"), {},
+              "{name, category?: furniture|casework|plumbing|lighting|generic|door|window, parameters?: [{name, kind?: length|number|"
+              "angle|yesno|material, instance?, value?, formula?}], types?: {type: {parameter: value}}, forms?: [{plane?: xy|xz|yz, "
+              "profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, void?}], "
+              "symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to}, visible?}], operation?: swing|double-swing|sliding|"
+              "double-sliding|folding|fixed (a door's or window's, for IFC and schedules), rename?, delete?: true, path?, save?} a family of the "
+              "project's, MiniBIM's own parametric component (ported from BIMCraft): created, changed, or loaded from the .json file at `path` "
+              "(a family as `inspect` shows it, with its `name`). Its forms are profiles drawn in its own axes (x along a component's angle, y "
+              "to its left, z up from its base) and swept: `xy` up from `from` to `to`, `xz` along y, `yz` along x. With an `axis`, a line in "
+              "that plane, the profile is turned about it instead, `from` to `to` degrees (up to 360). A `void` is no solid: it cuts the solid "
+              "forms listed before it that it passes through, and is never seen itself. A `door` or `window` family stands in a wall, placed "
+              "with `door` or `window` and a `family`: its forms are drawn in the opening's axes (x along the wall from the middle of the "
+              "opening, y across it, 0 in the middle of the wall and + toward its exterior, z up from the sill), it must have length "
+              "parameters `Width` and `Height`, and its formulas read `Wall Thickness`, the wall's. Its `symbols` are the lines its plan "
+              "draws. Sizes are mm, or formulas over its parameters as Revit's are: `Width / 2`, `if(Depth > 600, 4, 2)`. A parameter is "
+              "each type's, or with `instance` each component's. `types` merges into its types (a null takes one away); `parameters` and "
+              "`forms` replace its own", FamilyCmd, true },
+            { "component", N_("Component"), { "CM" },
+              "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}} a family's type placed, its first "
+              "by default: at a point on a level, turned `angle` degrees counter-clockwise, `offset` mm up from the level, and with `mirrored` "
+              "flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null taking one back to the "
+              "family's)", ComponentCmd, true },
             { "flip", N_("Flip"), {},
               "{ids: [wall,…]} turns walls round about their location lines: their exterior sides go to the other side, their doors and "
               "windows stay where they are", Flip, true },
@@ -2211,7 +2532,32 @@ namespace MiniBIM::Bim
                     v["operation"] = OperationOf::Name(*t->operation);
                 v["level"] = ToJson(host->level);
                 v["at"]    = ToJson(Walls::Axis::Of(*host).At(o->offset, 0.0));
+                // 族的：每个参数算出的值
+                if (o->family)
+                    if (const auto f = m.families.find(*o->family); f != m.families.end())
+                    {
+                        Fam::Values values;
+                        std::string why;
+                        if (f->second.ValuesIn(o->typeName, o->params, m.Thickness(*host), values, why))
+                            v["values"] = ValuesJson(values);
+                    }
             }
+        }
+        else if (const Component* cp = e->As<Component>())
+        {
+            // 每个参数算出的值，以及它高出底部多少
+            if (const auto f = m.families.find(cp->family); f != m.families.end())
+            {
+                Fam::Values values;
+                std::string why;
+                if (f->second.Values(cp->typeName, cp->params, values, why))
+                    v["values"] = ValuesJson(values);
+            }
+            const double base = m.Elevation(cp->level) + cp->offset;
+            double top = base;
+            for (const Fam::Piece& pc : m.ComponentPieces(*cp))
+                top = std::max(top, pc.top);
+            v["height"] = Hundredth(top - base);
         }
         else if (const Floor* f = e->As<Floor>())
         {

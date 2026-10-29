@@ -51,8 +51,8 @@ namespace
         if (!built)
             std::printf("  %s\n", error.c_str());
         const ModelScene::Counts& c = scene.GetCounts();
-        Check(built && c.walls == 7 && c.floors == 1 && c.doors == 4 && c.windows == 5 && c.ceilings == 4 && c.roofs == 1,
-              "三维场景：示例房屋的墙、楼板、门、窗、天花板、屋顶都建出来");
+        Check(built && c.walls == 7 && c.floors == 1 && c.doors == 4 && c.windows == 5 && c.ceilings == 4 && c.roofs == 1 && c.components == 11,
+              "三维场景：示例房屋的墙、楼板、门、窗、天花板、屋顶、家具都建出来");
         Check(!scene.GetTriangles().empty() && scene.GetTriangles().size() % 3 == 0 && !scene.GetEdges().empty() && scene.GetEdges().size() % 2 == 0,
               "三维场景：有三角形和边线");
         // 外墙 300 毫米厚、中心线在 10 × 7 米的轴线上；楼板 200 毫米厚，顶面在标高上。屋顶伸出外墙面 500，

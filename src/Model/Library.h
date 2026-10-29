@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
-// 项目的库与元素一样有 ID 和 GUID：每个类型、材质（BIMCraft 还有图片、族、参数、视图过滤器……，移植到时再加）。
+// 项目的库与元素一样有 ID 和 GUID：每个类型、材质、族、族类型、族参数（BIMCraft 还有图片、参数、视图过滤器……，移植到时再加）。
 // ID 与元素的出自同一个计数（一个 ID 在整个项目里只指一样东西），从 LastId 往下数；GUID 生成一次、永不改变，改名也不变。
 //
 // 用到库条目的地方在内存里写它的名称（type_name、层的 material……），Library 知道哪个名称是哪个 GUID。
@@ -74,13 +74,13 @@ namespace MiniBIM::Bim
         bool operator==(const Entry&) const = default;
     };
 
-    // 库条目的一部分，自己带 ID 和 GUID，在列表里的位置不变就一直保留：类型的层（BIMCraft 还有族的形体、平面符号）。
+    // 库条目的一部分，自己带 ID 和 GUID，在列表里的位置不变就一直保留：类型的层、族的形体与平面符号。
     // what 是什么，of 属于谁，在其中的位置
     struct Part
     {
         std::string what;
         std::string of;
-        std::string owner;      // 所属类型的名称
+        std::string owner;      // 所属类型或族的名称
         size_t      index = 0;
         Guid        guid;
 
@@ -110,6 +110,8 @@ namespace MiniBIM::Bim
         bool Insert(Id id, Entry e, std::string& error);
         // kind 的 old 改名为 new：同一个条目，ID 和 GUID 不变
         void Renamed(const Kind& kind, const std::string& oldName, const std::string& newName);
+        // 族 old 改名为 new：连同它的类型与参数（"族: 类型"）
+        void FamilyRenamed(const std::string& oldName, const std::string& newName);
 
         // 条目或部件用过的最小 ID（包括已经去掉的）
         std::optional<Id> LowestId() const;
