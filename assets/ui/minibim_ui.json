@@ -5,7 +5,8 @@
 // - 菜单文字不写助记符 &：菜单上不显示下划线，也不显示 "(F)" 这样的字母（键盘用 F10 激活菜单栏、方向键选择）
 // - menus / toolbars 的项是命令 ID，"-" 为分隔线；{ "title": …, "dynamic": "languages" } 是程序生成的语言列表
 // - ribbons：功能区（布局里 { "type": "ribbon", "id": … } 引用）：选项卡 → 组 → 命令
-// - 宿主提供的面板：viewport（视图：三维或平面）、properties（特性）、browser（项目浏览器）、statusbar（状态栏）
+// - 宿主提供的面板：viewport（视图：三维或平面）、options（选项栏：当前工具的选项）、properties（特性）、browser（项目浏览器）、
+//   statusbar（状态栏）
 // - dock：停靠区，root 为布局树（split: row / column，tabs: 面板列表，size: 尺寸）；拖动面板标签可停靠到别处、合并为标签或浮出
 // - 图标（commands 的 "icon"、titlebar 的 "icon"）都在 assets/icons，由 tools/make_icons.py 生成：要新图标先在脚本里加，
 //   再在这里引用（python tools/make_icons.py --check 核对引用）。菜单项不显示图标
@@ -21,8 +22,19 @@
     "edit.undo":    { "icon": "Undo.png", "shortcut": "Ctrl+Z" },
     "edit.redo":    { "icon": "Redo.png", "shortcut": "Ctrl+Y" },
     "edit.delete":  { "icon": "Delete.png", "shortcut": "Delete" },
-    "edit.selectNone": { "shortcut": "Esc" },
+    "edit.escape":  { "shortcut": "Esc" },
+    "modify.select": { "icon": "Select.png" },
     "modify.flip":  { "icon": "FlipWall.png" },
+    "arch.wall":      { "icon": "Wall.png" },
+    "arch.door":      { "icon": "Door.png" },
+    "arch.window":    { "icon": "Window.png" },
+    "arch.component": { "icon": "Component.png" },
+    "arch.roof":      { "icon": "Roof.png" },
+    "arch.floor":     { "icon": "Floor.png" },
+    "arch.ceiling":   { "icon": "Ceiling.png" },
+    "arch.room":      { "icon": "Room.png" },
+    "arch.level":     { "icon": "Level.png" },
+    "arch.grid":      { "icon": "Grid.png" },
     "view.3d":        { "icon": "View3D.png" },
     "view.plan":      { "icon": "FloorPlan.png" },
     "view.levelUp":   { "icon": "LevelUp.png", "shortcut": "PageUp" },
@@ -49,8 +61,18 @@
       "search": false,
       "tabs": [
         {
+          "title": "Architecture",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Build", "items": [ "arch.wall", "arch.door", "arch.window", "arch.component", "arch.roof", "arch.floor", "arch.ceiling" ] },
+            { "title": "Room & Area", "items": [ "arch.room" ] },
+            { "title": "Datum", "items": [ "arch.level", "arch.grid" ] }
+          ]
+        },
+        {
           "title": "Modify",
           "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
             { "title": "Properties", "items": [ "view.properties" ] },
             { "title": "Modify", "items": [ "modify.flip", "edit.delete" ] }
           ]
@@ -79,6 +101,8 @@
         ]
       },
       { "type": "ribbon", "id": "main", "shrink": 0 },
+      // 选项栏：当前工具的选项（墙的高度与定位线、屋顶的坡度……），没有工具时只有一行提示
+      { "type": "panel", "name": "options", "shrink": 0 },
       // 特性在左上、项目浏览器在左下（同 Revit），右边是视图
       {
         "type": "dock",

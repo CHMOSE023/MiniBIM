@@ -49,13 +49,31 @@ namespace MiniBIM
         add("edit.redo", N_("Redo"), N_("Redo the change undone last"), [this] { StepHistory(true); }, [this] { return m_session.CanRedo(); });
         add("edit.delete", N_("Delete"), N_("Delete the selected elements; a wall takes its doors and windows with it"),
             [this] { DeleteSelection(); }, [this] { return !m_selection.empty(); });
-        add("edit.selectNone", N_("Deselect"), N_("Clear the selection"), [this] { SetSelection({}); }, [this] { return !m_selection.empty(); });
+        add("edit.escape", N_("Cancel"), N_("Drop what the tool has drawn so far, then the tool, then the selection"), [this] { Escape(); });
+        add("modify.select", N_("Modify"), N_("Select and change elements"), [this] { SetTool(Tool::Modify); }, {},
+            [this] { return m_tool == Tool::Modify; });
         add("modify.flip", N_("Flip Wall"), N_("Turn the selected walls round: their exterior sides go to the other side"), [this] { FlipSelection(); },
             [this]
             {
                 const Bim::Model& m = m_session.GetModel();
                 return std::any_of(m_selection.begin(), m_selection.end(), [&](Bim::Id id) { return m.GetWall(id) != nullptr; });
             });
+
+        // ── 建筑：放东西的工具（Tools.cpp）─────────────────────────
+        auto tool = [&](const char* id, const char* label, const char* tooltip, Tool t)
+        {
+            add(id, label, tooltip, [this, t] { SetTool(m_tool == t && t != Tool::Modify ? Tool::Modify : t); }, {}, [this, t] { return m_tool == t; });
+        };
+        tool("arch.wall", N_("Wall"), N_("Wall: each click builds a wall; Enter or Esc ends the chain"), Tool::Wall);
+        tool("arch.door", N_("Door"), N_("Door: click a wall"), Tool::Door);
+        tool("arch.window", N_("Window"), N_("Window: click a wall"), Tool::Window);
+        tool("arch.component", N_("Component"), N_("Component: a family's type, where you click; Space turns it"), Tool::Component);
+        tool("arch.roof", N_("Roof"), N_("Roof by Footprint: click inside the walls to roof them, on the level above"), Tool::Roof);
+        tool("arch.floor", N_("Floor"), N_("Floor: click inside the walls to floor them"), Tool::Floor);
+        tool("arch.ceiling", N_("Ceiling"), N_("Ceiling: click inside a room for a ceiling out to its walls"), Tool::Ceiling);
+        tool("arch.room", N_("Room"), N_("Room: click inside walls"), Tool::Room);
+        tool("arch.level", N_("Level"), N_("Level: a new level at an elevation"), Tool::Level);
+        tool("arch.grid", N_("Grid"), N_("Grid: click its two ends"), Tool::Grid);
 
         // ── 视图 ─────────────────────────────────────────────────
         add("view.3d", N_("3D View"), N_("Show the model in 3D"), [this] { ShowModel3D(); });

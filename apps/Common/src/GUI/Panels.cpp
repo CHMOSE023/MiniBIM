@@ -129,8 +129,9 @@ namespace MiniBIM
         m_propsBody->RemoveAllChildren();
         const Bim::Model& m = m_session.GetModel();
 
-        // 显示什么：选中的一类元素、几类元素，或者没选东西时的视图
+        // 显示什么：选中的一类元素、几类元素，没选东西时工具要放的（"新建 …"），否则视图
         std::string category;
+        const bool placing = m_selection.empty() && ToolCategory();
         std::vector<Bim::Id> ids;
         std::span<const Props::Row> rows;
         std::string heading;
@@ -149,6 +150,11 @@ namespace MiniBIM
             }
             else
                 heading = Format(Tr("Multiple Categories ({0})"), { std::to_string(m_selection.size()) });
+        }
+        else if (placing)
+        {
+            category = ToolCategory();
+            heading  = Format(Tr("New {0}"), { Tr(Props::CategoryName(category, false)) });
         }
         else if (m_planLevel)
         {
@@ -189,11 +195,29 @@ namespace MiniBIM
             const std::string type = e.value("type", std::string());
             current.insert(e.contains("family") && e["family"].is_string() ? PairLabel(e["family"].get<std::string>(), type) : type);
         }
-        const std::string family = m_selection.empty() ? (m_planLevel ? Tr("Floor Plan") : Tr("3D View"))
+        // 工具要放的：选项里选过的，否则项目默认的（构件为第一个族的第一个类型）
+        if (placing)
+        {
+            const auto f = m_toolOpt.openingFamilies.find(category);
+            const auto t = m_toolOpt.types.find(category);
+            if (category == "component")
+            {
+                if (const auto what = Placing())
+                    current.insert(PairLabel(what->first, what->second));
+            }
+            else if (f != m_toolOpt.openingFamilies.end() && t != m_toolOpt.types.end())
+                current.insert(PairLabel(f->second, t->second));
+            else if (t != m_toolOpt.types.end())
+                current.insert(t->second);
+            else if (const auto d = m.DefaultType(category))
+                current.insert(*d);
+        }
+        const std::string family = placing             ? Tr(Props::CategoryName(category, false))
+                                 : m_selection.empty() ? (m_planLevel ? Tr("Floor Plan") : Tr("3D View"))
                                  : category.empty()    ? Tr("Multiple Categories")
                                                        : Tr(Props::CategoryName(category, false));
         m_propsBody->AddChild<Label>(family, 13.0f)->SetBold(true);
-        if (!names.empty() && !ids.empty() && !m_selection.empty())
+        if (!names.empty() && ((!ids.empty() && !m_selection.empty()) || placing))
         {
             int at = -1;
             if (current.size() == 1)
@@ -202,10 +226,29 @@ namespace MiniBIM
             auto* types = m_propsBody->AddChild<ComboBox>(names, at);
             types->SetTooltip(Tr("Type Selector"));
             types->SetMaxVisibleItems(16);
-            types->SetOnChanged([this, names, own, pairs, ids, hosted](int i)
+            types->SetOnChanged([this, names, own, pairs, ids, hosted, placing, category](int i)
             {
                 if (i < 0 || static_cast<size_t>(i) >= names.size())
                     return;
+                // 选的是工具接下来放的类型
+                if (placing)
+                {
+                    if (category == "component")
+                        m_toolOpt.component = pairs[static_cast<size_t>(i)];
+                    else if (static_cast<size_t>(i) < own)
+                    {
+                        m_toolOpt.types[category] = names[static_cast<size_t>(i)];
+                        m_toolOpt.openingFamilies.erase(category);
+                    }
+                    else
+                    {
+                        m_toolOpt.openingFamilies[category] = pairs[static_cast<size_t>(i) - own].first;
+                        m_toolOpt.types[category]           = pairs[static_cast<size_t>(i) - own].second;
+                    }
+                    if (m_viewport)
+                        m_viewport->RequestRender();
+                    return;
+                }
                 Bim::Json p{ { "ids", ids } };
                 if (static_cast<size_t>(i) < own)
                 {

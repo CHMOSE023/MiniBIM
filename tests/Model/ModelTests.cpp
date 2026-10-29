@@ -10,7 +10,9 @@
 #include "Model/Language.h"
 #include "Model/Model.h"
 #include "Model/ModelJson.h"
+#include "Model/Render.h"
 #include "Model/Skeleton.h"
+#include "Model/Snap.h"
 #include "Model/Units.h"
 #include "Model/Walls.h"
 #include <algorithm>
@@ -1456,6 +1458,207 @@ namespace
     }
 }
 
+
+namespace
+{
+    // ── 捕捉（snap.rs 的测试）────────────────────────────────────
+    namespace SnapTest
+    {
+        constexpr Snap::Reach Reach{ 100.0, 60.0 };
+
+        // 新项目最低的标高上
+        Snap::Found At(const Model& m, P2 p, std::vector<P2> from, const Snap::Snaps& o, bool square = false)
+        {
+            return Snap::At(m, m.GuidOf(m.Levels().front().first), p, Reach, from, square, o);
+        }
+
+        double Degrees(P2 from, P2 to) { return std::atan2(to.y - from.y, to.x - from.x) * 180.0 / 3.14159265358979323846; }
+    }
+
+    void TestSnap()
+    {
+        using namespace SnapTest;
+        using Snap::Kind;
+        const Snap::Snaps o;
+        {
+            const Session s = Scripted(R"(wall {"points": [[0,0],[6000,0]]}
+wall {"points": [[0,5000],[4000,5000]], "arc": 180})");
+            const Model& m = s.GetModel();
+            bool ok = At(m, { 30, -20 }, {}, o) == Snap::Found{ { 0, 0 }, Kind::Endpoint, std::nullopt };
+            ok = ok && At(m, { 3040, 30 }, {}, o) == Snap::Found{ { 3000, 0 }, Kind::Midpoint, std::nullopt };
+            // 圆弧的圆心与它长度的中点
+            ok = ok && At(m, { 2030, 4980 }, {}, o) == Snap::Found{ { 2000, 5000 }, Kind::Centre, std::nullopt };
+            const auto mid = At(m, { 2030, 3020 }, {}, o);
+            ok = ok && mid.kind == Kind::Midpoint && std::abs(mid.at.Dist({ 2000, 5000 }) - 2000.0) < 1e-3;
+            // 超出它们的范围：墙的中心线，再是最近的 10 毫米
+            ok = ok && At(m, { 1234, 40 }, {}, o) == Snap::Found{ { 1230, 0 }, Kind::Nearest, std::nullopt };
+            ok = ok && At(m, { 1234, 900 }, {}, o) == Snap::Found{ { 1230, 900 }, Kind::Free, std::nullopt };
+            Check(ok, "捕捉：墙的端点、中点、圆心，墙的中心线，最近的 10 毫米");
+        }
+        {
+            const Session s = Scripted(R"(wall {"points": [[0,0],[6000,0]]}
+wall {"points": [[2000,-1000],[2000,3000]]})");
+            const Model& m = s.GetModel();
+            bool ok = At(m, { 2040, 30 }, {}, o) == Snap::Found{ { 2000, 0 }, Kind::Intersection, std::nullopt };
+            // 闭合一圈：点过的第一个点
+            const auto f = At(m, { 5030, 5020 }, { { 5000, 5000 }, { 5000, 4000 }, { 3000, 4000 } }, o);
+            ok = ok && f.at == P2{ 5000, 5000 } && f.kind == Kind::Endpoint;
+            Check(ok, "捕捉：墙相交处，点过的点是端点");
+        }
+        {
+            const Session s = Scripted(R"(wall {"points": [[0,0],[6000,2000]]})");
+            const Model& m = s.GetModel();
+            const auto f = At(m, { 2130, 680 }, { { 1000, 4000 } }, o);
+            bool ok = f.kind == Kind::Perpendicular && f.at.Dist({ 2100, 700 }) < 1e-6 && f.guide && f.guide->from == P2{ 1000, 4000 };
+            ok = ok && std::abs(f.guide->angle - std::fmod(Degrees({ 1000, 4000 }, { 2100, 700 }) + 360.0, 360.0)) < 1e-6;
+            Snap::Snaps off = o;
+            off.perpendicular = false;
+            ok = ok && At(m, { 2130, 680 }, { { 1000, 4000 } }, off).kind != Kind::Perpendicular;
+            Check(ok, "捕捉：从上一个点作的垂足");
+        }
+        {
+            const Session s0 = Scripted("");
+            const Model& m = s0.GetModel();
+            // 离第一点 30.2°：落到 30°，长度取到最近的 10 毫米
+            auto f = At(m, { 3470, 2020 }, { { 0, 0 } }, o);
+            bool ok = f.kind == Kind::Angle && std::abs(Degrees({ 0, 0 }, f.at) - 30.0) < 1e-4;
+            ok = ok && std::abs(f.at.Length() / 10.0 - std::round(f.at.Length() / 10.0)) < 1e-3;
+            ok = ok && f.guide && f.guide->from == P2{ 0, 0 } && std::round(f.guide->angle) == 30.0 && !f.guide->corner;
+            // 22.5° 在两条引导线之间：自由
+            f = At(m, { 3000, 1243 }, { { 0, 0 } }, o);
+            ok = ok && f.kind == Kind::Free && !f.guide;
+            Snap::Snaps none = o;
+            none.angle = 0.0;
+            ok = ok && At(m, { 3470, 2020 }, { { 0, 0 } }, none) == Snap::Found{ { 3470, 2020 }, Kind::Free, std::nullopt };
+            // 从前一段量：20° 的墙之后，与它成 90° 是 110°，不是 15° 的倍数
+            const double r20 = 20.0 * 3.14159265358979323846 / 180.0, r110 = 110.0 * 3.14159265358979323846 / 180.0;
+            const P2 prev{ 0, 0 }, last = P2{ std::cos(r20), std::sin(r20) } * 3000.0;
+            const P2 want = last + P2{ std::cos(r110), std::sin(r110) } * 2000.0;
+            f = At(m, want + P2{ 25, 10 }, { prev, last }, o);
+            ok = ok && f.kind == Kind::Angle && std::abs(Degrees(last, f.at) - 110.0) < 1e-3 && f.guide && f.guide->corner &&
+                 std::abs(*f.guide->corner - 90.0) < 1e-9;
+            Check(ok, "捕捉：方向落到从正东、从前一段量的角度上");
+            // 225° 从 (4000, 0) 经过 (2000, -2000)，长 2828.4：不取整到 2830
+            ok = At(m, { 2000, -2000 }, { { 4000, 0 } }, o) == Snap::Found{ { 2000, -2000 }, Kind::Angle,
+                                                                           Snap::Guide{ { 4000, 0 }, 225.0, std::nullopt } };
+            ok = ok && At(m, { 2003, -2003 }, { { 4000, 0 } }, o).at == P2{ 2000, -2000 };
+            Check(ok, "捕捉：正好在引导线上的整点不动");
+            // 方正：从不在整点上的点出发
+            const std::vector<P2> from{ { 2501.5, 1000.25 } };
+            ok = Snap::At(m, m.GuidOf(m.Levels().front().first), { 5000, 1003 }, Reach, from, true, Snap::Snaps::None()).at == P2{ 5000, 1000.25 };
+            ok = ok && Snap::At(m, m.GuidOf(m.Levels().front().first), { 2503, 4000 }, Reach, from, true, Snap::Snaps::None()).at == P2{ 2501.5, 4000 };
+            Check(ok, "捕捉：Shift 让一步保持方正");
+            // 每条引导线都读得出与前一段的夹角，不管它朝哪
+            ok = At(m, { 1000, 2000 }, { { 0, 0 }, { 1000, 0 } }, o).guide.has_value();
+            for (const P2 line : { P2{ 1000, 0 }, P2{ 0, 1000 }, P2{ -1000, 0 }, P2{ 0, -1000 }, P2{ 940, 342 } })
+                for (int k = 0; k < 24; ++k)
+                {
+                    const double a = k * 15.0 * 3.14159265358979323846 / 180.0;
+                    const auto g = At(m, line + P2{ std::cos(a), std::sin(a) } * 2000.0, { { 0, 0 }, line }, o).guide;
+                    ok = ok && g && g->corner;
+                }
+            Check(ok, "捕捉：引导线的夹角朝哪都读得出");
+        }
+        {
+            const std::vector<P2> from{ { 0, 0 } };
+            const auto r7 = Snap::Rays(from, 7.0);
+            Check(!r7.empty() && r7.back() == 357.0 && Snap::Rays(from, 170.0) == std::vector<double>{ 0, 170, 340 } &&
+                      Snap::Rays(from, 15.0).size() == 24 && Snap::Rays(from, 90.0) == std::vector<double>{ 0, 90, 180, 270 },
+                  "捕捉：角度的每一步都有引导线，转到最后一条");
+        }
+        {
+            const Session s = Scripted(R"(wall {"points": [[3000,-3000],[3000,3000]]})");
+            const Model& m = s.GetModel();
+            // 30° 从原点与 x = 3000 相交于 y = 1732.05
+            const auto f = At(m, { 3010, 1700 }, { { 0, 0 } }, o);
+            Check(f.kind == Kind::Intersection && f.guide && f.at.Dist({ 3000, 3000 * std::tan(30.0 * 3.14159265358979323846 / 180.0) }) < 1e-2,
+                  "捕捉：引导线停在它穿过墙的地方");
+        }
+        {
+            const Session s = Scripted(R"(wall {"points": [[0,0],[6000,0]]})");
+            const Model& m = s.GetModel();
+            Snap::Snaps a = o, b = o, c = o;
+            a.endpoint = false;
+            b.midpoint = false;
+            c.endpoint = c.nearest = false;
+            Check(At(m, { 30, -20 }, {}, a).kind == Kind::Nearest && At(m, { 3040, 30 }, {}, b).kind == Kind::Nearest &&
+                      At(m, { 34, -20 }, {}, c).at == P2{ 30, -20 },
+                  "捕捉：每种捕捉单独关得掉");
+            // 光标、点过的点、开关里什么怪值都不让它崩
+            const double nan = std::nan(""), inf = INFINITY;
+            const std::vector<std::vector<P2>> chains{ {}, { { 0, 0 } }, { { nan, 1 }, { 1, 1 } }, { { 5, 5 }, { 5, 5 } }, { { inf, -inf } } };
+            for (const P2 p : { P2{ nan, 0 }, P2{ inf, -inf }, P2{ 1e300, 1e300 }, P2{ 0, 0 }, P2{ -0.0, 1e-300 } })
+                for (const auto& from : chains)
+                    for (const double angle : { 15.0, nan, 1.0, 1e9 })
+                        for (const bool square : { true, false })
+                        {
+                            Snap::Snaps x = o;
+                            x.angle = angle;
+                            (void)Snap::At(m, m.GuidOf(m.Levels().front().first), p, Reach, from, square, x);
+                        }
+            for (const Snap::Reach r : { Snap::Reach{ 0, 0 }, Snap::Reach{ nan, -1 }, Snap::Reach{ inf, inf } })
+                (void)Snap::At(m, m.GuidOf(m.Levels().front().first), { 10, 10 }, r, std::vector<P2>{ { 0, 0 } }, false, o);
+            Check(true, "捕捉：怪值不崩");
+        }
+        {
+            const Session s = Scripted(R"(wall {"points": [[0,0],[60000,0]]}
+wall {"points": [[0,30000],[10000,30000]], "arc": 180})");
+            const Model& m = s.GetModel();
+            bool ok = At(m, { 31234, 40 }, {}, o) == Snap::Found{ { 31230, 0 }, Kind::Nearest, std::nullopt };
+            // 圆弧鼓出去的地方，离弦 5000 毫米：超出捕捉范围和最厚的墙
+            P2 want;
+            for (const auto& [id, e] : m.elements.Items())
+                if (const Wall* w = e->As<Wall>(); w && w->arc != 0.0)
+                {
+                    const Walls::Axis a = Walls::Axis::Of(*w);
+                    want = a.At(a.Length() / 2.0, 0.0);
+                }
+            const auto f = At(m, want + P2{ 30, 20 }, {}, o);
+            ok = ok && std::abs(want.y - 30000.0) > 4999.0 && f.kind == Kind::Midpoint && f.at.Dist(want) < 1e-3;
+            Check(ok, "捕捉：离两端都远的墙、圆弧鼓出去的地方也找得到");
+        }
+        {
+            // 100 毫米长的墙：中点离两端各 50
+            const Session s = Scripted(R"(wall {"points": [[0,0],[100,0]]})");
+            const Model& m = s.GetModel();
+            Check(At(m, { 25, 0 }, {}, o) == Snap::Found{ { 0, 0 }, Kind::Endpoint, std::nullopt } &&
+                      At(m, { 50, 0 }, {}, o) == Snap::Found{ { 50, 0 }, Kind::Midpoint, std::nullopt },
+                  "捕捉：一样远时端点胜过中点");
+        }
+        {
+            const Snap::Ruler r = Snap::Measure({ 0, 0 }, { 3000, 4000 });
+            bool ok = r.length == 5000.0 && r.dx == 3000.0 && r.dy == 4000.0 && std::abs(r.angle - 53.130102354) < 1e-6;
+            ok = ok && Snap::Measure({ 0, 0 }, { -1000, 0 }).angle == 180.0 && Snap::Measure({ 0, 0 }, { 0, -1000 }).angle == 270.0 &&
+                 Snap::Measure({ 5, 5 }, { 5, 5 }).angle == 0.0;
+            ok = ok && Snap::Graduation(1.0) == 10.0 && Snap::Graduation(0.5) == 20.0 && Snap::Graduation(0.1) == 100.0 &&
+                 std::abs(Snap::Graduation(0.02) - 500.0) < 1e-9 && std::abs(Snap::Graduation(0.004) - 5000.0) < 1e-9;
+            ok = ok && Snap::Graduation(0.0) == 100.0 && Snap::Graduation(std::nan("")) == 100.0;
+            Check(ok, "标尺：长度、分量与角度，刻度取整");
+        }
+        {
+            // 门窗所在的一段：两面隔墙之间；离中点近时吸到中点
+            const Session s = Scripted(R"(wall {"points": [[0,0],[9000,0]]}
+wall {"points": [[3000,0],[3000,4000]]}
+wall {"points": [[7000,0],[7000,4000]]})");
+            const Model& m = s.GetModel();
+            Opening op;
+            std::string error;
+            const bool made = OpeningOf(m, Json{ { "at", Json::array({ 5100, 0 }) } }, true, op, error);
+            const auto span = made ? m.OpeningSpan(op) : std::nullopt;
+            const double half = made ? m.Thickness(*m.GetWall(op.host)) / 2.0 : 0.0;
+            bool ok = span && std::abs(span->first - (3000 + half)) < 1e-6 && std::abs(span->second - (7000 - half)) < 1e-6;
+            ok = ok && m.Centred(op, 200.0) == std::optional<double>(5000.0) && !m.Centred(op, 50.0);
+            Check(ok, "门窗：所在的一段量到相交墙的面，近中点时吸过去：" + error);
+            // 预览：还不在模型里的门，画出来的各项都归它
+            const Render::View v = Render::Fit({ { 0, 0 }, { 9000, 4000 } }, 800, 600, 100.0);
+            const Render::Drawing d = Render::Sketch(m, m.GuidOf(m.Levels().front().first), v, Element{ Door{ op } });
+            const Id next = m.elements.LastId().value_or(0) + 1;
+            ok = !d.prims.empty() && std::all_of(d.owners.begin(), d.owners.end(), [&](const auto& o2) { return o2 && *o2 >= next; });
+            Check(ok && m.elements.Size() == s.GetModel().elements.Size(), "平面：预览还不在模型里的元素");
+        }
+    }
+}
+
 int main()
 {
     // 不缓冲：崩溃时也看得到崩在哪一项之后
@@ -1470,6 +1673,7 @@ int main()
     TestSkeleton();
     TestFamily();
     TestFont();
+    TestSnap();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

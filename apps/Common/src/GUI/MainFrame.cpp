@@ -95,6 +95,7 @@ namespace MiniBIM
         // ── 宿主面板，交给界面描述文件摆放（标题写英文原文，UiLayout 应用时翻译）──
         m_layout = std::make_unique<MiniGUI::UiLayout>(m_commands, m_platform->GetResourceDir() + "/icons");
         m_layout->RegisterPanel("viewport",   CreateViewport(), N_("View"));
+        m_layout->RegisterPanel("options",    CreateOptionsBar());
         m_layout->RegisterPanel("properties", CreateProperties(), N_("Properties"));
         m_layout->RegisterPanel("browser",    CreateBrowser(), N_("Project Browser"));
         m_layout->RegisterPanel("statusbar",  CreateStatusBar());
@@ -116,6 +117,7 @@ namespace MiniBIM
                 m_uiPath = m_platform->GetResourceDir() + "/ui/minibim_ui.json";
         }
         ReloadUi();
+        BuildOptionsBar();
     }
 
     void MainFrame::ReloadUi()
@@ -205,6 +207,7 @@ namespace MiniBIM
         // 界面描述生成的部分（标题栏、菜单、命令名称）整体重建；宿主面板里的文字由 UpdateStatus、RefreshPanels 按当前语言重写
         ReloadUi();
         RefreshPanels();
+        BuildOptionsBar();
         m_ui->Update();
     }
 
@@ -294,8 +297,8 @@ namespace MiniBIM
             m_statusHint->SetText(Tr("Interface description file:") + " " + m_uiError);
         else if (!m_sceneError.empty())
             m_statusHint->SetText(Tr(m_sceneError));
-        else if (m_planLevel)
-            m_statusHint->SetText(Tr("Click to select, drag or middle-drag to pan, scroll to zoom"));
+        else if (m_planLevel || m_tool != Tool::Modify)
+            m_statusHint->SetText(Tr(ToolPrompt()));
         else if (m_scene.Empty())
             m_statusHint->SetText(Tr("The project has nothing to show in 3D yet; open a project or the sample house from the File menu"));
         else
@@ -346,6 +349,18 @@ namespace MiniBIM
         auto vp = std::make_unique<MiniGUI::ViewportHost>();
         vp->SetOnRender ([this](int w, int h) { RenderViewport(w, h); });
         vp->SetOnPointer([this](const MiniGUI::ViewportPointerEvent& e) { OnViewportPointer(e); });
+        vp->SetOnKey    ([this](const MiniGUI::KeyEvent& e) { return OnPlanKey(e); });
+        vp->SetOnText   ([this](std::string_view text) { return OnPlanText(text); });
+        // 平面上跟着光标的读数（长度与角度、面积、捕捉到什么）：画在视口上面，不挡点击
+        m_planTipBox = vp->AddChild<MiniGUI::Panel>(MiniGUI::Theme::TooltipBackground);
+        MiniGUI::LayoutStyle tip;
+        tip.position = MiniGUI::PositionType::Absolute;
+        tip.padding  = MiniGUI::Edges::Make(6.0f, 2.0f, 6.0f, 2.0f);
+        m_planTipBox->SetLayoutStyle(tip);
+        m_planTipBox->SetHitTestVisible(false);
+        m_planTipBox->SetVisible(false);
+        m_planTip = m_planTipBox->AddChild<MiniGUI::Label>(std::string(), 12.0f, MiniGUI::Theme::Text);
+        m_planTip->SetHitTestVisible(false);
         m_viewport = vp.get();
         return vp;
     }

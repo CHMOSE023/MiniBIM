@@ -155,4 +155,7 @@ namespace MiniBIM::Bim::Render
     Drawing Plan(const Model& m, Guid level, uint32_t width, uint32_t height);
     // level 的平面，按给定的视图画
     Drawing Draw(const Model& m, Guid level, View view);
+    // 还不在模型里的元素 e，照 level 的平面会画它的样子（各项归它，ID 是放进模型后会有的那个）：工具预览用（门窗、构件、屋顶……）。
+    // 移植自 BIMCraft 的 render::sketch，做法不同：放进模型的一份副本里画整个平面，只留它的几项
+    Drawing Sketch(const Model& m, Guid level, View view, const Element& e);
 }

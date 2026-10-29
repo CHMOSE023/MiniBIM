@@ -841,6 +841,58 @@ namespace MiniBIM::Bim
         return t;
     }
 
+    std::optional<std::pair<double, double>> Model::OpeningSpan(const Opening& o) const
+    {
+        const Wall* host = GetWall(o.host);
+        if (!host || host->arc != 0.0)
+            return std::nullopt;
+        const Walls::Axis axis = Walls::Axis::Of(*host);
+        const double length = axis.Length();
+        if (length <= Tol)
+            return std::nullopt;
+        const P2 a = axis.At(0.0, 0.0), b = axis.At(length, 0.0);
+        auto along = [&](P2 p) { return (p - a).Dot(b - a) / length; };
+        // 连上它的墙停在它的定位线或某一面上
+        const auto [ext, in] = Walls::Faces(*this, *host);
+        const double reach = std::max(std::abs(ext), std::abs(in)) + Tol;
+        const auto hostId = elements.IdOf(o.host);
+        std::vector<double> hits;
+        for (const auto& [id, ptr] : elements.Items())
+        {
+            const Wall* w = ptr->As<Wall>();
+            if (!w || (hostId && id == *hostId) || w->arc != 0.0 || !CutBy(*w, host->level))
+                continue;
+            const Walls::Axis wa = Walls::Axis::Of(*w);
+            const auto [we, wi] = Walls::Faces(*this, *w);
+            for (const double off : { we, wi })
+            {
+                const P2 p = wa.At(0.0, off), q = wa.At(wa.Length(), off);
+                if (const auto hit = Geom::LineIntersection(a, b, p, q); hit && Geom::DistToSegment(*hit, p, q) <= reach)
+                    hits.push_back(along(*hit));
+            }
+        }
+        double start = 0.0, end = length;
+        for (const double t : hits)
+        {
+            if (t < o.offset)
+                start = std::max(start, t);
+            if (t > o.offset)
+                end = std::min(end, t);
+        }
+        return std::pair{ start, end };
+    }
+
+    std::optional<double> Model::Centred(const Opening& o, double near) const
+    {
+        const auto span = OpeningSpan(o);
+        if (!span)
+            return std::nullopt;
+        const double middle = (span->first + span->second) / 2.0;
+        if (std::abs(o.offset - middle) <= near)
+            return middle;
+        return std::nullopt;
+    }
+
     std::vector<Model::Layered> Model::LayeredTypes() const
     {
         std::vector<Layered> out;
@@ -1385,7 +1437,7 @@ namespace MiniBIM::Bim
         }
 
         // 门窗在墙上的位置：沿墙从哪到哪、窗台与洞顶在墙底以上的高度、是哪个门窗
-        struct OpeningSpan
+        struct HeldOpening
         {
             double start;
             double end;
@@ -1511,7 +1563,7 @@ namespace MiniBIM::Bim
         };
         std::set<std::string> levelNames, gridNames;
         // 每面墙上的门窗，按沿墙的起点排序
-        std::map<Guid, std::vector<OpeningSpan>> spans;
+        std::map<Guid, std::vector<HeldOpening>> spans;
         for (const auto& [id, ptr] : elements.Items())
         {
             const Element& e = *ptr;
@@ -1796,8 +1848,8 @@ namespace MiniBIM::Bim
                     return false;
                 }
                 auto& list = spans[o->host];
-                const OpeningSpan span{ a, b, o->sill, o->sill + t.height, id };
-                const auto at = std::partition_point(list.begin(), list.end(), [&](const OpeningSpan& held) { return held.start <= a; });
+                const HeldOpening span{ a, b, o->sill, o->sill + t.height, id };
+                const auto at = std::partition_point(list.begin(), list.end(), [&](const HeldOpening& held) { return held.start <= a; });
                 list.insert(at, span);
             }
         }
@@ -1808,8 +1860,8 @@ namespace MiniBIM::Bim
             {
                 for (size_t j = i + 1; j < v.size(); ++j)
                 {
-                    const OpeningSpan& a = v[i];
-                    const OpeningSpan& b = v[j];
+                    const HeldOpening& a = v[i];
+                    const HeldOpening& b = v[j];
                     if (b.start > a.end + Tol)
                         break;
                     if (a.end > b.start + Tol && a.head > b.sill + Tol && b.head > a.sill + Tol)

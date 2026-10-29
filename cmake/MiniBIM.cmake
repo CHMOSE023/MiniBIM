@@ -19,6 +19,7 @@ add_library(MiniBIM STATIC
     src/Model/ModelJson.cpp
     src/Model/Render.cpp
     src/Model/Skeleton.cpp
+    src/Model/Snap.cpp
     src/Model/Text.cpp
     src/Model/Units.cpp
     src/Model/Walls.cpp

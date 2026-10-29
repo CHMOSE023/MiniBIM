@@ -2,6 +2,7 @@
 #include "Commands/Session.h"
 #include "GUI/AppPlatform.h"
 #include "Model/Render.h"
+#include "Model/Snap.h"
 #include "View/ModelScene.h"
 #include "View/OrbitCamera.h"
 #include "Data/CommandRegistry.h"
@@ -13,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,7 @@ namespace MiniGUI
     class UiLayout;
     class ViewportHost;
     struct ViewportPointerEvent;
+    struct KeyEvent;
 }
 
 namespace MiniBIM
@@ -37,6 +40,8 @@ namespace MiniBIM
     //   - 模型：Bim::Session（移植自 BIMCraft 的命令与撤销），界面只经命令改它；启动时打开示例房屋
     //   - 停靠区（Panels.cpp）：特性面板 "properties"（类型选择器与选中元素的参数，改动经 modify 命令）、项目浏览器 "browser"
     //     （视图与族的树，双击打开视图）；功能区与快速访问工具栏在界面描述文件里
+    //   - 工具（Tools.cpp）：功能区"建筑"里放东西的工具（墙、门、窗、构件、屋顶、楼板、天花板、房间、标高、轴网），
+    //     在平面上点下去的点经捕捉（Bim::Snap），视图上画出会放下的东西；选项栏 "options" 是当前工具的选项
     //   - 三维视口（面板 "viewport"）：模型经 ModelScene 用实体内核建成三角形；OrbitCamera，拖动左键环绕、拖动中键或右键平移、
     //     Shift + 拖动环绕、滚轮缩放。"视图 > 楼层平面"把视口换成一个标高的平面（Bim::Render 的显示列表，PlanView.cpp）：
     //     拖动中键或右键平移、滚轮缩放、单击左键选中元素（Ctrl + 单击加进或拿出选择集，Esc 清空）
@@ -135,6 +140,34 @@ namespace MiniBIM
         // 模型变了：显示的标高不在了就换到最低的，下次画时重画显示列表
         void OnPlanModelChanged();
         bool Selected(Bim::Id id) const;
+
+        // ── 工具（Tools.cpp）──────────────────────────────────────
+        // 平面上单击做什么：选（修改），或放一类东西
+        enum class Tool { Modify, Wall, Door, Window, Component, Roof, Floor, Ceiling, Room, Level, Grid };
+        void SetTool(Tool tool);
+        // Esc：先丢掉输入的长度，再丢掉画了一半的（墙链、轴网的起点），再退出工具，最后清空选择集
+        void Escape();
+        std::unique_ptr<MiniGUI::Node> CreateOptionsBar();
+        void BuildOptionsBar();
+        // 工具放的元素的类别（"wall"…）：特性面板没选东西时显示"新建 …"与它的类型；修改与标高为空
+        const char* ToolCategory() const;
+        // 状态栏的提示：工具要的下一步（英文原文，显示前 Tr）
+        const char* ToolPrompt() const;
+        void ToolClick(MiniGUI::Vec2 pixel, uint8_t modifiers);
+        bool OnPlanKey(const MiniGUI::KeyEvent& e);
+        bool OnPlanText(std::string_view text);
+        // 输入的长度：从工具的上一点朝光标（落在引导线上时沿它）量这么长，当作点下的点
+        void PlaceTyped();
+        void PlacePoint(Bim::P2 p);
+        Bim::Snap::Found SnapAt(MiniGUI::Vec2 pixel, std::span<const Bim::P2> from, bool square) const;
+        // 平面上画在模型之上的：会放下的东西、捕捉的记号与引导线、长度与角度（像素坐标的显示列表）
+        void BuildPreview(Bim::Render::Drawing& d);
+        // 选项栏与特性面板选的类型（和门窗的族）放进命令参数
+        Bim::Json Typed(const std::string& category, Bim::Json p) const;
+        // 墙的顶部：选项栏选的标高，或未连接时的高度；读不出高度时为空，原因放在 error
+        std::optional<Bim::Json> WallTop(std::string& error) const;
+        // 构件工具放的族与类型：选的，否则第一个可载入族的第一个类型
+        std::optional<std::pair<std::string, std::string>> Placing() const;
         void RenderPlan(IRenderer& renderer, int pixelWidth, int pixelHeight);
         void OnPlanPointer(const MiniGUI::ViewportPointerEvent& e);
         // 平面的名称（标高名），以及选中的元素：状态栏用
@@ -199,5 +232,34 @@ namespace MiniBIM
         std::map<std::string, bool> m_branchOpen;            // 项目浏览器里各分支（按路径）展开着没有：重建时照旧
         std::vector<std::function<void()>> m_browserActs;    // 树上各项双击时做什么（TreeItem 的 UserData 是下标）
         bool               m_panelsPosted = false;
+
+        Tool                 m_tool = Tool::Modify;
+        std::vector<Bim::P2> m_toolPts;                     // 墙链点过的点、轴网的起点
+        std::optional<MiniGUI::Vec2> m_hoverPixel;          // 光标在平面上的位置（预览用）
+        bool                 m_hoverShift = false;
+        std::string          m_typedLength;                 // 在视图里输入的长度，Enter 时用
+        Bim::Snap::Snaps     m_snaps;
+        std::optional<Bim::Snap::Found> m_found;            // 最后一次预览捕捉到的点
+        // 选项栏的设置（同 BIMCraft，值是输入框里的文字，用时再读）
+        struct ToolOptions
+        {
+            std::optional<std::optional<Bim::Guid>> wallTop;    // 没设：上一层；空：未连接
+            std::string   wallHeight   = "3000";
+            Bim::Location wallLocation = Bim::Location::Centre;
+            bool          chain        = true;
+            std::string   roofSlope    = "30";
+            std::string   roofOverhang = "500";
+            bool          roofGable    = false;
+            std::string   ceilingHeight = "2700";
+            std::string   levelElevation;
+            std::string   levelName;
+            double        componentAngle = 0.0;
+            std::map<std::string, std::string> types;            // 类别 → 类型
+            std::map<std::string, std::string> openingFamilies;  // door / window → 族（选了项目自己的类型时没有）
+            std::optional<std::pair<std::string, std::string>> component;
+        } m_toolOpt;
+        MiniGUI::Node*  m_optionsBody = nullptr;
+        MiniGUI::Node*  m_planTipBox  = nullptr;            // 平面上跟着光标的读数（长度、角度、面积、捕捉到什么）
+        MiniGUI::Label* m_planTip     = nullptr;
     };
 }

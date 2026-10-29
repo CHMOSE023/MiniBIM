@@ -263,6 +263,80 @@ def _(i):
     i.arrow(32, 44, 32, 58, G, 3.5, 8)
 
 
+@icon("Select")            # modify.select：修改（选择）：鼠标箭头
+def _(i):
+    i.poly([(18, 8), (18, 50), (28, 40), (36, 56), (43, 53), (35, 37), (48, 37)], G, AF, w=3.5)
+
+
+@icon("Wall")              # arch.wall：墙（平面上的一段墙：两条线夹着填充，起点终点）
+def _(i):
+    i.rect(6, 24, 58, 40, G, GF, w=3.5)
+    i.dot(6, 32, 4); i.dot(58, 32, 4)
+
+
+@icon("Door")              # arch.door：门（墙上的缺口，门扇与开启弧）
+def _(i):
+    i.rect(4, 44, 16, 54, G, GF, w=3); i.rect(48, 44, 60, 54, G, GF, w=3)
+    i.line([(16, 44), (16, 12)], A, 4)
+    i.arc(16, 44, 32, 270, 360, A, w=3)
+
+
+@icon("Window")            # arch.window：窗（墙上的一段，中间三条玻璃线）
+def _(i):
+    i.rect(4, 24, 18, 40, G, GF, w=3); i.rect(46, 24, 60, 40, G, GF, w=3)
+    for y in (24, 32, 40):
+        i.line([(18, y), (46, y)], A, 3)
+
+
+@icon("Component")         # arch.component：构件（俯视的一张扶手椅）
+def _(i):
+    i.rect(14, 14, 50, 50, G, w=3.5, r=4)
+    i.rect(14, 14, 50, 24, G, GF, w=3)
+    i.rect(14, 24, 22, 50, A, AF, w=3); i.rect(42, 24, 50, 50, A, AF, w=3)
+
+
+@icon("Roof")              # arch.roof：迹线屋顶（双坡屋顶的侧面，屋檐伸出墙外）
+def _(i):
+    i.poly([(4, 36), (32, 12), (60, 36)], A, w=4.5)
+    i.line([(12, 32), (12, 56), (52, 56), (52, 32)], G, 4)
+
+
+@icon("Floor")             # arch.floor：楼板（等轴测的一块板）
+def _(i):
+    i.poly([(4, 34), (32, 20), (60, 34), (32, 48)], A, AF, w=3.5)
+    i.line([(4, 34), (4, 40), (32, 54), (60, 40), (60, 34)], G, 3.5)
+    i.line([(32, 48), (32, 54)], G, 3.5)
+
+
+@icon("Ceiling")           # arch.ceiling：天花板（上面一块吊顶，下面的标高线）
+def _(i):
+    i.rect(6, 12, 58, 22, A, AF, w=3.5)
+    for x in (19, 32, 45):
+        i.line([(x, 12), (x, 22)], A, 2.5)
+    i.line([(14, 22), (14, 30)], G, 3); i.line([(50, 22), (50, 30)], G, 3)
+    i.line([(6, 52), (58, 52)], G, 4)
+
+
+@icon("Room")              # arch.room：房间（一圈墙，中间房间的叉与点）
+def _(i):
+    i.rect(8, 10, 56, 54, G, w=5)
+    i.line([(18, 20), (46, 44)], A, 2.5); i.line([(46, 20), (18, 44)], A, 2.5)
+    i.dot(32, 32, 5)
+
+
+@icon("Level")             # arch.level：标高（一条水平线，左端标高三角，上面一条虚线）
+def _(i):
+    i.line([(18, 40), (60, 40)], A, 4)
+    i.poly([(6, 30), (18, 30), (12, 40)], A, AF, w=3)
+    i.dashed([(18, 16), (60, 16)], G, 3)
+
+
+@icon("Grid")              # arch.grid：轴网（竖着的点划线，上端的轴号圆圈）
+def _(i):
+    i.circle(32, 14, 10, A, w=3.5)
+    i.dashed([(32, 24), (32, 60)], G, 3.5)
+
+
 @icon("Properties")        # view.properties：特性面板（照 MiniCAD 的 PropertiesPanel：名称 | 值的几行）
 def _(i):
     i.rect(8, 8, 56, 56, G, w=3, r=4); i.d.rectangle(i.P([(8, 8), (56, 18)]), fill=AF)

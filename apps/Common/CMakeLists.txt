@@ -21,6 +21,7 @@ add_library(MiniBIMApp STATIC
     src/GUI/MainCommands.cpp
     src/GUI/PlanView.cpp
     src/GUI/Panels.cpp
+    src/GUI/Tools.cpp
     src/GUI/Parameters.cpp
 )
 

@@ -2510,6 +2510,11 @@ namespace MiniBIM::Bim
     }
 
     // ── 给别处用的 ───────────────────────────────────────────────
+    bool OpeningOf(const Model& m, const Json& p, bool isDoor, Opening& out, std::string& error)
+    {
+        return BuildOpening(m, p, isDoor, out, error);
+    }
+
     Json ElementJson(const Model& m, Id id)
     {
         const Element* e = m.elements.Get(id);

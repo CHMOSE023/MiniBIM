@@ -854,4 +854,24 @@ namespace MiniBIM::Bim::Render
         d.Weigh(m);
         return d;
     }
+
+    Drawing Sketch(const Model& m, Guid level, View view, const Element& e)
+    {
+        Model with = m;
+        const Id id = with.Insert(e);
+        const Drawing all = Draw(with, level, view);
+        Drawing d(view);
+        d.weights = all.weights;
+        d.k       = all.k;
+        d.paper   = all.paper;
+        for (size_t i = 0; i < all.prims.size(); ++i)
+            if (all.owners[i] == id)
+            {
+                d.prims.push_back(all.prims[i]);
+                d.owners.push_back(all.owners[i]);
+                d.parts.push_back(all.parts[i]);
+                d.pens.push_back(all.pens[i]);
+            }
+        return d;
+    }
 }

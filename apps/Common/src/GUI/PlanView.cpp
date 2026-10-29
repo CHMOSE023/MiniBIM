@@ -97,6 +97,9 @@ namespace MiniBIM
 
     void MainFrame::ShowModel3D()
     {
+        // 放东西的工具只在平面上（标高除外）
+        if (m_tool != Tool::Modify && m_tool != Tool::Level)
+            SetTool(Tool::Modify);
         m_planLevel.reset();
         m_drag = Drag::None;
         UpdateTitle();
@@ -121,6 +124,7 @@ namespace MiniBIM
         {
             m_planLevel = level;
             m_planView.reset();
+            m_toolPts.clear();      // 画了一半的不跟到别的标高
         }
         m_planDirty = true;
         m_drag = Drag::None;
@@ -232,6 +236,15 @@ namespace MiniBIM
                 for (const auto& [a, b] : Dashes(p.pts, p.closed, p.dash))
                     Segment(m_planVerts, a, b, std::max(p.width, 1.0f), color);
         }
+        // 工具会放下的东西、捕捉记号，画在最上面
+        Bim::Render::Drawing preview(*m_planView);
+        BuildPreview(preview);
+        for (const Bim::Render::Prim& p : preview.prims)
+        {
+            const VertexColor color = ColorOf(p.color);
+            for (const auto& [a, b] : Dashes(p.pts, p.closed, p.dash))
+                Segment(m_planVerts, a, b, std::max(p.width, 1.0f), color);
+        }
         // 像素（y 向下）到裁剪空间：行向量约定 P' = P · M
         Math::Mat4 px = Math::Mat4::Identity();
         px.m[0]  = 2.0 / fw;
@@ -261,7 +274,12 @@ namespace MiniBIM
             }
             break;
         case PointerEventType::Up:
-            if (m_planClick && e.button == MouseButton::Left)
+            if (m_planClick && e.button == MouseButton::Left && m_tool != Tool::Modify)
+            {
+                m_planClick = false;
+                ToolClick(e.pixel, e.modifiers);
+            }
+            else if (m_planClick && e.button == MouseButton::Left)
             {
                 // 单击：拾取离指针最近、几个像素以内的元素；Ctrl + 单击把它加进或拿出选择集
                 m_planClick = false;
@@ -282,6 +300,13 @@ namespace MiniBIM
                 m_drag = Drag::None;
             break;
         case PointerEventType::Move:
+            // 放东西的工具：光标处的预览跟着它
+            if (m_tool != Tool::Modify)
+            {
+                m_hoverPixel = e.pixel;
+                m_hoverShift = (e.modifiers & static_cast<uint8_t>(ModifierKey::Shift)) != 0;
+                m_viewport->RequestRender();
+            }
             // 左键拖出几个像素也是平移
             if (m_planClick && std::hypot(e.pixel.x - m_downPixel.x, e.pixel.y - m_downPixel.y) > 4.0f * m_dpiScale)
             {

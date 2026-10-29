@@ -29,35 +29,35 @@ msgstr "撤销"
 msgid "Redo"
 msgstr "重做"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Level"
 msgstr "标高"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Grid"
 msgstr "轴网"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Wall"
 msgstr "墙"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Door"
 msgstr "门"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Window"
 msgstr "窗"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Floor"
 msgstr "楼板"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Ceiling"
 msgstr "天花板"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Room"
 msgstr "房间"
 
@@ -65,7 +65,7 @@ msgstr "房间"
 msgid "Room Separator"
 msgstr "房间分隔线"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "屋顶"
 
@@ -81,7 +81,7 @@ msgstr "材质"
 msgid "Load Family"
 msgstr "载入族"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Component"
 msgstr "构件"
 
@@ -89,7 +89,7 @@ msgstr "构件"
 msgid "Flip"
 msgstr "翻转"
 
-#: src/Commands/Commands.cpp assets/ui/minibim_ui.json
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
 msgid "Modify"
 msgstr "修改"
 
@@ -144,6 +144,34 @@ msgstr "核心面：外部"
 #: src/Model/Model.cpp
 msgid "Core Face: Interior"
 msgstr "核心面：内部"
+
+#: src/Model/Snap.cpp
+msgid "Endpoint"
+msgstr "端点"
+
+#: src/Model/Snap.cpp
+msgid "Midpoint"
+msgstr "中点"
+
+#: src/Model/Snap.cpp
+msgid "Intersection"
+msgstr "交点"
+
+#: src/Model/Snap.cpp
+msgid "Centre"
+msgstr "圆心"
+
+#: src/Model/Snap.cpp
+msgid "Perpendicular"
+msgstr "垂足"
+
+#: src/Model/Snap.cpp
+msgid "Nearest"
+msgstr "最近点"
+
+#: src/Model/Snap.cpp
+msgid "Angle"
+msgstr "角度"
 
 #: src/Model/Units.cpp
 msgid "Millimetres"
@@ -326,12 +354,16 @@ msgid "Delete the selected elements; a wall takes its doors and windows with it"
 msgstr "删除选中的元素；删除墙时连同墙上的门窗"
 
 #: apps/Common/src/GUI/MainCommands.cpp
-msgid "Deselect"
-msgstr "取消选择"
+msgid "Cancel"
+msgstr "取消"
 
 #: apps/Common/src/GUI/MainCommands.cpp
-msgid "Clear the selection"
-msgstr "清空选择集"
+msgid "Drop what the tool has drawn so far, then the tool, then the selection"
+msgstr "先丢掉工具画了一半的，再退出工具，最后清空选择集"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Select and change elements"
+msgstr "选择并修改元素"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Flip Wall"
@@ -340,6 +372,46 @@ msgstr "翻转墙"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Turn the selected walls round: their exterior sides go to the other side"
 msgstr "翻转选中的墙：外侧换到另一边"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall: each click builds a wall; Enter or Esc ends the chain"
+msgstr "墙：每次单击建一面墙；Enter 或 Esc 结束墙链"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Door: click a wall"
+msgstr "门：单击一面墙"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Window: click a wall"
+msgstr "窗：单击一面墙"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Component: a family's type, where you click; Space turns it"
+msgstr "构件：在单击处放一个族类型；空格键旋转"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
+msgstr "迹线屋顶：在墙内单击，在上一层为它们建屋顶"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor: click inside the walls to floor them"
+msgstr "楼板：在墙内单击，为它们建楼板"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Ceiling: click inside a room for a ceiling out to its walls"
+msgstr "天花板：在房间内单击，建到四周墙面的天花板"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Room: click inside walls"
+msgstr "房间：在墙内单击"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Level: a new level at an elevation"
+msgstr "标高：在某个高程新建标高"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Grid: click its two ends"
+msgstr "轴网：单击它的两端"
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
@@ -422,10 +494,6 @@ msgid "Don't Save"
 msgstr "不保存"
 
 #: apps/Common/src/GUI/MainCommands.cpp
-msgid "Cancel"
-msgstr "取消"
-
-#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not create a project"
 msgstr "无法新建项目"
 
@@ -486,10 +554,6 @@ msgstr "跟随系统"
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Interface description file:"
 msgstr "界面描述文件："
-
-#: apps/Common/src/GUI/MainFrame.cpp
-msgid "Click to select, drag or middle-drag to pan, scroll to zoom"
-msgstr "单击选中，拖动左键或中键平移，滚轮缩放"
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
@@ -553,6 +617,10 @@ msgid "Multiple Categories ({0})"
 msgstr "多个类别（{0}）"
 
 #: apps/Common/src/GUI/Panels.cpp
+msgid "New {0}"
+msgstr "新建{0}"
+
+#: apps/Common/src/GUI/Panels.cpp
 msgid "Floor Plan: {0}"
 msgstr "楼层平面：{0}"
 
@@ -568,7 +636,7 @@ msgstr "类型选择器"
 msgid "Could not change the type"
 msgstr "无法修改类型"
 
-#: apps/Common/src/GUI/Panels.cpp
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Unconnected"
 msgstr "未连接"
 
@@ -692,7 +760,7 @@ msgstr "周长"
 msgid "Number"
 msgstr "编号"
 
-#: apps/Common/src/GUI/Parameters.cpp
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Name"
 msgstr "名称"
 
@@ -724,7 +792,7 @@ msgstr "图形"
 msgid "Pattern Angle (°)"
 msgstr "图案角度（°）"
 
-#: apps/Common/src/GUI/Parameters.cpp
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Elevation"
 msgstr "高程"
 
@@ -788,7 +856,7 @@ msgstr "底部"
 msgid "View Depth"
 msgstr "视图深度"
 
-#: apps/Common/src/GUI/Parameters.cpp
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
 msgid "`{0}` is not a length"
 msgstr "“{0}”不是长度"
 
@@ -865,6 +933,198 @@ msgid "{0} element selected"
 msgid_plural "{0} elements selected"
 msgstr[0] "选中了 {0} 个元素"
 
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to select, Ctrl adds or takes away, Esc clears; drag or middle-drag to pan, scroll to zoom"
+msgstr "单击选择，Ctrl 加选或减选，Esc 清空；拖动左键或中键平移，滚轮缩放"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the wall's start point."
+msgstr "单击输入墙的起点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to build the wall to the next point, or type a length and press Enter. Enter or Esc ends the chain, Shift keeps it square."
+msgstr "单击把墙建到下一点，或输入长度后按 Enter。Enter 或 Esc 结束墙链，按住 Shift 保持水平或竖直。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a wall to place the door."
+msgstr "单击一面墙放置门。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a wall to place the window."
+msgstr "单击一面墙放置窗。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the component goes; Space turns it a quarter turn."
+msgstr "单击构件的位置；空格键转 90°。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click inside the walls to roof them, on the level above: the overhang runs past their faces."
+msgstr "在墙内单击，在上一层为它们建屋顶：屋檐伸出墙面之外。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click inside the walls to floor them: the slab runs under their outline, its top at the level."
+msgstr "在墙内单击，为它们建楼板：楼板铺在墙的轮廓下，顶面与标高齐平。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click inside a room: a ceiling out to its walls' faces, as high as the Options Bar says."
+msgstr "在房间内单击：建一块到四周墙面的天花板，高度按选项栏。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click inside walls to place a room; the outline shows the room you'd get."
+msgstr "在墙内单击放置房间；轮廓是将得到的房间。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Type the new level's elevation in the Options Bar, then Create."
+msgstr "在选项栏输入新标高的高程，然后单击“创建”。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the grid's start point."
+msgstr "单击输入轴网的起点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the grid's end point."
+msgstr "单击输入轴网的终点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Wall"
+msgstr "修改 | 放置墙"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Door"
+msgstr "修改 | 放置门"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Window"
+msgstr "修改 | 放置窗"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Component"
+msgstr "修改 | 放置构件"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Roof Footprint"
+msgstr "修改 | 创建屋顶迹线"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Floor"
+msgstr "修改 | 创建楼板"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Ceiling"
+msgstr "修改 | 放置天花板"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Room"
+msgstr "修改 | 放置房间"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Level"
+msgstr "修改 | 放置标高"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Grid"
+msgstr "修改 | 放置轴网"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a tool on the Architecture tab to place walls, doors, windows, roofs and more."
+msgstr "在“建筑”选项卡上选一个工具，放置墙、门、窗、屋顶等。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Height:"
+msgstr "高度："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Location Line:"
+msgstr "定位线："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Chain"
+msgstr "链"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Slope:"
+msgstr "坡度："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Overhang:"
+msgstr "悬挑："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Gable"
+msgstr "山墙"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Height Offset:"
+msgstr "高度偏移："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Rotation:"
+msgstr "旋转："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "the next free name"
+msgstr "下一个可用的名称"
+
+#: apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
+msgid "Create"
+msgstr "创建"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the level"
+msgstr "无法创建标高"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not an elevation"
+msgstr "“{0}”不是高程"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not a height"
+msgstr "“{0}”不是高度"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not build the wall"
+msgstr "无法建墙"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the grid"
+msgstr "无法放置轴网"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the component"
+msgstr "无法放置构件"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the door"
+msgstr "无法放置门"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the window"
+msgstr "无法放置窗"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the room"
+msgstr "无法放置房间"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the ceiling"
+msgstr "无法放置天花板"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the roof"
+msgstr "无法创建屋顶"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "The slope `{0}` and the overhang `{1}` must be numbers"
+msgstr "坡度“{0}”与悬挑“{1}”必须是数"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the floor"
+msgstr "无法创建楼板"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Not a length"
+msgstr "不是长度"
+
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "MiniBIM project"
 msgstr "MiniBIM 项目"
@@ -902,8 +1162,24 @@ msgid "Help"
 msgstr "帮助"
 
 #: assets/ui/minibim_ui.json
-msgid "Create"
-msgstr "创建"
+msgid "Architecture"
+msgstr "建筑"
+
+#: assets/ui/minibim_ui.json
+msgid "Select"
+msgstr "选择"
+
+#: assets/ui/minibim_ui.json
+msgid "Build"
+msgstr "构建"
+
+#: assets/ui/minibim_ui.json
+msgid "Room & Area"
+msgstr "房间和面积"
+
+#: assets/ui/minibim_ui.json
+msgid "Datum"
+msgstr "基准"
 
 #: assets/ui/minibim_ui.json
 msgid "Navigate"

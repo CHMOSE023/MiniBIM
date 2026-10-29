@@ -540,6 +540,11 @@ namespace MiniBIM::Bim
         // 门窗的尺寸与默认窗台：它的类型的；没有时返回 false，原因放在 error
         bool OpeningDims(const Element& e, OpeningType& out, std::string& error) const;
         std::optional<OpeningType> OpeningTypeOf(const Element& e) const;
+        // 门窗所在的那一段墙，沿墙从起点量：它中点两边最近的、与它的墙在墙所在标高的平面上相交（穿过或从任一边连上）的墙的面，
+        // 没有时到墙的起点、终点。临时尺寸量到这里（同 Revit 量到墙面）。弧墙上没有
+        std::optional<std::pair<double, double>> OpeningSpan(const Opening& o) const;
+        // 门窗离那一段的中点不超过 near 毫米时，中点的位置（沿墙）：放门窗时吸到中间
+        std::optional<double> Centred(const Opening& o, double near) const;
         // 带层的类型：类别、名称、厚度、各层
         struct Layered
         {
