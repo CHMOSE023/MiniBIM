@@ -246,6 +246,59 @@ namespace MiniBIM::Bim
                     return o;
             return std::nullopt;
         }
+
+        const char* IfcDoor(std::optional<Operation> op, bool right)
+        {
+            switch (op.value_or(Operation::Swing))
+            {
+            case Operation::Swing:         return right ? ".SINGLE_SWING_RIGHT." : ".SINGLE_SWING_LEFT.";
+            case Operation::DoubleSwing:   return ".DOUBLE_DOOR_SINGLE_SWING.";
+            case Operation::Sliding:       return right ? ".SLIDING_TO_RIGHT." : ".SLIDING_TO_LEFT.";
+            case Operation::DoubleSliding: return ".DOUBLE_DOOR_SLIDING.";
+            case Operation::Folding:       return right ? ".FOLDING_TO_RIGHT." : ".FOLDING_TO_LEFT.";
+            case Operation::Fixed:         return ".NOTDEFINED.";
+            }
+            return ".NOTDEFINED.";
+        }
+
+        std::optional<std::pair<Operation, bool>> FromIfcDoor(std::string_view e)
+        {
+            while (!e.empty() && e.front() == '.')
+                e.remove_prefix(1);
+            while (!e.empty() && e.back() == '.')
+                e.remove_suffix(1);
+            const bool right = Text::EndsWith(e, "RIGHT");
+            const auto is = [&](std::initializer_list<std::string_view> names)
+            {
+                for (const std::string_view n : names)
+                    if (e == n)
+                        return true;
+                return false;
+            };
+            Operation op;
+            if (is({ "SINGLE_SWING_LEFT", "SINGLE_SWING_RIGHT", "SWING_FIXED_LEFT", "SWING_FIXED_RIGHT", "DOUBLE_SWING_LEFT",
+                     "DOUBLE_SWING_RIGHT" }))
+                op = Operation::Swing;
+            else if (is({ "DOUBLE_DOOR_SINGLE_SWING", "DOUBLE_DOOR_DOUBLE_SWING", "DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_LEFT",
+                          "DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_RIGHT" }))
+                op = Operation::DoubleSwing;
+            else if (is({ "SLIDING_TO_LEFT", "SLIDING_TO_RIGHT" }))
+                op = Operation::Sliding;
+            else if (is({ "DOUBLE_DOOR_SLIDING" }))
+                op = Operation::DoubleSliding;
+            else if (is({ "FOLDING_TO_LEFT", "FOLDING_TO_RIGHT", "DOUBLE_DOOR_FOLDING" }))
+                op = Operation::Folding;
+            else
+                return std::nullopt;
+            return std::pair{ op, right };
+        }
+
+        const char* IfcWindowPartitioning(std::optional<Operation> op)
+        {
+            if (op == Operation::DoubleSwing || op == Operation::Sliding || op == Operation::DoubleSliding)
+                return ".DOUBLE_PANEL_VERTICAL.";
+            return ".SINGLE_PANEL.";
+        }
     }
 
     std::string NormalizeCategory(std::string_view s)

@@ -13,6 +13,7 @@
     "file.open":    { "icon": "Open.png", "shortcut": "Ctrl+O" },
     "file.save":    { "icon": "Save.png", "shortcut": "Ctrl+S" },
     "file.saveAs":  { "icon": "SaveAs.png", "shortcut": "Ctrl+Shift+S" },
+    "file.exportIfc": { "icon": "ExportIfc.png" },
     "file.sample":  { "icon": "SampleHouse.png" },
     "file.exit":    { "icon": "Exit.png" },
     "view.3d":        { "icon": "View3D.png" },
@@ -24,7 +25,7 @@
     "help.about":   { "icon": "About.png" }
   },
   "menus": [
-    { "title": "File", "items": [ "file.new", "file.open", "file.save", "file.saveAs", "-", "file.sample", "-",
+    { "title": "File", "items": [ "file.new", "file.open", "file.save", "file.saveAs", "file.exportIfc", "-", "file.sample", "-",
                                   { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
     { "title": "View", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown", "-", "view.home", "view.zoomFit" ] },
     { "title": "Help", "items": [ "help.about" ] }

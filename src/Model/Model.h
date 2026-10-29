@@ -396,6 +396,12 @@ namespace MiniBIM::Bim
         // 英文名称，明细表的表头用
         const char* Label(Operation o);
         std::optional<Operation> Parse(std::string_view name);
+        // 门的 IfcDoorTypeOperationEnum，right 时门扇在右；没说怎么开的门是平开门，同 BIMCraft 的门
+        const char* IfcDoor(std::optional<Operation> op, bool right);
+        // 门的开启方式与门扇是否在右：从 IfcDoorTypeOperationEnum（IFC4）或 IfcDoorStyleOperationEnum（IFC2x3）读，带不带点都行
+        std::optional<std::pair<Operation, bool>> FromIfcDoor(std::string_view e);
+        // 窗的 IfcWindowTypePartitioningEnum：两扇相遇的是左右两块，否则一块
+        const char* IfcWindowPartitioning(std::optional<Operation> op);
     }
 
     // 门窗类型。sill 是窗的默认窗台高度；operation 是开启方式（给出时）
@@ -622,6 +628,12 @@ namespace MiniBIM::Bim
         std::vector<std::pair<Id, Part>> PartsNow() const;
         // 库里没有 ID 和 GUID 的东西给上，不再有的去掉；改名保留（Library::Renamed）；没有或与别人重复的部件给新的
         void SyncLibrary();
+        // 新条目、新部件的 GUID：由模型、是什么（部件为 nullptr）与名称得出
+        using GuidMaker = std::function<Guid(const Model&, const Kind*, const std::string&)>;
+        // 同 SyncLibrary，新条目与新部件的 GUID 由 guid 给出（与已有的重复时另给一个）：IFC 导入每次读出一样的 GUID
+        void SyncLibraryWith(const GuidMaker& guid);
+        // 去掉每个部件的 ID 和 GUID，由 SyncLibraryWith 重新给
+        void ForgetParts();
         // 库的下一个 ID：从 LastId 往下数，元素从 FirstId 往上数；两者相遇时库接着元素往上
         Id   FreshLibraryId();
         // 模型里每个库条目名称交给 f：元素的、类型的层的材质
@@ -648,7 +660,7 @@ namespace MiniBIM::Bim
         void RekeyFamilyParams(const std::function<std::optional<std::string>(const std::string&, const std::string&)>& key,
                                const std::function<std::optional<std::string>(const std::string&)>& material);
         bool PartsInStep() const;
-        void SyncParts();
+        void SyncParts(const GuidMaker& make);
         // 文件里的 GUID 换回名称，没有 ID 和 GUID 的给上：ToFile 的反向
         void NamesFromFile();
         friend struct ModelJsonAccess;

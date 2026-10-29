@@ -102,6 +102,8 @@ namespace MiniBIM::Bim
 
         // 同样的元素换成 to(id) 的 ID，GUID 不变；有两个撞到同一个 ID 时为空
         std::optional<Elements> Renumbered(const std::function<Id(Id)>& to) const;
+        // 同样的元素：wanted 列出的 ID 换成它给的 GUID（是 GUID、又没被别的先占时），其余保留自己的
+        Elements Regiven(const std::map<Id, Guid>& wanted) const;
 
         bool operator==(const Elements& other) const;
 

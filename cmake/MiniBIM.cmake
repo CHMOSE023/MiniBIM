@@ -1,6 +1,6 @@
 # ── MiniBIM 核心库（平台无关，源码在 src，头文件以 src 为根："I18n/Translator.h"、"Core/Math/Vec3.hpp"）──
 # 命名空间 MiniBIM。源文件逐个列出（不用通配），新增 .cpp 要加到这里。
-# 移植自 BIMCraft 的模型（bimcraft-core）在命名空间 MiniBIM::Bim，按 docs/PLAN.md 的分组往下加：Model/、Commands/、Ifc/ ……
+# 移植自 BIMCraft 的模型（bimcraft-core）在命名空间 MiniBIM::Bim，按 docs/PLAN.md 的分组往下加：Model/、Commands/、Ifc/（MiniBIM::Bim::Ifc）……
 
 add_library(MiniBIM STATIC
     # 多语言：PO 词典、当前语言（docs/i18n.md）
@@ -22,6 +22,10 @@ add_library(MiniBIM STATIC
     src/Model/Text.cpp
     src/Model/Units.cpp
     src/Model/Walls.cpp
+    # IFC 交换（移植自 BIMCraft step.rs、ifc.rs、import.rs）
+    src/Ifc/Export.cpp
+    src/Ifc/Import.cpp
+    src/Ifc/Step.cpp
     # 命令与会话（移植自 BIMCraft commands.rs、engine.rs、sample.rs）
     src/Commands/Commands.cpp
     src/Commands/Session.cpp

@@ -20,4 +20,6 @@ namespace MiniBIM::Bim
     std::optional<std::pair<Ring, std::vector<Ring>>> RoofFootprint(const Model& m, Guid level, double overhang, std::string& error);
     // taken 所在序列的下一个：最大的数加一，没有时为 "1"。序列是纯数（"1"、"2"）或前缀加数（"P1"、"J-01"）
     std::string NextNumber(const std::vector<std::string>& taken);
+    // 环按角点、到微米，从西南角起
+    Ring Tidy(const Ring& ring);
 }

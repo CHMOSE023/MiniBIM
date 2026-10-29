@@ -20,11 +20,14 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 - 命令：`MainCommands.cpp` 里注册为 `MiniGUI::Command`，名称和提示写英文原文并用 `N_` 标记，`MiniGUI::UiLayout` 每次应用时翻译；菜单只引用命令 ID。
   标题栏右侧的按钮执行 `window.minimize` / `window.maximize` / `window.close`，这三个命令必须有
 - 项目：`MainFrame` 拥有一个 `Bim::Session`（模型与撤销历史，`.agents/features/model.md`），界面只经模型命令改它：
-  文件菜单的新建 / 打开 / 保存 / 另存为 / 示例房屋（`MainFrame::NewProject`、`MainFrame::OpenProject`、`MainFrame::SaveProject`、`MainFrame::OpenSample`）都走
+  文件菜单的新建 / 打开 / 保存 / 另存为 / 导出 IFC / 示例房屋（`MainFrame::NewProject`、`MainFrame::OpenProject`、`MainFrame::SaveProject`、
+  `MainFrame::ExportIfc`、`MainFrame::OpenSample`）都走
   `MainFrame::RunCommand`（命令失败时弹出对话框，标题翻译、核心给的原因是英文），之后 `MainFrame::OnModelChanged` 重建三维场景、刷新标题与状态栏，
   换了项目时相机重新框住模型。标题栏显示保存过的文件名，否则显示项目名称
-- 文件对话框经 `AppPlatform::PickProjectFile`、`AppPlatform::ChooseProjectSavePath`（Win32 用 `GetOpenFileNameW` / `GetSaveFileNameW`，筛选器文字经 `Tr`）。
-  保存只直接写回 `.minibim`：打开的是 BIMCraft 的 `.bimcraft` 时"保存"也走另存为，免得把略去了内容的项目写回原文件；打开时有略去的内容会弹窗说明
+- 文件对话框经 `AppPlatform::PickProjectFile`、`AppPlatform::ChooseProjectSavePath`、`AppPlatform::ChooseIfcSavePath`
+  （Win32 用 `GetOpenFileNameW` / `GetSaveFileNameW`，筛选器文字经 `Tr`）。打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径）；
+  保存只直接写回 `.minibim`：打开的是 BIMCraft 的 `.bimcraft` 或 IFC 时"保存"也走另存为，免得把略去了内容的项目写回原文件；
+  打开时有略去的内容（项目文件的 `left_out`、IFC 的 `skipped`）会弹窗说几个。"导出 IFC…"（`file.exportIfc`）是 `save` 到 `.ifc`，不改项目的路径
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）
 - 帧顺序（同 MiniCAD）：输入到达时立即改状态并 `RequestRender` → 消息队列空了收到 `WM_PAINT` → `MainFrame::RenderFrame`：`UIContext::Update` 布局 →
   `ViewportHost::RenderContent` 按最新尺寸渲染视口 → `AppPlatform::BeginUiPass` → `UIContext::Render` → `AppPlatform::EndUiPass`（呈现）

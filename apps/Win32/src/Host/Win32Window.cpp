@@ -352,16 +352,22 @@ namespace MiniBIM
     // 项目文件的打开 / 保存对话框（返回 UTF-8 路径，空串 = 取消）。筛选器的文字随界面语言
     std::string Win32Window::PickProjectFile()
     {
-        return ShowProjectDialog(false, {});
+        return ShowProjectDialog(FileDialog::Open, {});
     }
 
     std::string Win32Window::ChooseProjectSavePath(const std::string& suggestedName)
     {
-        return ShowProjectDialog(true, suggestedName);
+        return ShowProjectDialog(FileDialog::SaveProject, suggestedName);
     }
 
-    std::string Win32Window::ShowProjectDialog(bool save, const std::string& suggestedName)
+    std::string Win32Window::ChooseIfcSavePath(const std::string& suggestedName)
     {
+        return ShowProjectDialog(FileDialog::SaveIfc, suggestedName);
+    }
+
+    std::string Win32Window::ShowProjectDialog(FileDialog kind, const std::string& suggestedName)
+    {
+        const bool save = kind != FileDialog::Open;
         // 筛选器：名称\0模式\0……\0\0；名称经 Tr 翻译
         std::wstring filter;
         auto add = [&](const std::string& label, const wchar_t* pattern)
@@ -371,13 +377,16 @@ namespace MiniBIM
             filter += pattern;
             filter += L'\0';
         };
-        if (save)
+        if (kind == FileDialog::SaveProject)
             add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
+        else if (kind == FileDialog::SaveIfc)
+            add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
         else
         {
-            add(Tr("All projects") + " (*.minibim;*.bimcraft)", L"*.minibim;*.bimcraft");
+            add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc)", L"*.minibim;*.bimcraft;*.ifc");
             add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
             add(Tr("BIMCraft project") + " (*.bimcraft)", L"*.bimcraft");
+            add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
         }
         add(Tr("All files") + " (*.*)", L"*.*");
         filter += L'\0';
@@ -394,7 +403,7 @@ namespace MiniBIM
         ofn.lpstrFilter = filter.c_str();
         ofn.lpstrFile   = buf.data();
         ofn.nMaxFile    = static_cast<DWORD>(buf.size());
-        ofn.lpstrDefExt = L"minibim";
+        ofn.lpstrDefExt = kind == FileDialog::SaveIfc ? L"ifc" : L"minibim";
         ofn.Flags       = OFN_NOCHANGEDIR | OFN_EXPLORER | (save ? OFN_OVERWRITEPROMPT : (OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST));
         if (!(save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn)))
             return {};

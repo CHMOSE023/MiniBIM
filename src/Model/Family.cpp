@@ -950,6 +950,84 @@ namespace MiniBIM::Bim
                         return k;
                 return std::nullopt;
             }
+
+            IfcClass Ifc(Category c)
+            {
+                constexpr const char* open = ".NOTDEFINED.";
+                switch (c)
+                {
+                case Category::Furniture:
+                case Category::Casework:      return { "IFCFURNITURE", open, nullptr };
+                case Category::Plumbing:      return { "IFCSANITARYTERMINAL", open, nullptr };
+                case Category::Drain:         return { "IFCWASTETERMINAL", ".FLOORTRAP.", nullptr };
+                case Category::PipeFitting:   return { "IFCPIPEFITTING", open, nullptr };
+                case Category::PipeAccessory: return { "IFCVALVE", open, nullptr };
+                case Category::Equipment:     return { "IFCELECTRICDISTRIBUTIONBOARD", ".DISTRIBUTIONBOARD.", nullptr };
+                case Category::Outlet:        return { "IFCOUTLET", ".POWEROUTLET.", nullptr };
+                case Category::Switch:        return { "IFCSWITCHINGDEVICE", ".TOGGLESWITCH.", nullptr };
+                case Category::DataOutlet:    return { "IFCOUTLET", ".DATAOUTLET.", nullptr };
+                case Category::VoiceOutlet:   return { "IFCOUTLET", ".TELEPHONEOUTLET.", nullptr };
+                case Category::PatchPanel:    return { "IFCCOMMUNICATIONSAPPLIANCE", ".NETWORKAPPLIANCE.", nullptr };
+                // IFC4 与 IFC4X3 没有防雷的类：代理带一个读的软件能筛选的对象类型
+                case Category::Rack:          return { "IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", "Rack" };
+                case Category::AirTerminal:   return { "IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", "LightningTerminal" };
+                case Category::Earthing:      return { "IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", "EarthingRod" };
+                case Category::InspectionBox: return { "IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", "InspectionBox" };
+                case Category::Lighting:      return { "IFCLIGHTFIXTURE", open, nullptr };
+                case Category::Generic:
+                case Category::Door:
+                case Category::Window:        return { "IFCBUILDINGELEMENTPROXY", open, nullptr };
+                }
+                return { "IFCBUILDINGELEMENTPROXY", open, nullptr };
+            }
+
+            namespace
+            {
+                // 别的软件写它的构件时用的类（BIMCraft 写的以外）
+                std::vector<const char*> Classes(Category c)
+                {
+                    if (c == Category::Furniture)
+                        return { "IFCFURNISHINGELEMENT", "IFCSYSTEMFURNITUREELEMENT" };
+                    return {};
+                }
+            }
+
+            std::vector<std::string> ReadClasses()
+            {
+                std::vector<std::string> out;
+                for (const Category c : Placed)
+                {
+                    out.emplace_back(Ifc(c).entity);
+                    for (const char* other : Classes(c))
+                        out.emplace_back(other);
+                }
+                return out;
+            }
+
+            std::optional<Category> FromIfc(std::string_view cls, std::optional<std::string_view> kind,
+                                            std::optional<std::string_view> objectType)
+            {
+                std::optional<std::pair<Category, int>> best;
+                for (const Category c : Placed)
+                {
+                    const IfcClass own = Ifc(c);
+                    bool classed = cls == own.entity;
+                    for (const char* other : Classes(c))
+                        classed |= cls == other;
+                    if (!classed || (own.objectType && objectType != std::string_view(own.objectType)))
+                        continue;
+                    std::string_view predefined = own.kind;
+                    if (predefined.size() >= 2)
+                        predefined = predefined.substr(1, predefined.size() - 2);
+                    const int score = 2 * (own.objectType != nullptr) + (kind && *kind == predefined ? 1 : 0);
+                    // 严格更好才换：一样时取前面的
+                    if (!best || score > best->second)
+                        best = std::pair{ c, score };
+                }
+                if (!best)
+                    return std::nullopt;
+                return best->first;
+            }
         }
 
         namespace KindOf

@@ -182,6 +182,14 @@ def _(i):
     i.d.polygon(i.P([(38, 34), (42, 30), (40, 36)]), fill=A)
 
 
+@icon("ExportIfc")         # file.exportIfc：导出 IFC（等轴测的方块 + 向外的箭头）
+def _(i):
+    i.poly([(6, 22), (20, 15), (34, 22), (20, 29)], G, w=3.5)
+    i.line([(6, 22), (6, 44), (20, 51), (34, 44), (34, 22)], G, 3.5)
+    i.line([(20, 29), (20, 51)], G, 3.5)
+    i.arrow(30, 38, 58, 38, A, 4.5, 10)
+
+
 @icon("SampleHouse")       # file.sample：示例房屋（等轴测的房子，墙上一扇门）
 def _(i):
     cube(i, fill_all=True)

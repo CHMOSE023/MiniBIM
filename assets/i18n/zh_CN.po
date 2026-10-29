@@ -278,8 +278,8 @@ msgid "Open..."
 msgstr "打开..."
 
 #: apps/Common/src/GUI/MainCommands.cpp
-msgid "Open a MiniBIM project, or a BIMCraft one"
-msgstr "打开 MiniBIM 项目，或 BIMCraft 项目"
+msgid "Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"
+msgstr "打开 MiniBIM 项目、BIMCraft 项目，或把 IFC 文件作为新项目打开"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Save the project"
@@ -292,6 +292,14 @@ msgstr "另存为..."
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Save the project under another name"
 msgstr "以另一个名称保存项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export IFC..."
+msgstr "导出 IFC..."
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export the model as an IFC4 file for other BIM software"
+msgstr "把模型导出为 IFC4 文件，供别的 BIM 软件使用"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Sample House"
@@ -370,6 +378,11 @@ msgid "Opened with parts left out"
 msgstr "已打开，部分内容被略去"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} item of this IFC file has no MiniBIM element yet, or breaks one of its rules, and was left out."
+msgid_plural "{0} items of this IFC file have no MiniBIM element yet, or break one of its rules, and were left out."
+msgstr[0] "这个 IFC 文件里有 {0} 项在 MiniBIM 里还没有对应的元素，或违反了它的规则，已略去。"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "{0} item of this file isn't supported by this version yet and was left out. Saving the project drops it."
 msgid_plural "{0} items of this file aren't supported by this version yet and were left out. Saving the project drops them."
 msgstr[0] "这个文件有 {0} 项内容本版本还不支持，已经略去。保存项目时这些内容会丢掉。"
@@ -377,6 +390,10 @@ msgstr[0] "这个文件有 {0} 项内容本版本还不支持，已经略去。�
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not save the project"
 msgstr "无法保存项目"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not export IFC"
+msgstr "无法导出 IFC"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not build the sample house"
@@ -454,6 +471,10 @@ msgstr "选中：{0} {1}"
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "MiniBIM project"
 msgstr "MiniBIM 项目"
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "IFC file"
+msgstr "IFC 文件"
 
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"

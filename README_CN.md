@@ -29,7 +29,8 @@ MiniBIM 的界面与渲染沿用 [MiniCAD](https://github.com/CHMOSE023/MiniCAD)
 建模功能移植自 [BIMCraft](https://github.com/IPedrax/BIMCraft)，界面支持多语言。
 
 > 目前处于第 2 阶段（移植 BIMCraft 的模型）：标高、轴网、墙、楼板、天花板、屋顶、房间、门窗、族与构件及其类型与材质，带撤销的命令，项目文件（`.minibim`，
-> 与 BIMCraft 的 `.bimcraft` 同一格式）已经移植。程序启动时打开用命令搭起来的示例房屋，三维经 SMLib 建模。
+> 与 BIMCraft 的 `.bimcraft` 同一格式），楼层平面，以及 IFC 导入导出（读 IFC2x3 / IFC4，写 IFC4）已经移植。程序启动时打开用命令搭起来的示例房屋，
+> 三维经 SMLib 建模，可以切换三维与各标高的平面。
 > 后面的移植计划见 [docs/PLAN.md](docs/PLAN.md)。
 
 ### Windows 版编译

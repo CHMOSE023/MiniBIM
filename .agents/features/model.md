@@ -7,7 +7,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 ## 概述
 
 移植自 BIMCraft `crates/core`（`f3bbb33`）的建筑模型、命令与撤销，命名空间 `MiniBIM::Bim`，在核心库里（不依赖界面，Linux CI 也编译）。
-第 2a–2d 步移植了这些（进度与后续见 `docs/PLAN.md` 第 2 阶段）：
+第 2a–2d 步移植了这些（进度与后续见 `docs/PLAN.md` 第 2 阶段；第 2e 步的 IFC 交换在 `src/Ifc`，见 `.agents/features/ifc.md`）：
 
 | 代码 | 来自 BIMCraft | 内容 |
 |---|---|---|
@@ -25,7 +25,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/ModelJson.h` | `model.rs`、`ids.rs`、`library.rs`、`lenient.rs` | 元素与项目文件的 JSON |
 | `src/Model/Walls.h` | `walls.rs` 与它的 index 子模块 | 墙的定位线、墙面、斜接封口、轮廓、棱柱、加速索引 |
 | `src/Commands/Session.h` | `engine.rs` | `Session`：执行命令、回滚、撤销 / 重做、脚本、事务 |
-| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`，第 2c 步加了 `family`、`component`，门窗可带 `family`） |
+| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`，第 2c 步加了 `family`、`component`，门窗可带 `family`；第 2e 步 `open`、`save` 读写 `.ifc`） |
 | `src/Commands/Sample.h` | `sample.rs` | 示例房屋脚本（已移植命令能做的部分） |
 
 ## 入口与数据流
@@ -42,7 +42,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   文件里引用库条目的名称（墙的 `type`、层的 `material`）一律写 GUID，读回时换回名称（`Model::NamesFromFile`）
 - 读文件宽松、读命令严格：命令里拼错的键报错（`FromJson` 读元素时先查不认识的键）；读文件时本版本不认识的内容（BIMCraft 新加的字段、还没移植的元素、
   族、阶段、视图设置……）略去，略去的位置以 JSON 指针列在 `open` 结果的 `left_out`（`/elements/100004/finish`）。读完再清理：宿主没了的门窗也略去，
-  贴着的东西不在了的墙松开。界面打开有略去内容的文件时弹窗说明，保存会丢掉它们
+  贴着的东西不在了的墙松开。界面打开有略去内容的文件时弹窗说明，保存会丢掉它们。`.ifc` 作为新项目导入、保存为 `.ifc` 是导出（`.agents/features/ifc.md`）
 - 三维：`ModelScene`（`.agents/features/view3d.md`）从 `Bim::Model` 建实体
 - 屋顶：迹线屋顶的坡面由 `Model::RoofFaces` 算出：平的、按 `Skeleton::Faces`（每条边以速度 1 向内移动，山墙边速度 0）的坡面，或拉伸屋顶的轮廓；
   `join` 插进的屋顶上方只留高过那个屋顶顶面的部分。`Model::RoofPieces` 再减去开洞。墙贴着屋顶时（`Wall::attachTop`）顶跟着它的底面（`Walls::TopAt`）。
@@ -70,7 +70,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   同样的族在同样的材质名称下不再查；`FamilyLibrary` 每种语言只建一次
 - 新增一种元素：在 `Element::Variant` 里加一种，`std::visit` 的访问器（`Element::Category`、`Element::RefsMut`）会编译报错列出要补的分支；
   再补 `ModelJson.cpp` 的读写（`ReadElement`，宽松读时还没移植的类别整个略去）、`Model::Check`、`Model::LevelOf`、命令的 `Transformed` 等
-- 新增库条目的种类：`Model::LibraryNames`、`Element::LibRefsMut` / `Model::LibRefsMut`（文件里名称换 GUID）；新的部件加进 `Model::PartsNow` 和 `Model::SyncParts`
+- 新增库条目的种类：`Model::LibraryNames`、`Element::LibRefsMut` / `Model::LibRefsMut`（文件里名称换 GUID）；新的部件加进 `Model::PartsNow`、`Model::SyncParts`
+  和 `Model::ForgetParts`。`Model::SyncLibraryWith` 让调用的给出新条目与部件的 GUID（IFC 导入由文件内容得出，同一个文件每次一样）
 - nlohmann/json：不用会抛异常的接口（`parse` 传 `allow_exceptions = false`，取值前查类型）；代码里构造的整数是有符号整数、解析出的是无符号整数，
   读非负整数用 `Bim::AsWhole`；不要在 range-for 里对临时对象调 `items()`（临时对象先析构，`Model::ToJson` 踩过）
 - 数的读写不随系统区域设置：`Text::ParseNumber`（`from_chars`）、`Text::Shortest`（`to_chars`，照 Rust 的 `{}` 格式）

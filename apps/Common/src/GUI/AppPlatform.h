@@ -47,10 +47,13 @@ namespace MiniBIM
         // ── 文件与目录 ───────────────────────────────────────────
         virtual std::string GetResourceDir() const = 0;     // ui/ i18n/ 所在目录（UTF-8）
         virtual std::string GetUserDataDir() const = 0;     // 用户设置（settings.json）的目录（UTF-8）；空串 = 不保存
-        // 选择要打开的项目文件（.minibim，也可以是 BIMCraft 的 .bimcraft）：返回 UTF-8 路径，空串 = 取消。平台没有文件对话框时返回空串
+        // 选择要打开的项目文件（.minibim，也可以是 BIMCraft 的 .bimcraft 或 IFC 文件 .ifc）：返回 UTF-8 路径，空串 = 取消。
+        // 平台没有文件对话框时返回空串
         virtual std::string PickProjectFile() { return {}; }
         // 另存为：suggestedName 为默认文件名（带 .minibim），返回 UTF-8 路径，空串 = 取消
         virtual std::string ChooseProjectSavePath(const std::string& suggestedName) { (void)suggestedName; return {}; }
+        // 导出 IFC 存到哪里：suggestedName 为默认文件名（带 .ifc），返回 UTF-8 路径，空串 = 取消
+        virtual std::string ChooseIfcSavePath(const std::string& suggestedName) { (void)suggestedName; return {}; }
 
         // ── 系统 ─────────────────────────────────────────────────
         // 系统界面语言（BCP 47，如 "zh-CN"、"en-US"）；取不到时返回空串

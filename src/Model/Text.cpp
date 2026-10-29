@@ -76,6 +76,98 @@ namespace MiniBIM::Bim::Text
         return n;
     }
 
+    std::u32string Utf32(std::string_view bytes)
+    {
+        std::u32string out;
+        const auto at = [&](size_t i) { return i < bytes.size() ? static_cast<unsigned char>(bytes[i]) : 0u; };
+        for (size_t i = 0; i < bytes.size();)
+        {
+            const unsigned b = at(i);
+            if (b < 0x80)
+            {
+                out.push_back(b);
+                ++i;
+                continue;
+            }
+            // 序列的长度、第二个字节的范围（排除过长编码、代理区与超出 U+10FFFF 的）
+            size_t n = 0;
+            unsigned lo = 0x80, hi = 0xBF;
+            if (b >= 0xC2 && b <= 0xDF)
+                n = 2;
+            else if (b >= 0xE0 && b <= 0xEF)
+            {
+                n = 3;
+                if (b == 0xE0)
+                    lo = 0xA0;
+                if (b == 0xED)
+                    hi = 0x9F;
+            }
+            else if (b >= 0xF0 && b <= 0xF4)
+            {
+                n = 4;
+                if (b == 0xF0)
+                    lo = 0x90;
+                if (b == 0xF4)
+                    hi = 0x8F;
+            }
+            // 合法的前缀有几个字节：不合法时整个前缀换成一个 U+FFFD
+            size_t ok = 1;
+            char32_t cp = n == 2 ? (b & 0x1Fu) : n == 3 ? (b & 0x0Fu) : (b & 0x07u);
+            for (size_t k = 1; k < n && i + k < bytes.size(); ++k)
+            {
+                const unsigned c = at(i + k);
+                if (k == 1 ? (c < lo || c > hi) : (c < 0x80 || c > 0xBF))
+                    break;
+                cp = (cp << 6) | (c & 0x3Fu);
+                ++ok;
+            }
+            out.push_back(n != 0 && ok == n ? cp : char32_t(0xFFFD));
+            i += ok;
+        }
+        return out;
+    }
+
+    void AppendUtf8(std::string& out, char32_t c)
+    {
+        if (c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF))
+            c = 0xFFFD;
+        if (c < 0x80)
+            out.push_back(static_cast<char>(c));
+        else if (c < 0x800)
+        {
+            out.push_back(static_cast<char>(0xC0 | (c >> 6)));
+            out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+        }
+        else if (c < 0x10000)
+        {
+            out.push_back(static_cast<char>(0xE0 | (c >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((c >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+        }
+        else
+        {
+            out.push_back(static_cast<char>(0xF0 | (c >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((c >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((c >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+        }
+    }
+
+    std::string Lossy(std::string_view bytes)
+    {
+        // 多半本来就是合法的 UTF-8：先看一遍，合法就原样返回
+        const std::u32string cps = Utf32(bytes);
+        bool clean = true;
+        for (const char32_t c : cps)
+            clean &= c != 0xFFFD;
+        if (clean)
+            return std::string(bytes);
+        std::string out;
+        for (const char32_t c : cps)
+            AppendUtf8(out, c);
+        return out;
+    }
+
     std::optional<double> ParseNumber(std::string_view s)
     {
         s = Trim(s);

@@ -29,6 +29,7 @@ C++20 的开源 BIM 软件（MIT）。界面、渲染、构建、代码风格沿
 - `src/`：核心库（目标 `MiniBIM`，定义在 `cmake/MiniBIM.cmake`，命名空间 `MiniBIM`）。`I18n/` 多语言，`View/` 三维相机与模型的三维场景，
   `Core/`（数学、日志）与 `Render/`（`IRenderer` 等接口）复制自 MiniCAD
 - `src/Model/`、`src/Commands/`：移植自 BIMCraft 的模型、命令与撤销（命名空间 `MiniBIM::Bim`，`.agents/features/model.md`）
+- `src/Ifc/`：IFC 交换（移植自 BIMCraft，`.agents/features/ifc.md`）：STEP 的读法、IFC4 导出、IFC2x3 / IFC4 导入
 - `src/Solid/`：三维实体内核接口 `ISolidKernel.h`（只用 MiniBIM 类型）；SMLib 实现在 `src/Solid/SMLib/`（目标 `MiniBIMSolid`，唯一包含 SMLib 头文件的地方）
 - `src/UI/`：MiniGUI（目标 `MiniGUI`，定义在 `cmake/MiniGUI.cmake`，命名空间 `MiniGUI`），复制自 MiniCAD；与 MiniCAD 的差异记在 `docs/PLAN.md`
 - `apps/Common/`：主窗口的界面与逻辑（目标 `MiniBIMApp`），平台服务经 `AppPlatform`（`apps/Common/src/GUI/AppPlatform.h`）

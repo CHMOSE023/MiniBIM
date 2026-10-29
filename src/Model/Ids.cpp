@@ -298,6 +298,23 @@ namespace MiniBIM::Bim
         return out;
     }
 
+    Elements Elements::Regiven(const std::map<Id, Guid>& wanted) const
+    {
+        Elements out;
+        std::string error;
+        for (const auto& [id, g] : m_guids)
+        {
+            const auto it = wanted.find(id);
+            if (it == wanted.end() || it->second.Pending() || out.m_ids.count(it->second))
+                continue;
+            out.InsertAs(id, it->second, m_items.at(id), error);
+        }
+        for (const auto& [id, g] : m_guids)
+            if (!out.m_items.count(id))
+                out.InsertAs(id, out.m_ids.count(g) ? out.Fresh() : g, m_items.at(id), error);
+        return out;
+    }
+
     bool Elements::operator==(const Elements& other) const
     {
         if (m_items.size() != other.m_items.size() || m_guids != other.m_guids)

@@ -283,7 +283,7 @@ namespace MiniBIM::Bim
         return true;
     }
 
-    void Model::SyncParts()
+    void Model::SyncParts(const GuidMaker& make)
     {
         const auto now = PartsNow();
         std::set<Id> ids;
@@ -353,7 +353,7 @@ namespace MiniBIM::Bim
             Guid guid = p.guid;
             if (!keep[k].second)
             {
-                guid = elements.Fresh();
+                guid = make(*this, nullptr, p.Name());
                 while (guid.IsNil() || guid.Pending() || guids.count(guid))
                     guid = Guid::New();
                 guids.insert(guid);
@@ -398,6 +398,11 @@ namespace MiniBIM::Bim
 
     void Model::SyncLibrary()
     {
+        SyncLibraryWith([](const Model& m, const Kind*, const std::string&) { return m.elements.Fresh(); });
+    }
+
+    void Model::SyncLibraryWith(const GuidMaker& guid)
+    {
         if (LibraryInStep())
             return;
         const auto now = LibraryNames();
@@ -420,14 +425,43 @@ namespace MiniBIM::Bim
             if (library.IdOf(kind, entryName))
                 continue;
             const Id id = FreshLibraryId();
-            Guid g = elements.Fresh();
-            while (library.ByGuid(g) || elements.Contains(g) || g.Pending())
+            Guid g = guid(*this, &kind, entryName);
+            while (library.ByGuid(g) || elements.Contains(g) || g.Pending() || g.IsNil())
                 g = elements.Fresh();
             std::string ignored;
             library.Insert(id, Entry{ kind, entryName, g }, ignored);
         }
         if (!PartsInStep())
-            SyncParts();
+            SyncParts(guid);
+    }
+
+    void Model::ForgetParts()
+    {
+        const auto forget = [](auto& x)
+        {
+            x.id   = 0;
+            x.guid = Guid();
+        };
+        for (auto& [_, t] : types.wall)
+            for (Layer& l : t.layers)
+                forget(l);
+        for (auto& [_, t] : types.floor)
+            for (Layer& l : t.layers)
+                forget(l);
+        for (auto& [_, t] : types.roof)
+            for (Layer& l : t.layers)
+                forget(l);
+        for (auto& [_, t] : types.ceiling)
+            for (Layer& l : t.layers)
+                forget(l);
+        for (auto& [_, f] : families)
+        {
+            for (Fam::Form& x : f.forms)
+                forget(x);
+            for (Fam::Symbol& x : f.symbols)
+                forget(x);
+        }
+        library.m_parts.clear();
     }
 
     Id Model::FreshLibraryId()

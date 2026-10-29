@@ -32,9 +32,10 @@ namespace MiniBIM
 
         // ── 文件 ─────────────────────────────────────────────────
         add("file.new", N_("New"), N_("Start an empty project with two levels"), [this] { NewProject(); });
-        add("file.open", N_("Open..."), N_("Open a MiniBIM project, or a BIMCraft one"), [this] { OpenProject(); });
+        add("file.open", N_("Open..."), N_("Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"), [this] { OpenProject(); });
         add("file.save", N_("Save"), N_("Save the project"), [this] { SaveProject(false); });
         add("file.saveAs", N_("Save As..."), N_("Save the project under another name"), [this] { SaveProject(true); });
+        add("file.exportIfc", N_("Export IFC..."), N_("Export the model as an IFC4 file for other BIM software"), [this] { ExportIfc(); });
         add("file.sample", N_("Sample House"), N_("Open the sample house, built by commands"), [this] { OpenSample(); });
         add("file.exit", N_("Exit"), "", [this] { RequestExit(); });
 
@@ -97,6 +98,15 @@ namespace MiniBIM
         Bim::Json r;
         if (!RunCommand("open", Bim::Json{ { "path", path } }, N_("Could not open the project"), &r))
             return;
+        // IFC 里 MiniBIM 还没有的元素、违反规则的略去了：说一声有几个（列表在命令的结果里）
+        if (r.contains("skipped") && r["skipped"].is_array() && !r["skipped"].empty())
+        {
+            const size_t n = r["skipped"].size();
+            MiniGUI::ShowMessageBox(*m_ui, Tr("Opened with parts left out"),
+                Format(TrN("{0} item of this IFC file has no MiniBIM element yet, or breaks one of its rules, and was left out.",
+                           "{0} items of this IFC file have no MiniBIM element yet, or break one of its rules, and were left out.",
+                           static_cast<long long>(n)), { std::to_string(n) }));
+        }
         // 这个版本还不认识的内容（BIMCraft 有、还没移植的元素与设置）略去了：说一声，保存时会丢掉
         const auto left = r.contains("left_out_count") ? Bim::AsWhole(r["left_out_count"]) : std::nullopt;
         if (left && *left > 0)
@@ -124,6 +134,17 @@ namespace MiniBIM
         }
         const Bim::Json params = path.empty() ? Bim::Json::object() : Bim::Json{ { "path", path } };
         return RunCommand("save", params, N_("Could not save the project"));
+    }
+
+    void MainFrame::ExportIfc()
+    {
+        const auto& current = m_session.Path();
+        const std::string stem = current ? ToUtf8(ToPath(*current).stem()) : m_session.GetModel().name;
+        const std::string path = m_platform->ChooseIfcSavePath((stem.empty() ? std::string("Project") : stem) + ".ifc");
+        if (path.empty())
+            return;
+        // save 写 .ifc 时只导出，不改项目自己的路径
+        RunCommand("save", Bim::Json{ { "path", path } }, N_("Could not export IFC"));
     }
 
     void MainFrame::OpenSample()

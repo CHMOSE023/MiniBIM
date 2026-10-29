@@ -56,6 +56,28 @@ namespace MiniBIM::Bim
             std::optional<Category> FromName(std::string_view name);
             // 立在墙里：门窗族，画在洞口自己的坐标里（x 沿墙从洞口中间起，y 横过墙朝墙的左边，z 从窗台往上）
             inline bool Hosted(Category c) { return c == Category::Door || c == Category::Window; }
+
+            // 构件可以是的类别（门窗族立在墙里），按 IFC 导入读它们的顺序
+            inline constexpr std::array<Category, 17> Placed = {
+                Category::Furniture,     Category::Plumbing, Category::Drain,      Category::PipeFitting, Category::PipeAccessory,
+                Category::Equipment,     Category::Outlet,   Category::Switch,     Category::AirTerminal, Category::Earthing,
+                Category::InspectionBox, Category::Lighting, Category::Generic,    Category::DataOutlet,  Category::VoiceOutlet,
+                Category::PatchPanel,    Category::Rack,
+            };
+            // IFC 怎样写它的构件：产品的类、预定义类型，以及类里没有它的位置时代理带的对象类型（IFC4 没有防雷的类）
+            struct IfcClass
+            {
+                const char* entity;
+                const char* kind;
+                const char* objectType;  // 没有时为 nullptr
+            };
+            IfcClass Ifc(Category c);
+            // 构件能从哪些 IFC 类读进来：各类别自己的，以及别的软件写它时用的
+            std::vector<std::string> ReadClasses();
+            // IFC 产品是哪个类别：类与对象类型都对得上的里面，对象类型对上的优先，其次预定义类型（文件里的写法，不带点）对上的，
+            // 再其次排在前面的
+            std::optional<Category> FromIfc(std::string_view cls, std::optional<std::string_view> kind,
+                                            std::optional<std::string_view> objectType);
         }
 
         // 门窗族的公式读到的墙：厚度，毫米

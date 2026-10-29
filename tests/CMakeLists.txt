@@ -4,6 +4,7 @@
 # Solid/    SMLib 冒烟测试（复制自 MiniCAD）→ SMLibSmokeTests（MINIBIM_WITH_SOLID 时）
 # Model/    模型核心（移植自 BIMCraft）：几何、单位、ID、元素与检查、墙、库 → ModelTests
 # Commands/ 命令与会话（移植自 BIMCraft）：撤销、脚本、事务、建模、编辑、项目文件、示例房屋、恶意参数 → CommandTests
+# Ifc/      IFC 交换（移植自 BIMCraft）：STEP 的读法、IFC4 导出、IFC2x3 / IFC4 导入与往返 → IfcTests
 # 测试程序都是普通的可执行文件：打印 [PASS] / [FAIL]，有失败时返回非 0；输出到构建目录根（out/<preset>/），与 ctest 一起使用
 
 add_executable(I18nTests "I18n/I18nTests.cpp")
@@ -35,6 +36,13 @@ if(MSVC)
 endif()
 add_test(NAME CommandTests COMMAND CommandTests)
 
+add_executable(IfcTests "Ifc/IfcTests.cpp")
+target_link_libraries(IfcTests PRIVATE MiniBIM)
+if(MSVC)
+    target_compile_options(IfcTests PRIVATE /utf-8)
+endif()
+add_test(NAME IfcTests COMMAND IfcTests)
+
 if(MINIBIM_WITH_SOLID)
     add_executable(SMLibSmokeTests "Solid/SMLibSmokeTests.cpp")
     target_link_libraries(SMLibSmokeTests PRIVATE SM_API)
@@ -51,7 +59,7 @@ if(MINIBIM_WITH_SOLID)
     add_test(NAME ModelSceneTests COMMAND ModelSceneTests)
 endif()
 
-set_target_properties(I18nTests ViewTests ModelTests CommandTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(I18nTests ViewTests ModelTests CommandTests IfcTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 if(MINIBIM_WITH_SOLID)
     set_target_properties(SMLibSmokeTests ModelSceneTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endif()

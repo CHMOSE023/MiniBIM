@@ -87,6 +87,8 @@ namespace MiniBIM
         void NewProject();
         void OpenProject();
         bool SaveProject(bool saveAs);
+        // 模型导出为 IFC4 文件：问存到哪里，不改项目自己的路径
+        void ExportIfc();
         void OpenSample();
         // 模型变了（命令、新建、打开）之后：重建三维场景，刷新标题与状态栏；换了项目时相机重新框住模型
         void OnModelChanged();

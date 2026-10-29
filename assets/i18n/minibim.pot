@@ -279,7 +279,7 @@ msgid "Open..."
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
-msgid "Open a MiniBIM project, or a BIMCraft one"
+msgid "Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -292,6 +292,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Save the project under another name"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export IFC..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export the model as an IFC4 file for other BIM software"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -371,6 +379,12 @@ msgid "Opened with parts left out"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} item of this IFC file has no MiniBIM element yet, or breaks one of its rules, and was left out."
+msgid_plural "{0} items of this IFC file have no MiniBIM element yet, or break one of its rules, and were left out."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "{0} item of this file isn't supported by this version yet and was left out. Saving the project drops it."
 msgid_plural "{0} items of this file aren't supported by this version yet and were left out. Saving the project drops them."
 msgstr[0] ""
@@ -378,6 +392,10 @@ msgstr[1] ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not save the project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not export IFC"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -459,6 +477,10 @@ msgstr ""
 
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "MiniBIM project"
+msgstr ""
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "IFC file"
 msgstr ""
 
 #: apps/Win32/src/Host/Win32Window.cpp

@@ -6,6 +6,7 @@
 // 其余命令按 docs/PLAN.md 第 2 阶段的顺序陆续加进来
 #include "Commands/Commands.h"
 #include "I18n/Translator.h"
+#include "Ifc/Ifc.h"
 #include "Model/ModelJson.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
@@ -335,21 +336,6 @@ namespace MiniBIM::Bim
             return std::pair{ std::get<0>(*best), Along(*std::get<1>(*best), at) };
         }
 
-        // 环按角点、到微米，从西南角起
-        Ring Tidy(const Ring& ring)
-        {
-            Ring out;
-            for (const P2& p : Geom::Corners(ring))
-                out.push_back(Micron(p));
-            if (out.empty())
-                return out;
-            size_t first = 0;
-            for (size_t i = 1; i < out.size(); ++i)
-                if (out[i].y < out[first].y || (out[i].y == out[first].y && out[i].x < out[first].x))
-                    first = i;
-            std::rotate(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(first), out.end());
-            return out;
-        }
 
         // 给出的环：去掉连续重复的点和末尾回到起点的点
         Ring CleanRing(const std::vector<P2>& given)
@@ -517,9 +503,31 @@ namespace MiniBIM::Bim
                 return false;
             if (!path)
                 return P.Fail("`path` is required");
-            if (Extension(*path) == "ifc")
-                return P.Fail("IFC import isn't ported yet (docs/PLAN.md, phase 2)");
             std::string text, why;
+            // IFC 作为新项目进来：保存时再问存到哪里
+            if (Extension(*path) == "ifc")
+            {
+                if (!ReadFile(*path, text, why))
+                    return P.Fail(why);
+                const std::u8string stem = ToPath(*path).stem().u8string();
+                Ifc::Imported i;
+                if (!Ifc::Import(text, stem.empty() ? std::string("Project") : std::string(stem.begin(), stem.end()), i, why))
+                    return P.Fail(*path + ": " + why);
+                std::map<std::string, size_t> counts;
+                for (const auto& [_, e] : i.model.elements.Items())
+                    ++counts[e->Category()];
+                Json elements = Json::object();
+                for (const auto& [category, n] : counts)
+                    elements[category] = n;
+                result = Json{ { "path", *path },
+                               { "name", i.model.name },
+                               { "format", i.schema },
+                               { "elements", std::move(elements) },
+                               { "skipped", i.skipped },
+                               { "moved", i.moved ? ToJson(*i.moved) : Json() } };
+                s.Reset(std::move(i.model), std::nullopt);
+                return true;
+            }
             if (!ReadFile(*path, text, why))
                 return P.Fail(why);
             Model m;
@@ -556,9 +564,16 @@ namespace MiniBIM::Bim
                 return P.Fail("`path` is required: this project hasn't been saved yet");
             const std::string path = given ? *given : *s.Path();
             const std::string ext = Extension(path);
-            if (ext == "ifc" || ext == "pdf" || ext == "svg" || ext == "png")
-                return P.Fail("exporting ." + ext + " isn't ported yet (docs/PLAN.md, phase 2)");
             std::string text, why;
+            if (ext == "ifc")
+            {
+                if (!AtomicWrite(path, Ifc::Export(s.GetModel()), why))
+                    return P.Fail(why);
+                result = Json{ { "path", path }, { "format", "IFC4" } };
+                return true;
+            }
+            if (ext == "pdf" || ext == "svg" || ext == "png")
+                return P.Fail("exporting ." + ext + " isn't ported yet (docs/PLAN.md, phase 2)");
             if (!s.GetModel().ToFile(text, why) || !AtomicWrite(path, text, why))
                 return P.Fail(why);
             s.SetPath(path);
@@ -2391,8 +2406,8 @@ namespace MiniBIM::Bim
         // edit：可撤销；other：不算撤销步骤（只读，或换掉整个项目）
         static const std::vector<Command> all = {
             { "new", N_("New"), {}, "{name?, language?: en|pt|es} an empty project with Level 1 (0) and Level 2 (3000), named in its language", New, false },
-            { "open", N_("Open"), {}, "{path} a .minibim (or BIMCraft .bimcraft) project; what this version doesn't know of it is left out, listed in `left_out`", Open, false },
-            { "save", N_("Save"), {}, "{path?} saves the project (Save As with a path) as .minibim; the format is BIMCraft's, which opens it too", Save, false },
+            { "open", N_("Open"), {}, "{path} a .minibim (or BIMCraft .bimcraft) project; what this version doesn't know of it is left out, listed in `left_out`. An .ifc (IFC2x3 or IFC4) comes in as a new project: what MiniBIM has no element for, or what breaks a rule, is listed in `skipped`", Open, false },
+            { "save", N_("Save"), {}, "{path?} saves the project (Save As with a path) as .minibim; the format is BIMCraft's, which opens it too. A path ending .ifc exports IFC4 and leaves the project's own path as it was", Save, false },
             { "undo", N_("Undo"), {}, "{count?} takes back the last `count` steps (1 by default)", Undo, false },
             { "redo", N_("Redo"), {}, "{count?} does again the last `count` steps undone (1 by default)", Redo, false },
             { "level", N_("Level"), { "LL" },
@@ -2721,6 +2736,21 @@ namespace MiniBIM::Bim
                 courtyards.push_back(Tidy(grown));
         }
         return std::pair{ Tidy(Geom::Grow(outline->first, d)), std::move(courtyards) };
+    }
+
+    Ring Tidy(const Ring& ring)
+    {
+        Ring out;
+        for (const P2& p : Geom::Corners(ring))
+            out.push_back(Micron(p));
+        if (out.empty())
+            return out;
+        size_t first = 0;
+        for (size_t i = 1; i < out.size(); ++i)
+            if (out[i].y < out[first].y || (out[i].y == out[first].y && out[i].x < out[first].x))
+                first = i;
+        std::rotate(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(first), out.end());
+        return out;
     }
 
     std::string NextNumber(const std::vector<std::string>& takenIn)
