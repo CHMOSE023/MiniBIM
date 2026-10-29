@@ -19,8 +19,8 @@
 #include <vector>
 
 // 建筑模型。长度单位毫米，x 向东、y 向北、z 向上，每个标高有高程。
-// 第 2a 步移植了标高、轴网、墙、楼板、门、窗与它们的类型、材质；BIMCraft 的其余元素（房间、屋顶、天花板、构件、
-// 视图、图纸……）按 docs/PLAN.md 第 2 阶段的顺序陆续加进 Element。新增一种元素时 std::visit 会列出所有要补的分支
+// 第 2a 步移植了标高、轴网、墙、楼板、门、窗与它们的类型、材质，第 2b 步加了屋顶、天花板、房间、房间分隔线；
+// BIMCraft 的其余元素（构件、视图、图纸……）按 docs/PLAN.md 第 2 阶段的顺序陆续加进 Element。新增一种元素时 std::visit 会列出所有要补的分支
 namespace MiniBIM::Bim
 {
     // 平面视图剖切面在标高以上的高度（视图范围没另设时）；房间在这个高度找围住它的墙
@@ -229,10 +229,83 @@ namespace MiniBIM::Bim
         bool operator==(const Window&) const = default;
     };
 
+    // 房间分隔线，同 Revit：在 level 上从 start 到 end。它像墙一样围合房间（开敞空间里的两个房间：起居室与走廊），
+    // 此外什么都不是：没有实体、不剖切、没有自己的面积
+    struct RoomSeparator
+    {
+        Guid level;
+        P2   start;
+        P2   end;
+        bool operator==(const RoomSeparator&) const = default;
+    };
+
+    // 天花板：沿 boundary（逆时针），openings 处开洞（在里面、互不相交）；底面在标高上方 offset，上面是类型的厚度
+    struct Ceiling
+    {
+        std::string       typeName;
+        Guid              level;
+        Ring              boundary;
+        std::vector<Ring> openings;
+        double            offset = 0.0;
+        bool operator==(const Ceiling&) const = default;
+    };
+
+    // 房间：point 是房间里的一点，边界由它四周的墙找出，所以墙动时跟着变
+    struct Room
+    {
+        Guid        level;
+        P2          point;
+        std::string name;
+        std::string number;
+        bool operator==(const Room&) const = default;
+    };
+
+    // 拉伸屋顶的形状：底面在过 line 的竖直平面里的轮廓，各点为 [沿线距起点, 高于屋顶底部]，从线左边 from 到 to 毫米处垂直于线扫过
+    struct Extrusion
+    {
+        std::array<P2, 2> line;
+        std::vector<P2>   profile;
+        double            from = 0.0;
+        double            to   = 0.0;
+        bool operator==(const Extrusion&) const = default;
+    };
+
+    // 屋顶：在 level 上方 offset。迹线屋顶沿 boundary（伸出 overhang），绕开 courtyards（其中的洞，有自己的檐口）：
+    // slope 为 0 时平的，否则除 gables 外的每条边以 slope 度向上倾斜，坡面相交处为斜脊、天沟、屋脊（直骨架）；
+    // gables 里的边（第 i 条从第 i 点到下一点，天井的边接着外轮廓编号）保持竖直即山墙，gable 让矩形的两条短边竖直。
+    // 或者是拉伸屋顶 extrusion。openings 在平面上开洞；join 是它插进的屋顶，它在那个屋顶的顶面处收住
+    struct Roof
+    {
+        std::string         typeName;
+        Guid                level;
+        Ring                boundary;
+        std::vector<Ring>   courtyards;
+        double              slope    = 0.0;
+        double              overhang = 0.0;
+        bool                gable    = false;
+        std::vector<size_t> gables;
+        double              offset   = 0.0;
+        std::vector<Ring>   openings;
+        std::optional<Guid> join;
+        std::optional<Extrusion> extrusion;
+
+        // 迹线的各条边，编号同 gables：外轮廓的，然后是每个天井的
+        std::vector<Segment> Edges() const;
+        bool operator==(const Roof&) const = default;
+    };
+
+    // 坡屋顶迹线最多的点数：找坡面相交处费时间
+    inline constexpr size_t MaxRoofPoints = 256;
+    // 天花板默认在标高以上的高度
+    inline constexpr double CeilingHeight = 2600.0;
+
+    // 屋顶的一个坡面：平面上围着它的各圈（外圈逆时针，然后是其中的洞，顺时针），以及它的底面所在的平面
+    using Slope = std::pair<std::vector<Ring>, Plane>;
+
     // 一个元素。文件里写作带 "category" 的对象：{"category": "wall", …}
     struct Element
     {
-        using Variant = std::variant<Level, Grid, Wall, Floor, Door, Window>;
+        using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof>;
         Variant v;
 
         Element() = default;
@@ -247,10 +320,10 @@ namespace MiniBIM::Bim
         bool IsDoor() const   { return std::holds_alternative<Door>(v); }
         bool IsWindow() const { return std::holds_alternative<Window>(v); }
 
-        // 类别：level、grid、wall、floor、door、window
+        // 类别：level、grid、roomseparator、wall、floor、ceiling、door、window、room、roof
         const char* Category() const;
 
-        // 它指向的每个元素（GUID）交给 f，f 可以换成别的：标高、宿主、贴着的屋顶或楼板
+        // 它指向的每个元素（GUID）交给 f，f 可以换成别的：标高、宿主、贴着的屋顶或楼板、插进的屋顶
         void RefsMut(const std::function<void(Guid&)>& f);
         std::vector<Guid> Refs() const;
         // 它用到的每个库条目名称交给 f（是什么、名称），f 可以换成别的：类型
@@ -307,13 +380,32 @@ namespace MiniBIM::Bim
         bool operator==(const OpeningType&) const = default;
     };
 
-    // 项目的类型，按类别、名称。BIMCraft 还有柱、屋顶、天花板、栏杆、结构柱、基础与各种管线的类型，移植到时再加
+    // 屋顶类型：屋顶垂直于坡面量多厚；复合类型还有从上往下的各层
+    struct RoofType
+    {
+        double             thickness = 0.0;
+        std::vector<Layer> layers;
+        bool operator==(const RoofType&) const = default;
+    };
+
+    // 天花板类型：多厚；有 grid 时是这么宽的方形板块，反射天花板平面画出它们；复合类型还有从上往下的各层
+    struct CeilingType
+    {
+        double             thickness = 0.0;
+        double             grid      = 0.0;
+        std::vector<Layer> layers;
+        bool operator==(const CeilingType&) const = default;
+    };
+
+    // 项目的类型，按类别、名称。BIMCraft 还有柱、栏杆、结构柱、基础与各种管线的类型，移植到时再加
     struct Types
     {
         std::map<std::string, WallType>    wall;
         std::map<std::string, FloorType>   floor;
         std::map<std::string, OpeningType> door;
         std::map<std::string, OpeningType> window;
+        std::map<std::string, RoofType>    roof;
+        std::map<std::string, CeilingType> ceiling;
         bool operator==(const Types&) const = default;
     };
 
@@ -433,13 +525,39 @@ namespace MiniBIM::Bim
         double FloorDepth(const Floor& f) const;
         // 楼板的板块：底面减去洞口（被洞切开时为凸块），各是空间里逆时针的平面多边形；以及顶面在它上面多高
         std::vector<std::pair<std::vector<P3>, double>> FloorSlabs(const Floor& f) const;
+        // 天花板的板块：底面减去洞口（被洞切开时为凸块），各自逆时针；以及它的厚度
+        std::vector<std::pair<std::vector<P3>, double>> CeilingSlabs(const Ceiling& c) const;
+
+        // ── 屋顶 ────────────────────────────────────────────────
+        // 屋顶的平面轮廓：迹线，或拉伸扫过的矩形，逆时针
+        Ring   RoofOutline(const Roof& r) const;
+        // 底面在 plane 上时顶面高出多少：类型的厚度，铅垂
+        double RoofRise(const Roof& r, const Plane& plane) const;
+        // 屋顶的坡面。迹线上：在底部平的，或者除山墙外每条边从檐口向上直到坡面相交（迹线的直骨架），天井四周也是；
+        // 或者拉伸轮廓的每一段扫过去。插进别的屋顶时在那个屋顶的顶面处收住
+        bool   RoofFaces(const Roof& r, std::vector<Slope>& out, std::string& error) const;
+        // 迹线哪些边竖直（山墙），编号同 gables：gables 里的，以及 gable 时矩形的两条短边
+        bool   RoofUprights(const Roof& r, std::vector<bool>& out, std::string& error) const;
+        // 屋顶的板块：每块底面在空间里的多边形，以及顶面高出它多少
+        std::vector<std::pair<std::vector<P3>, double>> RoofSlabs(const Roof& r) const;
+        // 屋顶的坡面减去其中的洞与开洞，被洞切开处为凸块
+        bool   RoofPieces(const Roof& r, std::vector<std::pair<Ring, Plane>>& out, std::string& error) const;
 
         // ── 房间找墙用的线 ──────────────────────────────────────
         // 围合 level 上房间的墙的中心线（圆弧为弦）
         std::vector<Segment> WallLines(Guid level) const;
+        // 围合 level 上房间的：墙的中心线与房间分隔线
         std::vector<Segment> BoundingLines(Guid level) const;
-        // 围合 level 上房间的墙面（墙轮廓的各条边）
+        // 围合 level 上房间的墙面（墙轮廓的各条边）。不含房间分隔线：在墙内拾取的楼板、天花板越过它们
         std::vector<Segment> FaceLines(Guid level) const;
+        // level 上的房间分隔线
+        std::vector<Segment> Separators(Guid level) const;
+        // 在 at 处量时，level 上的房间在其中找边界的线
+        std::vector<Segment> RoomLines(Guid level, RoomArea at) const;
+        // 房间的边界，由它的点四周的墙找出，在项目量房间的地方（roomArea）；没围住时为空
+        std::optional<Geom::Region> RoomRegion(const Room& r) const;
+        // 在 at 处量的房间边界：墙中心线（Revit 的"在墙中心"），或墙面（"在墙面层"：墙以内的面积）
+        std::optional<Geom::Region> RoomRegionAt(const Room& r, RoomArea at) const;
 
         // ── 检查 ────────────────────────────────────────────────
         // 每条命令之后检查整个模型；不通过时命令回滚。error 说明要改什么，关于元素的以"类别 ID: "开头

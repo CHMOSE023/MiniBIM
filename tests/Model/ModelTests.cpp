@@ -1,5 +1,5 @@
-// 模型核心（src/Model）：平面几何、单位、ID 与 GUID、项目语言、元素与 Model::Check、墙的几何、库。
-// 移植自 BIMCraft crates/core/src/{geom,units,ids,language,model,walls,walls/index,library}.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
+// 模型核心（src/Model）：平面几何、单位、ID 与 GUID、项目语言、元素与 Model::Check、墙的几何、库、屋顶的直骨架。
+// 移植自 BIMCraft crates/core/src/{geom,units,ids,language,model,walls,walls/index,library,skeleton}.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Commands/Commands.h"
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
@@ -7,6 +7,7 @@
 #include "Model/Language.h"
 #include "Model/Model.h"
 #include "Model/ModelJson.h"
+#include "Model/Skeleton.h"
 #include "Model/Units.h"
 #include "Model/Walls.h"
 #include <algorithm>
@@ -514,10 +515,20 @@ wall {"points": [[0, 2000], [5000, 2000]], "type": "C", "location": "core-centre
         }
         {
             const Session s = Scripted(R"(wall {"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}
-window {"at": [8000, 3000]})");
-            // 屋顶在第 2b 步移植：BIMCraft 这个测试的后半（墙贴着双坡屋顶）以后补上
+window {"at": [8000, 3000]}
+roof {"gable": true})");
             Check(Walls::Prisms(s.GetModel(), 100003, true).size() == 4 && Walls::Prisms(s.GetModel(), 100003, false).size() == 1,
                   "墙：在门窗处分成棱柱（窗下、窗上、两侧）");
+            // 贴着双坡屋顶：屋脊两侧的两部分，各在一个坡面下
+            Model m = s.GetModel();
+            const Guid roof = m.GuidOf(Id(100007));
+            m.elements.GetMut(100003)->As<Wall>()->attachTop = roof;
+            const auto whole = Walls::Prisms(m, 100003, false);
+            const double tan = std::tan(30.0 * kPi / 180.0);
+            bool under = whole.size() == 2;
+            for (const auto& p : whole)
+                under = under && std::abs(p.top.At(P2(8000, 3000)) - (3000.0 + 3100.0 * tan)) < 1e-6;
+            Check(under, "墙：贴着双坡屋顶时分成屋脊两侧的两部分，各在坡面下");
         }
         {
             // 贴着坡楼板的墙顶跟着楼板的底面
@@ -562,7 +573,8 @@ wall {"points":[[0,0],[6000,0],[6000,4000]],"level":"Level 2"})", out, error);
         {
             const Session s;
             const Model& m = s.GetModel();
-            bool ok = m.LibraryInStep() && m.library.Size() == 3 + 1 + 2 + 2 + 17;
+            // 类型：墙 3、楼板 1、门 2、窗 2、屋顶 1、天花板 2；材质 17
+            bool ok = m.LibraryInStep() && m.library.Size() == 3 + 1 + 2 + 2 + 1 + 2 + 17;
             ok = ok && !m.library.Entries().empty() && m.library.Entries().rbegin()->first == LastId;
             for (const auto& [id, _] : m.library.Entries())
                 ok = ok && id >= FirstId && id <= LastId && !m.elements.Contains(id);
@@ -633,6 +645,324 @@ wall {"points":[[0,0],[6000,0],[6000,4000]],"level":"Level 2"})", out, error);
             Check(ok && after[0].id == first && after[0].guid == firstGuid && after[2].thickness == 160.0, "库：类型的层有自己的 ID 和 GUID，改厚度时保留");
         }
     }
+
+    // ── skeleton.rs ──────────────────────────────────────────────
+    using Faces = std::vector<std::vector<Skeleton::Face>>;
+
+    double FaceArea(const Skeleton::Face& face)
+    {
+        Ring ring;
+        for (const auto& [p, t] : face)
+            ring.push_back(p);
+        return Geom::Area(ring);
+    }
+
+    double Highest(const Faces& f)
+    {
+        double h = 0.0;
+        for (const auto& loops : f)
+            for (const auto& face : loops)
+                for (const auto& [p, t] : face)
+                    h = std::max(h, t);
+        return h;
+    }
+
+    double Total(const Faces& f)
+    {
+        double a = 0.0;
+        for (const auto& loops : f)
+            for (const auto& face : loops)
+                a += FaceArea(face);
+        return a;
+    }
+
+    double TotalOf(const std::vector<Skeleton::Face>& loops)
+    {
+        double a = 0.0;
+        for (const auto& face : loops)
+            a += FaceArea(face);
+        return a;
+    }
+
+    std::optional<Faces> SkeletonOf(const std::vector<Ring>& rings, const std::vector<double>& speeds, std::string* why = nullptr)
+    {
+        Faces f;
+        std::string error;
+        if (!Skeleton::Faces(rings, speeds, f, error))
+        {
+            if (why)
+                *why = error;
+            return std::nullopt;
+        }
+        return f;
+    }
+
+    // 每个面都是平的：每个角点离它的边的距离等于边移动的距离
+    bool Flat(const std::vector<Ring>& rings, const std::vector<double>& speeds, const Faces& f)
+    {
+        std::vector<Segment> edges;
+        for (const Ring& r : rings)
+            for (const Segment& e : Geom::RingEdges(r))
+                edges.push_back(e);
+        for (size_t i = 0; i < f.size() && i < edges.size(); ++i)
+        {
+            const P2 n = (edges[i].second - edges[i].first).Unit().Perp();
+            for (const auto& face : f[i])
+                for (const auto& [p, t] : face)
+                    if (std::abs((p - edges[i].first).Dot(n) - t * speeds[i]) >= 1e-3)
+                        return false;
+        }
+        return true;
+    }
+
+    Ring Turned(const Ring& r, double c, double s)
+    {
+        Ring out;
+        for (const P2& p : r)
+            out.emplace_back(p.x * c - p.y * s, p.x * s + p.y * c);
+        return out;
+    }
+
+    void TestSkeleton()
+    {
+        {
+            const Ring ring{ P2(0, 0), P2(10, 0), P2(10, 4), P2(0, 4) };
+            const auto f = SkeletonOf({ ring }, { 1, 1, 1, 1 });
+            // 长边的面是升到屋脊（2 进深）的梯形，短边的是三角形
+            bool ok = f && f->size() == 4;
+            const size_t sizes[] = { 4, 3, 4, 3 };
+            for (size_t i = 0; ok && i < 4; ++i)
+                ok = (*f)[i].size() == 1 && (*f)[i][0].size() == sizes[i];
+            Check(ok && Near(Highest(*f), 2.0, 1e-9) && Near(Total(*f), 40.0, 1e-9), "骨架：矩形两端是斜脊，中间是屋脊");
+            // 两端竖直，即山墙：屋脊一直到它们
+            const auto g = SkeletonOf({ ring }, { 1, 0, 1, 0 });
+            Check(g && (*g)[1].empty() && (*g)[3].empty() && Near(TotalOf((*g)[0]), 20.0, 1e-9), "骨架：两端是山墙时屋脊通到两端");
+            // 一边倾斜、其余竖直：单坡，升到对边
+            const auto shed = SkeletonOf({ ring }, { 1, 0, 0, 0 });
+            Check(shed && Near(TotalOf((*shed)[0]), 40.0, 1e-9) && Near(Highest(*shed), 4.0, 1e-9) && !SkeletonOf({ ring }, { 0, 0, 0, 0 }),
+                  "骨架：一边倾斜是单坡；都不倾斜时拒绝");
+        }
+        {
+            const Ring ring{ P2(0, 0), P2(10, 0), P2(10, 4), P2(4, 4), P2(4, 10), P2(0, 10) };
+            const auto f = SkeletonOf({ ring }, std::vector<double>(6, 1.0));
+            // 内角两侧的边各升到从内角到 (2, 2) 的天沟
+            const auto valley = [](const Skeleton::Face& x)
+            {
+                return std::any_of(x.begin(), x.end(), [](const auto& q) { return q.first.Dist(P2(2, 2)) < 1e-9 && Near(q.second, 2.0, 1e-9); });
+            };
+            Check(f && Near(Total(*f), 64.0, 1e-9) && Near(Highest(*f), 2.0, 1e-9) && std::any_of((*f)[2].begin(), (*f)[2].end(), valley) &&
+                      std::any_of((*f)[3].begin(), (*f)[3].end(), valley),
+                  "骨架：L 形在内角处有天沟");
+        }
+        {
+            const Ring tri{ P2(0, 0), P2(6, 0), P2(3, 5.196152422706632) };
+            const auto f = SkeletonOf({ tri }, { 1, 1, 1 });
+            bool ok = f && Near(Highest(*f), std::sqrt(3.0), 1e-9);
+            for (const Ring& ring : { Ring{ P2(0, 0), P2(9, 1), P2(8, 6), P2(1, 4) }, Ring{ P2(0, 0), P2(6, 0), P2(8, 4), P2(3, 7), P2(-2, 4) } })
+            {
+                const auto g = SkeletonOf({ ring }, std::vector<double>(ring.size(), 1.0));
+                ok = ok && g && Near(Total(*g), Geom::Area(ring), 1e-6);
+            }
+            Check(ok, "骨架：凸多边形升到一点或一条屋脊");
+        }
+        {
+            // 12 见方围着 4 见方的天井（顺时针）：天井的边向外移进屋顶
+            const std::vector<Ring> rings{ { P2(0, 0), P2(12, 0), P2(12, 12), P2(0, 12) }, { P2(4, 4), P2(4, 8), P2(8, 8), P2(8, 4) } };
+            const std::vector<double> ones(8, 1.0);
+            const auto f = SkeletonOf(rings, ones);
+            bool ok = f && Near(Total(*f), 128.0, 1e-9) && Flat(rings, ones, *f);
+            for (size_t i = 0; ok && i < 8; ++i)
+                ok = (*f)[i].size() == 1 && (*f)[i][0].size() == 4;
+            // 屋脊：离天井 2、离外轮廓 2 的一圈
+            if (ok)
+                for (const auto& loops : *f)
+                    for (const auto& face : loops)
+                        for (const auto& [p, t] : face)
+                        {
+                            const double ring = std::max(std::abs(p.x - 6.0), std::abs(p.y - 6.0));
+                            ok = ok && (t == 0.0 || (Near(t, 2.0, 1e-9) && Near(ring, 4.0, 1e-9)));
+                        }
+            Check(ok, "骨架：天井四周从檐口升到一圈屋脊");
+            // 天井北边竖直：外轮廓的北坡升到它，4 进深
+            const std::vector<double> speeds{ 1, 1, 1, 1, 1, 0, 1, 1 };
+            const auto g = SkeletonOf(rings, speeds);
+            const auto gable = [](const Skeleton::Face& x)
+            {
+                for (const P2 q : { P2(4, 8), P2(8, 8) })
+                    if (!std::any_of(x.begin(), x.end(), [&](const auto& v) { return v.first.Dist(q) < 1e-9 && Near(v.second, 4.0, 1e-9); }))
+                        return false;
+                return true;
+            };
+            Check(g && (*g)[5].empty() && Near(Total(*g), 128.0, 1e-9) && Flat(rings, speeds, *g) && Near(Highest(*g), 4.0, 1e-9) &&
+                      std::any_of((*g)[2].begin(), (*g)[2].end(), gable),
+                  "骨架：天井一边是山墙时外轮廓的坡升到它");
+            // 不在正中：每翼的屋脊在它的一半处，最宽的（5）最高
+            const std::vector<Ring> off{ { P2(0, 0), P2(12, 0), P2(12, 10), P2(0, 10) }, { P2(3, 3), P2(3, 7), P2(7, 7), P2(7, 3) } };
+            const auto h = SkeletonOf(off, ones);
+            Check(h && Near(Total(*h), 104.0, 1e-9) && Flat(off, ones, *h) && Near(Highest(*h), 2.5, 1e-9) && !SkeletonOf({ off[0], off[0] }, ones),
+                  "骨架：天井不在正中时各翼屋脊在一半处；洞要顺时针");
+        }
+        {
+            // 天井离南檐 200，北边是山墙：南坡从两侧越过它，面是绕着天井和它的坡的一圈
+            const std::vector<Ring> rings{ { P2(90, 0), P2(90, 10), P2(70, 10), P2(70, 30), P2(-30, 30), P2(-30, 10), P2(-80, 10), P2(-80, 0) },
+                                           { P2(-5, 2), P2(-5, 8), P2(5, 8), P2(5, 2) } };
+            const std::vector<double> speeds{ 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1 };
+            const double c = std::sin(0.3468), s = std::cos(0.3468);  // 照 Rust 的 sin_cos：先正弦
+            bool ok = true;
+            for (const auto& rs : { rings, std::vector<Ring>{ Turned(rings[0], c, s), Turned(rings[1], c, s) } })
+            {
+                const auto f = SkeletonOf(rs, speeds);
+                ok = ok && f && Near(Total(*f), 3640.0, 1e-6) && Flat(rs, speeds, *f);
+                if (!ok)
+                    break;
+                const double island = 60.0 + TotalOf((*f)[8]) + TotalOf((*f)[10]) + TotalOf((*f)[11]);
+                ok = (*f)[7].size() == 2 && Near(FaceArea((*f)[7][1]) + island, 0.0, 1e-6);
+            }
+            Check(ok, "骨架：坡面绕着另一边是山墙的天井合拢");
+        }
+        {
+            // 南檐附近两个天井，东边那个的西、北两边是山墙：它们的角不动，南坡绕着天井合拢时在那里碰到自己
+            const std::vector<Ring> rings{ { P2(-30, 0), P2(80, 0), P2(80, 70), P2(-30, 70) }, { P2(-9, 2), P2(-9, 8), P2(-4, 8), P2(-4, 2) },
+                                           { P2(4, 2), P2(4, 8), P2(9, 8), P2(9, 2) } };
+            std::vector<double> speeds(12, 1.0);
+            speeds[8] = 0.0;
+            speeds[9] = 0.0;
+            const double c = std::sin(0.3468), s = std::cos(0.3468);  // 照 Rust 的 sin_cos：先正弦
+            bool ok = true;
+            for (const auto& rs : { rings, std::vector<Ring>{ Turned(rings[0], c, s), Turned(rings[1], c, s), Turned(rings[2], c, s) } })
+            {
+                const auto f = SkeletonOf(rs, speeds);
+                ok = ok && f && Near(Total(*f), 7640.0, 1e-6) && Flat(rs, speeds, *f) && (*f)[0].size() == 2 && FaceArea((*f)[0][1]) < 0.0;
+            }
+            Check(ok, "骨架：绕天井合拢的坡面可以在两面山墙相交处碰到自己");
+        }
+        {
+            // 房子可能有的迹线：随机的星形（很多凹角，到处分裂）和随机的台阶形（直角，同时发生的事件），有些边竖直，
+            // 一半围着天井，有些台阶形围着两个
+            uint64_t seed = 12345;
+            auto rand = [&]
+            {
+                seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+                return static_cast<double>(seed >> 33) / static_cast<double>(1ULL << 31);
+            };
+            std::string failure;
+            for (int round = 0; round < 2000 && failure.empty(); ++round)
+            {
+                const size_t n = 5 + static_cast<size_t>(rand() * 12.0);
+                const bool court = round % 4 >= 2;
+                std::vector<Ring> rings;
+                if (round % 2 == 0)
+                {
+                    Ring star;
+                    for (size_t i = 0; i < n; ++i)
+                    {
+                        const double a = (static_cast<double>(i) + rand() * 0.8) / static_cast<double>(n) * 2.0 * kPi;
+                        const double r = 3000.0 + rand() * 7000.0;
+                        star.emplace_back(r * std::cos(a), r * std::sin(a));
+                    }
+                    // 中间的天井，顺时针，在每条边都让开的 1277 以内
+                    const size_t k = 3 + static_cast<size_t>(rand() * 6.0);
+                    Ring hole;
+                    for (size_t j = k; j-- > 0;)
+                    {
+                        const double a = (static_cast<double>(j) + rand() * 0.8) / static_cast<double>(k) * 2.0 * kPi;
+                        const double r = 300.0 + rand() * 900.0;
+                        hole.emplace_back(r * std::cos(a), r * std::sin(a));
+                    }
+                    // 三角形的角可能跨过半圈以上，绕成另一个方向
+                    if (Geom::Area(hole) > 0.0)
+                        std::reverse(hole.begin(), hole.end());
+                    rings.push_back(std::move(star));
+                    if (court)
+                        rings.push_back(std::move(hole));
+                }
+                else
+                {
+                    // 右边随机的台阶上去，左边下来
+                    const size_t steps = 1 + static_cast<size_t>(rand() * 4.0);
+                    Ring right, left;
+                    double y = 0.0;
+                    for (size_t i = 0; i < steps; ++i)
+                    {
+                        const double xr = 2000.0 + std::floor(rand() * 8.0) * 1000.0;
+                        const double xl = -2000.0 - std::floor(rand() * 8.0) * 1000.0;
+                        const double h = 1000.0 + std::floor(rand() * 5.0) * 1000.0;
+                        right.emplace_back(xr, y);
+                        right.emplace_back(xr, y + h);
+                        left.insert(left.begin(), { P2(xl, y + h), P2(xl, y) });
+                        y += h;
+                    }
+                    const double first = right.size() > 1 ? right[1].y : 1000.0;
+                    Ring ring;
+                    for (const P2& q : right)
+                        if (ring.empty() || ring.back().Dist(q) >= 1e-9)
+                            ring.push_back(q);
+                    for (const P2& q : left)
+                        if (ring.empty() || ring.back().Dist(q) >= 1e-9)
+                            ring.push_back(q);
+                    // 第一级里的一个天井，顺时针；或两个，并排
+                    const double w = 500.0 + std::floor(rand() * 3.0) * 500.0;
+                    const double y0 = 200.0 + std::floor(rand() * 3.0) * 100.0;
+                    const double g = 200.0 + std::floor(rand() * 3.0) * 100.0;
+                    auto hole = [&](double a, double b) { return Ring{ P2(a, y0), P2(a, first - y0), P2(b, first - y0), P2(b, y0) }; };
+                    const std::vector<Ring> holes = round % 8 == 7 ? std::vector<Ring>{ hole(-w - g, -g), hole(g, w + g) } : std::vector<Ring>{ hole(-w, w) };
+                    // 转任意角度，本应平行的边只是接近平行
+                    const double turn = rand() * 7.0;
+                    const double c = std::sin(turn), s = std::cos(turn);
+                    rings.push_back(Turned(ring, c, s));
+                    if (court)
+                        for (const Ring& h : holes)
+                            rings.push_back(Turned(h, c, s));
+                }
+                size_t count = 0;
+                for (const Ring& r : rings)
+                    count += r.size();
+                std::vector<double> some;
+                for (size_t i = 0; i < count; ++i)
+                    some.push_back(rand() < 0.15 ? 0.0 : 1.0);
+                if (!some.empty())
+                    some[0] = 1.0;
+                double whole = 0.0;
+                for (const Ring& r : rings)
+                    whole += Geom::Area(r);
+                for (const auto& speeds : { std::vector<double>(count, 1.0), some })
+                {
+                    std::string why;
+                    const auto f = SkeletonOf(rings, speeds, &why);
+                    if (!f)
+                    {
+                        if (Contains(why, "fence") && std::find(speeds.begin(), speeds.end(), 0.0) != speeds.end())
+                            continue;
+                        failure = "第 " + std::to_string(round) + " 轮：" + why;
+                        break;
+                    }
+                    if (std::abs(Total(*f) - whole) >= 1e-3 * whole || !Flat(rings, speeds, *f))
+                    {
+                        failure = "第 " + std::to_string(round) + " 轮：面积 " + std::to_string(Total(*f)) + "，应为 " + std::to_string(whole);
+                        break;
+                    }
+                }
+            }
+            if (!failure.empty())
+                std::printf("  %s\n", failure.c_str());
+            Check(failure.empty(), "骨架：随机的迹线都完整合拢");
+        }
+        {
+            const Ring t{ P2(0, 0), P2(4, 0), P2(4, 6), P2(9, 6), P2(9, 10), P2(-5, 10), P2(-5, 6), P2(0, 6) };
+            const Ring u{ P2(0, 0), P2(12, 0), P2(12, 9), P2(8, 9), P2(8, 4), P2(4, 4), P2(4, 9), P2(0, 9) };
+            bool ok = true;
+            for (const Ring& ring : { t, u })
+            {
+                const auto f = SkeletonOf({ ring }, std::vector<double>(ring.size(), 1.0));
+                ok = ok && f && Near(Total(*f), Geom::Area(ring), 1e-6);
+                if (f)
+                    for (const auto& loops : *f)
+                        for (const auto& face : loops)
+                            ok = ok && FaceArea(face) > 0.0;
+            }
+            Check(ok, "骨架：T 形和 U 形完整合拢");
+        }
+    }
 }
 
 int main()
@@ -646,6 +976,7 @@ int main()
     TestModel();
     TestWalls();
     TestLibrary();
+    TestSkeleton();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

@@ -36,6 +36,7 @@ public static class MiniBimShot {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     // FindWindow 在这台机器的工具环境里找不到窗口，按进程枚举顶层窗口
     public static IntPtr Find(uint pid, string cls) {
         IntPtr found = IntPtr.Zero;
@@ -45,6 +46,8 @@ public static class MiniBimShot {
     }
 }
 "@
+# 屏幕有缩放时，不感知 DPI 的进程拿到的窗口矩形是缩小过的，PrintWindow 却按实际像素画，只截到左上一块
+[MiniBimShot]::SetProcessDPIAware() | Out-Null
 
 $settings = Join-Path $env:LOCALAPPDATA 'MiniBIM/settings.json'
 $backup   = Join-Path $outDir 'settings.backup.json'

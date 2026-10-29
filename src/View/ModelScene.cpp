@@ -29,6 +29,8 @@ namespace MiniBIM
         constexpr Rgb kSlab  = { 214 / 255.0f, 214 / 255.0f, 210 / 255.0f };
         constexpr Rgb kDoor  = { 198 / 255.0f, 168 / 255.0f, 128 / 255.0f };
         constexpr Rgb kGlass = { 166 / 255.0f, 200 / 255.0f, 228 / 255.0f };
+        constexpr Rgb kRoof  = { 176 / 255.0f, 118 / 255.0f, 96 / 255.0f };
+        constexpr Rgb kCeiling = { 244 / 255.0f, 242 / 255.0f, 236 / 255.0f };
 
         // 门洞扣得比墙面再出去一点，免得布尔运算遇到重合的面
         constexpr double kPast = 50.0;
@@ -121,7 +123,8 @@ namespace MiniBIM
         }
         Solid::ISolidKernel& k = *kernel;
 
-        auto add = [&](const Solid::BodyPtr& body, const Rgb& c)
+        // own：网格建成的实体自己给出的边线（不画三角剖分的对角线）；为空时取内核的边
+        auto add = [&](const Solid::BodyPtr& body, const Rgb& c, const std::vector<Point3>* own = nullptr)
         {
             const Solid::Mesh mesh = k.Tessellate(body);
             for (size_t i = 0; i + 2 < mesh.Indices.size(); i += 3)
@@ -136,6 +139,11 @@ namespace MiniBIM
                     m_bounds.Expand(p);
                 }
             }
+            if (own)
+            {
+                m_edges.insert(m_edges.end(), own->begin(), own->end());
+                return;
+            }
             for (const auto& line : k.Edges(body).Lines)
             {
                 for (size_t i = 0; i + 1 < line.size(); ++i)
@@ -144,6 +152,24 @@ namespace MiniBIM
                     m_edges.push_back(line[i + 1]);
                 }
             }
+        };
+        // 斜棱柱的边：底圈、顶圈与各角的竖边
+        auto prismEdges = [](const Bim::Walls::Prism& p)
+        {
+            std::vector<Point3> out;
+            const size_t n = p.ring.size();
+            for (size_t i = 0; i < n; ++i)
+            {
+                const P2 a = p.ring[i], b = p.ring[(i + 1) % n];
+                for (const Bim::Plane* pl : { &p.bottom, &p.top })
+                {
+                    out.push_back(Point3{ a.x, a.y, pl->At(a) });
+                    out.push_back(Point3{ b.x, b.y, pl->At(b) });
+                }
+                out.push_back(Point3{ a.x, a.y, p.bottom.At(a) });
+                out.push_back(Point3{ a.x, a.y, p.top.At(a) });
+            }
+            return out;
         };
 
         const Bim::Walls::Index index(m);
@@ -182,12 +208,26 @@ namespace MiniBIM
                     // 贴着楼板的墙：照 BIMCraft 分成棱柱，各自从底部平面到顶部平面
                     for (const Bim::Walls::Prism& p : Bim::Walls::Prisms(m, id, true, &index))
                     {
+                        // 没有高度的（窗台为 0 的门下面那块）什么都不是
+                        double tallest = 0.0;
+                        for (const P2& q : p.ring)
+                            tallest = std::max(tallest, p.top.At(q) - p.bottom.At(q));
+                        if (tallest <= 1e-6)
+                            continue;
                         const bool flat = p.bottom.g == P2{} && p.top.g == P2{};
                         const Solid::BodyPtr body = flat ? Prism(k, p.ring, p.bottom.z, p.top.z - p.bottom.z) : SlopedPrism(k, p);
+                        const std::vector<Point3> edges = prismEdges(p);
                         if (body)
-                            add(body, kWall);
+                            add(body, kWall, &edges);
                         else
+                        {
                             ok = false;
+                            std::string pts;
+                            for (const P2& q : p.ring)
+                                pts += " (" + std::to_string(q.x) + ", " + std::to_string(q.y) + ", " + std::to_string(p.bottom.At(q)) + "-" +
+                                       std::to_string(p.top.At(q)) + ")";
+                            LOG_WARN("三维场景：墙 %llu 的棱柱建模失败：%s", static_cast<unsigned long long>(id), pts.c_str());
+                        }
                     }
                 }
                 ++m_counts.walls;
@@ -213,6 +253,45 @@ namespace MiniBIM
                 if ((ok = body != nullptr))
                     add(body, kSlab);
                 ++m_counts.floors;
+            }
+            else if (const Bim::Ceiling* c = e.As<Bim::Ceiling>())
+            {
+                // 平的板：拉伸、扣掉洞口
+                const auto t = m.types.ceiling.find(c->typeName);
+                const double thick = t == m.types.ceiling.end() ? 0.0 : t->second.thickness;
+                const double z = m.Elevation(c->level) + c->offset;
+                Solid::BodyPtr body = Prism(k, c->boundary, z, thick);
+                for (const Ring& hole : c->openings)
+                    if (body)
+                        if (const Solid::BodyPtr cut = Prism(k, hole, z - kPast, thick + 2.0 * kPast))
+                            body = k.Boolean(Solid::BooleanOp::Difference, body, cut);
+                if ((ok = body != nullptr))
+                    add(body, kCeiling);
+                ++m_counts.ceilings;
+            }
+            else if (const Bim::Roof* r = e.As<Bim::Roof>())
+            {
+                // 每个坡面一块：底面在坡面上，顶面高出类型的厚度（铅垂量）
+                std::vector<std::pair<Ring, Bim::Plane>> pieces;
+                std::string why;
+                if ((ok = m.RoofPieces(*r, pieces, why)))
+                    for (const auto& [ring, plane] : pieces)
+                    {
+                        Bim::Walls::Prism p;
+                        p.ring   = ring;
+                        p.bottom = plane;
+                        p.top    = Bim::Plane{ plane.z + m.RoofRise(*r, plane), plane.g };
+                        const bool flat = plane.g == P2{};
+                        const Solid::BodyPtr body = flat ? Prism(k, ring, plane.z, p.top.z - plane.z) : SlopedPrism(k, p);
+                        const std::vector<Point3> edges = prismEdges(p);
+                        if (body)
+                            add(body, kRoof, &edges);
+                        else
+                            ok = false;
+                    }
+                else
+                    LOG_WARN("三维场景：roof %llu 没有坡面：%s", static_cast<unsigned long long>(id), why.c_str());
+                ++m_counts.roofs;
             }
             else if (const Bim::Opening* o = e.AsOpening())
             {

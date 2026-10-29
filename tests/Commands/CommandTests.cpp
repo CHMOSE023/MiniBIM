@@ -1,6 +1,6 @@
 // 命令与会话（src/Commands）：像前端一样经命令驱动模型——撤销、脚本、事务、建模、编辑、项目文件，以及示例房屋。
 // 移植自 BIMCraft crates/core/src/tests.rs、sample.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md。
-// 用到还没移植的命令（房间、屋顶、剖面、阶段……）的断言先略去，移植那些命令时补回
+// 用到还没移植的命令（剖面、平面图、IFC、阶段……）与 view3d::tops_at 的断言先略去或改用模型的函数，移植那些时补回
 #include "Commands/Commands.h"
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
@@ -122,6 +122,64 @@ namespace
             {"function": "structure", "material": "Concrete block", "thickness": 140},
             {"function": "finish", "material": "Plaster", "thickness": 10}]})");
     }
+
+    // ring 上或里面（边上 1 微米以内也算）
+    bool Over(const Ring& ring, P2 q)
+    {
+        if (Geom::Contains(ring, q))
+            return true;
+        for (const auto& [a, b] : Geom::RingEdges(ring))
+            if (Geom::DistToSegment(q, a, b) < 1e-6)
+                return true;
+        return false;
+    }
+
+    // 屋顶在 q 处顶面的高度；不在它上方时为空（BIMCraft 的测试用 view3d::tops_at，那部分还没移植，这里由屋顶的板块算）
+    std::optional<double> RoofTop(const Session& s, Id id, P2 q)
+    {
+        const Model& m = s.GetModel();
+        const Element* e = m.elements.Get(id);
+        const Roof* r = e ? e->As<Roof>() : nullptr;
+        std::vector<std::pair<Ring, Plane>> pieces;
+        std::string error;
+        if (!r || !m.RoofPieces(*r, pieces, error))
+            return std::nullopt;
+        std::optional<double> top;
+        for (const auto& [ring, p] : pieces)
+            if (Over(ring, q))
+                top = std::max(top.value_or(-INFINITY), p.At(q) + m.RoofRise(*r, p));
+        return top;
+    }
+
+    // 天花板在 q 处顶面的高度；不在它上方时为空
+    std::optional<double> CeilingTop(const Session& s, Id id, P2 q)
+    {
+        const Model& m = s.GetModel();
+        const Element* e = m.elements.Get(id);
+        const Ceiling* c = e ? e->As<Ceiling>() : nullptr;
+        if (!c)
+            return std::nullopt;
+        std::optional<double> top;
+        for (const auto& [face, t] : m.CeilingSlabs(*c))
+        {
+            Ring ring;
+            for (const P3& p : face)
+                ring.emplace_back(p[0], p[1]);
+            if (Over(ring, q))
+                top = std::max(top.value_or(-INFINITY), face.front()[2] + t);
+        }
+        return top;
+    }
+
+    // 墙在沿定位线 along 处的顶
+    double WallTop(const Session& s, Id id, double along)
+    {
+        const Model& m = s.GetModel();
+        return Walls::TopAt(m, *m.GetWall(id), along);
+    }
+
+    bool NearOpt(const std::optional<double>& a, double b, double tol) { return a && std::abs(*a - b) < tol; }
+    bool NearNum(const Json& v, double b, double tol) { return v.is_number() && std::abs(v.get<double>() - b) < tol; }
 
     void TestWallsAndOpenings()
     {
@@ -305,10 +363,15 @@ namespace
             const bool open = made["area_m2"] == 240.0 && e["area_m2"] == 240.0 && e["openings"] == court;
             const Id given = Run(s, "floor", R"({"level": "Level 2", "openings": []})")["id"].get<Id>();
             const bool own = ElementOf(s, given).count("openings") == 0;
+            // 里面有房间的环是室内：铺满
+            const Id room = Run(s, "room", R"({"level": "Level 2", "point": [8000, 8000], "name": "Hall"})")["id"].get<Id>();
+            const Json hall = Run(s, "floor", R"({"level": "Level 2"})");
+            const bool indoors = ElementOf(s, hall["id"].get<Id>()).count("openings") == 0 && hall["area_m2"] == 256.0;
+            Run(s, "delete", Json{ { "ids", { room } } });
             Run(s, "wall", R"({"level": "Level 2", "points": [[8000, 0], [8000, 6000]]})");
             const Json joined = Run(s, "floor", R"({"level": "Level 2"})");
-            Check(open && own && ElementOf(s, joined["id"].get<Id>()).count("openings") == 0 && joined["area_m2"] == 256.0,
-                  "命令：楼板沿墙铺，独立的一圈墙围出天井；与外墙相连的不算");
+            Check(open && own && indoors && ElementOf(s, joined["id"].get<Id>()).count("openings") == 0 && joined["area_m2"] == 256.0,
+                  "命令：楼板沿墙铺，独立的一圈墙围出天井；里面有房间的、与外墙相连的不算");
         }
     }
 
@@ -337,16 +400,18 @@ namespace
             Session s;
             const auto ids = House(s);
             const Id part = Run(s, "wall", R"({"points": [[0, 3000], [8000, 3000]], "type": "Interior - 100mm"})")["ids"][0].get<Id>();
+            const Id room = Run(s, "room", R"({"point": [4000, 1500]})")["id"].get<Id>();
             const Id door = Run(s, "door", R"({"at": [2000, 0]})")["id"].get<Id>();
             const Id window = Run(s, "window", R"({"at": [8000, 1500]})")["id"].get<Id>();
+            const bool before = ElementOf(s, room)["area_m2"] == 24.0;
             Run(s, "MV", Json{ { "ids", { ids[1] } }, { "by", { 1000, 0 } } });
             const bool ok = Ends(s, ids[1]) == std::pair{ Pt(9000, 0), Pt(9000, 6000) } && Ends(s, ids[0]).second == Pt(9000, 0) &&
-                            Ends(s, ids[2]).first == Pt(9000, 6000) && Ends(s, part).second == Pt(9000, 3000) && ElementOf(s, door)["at"] == Pt(2000, 0) &&
-                            ElementOf(s, window)["at"] == Pt(9000, 1500);
+                            Ends(s, ids[2]).first == Pt(9000, 6000) && Ends(s, part).second == Pt(9000, 3000) && ElementOf(s, room)["area_m2"] == 27.0 &&
+                            ElementOf(s, door)["at"] == Pt(2000, 0) && ElementOf(s, window)["at"] == Pt(9000, 1500);
             // 上一层正上方的墙不与这些相接
             const Id up = Run(s, "wall", R"({"points": [[9000, 6000], [9000, 9000]], "level": "Level 2", "height": 3000})")["ids"][0].get<Id>();
             Run(s, "move", Json{ { "ids", { ids[1] } }, { "by", { -1000, 0 } } });
-            Check(ok && Ends(s, up).first == Pt(9000, 6000), "命令：移动一面墙，相接的墙跟着伸缩，墙上的门窗留在原处或随墙走");
+            Check(before && ok && Ends(s, up).first == Pt(9000, 6000), "命令：移动一面墙，相接的墙跟着伸缩，房间跟着变，墙上的门窗留在原处或随墙走");
         }
         {
             Session s;
@@ -438,7 +503,8 @@ namespace
             Check(saved && same && refused, "命令：项目保存后原样打开；打不开时保留已打开的项目");
         }
         {
-            // BIMCraft 的项目文件：还没移植的东西（族、阶段、屋顶、带族的门、贴着屋顶）略去并列出，其余照常打开
+            // BIMCraft 的项目文件：还没移植的东西（族、阶段、柱类型、构件、带族的门、参数）略去并列出，其余照常打开，
+            // 贴着屋顶的墙仍贴着
             Session s;
             House(s);
             Run(s, "door", R"({"at": [2000, 0]})");
@@ -447,10 +513,14 @@ namespace
             Json file = Json::parse(text);
             file["families"] = Json::parse(R"({"Single Door": {"category": "door"}})");
             file["phases"] = Json::array({ "Existing", "New Construction" });
-            file["types"]["roof"] = Json::parse(R"({"Generic - 300mm": {"thickness": 300}})");
+            file["types"]["column"] = Json::parse(R"({"Rectangular 400 x 400": {"width": 400, "depth": 400}})");
             file["materials"]["Brick"]["texture"] = Json::parse(R"({"kind": "brick"})");
-            file["elements"]["100100"] = Json::parse(R"({"guid": "3f2a9c1e-1111-4000-8000-000000000001", "category": "roof", "type": "Generic - 300mm"})");
+            Json roof = Json::parse(R"({"guid": "3f2a9c1e-1111-4000-8000-000000000001", "category": "roof", "type": "Generic - 300mm",
+                "boundary": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "slope": 30, "overhang": 0, "offset": 0})");
+            roof["level"] = file["elements"]["100001"]["guid"];
+            file["elements"]["100100"] = roof;
             file["elements"]["100101"] = Json::parse(R"({"category": "door", "type": "900 x 2100", "family": "Single Door", "host": 100002, "offset": 6000, "sill": 0, "mark": "9", "flip_facing": false, "flip_hand": false})");
+            file["elements"]["100102"] = Json::parse(R"({"category": "component", "family": "Chair", "type": "Chair", "level": 100000, "at": [1000, 1000]})");
             file["elements"]["100003"]["attach_top"] = "3f2a9c1e-1111-4000-8000-000000000001";
             file["elements"]["100003"]["params"] = Json::parse(R"({"Fire Rating": "EI 60"})");
             file["library"]["900000"] = Json::parse(R"({"kind": "phase", "name": "Existing", "guid": "3f2a9c1e-2222-4000-8000-000000000002"})");
@@ -462,14 +532,15 @@ namespace
             Session t;
             const Json r = Run(t, "open", Json{ { "path", path } });
             std::vector<std::string> left;
-            for (const Json& v : r["left_out"])
-                left.push_back(v.get<std::string>());
+            if (!r.is_null())
+                for (const Json& v : r["left_out"])
+                    left.push_back(v.get<std::string>());
             auto has = [&](const char* p) { return std::find(left.begin(), left.end(), p) != left.end(); };
-            const bool listed = has("/families") && has("/phases") && has("/types/roof") && has("/materials/Brick/texture") && has("/elements/100100") &&
-                                has("/elements/100101") && has("/elements/100003/attach_top") && has("/elements/100003/params");
+            const bool listed = has("/families") && has("/phases") && has("/types/column") && has("/materials/Brick/texture") && !has("/elements/100100") &&
+                                has("/elements/100101") && has("/elements/100102") && !has("/elements/100003/attach_top") && has("/elements/100003/params");
             std::string why;
-            const bool opened = !r.is_null() && t.GetModel().Check(why) && Count(t, "wall") == 4 && Count(t, "door") == 1 &&
-                                !t.GetModel().GetWall(Id(100003))->attachTop && !t.GetModel().library.IdOf(Kind::Of(Kind::Tag::Phase), "Existing");
+            const bool opened = !r.is_null() && t.GetModel().Check(why) && Count(t, "wall") == 4 && Count(t, "door") == 1 && Count(t, "roof") == 1 &&
+                                t.GetModel().GetWall(Id(100003))->attachTop && !t.GetModel().library.IdOf(Kind::Of(Kind::Tag::Phase), "Existing");
             std::error_code ec;
             std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
             Check(listed && opened, "命令：打开 BIMCraft 的文件时略去还没移植的内容并列出，其余照常");
@@ -490,6 +561,292 @@ namespace
         }
     }
 
+    // ── 屋顶、房间、天花板（第 2b 步）────────────────────────────
+    void TestRoofsRoomsCeilings()
+    {
+        const double tan30 = std::tan(30.0 * kPi / 180.0), rise30 = 300.0 / std::cos(30.0 * kPi / 180.0);
+        {
+            Session s;
+            House(s);
+            const bool enclosed = Contains(Refused(s, "room", R"({"point": [9000, 1000]})"), "enclosed");
+            const Json r = Run(s, "RM", R"({"point": [4000, 3000], "name": "Living"})");
+            const bool first = r["number"] == "1" && r["area_m2"] == 48.0;
+            // 隔墙把房子分开；房间留下它的点所在的那部分
+            Run(s, "wall", R"({"points": [[5000, 0], [5000, 6000]], "type": "Interior - 100mm"})");
+            Check(enclosed && first && Run(s, "elements", R"({"category": "room"})")["elements"][0]["area_m2"] == 30.0,
+                  "房间：要有墙围着，跟着墙变");
+        }
+        {
+            Session s;
+            House(s);
+            Run(s, "wall", R"({"points": [[4000, 0], [4000, 6000]]})");
+            // 在 Level 2 上盖住 Level 1 的墙：30° 四坡，伸出墙面 500；四个角从西南起，隔墙与外墙相接处没有角点
+            const Id roof = Run(s, "roof", Json::object())["id"].get<Id>();
+            const Json e = ElementOf(s, roof);
+            bool ok = IdOf(s, e["level"]) == Id(100001) && e["slope"] == 30.0 && e["overhang"] == 500.0 && NearNum(e["boundary"][0][0], -600, 1e-6) &&
+                      NearNum(e["boundary"][0][1], -600, 1e-6) && e["boundary"].size() == 4;
+            // 屋脊：离墙面 3100、30°，在 Level 2 之上
+            ok = ok && NearNum(e["ridge"], 3000.0 + 3100.0 * tan30, 0.01);
+            const Id flat = Run(s, "roof", R"({"slope": 0, "boundary": [[0, 0], [4000, 0], [2000, 3000]]})")["id"].get<Id>();
+            ok = ok && ElementOf(s, flat)["ridge"] == 3000.0;
+            // 三角形也能坡：三个坡面
+            ok = ok && !Run(s, "roof", R"({"boundary": [[0, 0], [4000, 0], [2000, 3000]]})").is_null();
+            Check(ok, "屋顶：盖住下一层的墙，平的或坡的");
+        }
+        {
+            Session s;
+            const auto ids = House(s);
+            // 8 × 6 米上的双坡：坡面朝南北，屋脊东西走向
+            const Id roof = Run(s, "roof", R"({"gable": true})")["id"].get<Id>();
+            // 高过墙顶的窗放不进东墙，直到墙升进山墙
+            bool ok = Contains(Refused(s, "window", R"({"at": [8000, 3000], "sill": 2000})"), "fit");
+            Run(s, "modify", Json{ { "ids", ids }, { "attach_top", roof } });
+            ok = ok && std::abs(WallTop(s, ids[1], 3000) - (3000.0 + 3100.0 * tan30)) < 1.0 && std::abs(WallTop(s, ids[0], 4000) - (3000.0 + 100.0 * tan30)) < 1.0;
+            ok = ok && !Run(s, "window", R"({"at": [8000, 3000], "sill": 2000})").is_null();
+            ok = ok && NearNum(ElementOf(s, ids[1])["height"], 3000.0 + 3100.0 * tan30, 1.0);
+            // 松开的话墙放不下这扇窗
+            ok = ok && Contains(Refused(s, "modify", Json{ { "id", ids[1] }, { "attach_top", nullptr } }), "fit");
+            // 贴着楼板的墙停在楼板下；底部贴着的立在楼板上
+            const Id floor = Run(s, "floor", R"({"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]})")["id"].get<Id>();
+            const Id part = Run(s, "wall", Json{ { "points", { Pt(4000, 0), Pt(4000, 6000) } }, { "base_offset", 500 }, { "attach_top", floor } })["ids"][0].get<Id>();
+            ok = ok && std::abs(WallTop(s, part, 3000) - 2800.0) < 1e-6;
+            const Id low = Run(s, "floor", Json::object())["id"].get<Id>();
+            ok = ok && ElementOf(s, part)["height"] == 2300.0;
+            Run(s, "modify", Json{ { "id", part }, { "attach_base", low } });
+            ok = ok && ElementOf(s, part)["height"] == 2800.0;
+            // 屋顶或楼板删了不带走墙：墙松开
+            Run(s, "delete", Json{ { "ids", { low } } });
+            ok = ok && ElementOf(s, part).count("attach_base") == 0 &&
+                 Contains(Refused(s, "modify", Json{ { "id", part }, { "attach_top", ids[0] } }), "roof or a floor");
+            Check(ok, "屋顶：贴着屋顶的墙跟着它的底面；贴着楼板的停在板下、立在板上；删掉就松开");
+        }
+        {
+            Session s;
+            House(s);
+            Run(s, "wall", R"({"points": [[5000, 0], [5000, 6000]], "type": "Interior - 100mm"})");
+            // 点所在的房间，到墙面：4850 × 5800；离地 2600，20 厚
+            const Json c = Run(s, "ceiling", R"({"point": [2000, 3000]})");
+            const Id id = c["id"].get<Id>();
+            const Json e = ElementOf(s, id);
+            bool ok = c["area_m2"] == 28.13 && IdOf(s, e["level"]) == Id(100000) && e["offset"] == 2600.0 && e["thickness"] == 20.0 &&
+                      NearOpt(CeilingTop(s, id, P2(2000, 3000)), 2620.0, 1e-9);
+            // 给出轮廓、低一些、方格；没有墙围着的点要给轮廓
+            const Json tiles = Run(s, "ceiling", R"({"boundary": [[5050, 100], [7900, 100], [7900, 5900], [5050, 5900]], "offset": 2400, "type": "Tile 600 x 600"})");
+            ok = ok && ElementOf(s, tiles["id"].get<Id>())["grid"] == 600.0 && Contains(Refused(s, "ceiling", R"({"point": [9000, 3000]})"), "boundary");
+            const Json t = Run(s, "type", R"({"category": "ceiling", "name": "Tile 1200", "thickness": 15, "grid": 1200})");
+            ok = ok && t["type"] == Json::parse(R"({"thickness": 15.0, "grid": 1200.0})") &&
+                 Contains(Refused(s, "type", R"({"category": "ceiling", "name": "Fine", "thickness": 15, "grid": 10})"), "grid");
+            Check(ok, "天花板：铺满房间到墙面；没有墙围着时要给轮廓；格子不能太细");
+        }
+        {
+            Session s;
+            // 两个 6 米宽的翼组成 L 形，在 Level 2 上盖屋顶：伸出墙面 500，30°
+            Run(s, "wall", R"({"points": [[0, 0], [12000, 0], [12000, 6000], [6000, 6000], [6000, 12000], [0, 12000]], "closed": true})");
+            const Id roof = Run(s, "roof", Json::object())["id"].get<Id>();
+            const double eave = 3000.0 - 500.0 * tan30;
+            const double ridge = eave + 3600.0 * tan30 + rise30;
+            auto top = [&](double x, double y) { return RoofTop(s, roof, P2(x, y)); };
+            // 两翼的屋脊，以及两翼相交处的上方
+            bool ok = NearOpt(top(9000, 3000), ridge, 1e-6) && NearOpt(top(3000, 9000), ridge, 1e-6) && NearOpt(top(3000, 3000), ridge, 1e-6);
+            // 内角里是天沟：每个坡从自己的檐口升起
+            ok = ok && NearOpt(top(9000, 5000), eave + 1600.0 * tan30 + rise30, 1e-6) && NearOpt(top(4800, 4800), eave + 1800.0 * tan30 + rise30, 1e-6);
+            // 两翼的端部竖直：山墙，屋脊通到那里
+            Run(s, "modify", Json{ { "id", roof }, { "gables", { 1, 4 } } });
+            ok = ok && NearOpt(top(12000, 3000), ridge, 1e-6);
+            ok = ok && Contains(Refused(s, "modify", Json{ { "id", roof }, { "gable", true } }), "rectangle") &&
+                 Contains(Refused(s, "modify", Json{ { "id", roof }, { "gables", { 6 } } }), "edge");
+            // 三角形也能坡：三个坡面在中间相交
+            const Id tri = Run(s, "roof", R"({"boundary": [[20000, 0], [26000, 0], [23000, 5196.152]]})")["id"].get<Id>();
+            ok = ok && NearNum(ElementOf(s, tri)["ridge"], 3000.0 + 6000.0 / (2.0 * std::sqrt(3.0)) * tan30, 0.01);
+            Check(ok, "屋顶：四坡盖住任何迹线，两翼相交处是天沟；山墙让屋脊通到端部");
+        }
+        {
+            Session s;
+            const auto ids = House(s);
+            // Level 2 上盖住 8 × 6 的房子：底面轮廓沿南边，两端各伸出 500，在 3 米处升到 2 米高的屋脊，向北扫过墙
+            const Json profile = Json::parse(R"({"line": [[0, 0], [8000, 0]], "profile": [[-500, 0], [3000, 2000], [8500, 0]], "from": -600, "to": 6600})");
+            const Id roof = Run(s, "roof", Json{ { "extrusion", profile } })["id"].get<Id>();
+            const Json e = ElementOf(s, roof);
+            bool ok = e["ridge"] == 5000.0 && e["area_m2"] == 64.8;
+            // 西坡的一半：高 1 米，垂直于坡面 300 厚
+            ok = ok && NearOpt(RoofTop(s, roof, P2(1250, 3000)), 4000.0 + 300.0 * std::hypot(3500.0, 2000.0) / 3500.0, 1e-6);
+            // 墙贴着它：南墙的顶跟着东坡
+            Run(s, "modify", Json{ { "ids", ids }, { "attach_top", roof } });
+            ok = ok && std::abs(WallTop(s, ids[0], 4000) - (3000.0 + 2000.0 * 4500.0 / 5500.0)) < 1e-6;
+            // 轮廓沿线单向前进，扫过一定的进深
+            ok = ok && Contains(Refused(s, "modify", Json{ { "id", roof }, { "extrusion", Json::parse(R"({"profile": [[0, 0], [0, 1000]]})") } }), "profile") &&
+                 Contains(Refused(s, "modify", Json{ { "id", roof }, { "extrusion", Json::parse(R"({"to": -600})") } }), "across");
+            Check(ok, "屋顶：拉伸屋顶把轮廓扫过去，墙可以贴着它");
+        }
+        {
+            Session s;
+            // 16 米见方围着 4 米的天井：四个 6 米宽的翼，Level 2 上 30°
+            const Json outline = Json::parse("[[0, 0], [16000, 0], [16000, 16000], [0, 16000]]");
+            const Json court = Json::parse("[[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]]");
+            const Id roof = Run(s, "roof", Json{ { "boundary", outline }, { "courtyards", { court } } })["id"].get<Id>();
+            auto top = [&](double x, double y) { return RoofTop(s, roof, P2(x, y)); };
+            // 每翼的屋脊离两边檐口各 3 米：围着天井的一圈屋脊，天井上方敞开
+            const double ridge = 3000.0 + 3000.0 * tan30;
+            bool ok = true;
+            for (const auto& [x, y] : { std::pair{ 8000.0, 3000.0 }, std::pair{ 13000.0, 8000.0 }, std::pair{ 8000.0, 13000.0 }, std::pair{ 3000.0, 8000.0 },
+                                        std::pair{ 3000.0, 3000.0 }, std::pair{ 13000.0, 13000.0 } })
+                ok = ok && NearOpt(top(x, y), ridge + rise30, 1e-6);
+            ok = ok && !top(8000, 8000);
+            // 坡面从天井的檐口升起，同外轮廓的
+            for (const double y : { 5000.0, 1000.0 })
+                ok = ok && NearOpt(top(8000, y), 3000.0 + 1000.0 * tan30 + rise30, 1e-6);
+            const Json e = ElementOf(s, roof);
+            ok = ok && e["ridge"] == 4732.05 && e["area_m2"] == 240.0;
+            // 天井的边接着外轮廓编号：它的南边（4）是山墙，南翼的坡升到它，6 米进深
+            Run(s, "modify", Json{ { "id", roof }, { "gables", { 4 } } });
+            ok = ok && NearOpt(top(8000, 5900), 3000.0 + 5900.0 * tan30 + rise30, 1e-6);
+            ok = ok && Contains(Refused(s, "modify", Json{ { "id", roof }, { "gables", { 8 } } }), "edge 8");
+            // 天井在外轮廓里面、互不相交；拉伸屋顶没有天井
+            const std::pair<const char*, const char*> bad[] = {
+                { R"([[[20000, 0], [22000, 0], [22000, 2000]]])", "inside" },
+                { R"([[[-1000, 6000], [2000, 6000], [2000, 8000], [-1000, 8000]]])", "inside" },
+            };
+            for (const auto& [rings, why] : bad)
+                ok = ok && Contains(Refused(s, "modify", Json{ { "id", roof }, { "courtyards", Json::parse(rings) } }), why);
+            ok = ok && Contains(Refused(s, "modify", Json{ { "id", roof }, { "courtyards", { court, Json::parse("[[7000, 7000], [12000, 7000], [12000, 12000]]") } } }), "overlap");
+            const Json extruded = Json::parse(R"({"line": [[0, 0], [16000, 0]], "profile": [[0, 0], [8000, 3000], [16000, 0]], "to": 16000})");
+            ok = ok && Contains(Refused(s, "roof", Json{ { "extrusion", extruded }, { "courtyards", { court } } }), "footprint");
+            // 平的时候是穿过它的洞
+            Run(s, "modify", Json{ { "id", roof }, { "slope", 0 }, { "gables", Json::array() } });
+            ok = ok && !top(8000, 8000) && ElementOf(s, roof)["area_m2"] == 240.0 && top(8000, 5000);
+            Check(ok, "屋顶：围着天井从檐口升到一圈屋脊；天井的边可以是山墙");
+        }
+        {
+            Session s;
+            // 16 米见方的房子围着 4 米的天井，墙 200 厚：没有墙把天井那圈与外墙连起来
+            Run(s, "wall", R"({"points": [[0, 0], [16000, 0], [16000, 16000], [0, 16000]], "closed": true})");
+            Run(s, "wall", R"({"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true})");
+            const Id roof = Run(s, "roof", Json::object())["id"].get<Id>();
+            const Json e = ElementOf(s, roof);
+            // 伸出墙面 500：外面绕着房子，里面绕着天井，从西南角起顺时针
+            bool ok = e["boundary"][0] == Pt(-600, -600) &&
+                      e["courtyards"] == Json::parse("[[[6600.0, 6600.0], [6600.0, 9400.0], [9400.0, 9400.0], [9400.0, 6600.0]]]");
+            // 每翼檐口到檐口 7.2 米，屋脊离两边 3.6 米：3000 + 3100 tan 30°。面积：17.2² 减 2.8²
+            ok = ok && e["ridge"] == 4789.79 && e["area_m2"] == 288.0 && !RoofTop(s, roof, P2(8000, 8000));
+            // 给出的天井是屋顶自己的；小得伸出后合上的被盖住
+            const Id given = Run(s, "roof", R"({"courtyards": []})")["id"].get<Id>();
+            ok = ok && RoofTop(s, given, P2(8000, 8000));
+            const Id wide = Run(s, "roof", R"({"overhang": 2100})")["id"].get<Id>();
+            ok = ok && ElementOf(s, wide).count("courtyards") == 0 && RoofTop(s, wide, P2(8000, 8000));
+            // 里面有房间的环是室内，与外墙相连的也是：盖住
+            const Id room = Run(s, "room", R"({"point": [8000, 8000], "name": "Hall"})")["id"].get<Id>();
+            const Id hall = Run(s, "roof", Json::object())["id"].get<Id>();
+            ok = ok && ElementOf(s, hall).count("courtyards") == 0 && RoofTop(s, hall, P2(8000, 8000));
+            Run(s, "delete", Json{ { "ids", { room } } });
+            Run(s, "wall", R"({"points": [[8000, 0], [8000, 6000]]})");
+            const Id joined = Run(s, "roof", Json::object())["id"].get<Id>();
+            ok = ok && ElementOf(s, joined).count("courtyards") == 0 && RoofTop(s, joined, P2(8000, 8000));
+            Check(ok, "屋顶：沿墙盖时，独立的一圈墙围出天井；里面有房间的、与外墙相连的不算");
+        }
+        {
+            Session s;
+            // 16 米见方的房子围着 4 米的天井：天井四周的房间是一个环
+            Run(s, "wall", R"({"points": [[0, 0], [16000, 0], [16000, 16000], [0, 16000]], "closed": true})");
+            Run(s, "wall", R"({"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true})");
+            // 到墙面，也绕着那圈墙的墙面，从西南角起顺时针：15.8² 减 4.2²
+            const Json made = Run(s, "ceiling", R"({"point": [3000, 3000], "type": "Tile 600 x 600"})");
+            const Id id = made["id"].get<Id>();
+            const Json e = ElementOf(s, id);
+            bool ok = made["area_m2"] == 232.0 && e["area_m2"] == 232.0 &&
+                      e["openings"] == Json::parse("[[[5900.0, 5900.0], [5900.0, 10100.0], [10100.0, 10100.0], [10100.0, 5900.0]]]");
+            ok = ok && !CeilingTop(s, id, P2(8000, 8000)) && NearOpt(CeilingTop(s, id, P2(8000, 3000)), 2620.0, 1e-9);
+            // 移动时洞口跟着走
+            Run(s, "move", Json{ { "ids", { id } }, { "by", { 0, 1000 } } });
+            ok = ok && ElementOf(s, id)["openings"][0][0] == Pt(5900, 6900);
+            // 给出轮廓时洞口是给出的，各在它里面
+            const Json square = Json::parse("[[20000, 0], [24800, 0], [24800, 4800], [20000, 4800]]");
+            const Id plain = Run(s, "ceiling", Json{ { "boundary", square } })["id"].get<Id>();
+            ok = ok && ElementOf(s, plain).count("openings") == 0;
+            Run(s, "delete", Json{ { "ids", { plain } } });
+            const Json out = Json::parse("[[[25000, 1000], [26000, 1000], [26000, 2000], [25000, 2000]]]");
+            ok = ok && Contains(Refused(s, "ceiling", Json{ { "boundary", square }, { "openings", out } }), "isn't inside its outline");
+            const Json hole = Json::parse("[[[21800, 1800], [23000, 1800], [23000, 3000], [21800, 3000]]]");
+            ok = ok && Run(s, "ceiling", Json{ { "boundary", square }, { "openings", hole }, { "type", "Tile 600 x 600" } })["area_m2"] == 21.6;
+            Check(ok, "天花板：房间围着一圈墙时停在那圈墙的墙面，洞口随它移动");
+        }
+        {
+            Session s;
+            House(s);
+            const Json roof = Json::parse(R"([
+                {"function": "finish", "material": "Roof tiles", "thickness": 50},
+                {"function": "membrane", "material": "Membrane", "thickness": 0},
+                {"function": "thermal", "material": "Insulation", "thickness": 150},
+                {"function": "structure", "material": "Timber", "thickness": 100}])");
+            bool ok = Run(s, "type", Json{ { "category", "roof" }, { "name", "Tiled roof" }, { "layers", roof } })["type"]["thickness"] == 300.0;
+            const Json board = Json::parse(R"([{"function": "substrate", "material": "Timber", "thickness": 25}, {"function": "finish", "material": "Gypsum board", "thickness": 13}])");
+            const Json t = Run(s, "type", Json{ { "category", "ceiling" }, { "name", "Board" }, { "layers", board }, { "grid", 600 } })["type"];
+            ok = ok && t["thickness"] == 38.0 && t["grid"] == 600.0;
+            ok = ok && Contains(Refused(s, "type", R"({"category": "roof", "name": "Odd", "thickness": 10, "layers": [{"thickness": 50}]})"), "50");
+            // 各层有自己的 ID 和 GUID，在库里
+            const Model& m = s.GetModel();
+            ok = ok && m.LibraryInStep() && m.types.roof.at("Tiled roof").layers[0].id != 0 && m.library.GuidOf(Kind::Type("ceiling"), "Board");
+            Check(ok, "类型：屋顶与天花板由从上往下的各层组成");
+        }
+        {
+            Session s;
+            House(s);
+            bool ok = Run(s, "room", R"({"point": [2000, 3000], "name": "Living"})")["area_m2"] == 48.0;
+            // 开敞的平面由一条线（不是墙）分成起居室和厨房
+            const Json made = Run(s, "room_separator", R"({"points": [[5000, 0], [5000, 6000]]})");
+            ok = ok && made["ids"].size() == 1 && Run(s, "elements", R"({"category": "room"})")["elements"][0]["area_m2"] == 30.0;
+            ok = ok && Run(s, "room", R"({"point": [7000, 3000], "name": "Kitchen"})")["area_m2"] == 18.0;
+            const Json lines = Run(s, "elements", R"({"category": "roomseparator"})");
+            ok = ok && lines["count"] == 1 && lines["elements"][0]["length"] == 6000.0;
+            // 楼板仍沿墙：分隔线不是板的边
+            ok = ok && Run(s, "floor", Json::object())["area_m2"] == 48.0;
+            // 一串点每段一条；重复的点、点太少是错误
+            ok = ok && Run(s, "room_separator", R"({"points": [[0, 3000], [2000, 3000], [2000, 6000]]})")["ids"].size() == 2;
+            Run(s, "undo", Json::object());
+            for (const char* p : { R"({"points": [[0, 0]]})", R"({"points": [[0, 0], [0, 0]]})", R"({"points": [[0, 0], [1000, 0]], "level": "Nowhere"})" })
+                ok = ok && !Refused(s, "room_separator", p).empty();
+            Check(ok, "房间：分隔线不用墙就把房间分开");
+        }
+        {
+            Session s;
+            House(s);
+            const double t = Run(s, "elements", R"({"category": "wall"})")["elements"][0]["thickness"].get<double>();
+            Run(s, "room", R"({"point": [4000, 3000], "name": "Living"})");
+            auto area = [&] { return Run(s, "elements", R"({"category": "room"})")["elements"][0]["area_m2"].get<double>(); };
+            bool ok = Run(s, "room_area", Json::object())["at"] == "centre" && area() == 48.0;
+            // 在墙面量：墙以内的地面，每边从中心线往里半个墙厚
+            ok = ok && Run(s, "room_area", R"({"at": "finish"})")["at"] == "finish" && std::abs(area() - (8000.0 - t) * (6000.0 - t) / 1e6) < 1e-6;
+            // 隔墙也取它的墙面
+            Run(s, "wall", R"({"points": [[5000, 0], [5000, 6000]], "type": "Interior - 100mm"})");
+            ok = ok && std::abs(area() - (5000.0 - t / 2.0 - 50.0) * (6000.0 - t) / 1e6) < 1e-6;
+            // 随项目保存，也像别的改动一样撤销
+            ok = ok && s.GetModel().ToJson()["room_area"] == "finish" && Contains(Refused(s, "room_area", R"({"at": "core"})"), "centre or finish") &&
+                 !Refused(s, "room_area", R"({"to": "finish"})").empty();
+            Run(s, "undo", Json::object());
+            Run(s, "undo", Json::object());
+            ok = ok && area() == 48.0 && s.GetModel().ToJson().count("room_area") == 0;
+            Check(ok, "房间：在墙中心线或墙面量面积");
+        }
+        {
+            Session s;
+            House(s);
+            const double t = Run(s, "elements", R"({"category": "wall"})")["elements"][0]["thickness"].get<double>();
+            Run(s, "room_area", R"({"at": "finish"})");
+            Run(s, "room_separator", R"({"points": [[5000, 0], [5000, 6000]]})");
+            const double living = Run(s, "room", R"({"point": [2000, 3000], "name": "Living"})")["area_m2"].get<double>();
+            const double kitchen = Run(s, "room", R"({"point": [7000, 3000], "name": "Kitchen"})")["area_m2"].get<double>();
+            // 线没有厚度：两个房间平分墙之间的地面
+            Check(std::abs(living - (5000.0 - t / 2.0) * (6000.0 - t) / 1e6) < 1e-6 && std::abs(kitchen - (3000.0 - t / 2.0) * (6000.0 - t) / 1e6) < 1e-6,
+                  "房间：在墙面量时也停在分隔线");
+        }
+        {
+            Session s;
+            // 东边是 3 米宽的半圆：从南往北左转，向东凸出
+            Run(s, "wall", R"({"points": [[4000, 3000], [0, 3000], [0, 0], [4000, 0]]})");
+            Run(s, "wall", R"({"points": [[4000, 0], [4000, 3000]], "arc": 180})");
+            Check(Run(s, "room", R"({"point": [4500, 1500]})")["area_m2"] == 15.53, "房间：圆弧墙也围房间（12 m² 加半个圆）");
+        }
+    }
+
     void TestSample()
     {
         Session s;
@@ -504,6 +861,16 @@ namespace
         Check(ran && m.name == "Sample House" && i["counts"]["wall"] == 7 && i["counts"]["door"] == 4 && i["counts"]["window"] == 5 &&
                   i["counts"]["grid"] == 5 && i["counts"]["floor"] == 1 && floor["area_m2"] == 70.0 && m.Check(error) && s.History().empty() == false,
               "示例房屋：用命令搭起来，检查通过");
+        // 四个房间，每个一块天花板，一个四坡屋顶，外墙贴着它
+        // 先存下来：range-for 里临时对象的成员在循环开始前就析构了（C++20）
+        const Json rooms = Run(s, "elements", R"({"category": "room"})");
+        std::vector<double> areas;
+        for (const Json& r : rooms["elements"])
+            areas.push_back(r["area_m2"].get<double>());
+        const Model& after = s.GetModel();
+        Check(i["counts"]["room"] == 4 && i["counts"]["ceiling"] == 4 && i["counts"]["roof"] == 1 && areas == std::vector<double>{ 24, 18, 14, 14 } &&
+                  after.GetWall(Id(100007))->attachTop == after.GuidOf(Id(100024)),
+              "示例房屋：四个房间（24、18、14、14 m²）各有天花板，外墙贴着屋顶");
     }
 
     // 一组不怀好意的参数逐条命令扫一遍：命令可以拒绝，但不能抛出内部错误，也不能弄坏模型
@@ -525,6 +892,9 @@ namespace
             Json::parse(R"({"count": 1e9, "limit": -1, "offset": "x", "length": "furlong"})"),
             Json::parse(R"({"wall": 100006, "offset": -1e9, "sill": 1e9, "mark": 5})"),
             Json::parse(R"({"ids": [100002, 100002, 100003], "by": [0.0001, 0], "end": "middle"})"),
+            Json::parse(R"({"gables": [1e20, -1], "slope": 75, "overhang": 1e9, "extrusion": {"line": [[0, 0], [0, 0]], "profile": [], "to": 1e300}})"),
+            Json::parse(R"({"courtyards": [[[0, 0]]], "point": [4000, 3000], "join": 100002, "at": "finish", "grid": 1})"),
+            Json::parse(R"({"id": 100009, "boundary": [], "extrusion": {"line": [[0, 0], [1, 0]], "profile": [[0, 0], [1, 1]], "to": 1}})"),
         };
         bool ok = true;
         for (const Command& c : Commands())
@@ -537,6 +907,8 @@ namespace
                 const auto ids = House(s);
                 Run(s, "door", R"({"at": [2000, 0]})");
                 Run(s, "floor", Json::object());
+                Run(s, "roof", Json::object());
+                Run(s, "room", R"({"point": [4000, 3000]})");
                 (void)ids;
                 Json out;
                 std::string error;
@@ -562,6 +934,7 @@ int main()
     TestFloors();
     TestEditing();
     TestFiles();
+    TestRoofsRoomsCeilings();
     TestSample();
     TestHostileParams();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);

@@ -21,6 +21,8 @@ namespace
 
     bool Near(double a, double b, double tol) { return std::abs(a - b) <= tol; }
 
+    constexpr double kPi = 3.14159265358979323846;
+
     Bim::Session Sample()
     {
         Bim::Session s;
@@ -49,14 +51,17 @@ namespace
         if (!built)
             std::printf("  %s\n", error.c_str());
         const ModelScene::Counts& c = scene.GetCounts();
-        Check(built && c.walls == 7 && c.floors == 1 && c.doors == 4 && c.windows == 5, "三维场景：示例房屋的墙、楼板、门、窗都建出来");
+        Check(built && c.walls == 7 && c.floors == 1 && c.doors == 4 && c.windows == 5 && c.ceilings == 4 && c.roofs == 1,
+              "三维场景：示例房屋的墙、楼板、门、窗、天花板、屋顶都建出来");
         Check(!scene.GetTriangles().empty() && scene.GetTriangles().size() % 3 == 0 && !scene.GetEdges().empty() && scene.GetEdges().size() % 2 == 0,
               "三维场景：有三角形和边线");
-        // 外墙 300 毫米厚、中心线在 10 × 7 米的轴线上；楼板 200 毫米厚，顶面在标高上；墙高到 Level 2（3000）
+        // 外墙 300 毫米厚、中心线在 10 × 7 米的轴线上；楼板 200 毫米厚，顶面在标高上。屋顶伸出外墙面 500，
+        // 在 Level 2（3000）上 30° 四坡：檐口比标高低 500 tan 30°，8.3 米宽的短边中间是屋脊，上面是 300 厚的板（铅垂 300 / cos 30°）
         const AABB& b = scene.GetBounds();
-        Check(Near(b.Min.x, -150.0, 1.0) && Near(b.Min.y, -150.0, 1.0) && Near(b.Max.x, 10150.0, 1.0) && Near(b.Max.y, 7150.0, 1.0) &&
-                  Near(b.Min.z, -200.0, 1.0) && Near(b.Max.z, 3000.0, 1.0),
-              "三维场景：范围是外墙外侧、楼板底到墙顶");
+        const double tan30 = std::tan(kPi / 6.0), ridge = 3000.0 + 3650.0 * tan30 + 300.0 / std::cos(kPi / 6.0);
+        Check(Near(b.Min.x, -650.0, 1.0) && Near(b.Min.y, -650.0, 1.0) && Near(b.Max.x, 10650.0, 1.0) && Near(b.Max.y, 7650.0, 1.0) &&
+                  Near(b.Min.z, -200.0, 1.0) && Near(b.Max.z, ridge, 1.0),
+              "三维场景：范围是屋顶的檐口、楼板底到屋脊");
     }
 
     void TestOpeningsAreCut()

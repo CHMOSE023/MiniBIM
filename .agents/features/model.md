@@ -7,19 +7,20 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 ## 概述
 
 移植自 BIMCraft `crates/core`（`f3bbb33`）的建筑模型、命令与撤销，命名空间 `MiniBIM::Bim`，在核心库里（不依赖界面，Linux CI 也编译）。
-第 2a 步移植了这些（进度与后续见 `docs/PLAN.md` 第 2 阶段）：
+第 2a、2b 步移植了这些（进度与后续见 `docs/PLAN.md` 第 2 阶段）：
 
 | 代码 | 来自 BIMCraft | 内容 |
 |---|---|---|
 | `src/Model/Geom.h` | `geom.rs`、`walls.rs` 的 `Plane` | 平面几何：`P2`、环、面积、裁剪、三角剖分、平面图的面、区域 |
 | `src/Model/Units.h`、`src/Model/Language.h` | `units.rs`、`language.rs` | 项目单位（显示与输入）、项目语言（新名称用的词） |
 | `src/Model/Ids.h` | `ids.rs` | `Id`、`Guid`、`Elements`（按 ID 或 GUID 找元素） |
-| `src/Model/Model.h` | `model.rs` | 元素（标高、轴网、墙、楼板、门、窗）、类型、材质、`Model::Check` |
+| `src/Model/Model.h` | `model.rs` | 元素（标高、轴网、墙、楼板、天花板、门、窗、房间、房间分隔线、屋顶）、类型、材质、`Model::Check`；屋顶的坡面、房间的区域 |
+| `src/Model/Skeleton.h` | `skeleton.rs` | 多边形（含天井）的直骨架：坡屋顶的斜脊、天沟、屋脊与各坡面 |
 | `src/Model/Library.h` | `library.rs` | 库条目（类型、材质）与部件（类型的层）的 ID、GUID |
 | `src/Model/ModelJson.h` | `model.rs`、`ids.rs`、`library.rs`、`lenient.rs` | 元素与项目文件的 JSON |
 | `src/Model/Walls.h` | `walls.rs` 与它的 index 子模块 | 墙的定位线、墙面、斜接封口、轮廓、棱柱、加速索引 |
 | `src/Commands/Session.h` | `engine.rs` | `Session`：执行命令、回滚、撤销 / 重做、脚本、事务 |
-| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令 |
+| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`） |
 | `src/Commands/Sample.h` | `sample.rs` | 示例房屋脚本（已移植命令能做的部分） |
 
 ## 入口与数据流
@@ -38,6 +39,11 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   族、阶段、视图设置……）略去，略去的位置以 JSON 指针列在 `open` 结果的 `left_out`（`/elements/100004/finish`）。读完再清理：宿主没了的门窗也略去，
   贴着的东西不在了的墙松开。界面打开有略去内容的文件时弹窗说明，保存会丢掉它们
 - 三维：`ModelScene`（`.agents/features/view3d.md`）从 `Bim::Model` 建实体
+- 屋顶：迹线屋顶的坡面由 `Model::RoofFaces` 算出：平的、按 `Skeleton::Faces`（每条边以速度 1 向内移动，山墙边速度 0）的坡面，或拉伸屋顶的轮廓；
+  `join` 插进的屋顶上方只留高过那个屋顶顶面的部分。`Model::RoofPieces` 再减去开洞。墙贴着屋顶时（`Wall::attachTop`）顶跟着它的底面（`Walls::TopAt`）。
+  `roof` 不给轮廓时沿下一层的墙（`RoofFootprint`，伸出墙面 `overhang`），独立的一圈墙里没有房间时是天井
+- 房间只存一个点，边界每次由点四周的线找（`Model::RoomRegion`）：墙中心线与房间分隔线，或在墙面量时（`Model::roomArea`）墙轮廓的边与分隔线。
+  墙动了房间跟着变；`floor`、`roof` 沿墙铺时，里面有房间的独立的一圈墙算室内
 
 ## 约束与坑
 
@@ -51,13 +57,16 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 - nlohmann/json：不用会抛异常的接口（`parse` 传 `allow_exceptions = false`，取值前查类型）；代码里构造的整数是有符号整数、解析出的是无符号整数，
   读非负整数用 `Bim::AsWhole`；不要在 range-for 里对临时对象调 `items()`（临时对象先析构，`Model::ToJson` 踩过）
 - 数的读写不随系统区域设置：`Text::ParseNumber`（`from_chars`）、`Text::Shortest`（`to_chars`，照 Rust 的 `{}` 格式）
-- 移植时还没有的部分在代码里注明是哪一步补上：屋顶（`Walls` 的贴屋顶、`Model::Check` 的 attach）、房间（`Model::BoundingLines` 的房间分隔线、
-  `FloorOutline` 的室内环）、族（带族的门窗）、贴图、填充样式
+- 移植时还没有的部分在代码里注明是哪一步补上：族（带族的门窗）、贴图、填充样式、竖井（BIMCraft 的 `less_shafts`）。
+  画轮廓的草图（`sketch`：楼板、天花板、屋顶的"编辑边界"，BIMCraft 的 `sketch.rs`、`curves.rs`）随平面视图的编辑（第 2d 步）移植，
+  现在命令收到 `sketch` 就拒绝、读文件时略去
+- 直骨架照 BIMCraft 用二叉堆排事件：同一时刻的事件顺序与 Rust 的堆可能不同，结果一样（`ModelTests` 的 2000 个随机迹线检查面积与平面性）
 
 ## 测试与排查
 
-- `ModelTests`（`tests/Model/ModelTests.cpp`）：几何、单位、ID、项目语言、`Model::Check`、墙的接头与轮廓、加速索引、库，移植自 BIMCraft 各模块的测试
+- `ModelTests`（`tests/Model/ModelTests.cpp`）：几何、单位、ID、项目语言、`Model::Check`、墙的接头与轮廓、加速索引、库、直骨架，移植自 BIMCraft 各模块的测试
 - `CommandTests`（`tests/Commands/CommandTests.cpp`）：像前端一样经命令驱动（移植自 BIMCraft 的 `tests.rs`）：撤销、脚本、事务、建模、编辑、
   项目文件（含打开 BIMCraft 文件时略去的内容）、示例房屋、恶意参数扫描
-- 用到还没移植的命令的 BIMCraft 测试（房间、屋顶、剖面……）略去了那些断言，移植那些命令时补回
+- 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
+  （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

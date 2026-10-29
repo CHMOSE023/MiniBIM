@@ -43,7 +43,11 @@ BIMCraft 的核心与界面分得很清楚：所有编辑都是 `commands.rs` �
   与命令 `new`、`open`、`save`、`undo`、`redo`、`level`、`grid`、`wall`、`door`、`window`、`floor`、`type`、`material`、`flip`、`modify`、`move`、`copy`、`delete`、
   `units`、`inspect`、`elements`；项目文件（`.minibim`，与 `.bimcraft` 同一格式，不认识的内容略去并列出）；示例房屋（已移植命令能做的部分）；
   三维场景经 SMLib 建实体（`ModelScene`）；界面的文件菜单（新建、打开、保存、另存为、示例房屋）。说明见 `.agents/features/model.md`
-- **2b 屋顶与房间**：`roof`（`skeleton.rs` 直骨架、坡屋顶）、墙顶贴屋顶、`ceiling`、`room`（区域、面积）、房间分隔线、`sketch` 的轮廓
+- **2b（已完成）屋顶与房间**：`skeleton.rs` 直骨架；屋顶（迹线屋顶：平的、四坡、山墙、天井，拉伸屋顶，开洞，插进别的屋顶）与命令 `roof`，
+  墙顶贴屋顶；`ceiling`；`room`（由四周的墙与分隔线找区域、面积、周长）、`room_separator`、`room_area`（在墙中心线或墙面量）；
+  `floor`、`roof` 沿墙铺时里面有房间的一圈墙算室内；示例房屋加上屋顶、四个房间与天花板；三维场景加屋顶与天花板。
+  留到后面的：画轮廓的草图（`sketch.rs`、`curves.rs`，即"编辑边界"，随 2d 的平面编辑）、老虎窗 `dormer` 与按体量面建屋顶（`roof_by_face`，要体量）、
+  竖井（`shaft`），以及 `view3d::tops_at`（某点上各元素顶面的高度，随 2d 的高程点等）
 - **2c 族与构件**：`family.rs`、`csg.rs`、`fixtures.rs`、`component`、带族的门窗，做到这里示例房屋才完整
 - **2d 平面视图**：`render.rs` 的显示列表与拾取（连带 `graphics`、`lines`、`fills`、`pen`、`styles`、`text` 的一部分）
 - **2e 交换**：`ifc.rs`、`import.rs`、`step.rs`；再往后是结构、设备、明细表、出图、DXF 导入等

@@ -18,8 +18,12 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 - 交互（`MainFrame::OnViewportPointer`）：左键拖动环绕，中键或右键拖动平移，Shift + 任意键拖动环绕，滚轮缩放。以后有了选择，左键要让给选择（照 Revit：Shift + 中键环绕）
 - 几何：`ModelScene::Build` 照 BIMCraft 的 `view3d.rs` 决定画什么、用什么颜色，但用 `Solid::ISolidKernel` 建实体（BIMCraft 自己拼三角形、软件光栅化，不移植）：
   - 墙：`Bim::Walls::Outline`（斜接好的平面轮廓）从底拉伸到顶，再 `Boolean` 减去每个门窗洞（沿墙从洞的一边到另一边、比墙面再出去 50 毫米的条带），
-    门窗洞四周的边是整面墙的边。贴着楼板的墙照 BIMCraft 用 `Bim::Walls::Prisms` 分成棱柱：底顶都平的拉伸，倾斜的围成封闭网格经 `FromMesh` 转成实体
+    门窗洞四周的边是整面墙的边。贴着屋顶或楼板的墙照 BIMCraft 用 `Bim::Walls::Prisms` 分成棱柱：底顶都平的拉伸，倾斜的围成封闭网格经 `FromMesh` 转成实体，
+    没有高度的（窗台为 0 的门下面那块）跳过。这些棱柱的边线自己给出（底圈、顶圈、竖边），不取内核的边（`FromMesh` 的实体会带出三角剖分的对角线）
   - 楼板：平放时从 `-厚度` 拉伸到 0、减去洞口，再用 `Transform` 错切到顶面所在的平面（`Model::FloorTop`），坡楼板也是一个实体
+  - 天花板：底面在标高上方 `offset`，拉伸类型的厚度、减去洞口
+  - 屋顶：`Model::RoofPieces` 的每块（坡面减去洞与开洞）一个实体，底面在坡面上、顶面高出 `Model::RoofRise`（铅垂量的厚度）；
+    平的拉伸，斜的同贴附的墙一样围成网格。房间与房间分隔线不画
   - 门窗（没有族时）：墙中间 50 毫米厚的板，与墙正交，门为木色、窗为玻璃色
   - `Tessellate` 出三角网格、`Edges` 出边线。顶点只有位置和颜色（`Vertex_P3_C4`），所以着色在 CPU 上按固定的平行光算好（不随视角变）
 - 什么时候重建：命令改了模型（`Bim::Session::Snapshot` 换了）之后 `MainFrame::OnModelChanged` → `MainFrame::RebuildScene`，场景版本加一
@@ -42,5 +46,5 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 
 - `ViewTests`（`tests/View/OrbitCameraTests.cpp`）：屏幕方向、框住包围盒、缩放与平移时点的屏幕位置
 - `SMLibSmokeTests`：SMLib 静态库能建模、布尔、求体积、离散化
-- `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗都建出来，范围对，墙在窗洞处扣掉；没有内核时不建
+- `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗、天花板、屋顶都建出来，范围（檐口到屋脊）对，墙在窗洞处扣掉；没有内核时不建
 - 画面不对时先用 skill `ui-check` 截图；换图形接口对比（`--gpu d3d11`、`--gpu warp`）

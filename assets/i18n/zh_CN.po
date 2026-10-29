@@ -54,6 +54,22 @@ msgid "Floor"
 msgstr "楼板"
 
 #: src/Commands/Commands.cpp
+msgid "Ceiling"
+msgstr "天花板"
+
+#: src/Commands/Commands.cpp
+msgid "Room"
+msgstr "房间"
+
+#: src/Commands/Commands.cpp
+msgid "Room Separator"
+msgstr "房间分隔线"
+
+#: src/Commands/Commands.cpp
+msgid "Roof"
+msgstr "屋顶"
+
+#: src/Commands/Commands.cpp
 msgid "Edit Type"
 msgstr "编辑类型"
 
@@ -84,6 +100,10 @@ msgstr "删除"
 #: src/Commands/Commands.cpp
 msgid "Project Units"
 msgstr "项目单位"
+
+#: src/Commands/Commands.cpp
+msgid "Area and Volume Computations"
+msgstr "面积和体积计算"
 
 #: src/Commands/Commands.cpp
 msgid "Inspect"

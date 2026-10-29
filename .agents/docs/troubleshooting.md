@@ -67,6 +67,14 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
   后台进程常常抢不到前台（用户正在用机器时尤其如此）
 - 做法：用 skill `ui-check` 的脚本（只在确认前台时按键和从屏幕取，否则退回 `PrintWindow`）；用户在用机器时不要发按键
 
+### 截图只有窗口左上的一块（字比平时大、状态栏不见了）
+- 原因：屏幕有缩放（如 150%）时，不感知 DPI 的进程拿到的窗口矩形是缩小过的，`PrintWindow` 却按实际像素画
+- 做法：截图的进程先调用 `SetProcessDPIAware`（skill `ui-check` 的脚本已经这样做）；截图尺寸随缩放变（150% 时 1920×1200）
+
+### 三维视图里墙面、屋顶上有斜线
+- 原因：网格经 `FromMesh` 转成的实体每个三角形是一个面，内核的 `Edges` 把三角剖分的对角线也当成边
+- 做法：网格建成的实体自己给出边线（`ModelScene` 里斜棱柱的底圈、顶圈与竖边），不取内核的边
+
 ### 截图测试之后，用户选好的语言变了
 - 原因：按键切换语言会写 `%LOCALAPPDATA%\MiniBIM\settings.json`
 - 做法：运行前备份、结束后还原（skill `ui-check` 的脚本已经这样做）；只看某种语言用 `--lang`，它不写设置

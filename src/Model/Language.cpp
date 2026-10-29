@@ -17,6 +17,7 @@ namespace MiniBIM::Bim::LanguageOf
         constexpr Words kWords[] = {
             { "Project",        "Projeto",           "Proyecto" },
             { "Level",          "Nível",             "Nivel" },
+            { "Room",           "Ambiente",          "Habitación" },
             { "Brick",          "Tijolo",            "Ladrillo" },
             { "Insulation",     "Isolamento",        "Aislamiento" },
             { "Concrete block", "Bloco de concreto", "Bloque de hormigón" },

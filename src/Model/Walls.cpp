@@ -159,13 +159,26 @@ namespace MiniBIM::Bim::Walls
             std::vector<std::pair<Ring, Plane>> regions;
             double own = 0.0;
 
-            // 楼板 id 从下面看（top 时从上面看）；没有时为 own。屋顶的坡面在第 2b 步移植屋顶时加上
+            // 屋顶或楼板 id 从下面看（top 时从上面看）；没有时为 own
             static Bound Of(const Model& m, std::optional<Guid> id, bool top, double own)
             {
                 Bound b;
                 b.own = own;
                 const Element* e = id ? m.elements.Get(*id) : nullptr;
-                if (const Floor* f = e ? e->As<Floor>() : nullptr)
+                if (const Roof* r = e ? e->As<Roof>() : nullptr)
+                {
+                    std::vector<std::pair<Ring, Plane>> pieces;
+                    std::string error;
+                    if (!m.RoofPieces(*r, pieces, error))
+                        pieces.clear();
+                    for (const auto& [ring, p] : pieces)
+                    {
+                        const Plane plane{ p.z + (top ? m.RoofRise(*r, p) : 0.0), p.g };
+                        for (Ring& c : ConvexPieces(ring))
+                            b.regions.emplace_back(std::move(c), plane);
+                    }
+                }
+                else if (const Floor* f = e ? e->As<Floor>() : nullptr)
                 {
                     const Plane face = m.FloorTop(*f);
                     const Plane plane{ face.z - (top ? 0.0 : m.FloorDepth(*f)), face.g };

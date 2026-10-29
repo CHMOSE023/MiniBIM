@@ -196,6 +196,10 @@ namespace MiniBIM::Bim
             out.emplace_back(Kind::Type("door"), n);
         for (const auto& [n, _] : types.window)
             out.emplace_back(Kind::Type("window"), n);
+        for (const auto& [n, _] : types.roof)
+            out.emplace_back(Kind::Type("roof"), n);
+        for (const auto& [n, _] : types.ceiling)
+            out.emplace_back(Kind::Type("ceiling"), n);
         for (const auto& [n, _] : materials)
             out.emplace_back(Kind::Of(Kind::Tag::Material), n);
         return out;
@@ -224,6 +228,10 @@ namespace MiniBIM::Bim
             add("layer", "wall type", n, x.layers);
         for (const auto& [n, x] : types.floor)
             add("layer", "floor type", n, x.layers);
+        for (const auto& [n, x] : types.roof)
+            add("layer", "roof type", n, x.layers);
+        for (const auto& [n, x] : types.ceiling)
+            add("layer", "ceiling type", n, x.layers);
         return out;
     }
 
@@ -338,6 +346,12 @@ namespace MiniBIM::Bim
         for (auto& [_, x] : types.floor)
             for (Layer& l : x.layers)
                 give(l);
+        for (auto& [_, x] : types.roof)
+            for (Layer& l : x.layers)
+                give(l);
+        for (auto& [_, x] : types.ceiling)
+            for (Layer& l : x.layers)
+                give(l);
         library.m_parts.clear();
         for (auto& [id, p] : PartsNow())
             library.m_parts.emplace(id, std::move(p));
@@ -415,6 +429,14 @@ namespace MiniBIM::Bim
                 if (!l.material.empty())
                     f(material, l.material);
         for (auto& [_, x] : types.floor)
+            for (Layer& l : x.layers)
+                if (!l.material.empty())
+                    f(material, l.material);
+        for (auto& [_, x] : types.roof)
+            for (Layer& l : x.layers)
+                if (!l.material.empty())
+                    f(material, l.material);
+        for (auto& [_, x] : types.ceiling)
             for (Layer& l : x.layers)
                 if (!l.material.empty())
                     f(material, l.material);

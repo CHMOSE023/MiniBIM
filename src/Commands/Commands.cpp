@@ -896,6 +896,242 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        bool CeilingCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "ceiling";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            std::string typeName;
+            if (!LevelParam(c, m, p, "level", level, error) || !TypeParam(P, m, "ceiling", typeName))
+                return false;
+            if (!P.Absent("sketch"))
+                return P.Fail("`sketch` isn't ported yet (docs/PLAN.md, phase 2); give `point` or `boundary`");
+            std::optional<P2> at;
+            if (!P.PointOpt("point", at))
+                return false;
+            Ring boundary;
+            std::vector<Ring> found;
+            if (!P.Absent("boundary"))
+            {
+                std::vector<P2> pts;
+                if (!P.Points("boundary", pts))
+                    return false;
+                boundary = CleanRing(pts);
+            }
+            else if (at)
+            {
+                // 房间的空地：墙面围着这一点的部分，以及立在其中的墙（顺时针，同楼板的洞口）
+                const auto r = Geom::RegionAt(m.FaceLines(level), *at, Tol);
+                if (!r)
+                    return P.Fail("no walls on " + LevelName(m, level) + " close around [" + Num(at->x) + ", " + Num(at->y) + "]; give `boundary`");
+                for (const P2& q : Geom::Corners(r->outer))
+                    boundary.push_back(Micron(q));
+                for (const Ring& h : r->holes)
+                    found.push_back(Tidy(Ring(h.rbegin(), h.rend())));
+            }
+            else
+                return P.Fail("`point` [x, y] in a room, `boundary` [[x, y], …] or `sketch` is required");
+            if (Geom::Area(boundary) < 0.0)
+                std::reverse(boundary.begin(), boundary.end());
+            std::optional<std::vector<Ring>> openings;
+            std::optional<double> offset;
+            if (!Rings(P, "openings", openings) || !P.Num("offset", offset))
+                return false;
+            Ceiling x;
+            x.typeName = typeName;
+            x.level    = level;
+            x.boundary = boundary;
+            x.openings = openings ? *openings : found;
+            x.offset   = offset.value_or(CeilingHeight);
+            // 洞口在它里面、互不相交，否则模型拒绝
+            double area = Geom::Area(x.boundary);
+            for (const Ring& o : x.openings)
+                area -= std::abs(Geom::Area(o));
+            const Id id = s.ModelMut().Insert(std::move(x));
+            result = Json{ { "id", id }, { "area_m2", M2(area) } };
+            return true;
+        }
+
+        bool RoomCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "room";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            P2 point;
+            Guid level;
+            if (!P.PointReq("point", point) || !LevelParam(c, m, p, "level", level, error))
+                return false;
+            std::optional<std::string> name, number;
+            if (!P.String("name", name) || !P.String("number", number))
+                return false;
+            Room r;
+            r.level = level;
+            r.point = point;
+            r.name  = name ? *name : LanguageOf::Word(m.language, "Room");
+            if (number)
+                r.number = *number;
+            else
+            {
+                std::vector<std::string> taken;
+                for (const auto& [_, e] : m.elements.Items())
+                    if (const Room* x = e->As<Room>())
+                        taken.push_back(x->number);
+                r.number = NextNumber(taken);
+            }
+            const auto region = m.RoomRegion(r);
+            if (!region)
+                return P.Fail("[" + Num(point.x) + ", " + Num(point.y) + "] isn't enclosed by walls on " + LevelName(m, level) +
+                              "; place rooms inside a closed loop of walls");
+            const double area = M2(region->Area());
+            const std::string n = r.number;
+            const Id id = s.ModelMut().Insert(std::move(r));
+            result = Json{ { "id", id }, { "number", n }, { "area_m2", area } };
+            return true;
+        }
+
+        bool RoomSeparatorCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "room_separator";
+            Params P(c, p, error);
+            std::vector<P2> pts;
+            if (!P.Points("points", pts))
+                return false;
+            if (pts.size() < 2)
+                return P.Fail("`points` needs at least 2 points");
+            bool closed = false;
+            if (!P.Flag("closed", closed))
+                return false;
+            if (closed)
+                pts.push_back(pts.front());
+            Guid level;
+            if (!LevelParam(c, s.GetModel(), p, "level", level, error))
+                return false;
+            Model& m = s.ModelMut();
+            Json ids = Json::array();
+            for (size_t i = 0; i + 1 < pts.size(); ++i)
+                ids.push_back(m.Insert(RoomSeparator{ level, pts[i], pts[i + 1] }));
+            result = Json{ { "ids", std::move(ids) } };
+            return true;
+        }
+
+        // extrusion：{line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}
+        bool ExtrusionParam(Params& P, std::optional<Extrusion>& out)
+        {
+            out.reset();
+            if (P.Absent("extrusion"))
+                return true;
+            const Json& v = *Get(P.Raw(), "extrusion");
+            const std::string shape = "`extrusion` is {line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}: ";
+            if (!v.is_object())
+                return P.Fail(shape + "got " + Show(v));
+            for (auto it = v.begin(); it != v.end(); ++it)
+                if (it.key() != "line" && it.key() != "profile" && it.key() != "from" && it.key() != "to")
+                    return P.Fail(shape + "unknown field `" + it.key() + "`");
+            std::string why;
+            Params X("roof", v, why);
+            std::vector<P2> line;
+            Extrusion x;
+            std::optional<double> from, to;
+            if (!X.Points("line", line) || !X.Points("profile", x.profile) || !X.Num("from", from) || !X.Num("to", to))
+                return P.Fail(shape + why.substr(std::string("roof: ").size()));
+            if (line.size() != 2)
+                return P.Fail(shape + "`line` is two points [[x,y],[x,y]]");
+            if (!to)
+                return P.Fail(shape + "missing field `to`");
+            x.line = { line[0], line[1] };
+            x.from = from.value_or(0.0);
+            x.to   = *to;
+            out = std::move(x);
+            return true;
+        }
+
+        // gables：边的编号
+        bool GablesParam(Params& P, std::vector<size_t>& out)
+        {
+            out.clear();
+            if (P.Absent("gables"))
+                return true;
+            const Json& v = *Get(P.Raw(), "gables");
+            if (!v.is_array())
+                return P.Fail("`gables` is a list of edge numbers: got " + Show(v));
+            if (v.size() > MaxPoints)
+                return P.Fail("`gables` lists more than " + std::to_string(MaxPoints));
+            for (const Json& n : v)
+            {
+                const auto k = AsWhole(n);
+                if (!k)
+                    return P.Fail("`gables` is a list of edge numbers: got " + Show(n));
+                out.push_back(static_cast<size_t>(*k));
+            }
+            return true;
+        }
+
+        bool RoofCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "roof";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            if (P.Absent("level"))
+            {
+                const auto levels = m.Levels();
+                if (levels.empty())
+                    return P.Fail("the model has no levels");
+                level = m.GuidOf(levels.size() > 1 ? levels[1].first : levels[0].first);
+            }
+            else if (!LevelParam(c, m, p, "level", level, error))
+                return false;
+            std::string typeName;
+            std::optional<Extrusion> extrusion;
+            if (!TypeParam(P, m, "roof", typeName) || !ExtrusionParam(P, extrusion))
+                return false;
+            if (!P.Absent("sketch"))
+                return P.Fail("`sketch` isn't ported yet (docs/PLAN.md, phase 2); give `boundary`");
+            const bool given = !P.Absent("boundary");
+            std::optional<double> overhang;
+            if (!P.Num("overhang", overhang))
+                return false;
+            Roof r;
+            r.overhang = overhang.value_or(given || extrusion ? 0.0 : 500.0);
+            std::vector<Ring> found;
+            if (given)
+            {
+                std::vector<P2> pts;
+                if (!P.Points("boundary", pts))
+                    return false;
+                r.boundary = CleanRing(pts);
+            }
+            else if (!extrusion)
+            {
+                std::string why;
+                const auto footprint = RoofFootprint(m, level, r.overhang, why);
+                if (!footprint)
+                    return P.Fail(why);
+                r.boundary = footprint->first;
+                found      = footprint->second;
+            }
+            std::optional<std::vector<Ring>> courtyards, openings;
+            std::optional<double> slope, offset;
+            if (!Rings(P, "courtyards", courtyards))
+                return false;
+            if (!extrusion && !P.Num("slope", slope))
+                return false;
+            if (!P.Flag("gable", r.gable) || !GablesParam(P, r.gables) || !P.Num("offset", offset) || !Rings(P, "openings", openings) ||
+                !P.IdOpt("join", r.join))
+                return false;
+            r.typeName   = typeName;
+            r.level      = level;
+            r.courtyards = courtyards ? *courtyards : found;
+            r.slope      = extrusion ? 0.0 : slope.value_or(30.0);
+            r.offset     = offset.value_or(0.0);
+            r.openings   = openings ? *openings : std::vector<Ring>{};
+            r.extrusion  = std::move(extrusion);
+            const Id id = s.ModelMut().Insert(std::move(r));
+            result = Json{ { "id", id } };
+            return true;
+        }
+
         // ── 类型与材质 ───────────────────────────────────────────
         // 一层，严格地读（拼错的键报错）
         bool LayerParam(const char* c, const Json& v, Layer& l, std::string& error)
@@ -1032,7 +1268,7 @@ namespace MiniBIM::Bim
             if (!P.String("category", cat))
                 return false;
             if (!cat)
-                return P.Fail("`category` is required: wall, floor, door or window");
+                return P.Fail("`category` is required: wall, floor, ceiling, door, window or roof");
             const std::string category = NormalizeCategory(*cat);
             if (!P.String("name", name))
                 return false;
@@ -1065,6 +1301,40 @@ namespace MiniBIM::Bim
                 Types one;
                 one.wall[*name] = WallType{ th, layers };
                 t = Bim::ToJson(one)["wall"][*name];
+            }
+            else if (category == "roof" || category == "ceiling")
+            {
+                std::optional<std::pair<double, std::vector<Layer>>> old;
+                std::optional<double> oldGrid;
+                if (category == "roof")
+                {
+                    if (const auto it = m.types.roof.find(*name); it != m.types.roof.end())
+                        old = std::pair{ it->second.thickness, it->second.layers };
+                }
+                else if (const auto it = m.types.ceiling.find(*name); it != m.types.ceiling.end())
+                {
+                    old = std::pair{ it->second.thickness, it->second.layers };
+                    oldGrid = it->second.grid;
+                }
+                double th = 0.0;
+                std::vector<Layer> layers;
+                if (!Layered(c, P, category, old, thickness, th, layers, error))
+                    return false;
+                Types one;
+                if (category == "roof")
+                {
+                    m.types.roof[*name] = RoofType{ th, layers };
+                    one.roof[*name] = m.types.roof[*name];
+                }
+                else
+                {
+                    std::optional<double> grid;
+                    if (!P.Num("grid", grid))
+                        return false;
+                    m.types.ceiling[*name] = CeilingType{ th, grid ? *grid : oldGrid.value_or(0.0), layers };
+                    one.ceiling[*name] = m.types.ceiling[*name];
+                }
+                t = Bim::ToJson(one)[category][*name];
             }
             else if (category == "door" || category == "window")
             {
@@ -1102,7 +1372,7 @@ namespace MiniBIM::Bim
                 t = Bim::ToJson(one)["door"][*name];
             }
             else
-                return P.Fail("`" + category + "` has no types here; use wall, floor, door or window (the other categories come with docs/PLAN.md, phase 2)");
+                return P.Fail("`" + category + "` has no types here; use wall, floor, ceiling, door, window or roof (the other categories come with docs/PLAN.md, phase 2)");
             result = Json{ { "category", category }, { "name", *name }, { "type", t } };
             return true;
         }
@@ -1210,6 +1480,14 @@ namespace MiniBIM::Bim
                         if (l.material == name)
                             l.material = to;
                 for (auto& [_, t] : m.types.floor)
+                    for (Layer& l : t.layers)
+                        if (l.material == name)
+                            l.material = to;
+                for (auto& [_, t] : m.types.roof)
+                    for (Layer& l : t.layers)
+                        if (l.material == name)
+                            l.material = to;
+                for (auto& [_, t] : m.types.ceiling)
                     for (Layer& l : t.layers)
                         if (l.material == name)
                             l.material = to;
@@ -1377,6 +1655,34 @@ namespace MiniBIM::Bim
                     for (P2& q : *fl->arrow)
                         q = f(q);
                 std::tie(fl->patternOrigin, fl->patternAngle) = Turned(f, fl->patternOrigin, fl->patternAngle);
+            }
+            else if (RoomSeparator* rs = out.As<RoomSeparator>())
+            {
+                rs->start = f(rs->start);
+                rs->end   = f(rs->end);
+            }
+            else if (Ceiling* cl = out.As<Ceiling>())
+            {
+                for (P2& q : cl->boundary)
+                    q = f(q);
+                for (Ring& r : cl->openings)
+                    for (P2& q : r)
+                        q = f(q);
+            }
+            else if (Room* r = out.As<Room>())
+                r->point = f(r->point);
+            else if (Roof* r = out.As<Roof>())
+            {
+                // 边保持编号，山墙随之
+                for (P2& q : r->boundary)
+                    q = f(q);
+                for (std::vector<Ring>* rings : { &r->courtyards, &r->openings })
+                    for (Ring& ring : *rings)
+                        for (P2& q : ring)
+                            q = f(q);
+                if (r->extrusion)
+                    for (P2& q : r->extrusion->line)
+                        q = f(q);
             }
             else if (Opening* o = out.AsOpening())
             {
@@ -1642,18 +1948,28 @@ namespace MiniBIM::Bim
             Model& mm = s.ModelMut();
             for (const Guid g : gone)
                 mm.elements.Remove(g);
-            // 贴着的屋顶或楼板删了的墙松开
+            // 贴着的屋顶或楼板删了的墙松开，插进的屋顶删了的屋顶不再插进
+            const auto goneRef = [&](const std::optional<Guid>& at) { return at && gone.count(*at); };
             std::vector<Id> loose;
             for (const auto& [id, e] : mm.elements.Items())
-                if (const Wall* w = e->As<Wall>(); w && ((w->attachTop && gone.count(*w->attachTop)) || (w->attachBase && gone.count(*w->attachBase))))
+            {
+                const Wall* w = e->As<Wall>();
+                const Roof* r = e->As<Roof>();
+                if ((w && (goneRef(w->attachTop) || goneRef(w->attachBase))) || (r && goneRef(r->join)))
                     loose.push_back(id);
+            }
             for (const Id id : loose)
             {
-                Wall* w = mm.elements.GetMut(id)->As<Wall>();
-                if (w->attachTop && gone.count(*w->attachTop))
-                    w->attachTop.reset();
-                if (w->attachBase && gone.count(*w->attachBase))
-                    w->attachBase.reset();
+                Element* e = mm.elements.GetMut(id);
+                if (Wall* w = e->As<Wall>())
+                {
+                    if (goneRef(w->attachTop))
+                        w->attachTop.reset();
+                    if (goneRef(w->attachBase))
+                        w->attachBase.reset();
+                }
+                else if (Roof* r = e->As<Roof>())
+                    r->join.reset();
             }
             result = Json{ { "deleted", deleted } };
             return true;
@@ -1676,6 +1992,34 @@ namespace MiniBIM::Bim
                     s.ModelMut().units = *u;
             }
             result = Json{ { "length", UnitsOf::Name(s.GetModel().units) } };
+            return true;
+        }
+
+        bool RoomAreaCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "room_area";
+            Params P(c, p, error);
+            if (p.is_object())
+                for (auto it = p.begin(); it != p.end(); ++it)
+                    if (it.key() != "at")
+                        return P.Fail("`" + it.key() + "` isn't one of its parameters: at");
+            std::optional<std::string> name;
+            if (!P.String("at", name))
+                return false;
+            const auto nameOf = [](RoomArea a) { return a == RoomArea::Centre ? "centre" : "finish"; };
+            if (name)
+            {
+                std::optional<RoomArea> at;
+                if (*name == "centre")
+                    at = RoomArea::Centre;
+                else if (*name == "finish")
+                    at = RoomArea::Finish;
+                else
+                    return P.Fail("`at` is centre or finish, not `" + *name + "`");
+                if (*at != s.GetModel().roomArea)
+                    s.ModelMut().roomArea = *at;
+            }
+            result = Json{ { "at", nameOf(s.GetModel().roomArea) } };
             return true;
         }
 
@@ -1761,7 +2105,7 @@ namespace MiniBIM::Bim
               "per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up to `top_level`. `arc`: degrees "
               "each turns from its start to its end, counter-clockwise. `location`: centre (the default), core-centre, exterior-finish, "
               "interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls drawn "
-              "clockwise face out. `attach_top`, `attach_base`: a floor its top follows from below, or its base stands on", WallCmd, true },
+              "clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands on", WallCmd, true },
             { "door", N_("Door"), { "DR" },
               "{at: [x,y] | wall: id, offset?, type?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, or in `wall` centred "
               "`offset` mm from its start", DoorCmd, true },
@@ -1772,11 +2116,34 @@ namespace MiniBIM::Bim
               "at the level, or `offset` mm above it, open through `openings`; no boundary = the outline of the level's walls along their centre "
               "lines, open over each loop of them standing free inside (a courtyard). Sloped: its top rises `slope` degrees along the slope "
               "arrow, from its tail toward its head", FloorCmd, true },
+            { "ceiling", N_("Ceiling"), {},
+              "{point: [x,y] | boundary: [[x,y],…], openings?: [[[x,y],…],…], level?, type?, offset?} a ceiling, its underside `offset` mm "
+              "(2600) above the level, open through `openings` (holes inside it, apart): in the room around `point`, out to its walls' faces "
+              "and round the walls standing inside it, or along `boundary`", CeilingCmd, true },
+            { "room", N_("Room"), { "RM" }, "{point: [x,y], level?, name?, number?} bounded by the walls and the room separation lines around the point",
+              RoomCmd, true },
+            { "room_separator", N_("Room Separator"), {},
+              "{points: [[x,y],…], level?, closed?} room separation lines along `points`, one per segment (`closed` joins the last to the "
+              "first): they bound rooms as walls do, to split an open space (a living room and its corridor) into rooms, and are nothing "
+              "else, with no solid, no cut and no area. Returns their ids", RoomSeparatorCmd, true },
+            { "roof", N_("Roof"), {},
+              "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, extrusion?, "
+              "openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its base `offset` mm above it. "
+              "Over `boundary` or else the walls of the level below, `overhang` mm (500) past their faces, round any `courtyards` (holes in "
+              "it, inside it and apart, with eaves of their own; over the walls, by default each loop of them standing free inside, joined "
+              "to none of the outer ones and with no room in it): flat at `slope` 0, else every edge sloping up at `slope` degrees (30), "
+              "hips, valleys and ridges where the slopes meet, but the edges in `gables` (edge i runs from point i to the next, the "
+              "courtyards' edges numbered on after the boundary's) left upright, gable ends; `gable` leaves a rectangle's short ends "
+              "upright. Or with `extrusion` {line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}: its underside's profile in the "
+              "upright plane through `line`, along it from its start and up from the base, swept square to it from `from` (0) to `to` mm "
+              "to its left. `openings` are holes through it in plan; with `join`, a roof it runs into, it ends where it meets that one's top",
+              RoofCmd, true },
             { "type", N_("Edit Type"), {},
-              "{category: wall|floor|door|window, name, thickness? | width?, height?, sill?, operation?} creates the type, or changes it "
+              "{category: wall|floor|ceiling|door|window|roof, name, thickness? | width?, height?, sill?, operation?, grid?} creates the type, or changes it "
               "everywhere it's used. A wall or floor type may have `layers` [{function?: structure|substrate|thermal|membrane|finish, material?, "
               "thickness}, …], a wall's from its exterior side in, a floor's from the top down: it's as thick as they are, and a new `thickness` "
-              "goes to its structure", TypeCmd, true },
+              "goes to its structure. A roof's or a ceiling's layers too, from the top down; a ceiling type may have `grid`: its square tiles' "
+              "width, mm, which reflected ceiling plans draw (0, none)", TypeCmd, true },
             { "material", N_("Materials"), {},
               "{name, color?: \"#rrggbb\" | [r, g, b], cut?, surface?, rename?, delete?: true} a material of the project's library, created or "
               "changed: its colour in shaded 3D views, the pattern its cut shows and the one its surfaces show", MaterialCmd, true },
@@ -1794,6 +2161,10 @@ namespace MiniBIM::Bim
             { "delete", N_("Delete"), { "DE" }, "{ids: [id,…]} deleting a wall deletes its doors and windows", DeleteCmd, true },
             { "units", N_("Project Units"), { "UN" },
               "{length?: mm|cm|m|in|ft|ft-in} how lengths are shown and typed; the model, and every command, keep millimetres", UnitsCmd, true },
+            { "room_area", N_("Area and Volume Computations"), {},
+              "{at?: centre|finish} where the project measures its rooms' areas and perimeters, as Revit's Area and Volume Computations: "
+              "at the walls' centre lines (`centre`, as a project starts) or at their finish faces (`finish`, the floor inside the walls). "
+              "Rooms keep their points; only their measured outline changes", RoomAreaCmd, true },
             { "inspect", N_("Inspect"), {}, "{} levels, element counts, types, materials and undo history", Inspect, false },
             { "elements", N_("Elements"), {},
               "{category?, level?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, never "
@@ -1868,6 +2239,55 @@ namespace MiniBIM::Bim
             v["pattern_origin"] = ToJson(f->patternOrigin);
             v["pattern_angle"]  = f->patternAngle;
         }
+        else if (const RoomSeparator* rs = e->As<RoomSeparator>())
+            v["length"] = Hundredth(rs->start.Dist(rs->end));
+        else if (const Ceiling* cl = e->As<Ceiling>())
+        {
+            // 竖井还没移植：天花板的面积即各板块的面积
+            double left = 0.0;
+            for (const auto& [face, _] : m.CeilingSlabs(*cl))
+            {
+                Ring ring;
+                for (const P3& q : face)
+                    ring.emplace_back(q[0], q[1]);
+                left += std::abs(Geom::Area(ring));
+            }
+            v["area_m2"] = M2(left);
+            if (const auto t = m.types.ceiling.find(cl->typeName); t != m.types.ceiling.end())
+            {
+                v["thickness"] = t->second.thickness;
+                v["grid"]      = t->second.grid;
+            }
+        }
+        else if (const Room* r = e->As<Room>())
+        {
+            const auto region = m.RoomRegion(*r);
+            v["enclosed"]    = region.has_value();
+            v["area_m2"]     = region ? M2(region->Area()) : 0.0;
+            v["perimeter_m"] = region ? std::round(region->Perimeter() / 10.0) / 100.0 : 0.0;
+        }
+        else if (const Roof* r = e->As<Roof>())
+        {
+            std::vector<Slope> faces;
+            std::string why;
+            if (!m.RoofFaces(*r, faces, why))
+                faces.clear();
+            double ridge = m.Elevation(r->level) + r->offset;
+            for (const auto& [loops, p] : faces)
+                for (const Ring& l : loops)
+                    for (const P2& q : l)
+                        ridge = std::max(ridge, p.At(q));
+            const Ring outline = m.RoofOutline(*r);
+            double courtyards = 0.0;
+            for (const Ring& c : r->courtyards)
+                courtyards += std::abs(Geom::Area(c));
+            v["ridge"]   = Hundredth(ridge);
+            v["area_m2"] = M2(std::abs(Geom::Area(outline)) - courtyards);
+            Json o = Json::array();
+            for (const P2& q : outline)
+                o.push_back(ToJson(Micron(q)));
+            v["outline"] = std::move(o);
+        }
         return v;
     }
 
@@ -1894,12 +2314,67 @@ namespace MiniBIM::Bim
                     return true;
             return false;
         };
-        // 有房间的环是室内（房间在第 2b 步移植；现在没有房间，独立的环都是天井）
+        // 围着一点的最里面的环（环是顺时针的，面积为负，最大的即最小的环），也就是房间所在的环
+        auto around = [&](P2 p) -> std::optional<size_t>
+        {
+            std::optional<size_t> best;
+            for (size_t a = 0; a < loops.size(); ++a)
+                if (Geom::Contains(*loops[a], p) && (!best || Geom::Area(*loops[a]) >= Geom::Area(*loops[*best])))
+                    best = a;
+            return best;
+        };
+        std::vector<size_t> indoors;
+        for (const auto& [_, e] : m.elements.Items())
+            if (const Room* r = e->As<Room>(); r && r->level == level)
+                if (const auto a = around(r->point))
+                    indoors.push_back(*a);
+        // 天井：最外层、没有房间的环
         std::vector<Ring> courtyards;
         for (size_t a = 0; a < loops.size(); ++a)
-            if (!nested(a))
+            if (!nested(a) && std::find(indoors.begin(), indoors.end(), a) == indoors.end())
                 courtyards.push_back(Tidy(*loops[a]));
         return std::pair{ Ring(outer.rbegin(), outer.rend()), std::move(courtyards) };
+    }
+
+    std::optional<std::pair<Ring, std::vector<Ring>>> RoofFootprint(const Model& m, Guid level, double overhang, std::string& error)
+    {
+        const double z = m.Elevation(level);
+        std::optional<Id> below;
+        for (const auto& [id, l] : m.Levels())
+            if (l->elevation < z - Tol)
+                below = id;
+        if (!below)
+        {
+            error = LevelName(m, level) + " has no level below to roof over; give `boundary`";
+            return std::nullopt;
+        }
+        const Guid under = m.GuidOf(*below);
+        const auto outline = FloorOutline(m, under);
+        if (!outline)
+        {
+            error = "no walls enclose an area on " + LevelName(m, under) + "; give `boundary`";
+            return std::nullopt;
+        }
+        // 这一层最厚的墙定墙面在哪里（BIMCraft 的简化：外轮廓混用几种墙时也只取最厚的）
+        double face = 0.0;
+        for (const auto& [_, e] : m.elements.Items())
+            if (const Wall* w = e->As<Wall>(); w && m.CutBy(*w, under))
+                face = std::max(face, m.Thickness(*w) / 2.0);
+        // 檐口离墙中心线多远：逆时针的环向外，顺时针的向里
+        const double d = face + overhang;
+        // 伸出后仍敞开的天井：往里收，太小的会翻过来，边反着走
+        std::vector<Ring> courtyards;
+        for (const Ring& l : outline->second)
+        {
+            const Ring grown = Geom::Grow(l, d);
+            const auto before = Geom::RingEdges(l), after = Geom::RingEdges(grown);
+            bool open = true;
+            for (size_t i = 0; open && i < std::min(before.size(), after.size()); ++i)
+                open = (before[i].second - before[i].first).Dot(after[i].second - after[i].first) > 0.0;
+            if (open)
+                courtyards.push_back(Tidy(grown));
+        }
+        return std::pair{ Tidy(Geom::Grow(outline->first, d)), std::move(courtyards) };
     }
 
     std::string NextNumber(const std::vector<std::string>& takenIn)

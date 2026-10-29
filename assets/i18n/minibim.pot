@@ -55,6 +55,22 @@ msgid "Floor"
 msgstr ""
 
 #: src/Commands/Commands.cpp
+msgid "Ceiling"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Room"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Room Separator"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Roof"
+msgstr ""
+
+#: src/Commands/Commands.cpp
 msgid "Edit Type"
 msgstr ""
 
@@ -84,6 +100,10 @@ msgstr ""
 
 #: src/Commands/Commands.cpp
 msgid "Project Units"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Area and Volume Computations"
 msgstr ""
 
 #: src/Commands/Commands.cpp

@@ -4,15 +4,15 @@
 namespace MiniBIM::Bim
 {
     // 与 BIMCraft 的 SAMPLE 逐行对应；门窗的族（Single Door、Casement Window……）换成项目自己的同尺寸类型，
-    // 还没移植的命令（roof、room、ceiling、component、dimension、tag、elevation、section、sheet、place、text、spot）先略去
-    const char* const SampleScript = R"(# Sample house: 10 x 7 m, four rooms; its roof, rooms, ceilings, furniture, annotation and sheets come as their commands are ported.
+    // 还没移植的命令（component、dimension、tag、elevation、section、sheet、place、text、spot）先略去
+    const char* const SampleScript = R"(# Sample house: 10 x 7 m, four rooms under a hipped roof and their ceilings; its furniture, annotation and sheets come as their commands are ported.
 new {"name": "Sample House"}
 grid {"start": [0, -1500], "end": [0, 8500]}
 grid {"start": [6000, -1500], "end": [6000, 8500]}
 grid {"start": [10000, -1500], "end": [10000, 8500]}
 grid {"start": [-1500, 0], "end": [11500, 0], "name": "A"}
 grid {"start": [-1500, 7000], "end": [11500, 7000]}
-# Outer walls drawn clockwise, their brick outside.
+# Outer walls drawn clockwise, their brick outside; their tops follow the roof once it's on.
 wall {"points": [[0, 0], [0, 7000], [10000, 7000], [10000, 0]], "closed": true, "type": "Exterior - 300mm"}
 wall {"points": [[6000, 0], [6000, 7000]], "type": "Interior - 100mm"}
 wall {"points": [[0, 4000], [6000, 4000]], "type": "Interior - 100mm"}
@@ -28,5 +28,16 @@ window {"at": [8000, 7000], "type": "Fixed 1200 x 1500"}
 window {"at": [10000, 5250], "type": "Fixed 600 x 900"}
 window {"at": [8000, 0]}
 floor {}
+roof {}
+modify {"ids": [100007, 100008, 100009, 100010], "attach_top": 100024}
+room {"point": [3000, 2000], "name": "Living"}
+room {"point": [1500, 5000], "name": "Kitchen"}
+room {"point": [8400, 4200], "name": "Bedroom"}
+room {"point": [7600, 2600], "name": "Study"}
+# A ceiling in every room, 2600 mm up, tiled in the kitchen.
+ceiling {"point": [3000, 2000]}
+ceiling {"point": [3000, 5500], "type": "Tile 600 x 600"}
+ceiling {"point": [8000, 5250]}
+ceiling {"point": [8000, 1750]}
 )";
 }

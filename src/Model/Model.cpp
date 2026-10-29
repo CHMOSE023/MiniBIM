@@ -1,5 +1,6 @@
 // 移植自 BIMCraft crates/core/src/model.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Model/Model.h"
+#include "Model/Skeleton.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
 #include "I18n/Translator.h"
@@ -21,6 +22,25 @@ namespace MiniBIM::Bim
     namespace
     {
         constexpr double kPi = 3.14159265358979323846;
+
+        // ring 逆时针
+        Ring Ccw(const Ring& ring)
+        {
+            return Geom::Area(ring) < 0.0 ? Ring(ring.rbegin(), ring.rend()) : ring;
+        }
+
+        // loops（外轮廓，然后是其中的洞）以内、holes 以外的部分：外轮廓原样，被洞切开时为凸块
+        std::vector<Ring> SolidOf(const std::vector<Ring>& loops, const std::vector<Ring>& holes)
+        {
+            if (loops.empty())
+                return {};
+            std::vector<Ring> parts{ loops.front() };
+            for (size_t i = 1; i < loops.size(); ++i)
+                parts = Walls::Minus(parts, loops[i]);
+            for (const Ring& hole : holes)
+                parts = Walls::Minus(parts, hole);
+            return parts;
+        }
 
         std::string Num(double x) { return Text::Shortest(x); }
 
@@ -216,10 +236,14 @@ namespace MiniBIM::Bim
         {
             const char* operator()(const Level&) const  { return "level"; }
             const char* operator()(const Grid&) const   { return "grid"; }
+            const char* operator()(const RoomSeparator&) const { return "roomseparator"; }
             const char* operator()(const Wall&) const   { return "wall"; }
             const char* operator()(const Floor&) const  { return "floor"; }
+            const char* operator()(const Ceiling&) const { return "ceiling"; }
             const char* operator()(const Door&) const   { return "door"; }
             const char* operator()(const Window&) const { return "window"; }
+            const char* operator()(const Room&) const   { return "room"; }
+            const char* operator()(const Roof&) const   { return "roof"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -231,6 +255,7 @@ namespace MiniBIM::Bim
             const std::function<void(Guid&)>& f;
             void operator()(Level&) const {}
             void operator()(Grid&) const {}
+            void operator()(RoomSeparator& x) const { f(x.level); }
             void operator()(Wall& w) const
             {
                 f(w.level);
@@ -239,8 +264,15 @@ namespace MiniBIM::Bim
                 if (w.attachBase) f(*w.attachBase);
             }
             void operator()(Floor& x) const { f(x.level); }
+            void operator()(Ceiling& x) const { f(x.level); }
             void operator()(Door& o) const { f(o.host); }
             void operator()(Window& o) const { f(o.host); }
+            void operator()(Room& x) const { f(x.level); }
+            void operator()(Roof& r) const
+            {
+                f(r.level);
+                if (r.join) f(*r.join);
+            }
         };
         std::visit(Visitor{ f }, v);
     }
@@ -260,6 +292,10 @@ namespace MiniBIM::Bim
             f(Kind::Type(category), w->typeName);
         else if (Floor* x = As<Floor>())
             f(Kind::Type(category), x->typeName);
+        else if (Ceiling* c = As<Ceiling>())
+            f(Kind::Type(category), c->typeName);
+        else if (Roof* r = As<Roof>())
+            f(Kind::Type(category), r->typeName);
         else if (Opening* o = AsOpening())
         {
             // 族的门窗：类型是族的（族还没移植，名称原样保留）
@@ -323,6 +359,9 @@ namespace MiniBIM::Bim
             m.types.door[n] = OpeningType{ w, 2100.0, 0.0, std::nullopt };
         m.types.window["Fixed 1200 x 1500"] = OpeningType{ 1200.0, 1500.0, 900.0, std::nullopt };
         m.types.window["Fixed 600 x 900"]   = OpeningType{ 600.0, 900.0, 1100.0, std::nullopt };
+        m.types.roof["Generic - 300mm"]    = RoofType{ 300.0, {} };
+        m.types.ceiling["Generic - 20mm"]  = CeilingType{ 20.0, 0.0, {} };
+        m.types.ceiling["Tile 600 x 600"]  = CeilingType{ 20.0, 600.0, {} };
         const std::string level = LanguageOf::Word(language, "Level");
         m.Insert(Level{ level + " 1", 0.0, {}, {}, {}, false });
         m.Insert(Level{ level + " 2", 3000.0, {}, {}, {}, false });
@@ -551,6 +590,8 @@ namespace MiniBIM::Bim
         if (c == "floor")  return Keys(types.floor);
         if (c == "door")   return Keys(types.door);
         if (c == "window") return Keys(types.window);
+        if (c == "roof")   return Keys(types.roof);
+        if (c == "ceiling") return Keys(types.ceiling);
         return {};
     }
 
@@ -562,6 +603,10 @@ namespace MiniBIM::Bim
             preferred = "Generic - 200mm";
         else if (c == "door")
             preferred = "Single 900 x 2100";
+        else if (c == "roof")
+            preferred = "Generic - 300mm";
+        else if (c == "ceiling")
+            preferred = "Generic - 20mm";
         const std::vector<std::string> names = TypeNames(category);
         for (const std::string& n : names)
             if (n == preferred)
@@ -612,6 +657,10 @@ namespace MiniBIM::Bim
             out.push_back({ "wall", &n, x.thickness, &x.layers });
         for (const auto& [n, x] : types.floor)
             out.push_back({ "floor", &n, x.thickness, &x.layers });
+        for (const auto& [n, x] : types.roof)
+            out.push_back({ "roof", &n, x.thickness, &x.layers });
+        for (const auto& [n, x] : types.ceiling)
+            out.push_back({ "ceiling", &n, x.thickness, &x.layers });
         return out;
     }
 
@@ -621,6 +670,14 @@ namespace MiniBIM::Bim
             return w->level;
         if (const Floor* f = e.As<Floor>())
             return f->level;
+        if (const Ceiling* c = e.As<Ceiling>())
+            return c->level;
+        if (const Room* r = e.As<Room>())
+            return r->level;
+        if (const RoomSeparator* rs = e.As<RoomSeparator>())
+            return rs->level;
+        if (const Roof* r = e.As<Roof>())
+            return r->level;
         if (const Opening* o = e.AsOpening())
         {
             const Wall* w = GetWall(o->host);
@@ -657,14 +714,258 @@ namespace MiniBIM::Bim
         const double depth = FloorDepth(f);
         const Plane under{ top.z - depth, top.g };
         // 外轮廓减去洞口：没有洞口时原样，被洞口切开时为凸块
-        const Ring outline = Geom::Area(f.boundary) < 0.0 ? Ring(f.boundary.rbegin(), f.boundary.rend()) : f.boundary;
-        std::vector<Ring> parts{ outline };
-        for (const Ring& hole : f.openings)
-            parts = Walls::Minus(parts, hole);
         std::vector<std::pair<std::vector<P3>, double>> out;
-        for (const Ring& ring : parts)
+        for (const Ring& ring : SolidOf({ Ccw(f.boundary) }, f.openings))
             out.emplace_back(under.Lift(ring), depth);
         return out;
+    }
+
+    std::vector<std::pair<std::vector<P3>, double>> Model::CeilingSlabs(const Ceiling& c) const
+    {
+        const Plane under = Plane::Flat(Elevation(c.level) + c.offset);
+        const auto it = types.ceiling.find(c.typeName);
+        const double t = it == types.ceiling.end() ? 0.0 : it->second.thickness;
+        std::vector<std::pair<std::vector<P3>, double>> out;
+        for (const Ring& ring : SolidOf({ Ccw(c.boundary) }, c.openings))
+            out.emplace_back(under.Lift(ring), t);
+        return out;
+    }
+
+    // ── 屋顶 ─────────────────────────────────────────────────────
+    std::vector<Segment> Roof::Edges() const
+    {
+        std::vector<Segment> out = Geom::RingEdges(boundary);
+        for (const Ring& c : courtyards)
+            for (const Segment& e : Geom::RingEdges(c))
+                out.push_back(e);
+        return out;
+    }
+
+    Ring Model::RoofOutline(const Roof& r) const
+    {
+        if (!r.extrusion)
+            return Ccw(r.boundary);
+        const Extrusion& x = *r.extrusion;
+        const P2 o = x.line[0], u = (x.line[1] - x.line[0]).Unit();
+        const double a0 = x.profile.empty() ? 0.0 : x.profile.front().x;
+        const double a1 = x.profile.empty() ? 0.0 : x.profile.back().x;
+        Ring ring;
+        for (const auto& [a, c] : { std::pair{ a0, x.from }, std::pair{ a1, x.from }, std::pair{ a1, x.to }, std::pair{ a0, x.to } })
+            ring.push_back(o + u * a + u.Perp() * c);
+        return Ccw(ring);
+    }
+
+    double Model::RoofRise(const Roof& r, const Plane& plane) const
+    {
+        const auto it = types.roof.find(r.typeName);
+        const double t = it == types.roof.end() ? 0.0 : it->second.thickness;
+        return t * std::hypot(std::sqrt(plane.g.Dot(plane.g)), 1.0);
+    }
+
+    bool Model::RoofFaces(const Roof& r, std::vector<Slope>& out, std::string& error) const
+    {
+        const double base = Elevation(r.level) + r.offset;
+        std::vector<Slope> faces;
+        if (r.extrusion)
+        {
+            const Extrusion& x = *r.extrusion;
+            const P2 o = x.line[0], u = (x.line[1] - x.line[0]).Unit();
+            for (size_t i = 0; i + 1 < x.profile.size(); ++i)
+            {
+                const P2 a = x.profile[i], b = x.profile[i + 1];
+                if (!(b.x > a.x))
+                    continue;
+                const double k = (b.y - a.y) / (b.x - a.x);
+                const Plane plane{ base + a.y - k * (a.x + o.Dot(u)), u * k };
+                Ring ring;
+                for (const auto& [along, across] : { std::pair{ a.x, x.from }, std::pair{ b.x, x.from }, std::pair{ b.x, x.to }, std::pair{ a.x, x.to } })
+                    ring.push_back(o + u * along + u.Perp() * across);
+                faces.push_back({ { ring }, plane });
+            }
+        }
+        else if (r.slope == 0.0)
+        {
+            std::vector<Ring> loops{ Ccw(r.boundary) };
+            for (const Ring& c : r.courtyards)
+            {
+                Ring turned = Ccw(c);
+                std::reverse(turned.begin(), turned.end());
+                loops.push_back(std::move(turned));
+            }
+            faces.push_back({ std::move(loops), Plane::Flat(base) });
+        }
+        else
+        {
+            // 外轮廓逆时针、天井顺时针，屋顶在每条边的左边；竖直的边在倒过来的环上反着数
+            std::vector<bool> up;
+            if (!RoofUprights(r, up, error))
+                return false;
+            std::vector<Ring> rings;
+            std::vector<double> speeds;
+            std::vector<const Ring*> given{ &r.boundary };
+            for (const Ring& c : r.courtyards)
+                given.push_back(&c);
+            for (size_t k = 0; k < given.size(); ++k)
+            {
+                const Ring& g = *given[k];
+                const size_t n = g.size(), first = speeds.size();
+                const bool turn = (Geom::Area(g) < 0.0) == (k == 0);
+                rings.push_back(turn ? Ring(g.rbegin(), g.rend()) : g);
+                for (size_t i = 0; i < n; ++i)
+                {
+                    const size_t at = first + (turn ? (2 * n - 2 - i) % n : i);
+                    speeds.push_back(at < up.size() && up[at] ? 0.0 : 1.0);
+                }
+            }
+            if (speeds.size() < 3 || speeds.size() > MaxRoofPoints)
+            {
+                error = "a pitched roof's footprint has 3 to " + std::to_string(MaxRoofPoints) + " points, courtyards and all, not " +
+                        std::to_string(speeds.size());
+                return false;
+            }
+            const double tan = std::tan(r.slope * kPi / 180.0);
+            const double eave = base - r.overhang * tan;
+            std::vector<std::vector<Skeleton::Face>> skeleton;
+            if (!Skeleton::Faces(rings, speeds, skeleton, error))
+                return false;
+            size_t e = 0;
+            for (const Ring& ring : rings)
+                for (const auto& [a, b] : Geom::RingEdges(ring))
+                {
+                    if (e >= skeleton.size())
+                        break;
+                    const std::vector<Skeleton::Face>& face = skeleton[e++];
+                    const P2 inward = (b - a).Unit().Perp();
+                    const Plane plane{ eave - tan * a.Dot(inward), inward * tan };
+                    std::vector<Ring> loops;
+                    for (const Skeleton::Face& l : face)
+                    {
+                        Ring pts;
+                        for (const auto& [q, when] : l)
+                            pts.push_back(q);
+                        loops.push_back(std::move(pts));
+                    }
+                    if (!loops.empty() && loops.front().size() >= 3)
+                        faces.push_back({ std::move(loops), plane });
+                }
+        }
+        if (!r.join)
+        {
+            out = std::move(faces);
+            return true;
+        }
+        const Element* he = elements.Get(*r.join);
+        const Roof* host = he ? he->As<Roof>() : nullptr;
+        if (!host || host->join)
+        {
+            error = "it joins element " + r.join->ToString() + ", which isn't a roof that joins none";
+            return false;
+        }
+        // 在插进的屋顶上方，只留它的顶面高过那个屋顶顶面的部分
+        std::vector<std::pair<Ring, Plane>> hostPieces;
+        if (!RoofPieces(*host, hostPieces, error))
+            return false;
+        std::vector<std::pair<Ring, Plane>> tops;
+        for (const auto& [ring, p] : hostPieces)
+        {
+            const Plane top{ p.z + RoofRise(*host, p), p.g };
+            for (Ring& c : Walls::ConvexPieces(ring))
+                tops.emplace_back(std::move(c), top);
+        }
+        out.clear();
+        for (const auto& [loops, plane] : faces)
+        {
+            const Plane mine{ plane.z + RoofRise(r, plane), plane.g };
+            std::vector<Ring> kept;
+            std::vector<Ring> rest = SolidOf(loops, {});
+            for (const auto& [piece, top] : tops)
+            {
+                const Plane hostTop = top;
+                std::vector<Ring> outside;
+                for (Ring& part : rest)
+                {
+                    auto [inside, outer] = Walls::Split(std::move(part), piece);
+                    if (inside)
+                    {
+                        Ring clipped = Geom::Clip(*inside, [&](P2 q) { return mine.At(q) - hostTop.At(q); });
+                        if (clipped.size() >= 3 && Geom::Area(clipped) > 1.0)
+                            kept.push_back(std::move(clipped));
+                    }
+                    for (Ring& o : outer)
+                        outside.push_back(std::move(o));
+                }
+                rest = std::move(outside);
+            }
+            for (Ring& k : rest)
+                kept.push_back(std::move(k));
+            for (Ring& k : kept)
+                out.push_back({ { std::move(k) }, plane });
+        }
+        return true;
+    }
+
+    bool Model::RoofUprights(const Roof& r, std::vector<bool>& out, std::string& error) const
+    {
+        const size_t n = r.Edges().size();
+        std::vector<bool> up(n, false);
+        for (const size_t g : r.gables)
+        {
+            if (g >= n)
+            {
+                error = "gable edge " + std::to_string(g) + " isn't one of its " + std::to_string(n) + " edges (0 to " +
+                        std::to_string(n == 0 ? 0 : n - 1) + ")";
+                return false;
+            }
+            up[g] = true;
+        }
+        if (r.gable)
+        {
+            const auto square = [](P2 a, P2 b, P2 c) { return std::abs((b - a).Unit().Dot((c - b).Unit())) < 1e-6; };
+            const Ring corners = Geom::Corners(Ccw(r.boundary));
+            if (!(corners.size() == 4 && square(corners[0], corners[1], corners[2]) && square(corners[1], corners[2], corners[3]) &&
+                  square(corners[2], corners[3], corners[0])))
+            {
+                error = "`gable` leaves a rectangle's ends upright; over any other footprint, name the edges in `gables`";
+                return false;
+            }
+            const P2 a = corners[0], b = corners[1], c = corners[2], d = corners[3];
+            const std::array<Segment, 2> ends = a.Dist(b) >= b.Dist(c) ? std::array<Segment, 2>{ Segment{ b, c }, Segment{ d, a } }
+                                                                       : std::array<Segment, 2>{ Segment{ a, b }, Segment{ c, d } };
+            const std::vector<Segment> edges = Geom::RingEdges(r.boundary);
+            for (size_t i = 0; i < edges.size() && i < up.size(); ++i)
+            {
+                const auto [p, q] = edges[i];
+                for (const auto& [s, t] : ends)
+                    if (Geom::DistToSegment(p, s, t) < Tol && Geom::DistToSegment(q, s, t) < Tol)
+                        up[i] = true;
+            }
+        }
+        out = std::move(up);
+        return true;
+    }
+
+    std::vector<std::pair<std::vector<P3>, double>> Model::RoofSlabs(const Roof& r) const
+    {
+        std::vector<std::pair<Ring, Plane>> pieces;
+        std::string error;
+        if (!RoofPieces(r, pieces, error))
+            pieces.clear();
+        std::vector<std::pair<std::vector<P3>, double>> out;
+        for (const auto& [ring, p] : pieces)
+            out.emplace_back(p.Lift(ring), RoofRise(r, p));
+        return out;
+    }
+
+    bool Model::RoofPieces(const Roof& r, std::vector<std::pair<Ring, Plane>>& out, std::string& error) const
+    {
+        std::vector<Slope> faces;
+        if (!RoofFaces(r, faces, error))
+            return false;
+        out.clear();
+        for (const auto& [loops, plane] : faces)
+            for (Ring& p : SolidOf(loops, r.openings))
+                out.emplace_back(std::move(p), plane);
+        return true;
     }
 
     // ── 房间找墙用的线 ───────────────────────────────────────────
@@ -685,8 +986,39 @@ namespace MiniBIM::Bim
 
     std::vector<Segment> Model::BoundingLines(Guid level) const
     {
-        // 房间分隔线在移植房间时（第 2b 步）加上
-        return WallLines(level);
+        std::vector<Segment> lines = WallLines(level);
+        for (const Segment& s : Separators(level))
+            lines.push_back(s);
+        return lines;
+    }
+
+    std::vector<Segment> Model::Separators(Guid level) const
+    {
+        std::vector<Segment> out;
+        for (const auto& [id, e] : elements.Items())
+            if (const RoomSeparator* rs = e->As<RoomSeparator>(); rs && Same(rs->level, level))
+                out.emplace_back(rs->start, rs->end);
+        return out;
+    }
+
+    std::vector<Segment> Model::RoomLines(Guid level, RoomArea at) const
+    {
+        if (at == RoomArea::Centre)
+            return BoundingLines(level);
+        std::vector<Segment> lines = FaceLines(level);
+        for (const Segment& s : Separators(level))
+            lines.push_back(s);
+        return lines;
+    }
+
+    std::optional<Geom::Region> Model::RoomRegion(const Room& r) const
+    {
+        return RoomRegionAt(r, roomArea);
+    }
+
+    std::optional<Geom::Region> Model::RoomRegionAt(const Room& r, RoomArea at) const
+    {
+        return Geom::RegionAt(RoomLines(r.level, at), r.point, Tol);
     }
 
     std::vector<Segment> Model::FaceLines(Guid level) const
@@ -925,6 +1257,15 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
+        for (const auto& [n, t] : types.ceiling)
+        {
+            // 更细的格子每隔几个像素就画一条线，大天花板上有几百万条
+            if (!(t.grid == 0.0 || (t.grid >= 100.0 && t.grid <= MaxCoord)))
+            {
+                error = "ceiling type `" + n + "`: grid " + Num(t.grid) + " mm; its tiles are 100 mm or wider, or 0 for none";
+                return false;
+            }
+        }
         std::set<std::string> levelNames, gridNames;
         // 每面墙上的门窗，按沿墙的起点排序
         std::map<Guid, std::vector<OpeningSpan>> spans;
@@ -974,6 +1315,99 @@ namespace MiniBIM::Bim
                     return false;
                 }
             }
+            else if (const RoomSeparator* rs = e.As<RoomSeparator>())
+            {
+                if (!levelOk(rs->level) || !Line(who, rs->start, rs->end, error))
+                    return false;
+            }
+            else if (const Ceiling* c = e.As<Ceiling>())
+            {
+                if (!Known(who, c->typeName, types.ceiling, error) || !levelOk(c->level) || !Boundary(who, c->boundary, error) ||
+                    !Openings(who, c->boundary, c->openings, error) || !Coord(who + " offset", c->offset, error))
+                    return false;
+            }
+            else if (const Room* rm = e.As<Room>())
+            {
+                if (!levelOk(rm->level) || !Point(who, rm->point, error) || !TextOk(who, "name", rm->name, error) ||
+                    !TextOk(who, "number", rm->number, error))
+                    return false;
+            }
+            else if (const Roof* r = e.As<Roof>())
+            {
+                if (!Known(who, r->typeName, types.roof, error) || !levelOk(r->level) || !Coord(who + " overhang", r->overhang, error) ||
+                    !Coord(who + " offset", r->offset, error))
+                    return false;
+                if (r->extrusion)
+                {
+                    const Extrusion& x = *r->extrusion;
+                    if (!Line(who, x.line[0], x.line[1], error))
+                        return false;
+                    if (x.profile.size() < 2 || x.profile.size() > MaxPoints)
+                    {
+                        error = who + ": an extrusion's profile needs 2 to " + std::to_string(MaxPoints) + " points";
+                        return false;
+                    }
+                    for (const P2& p : x.profile)
+                        if (!Point(who, p, error))
+                            return false;
+                    for (size_t i = 0; i + 1 < x.profile.size(); ++i)
+                        if (!(x.profile[i + 1].x - x.profile[i].x > Tol))
+                        {
+                            error = who + ": its profile runs along its line one way, each point past the one before";
+                            return false;
+                        }
+                    if (!Coord(who + " from", x.from, error) || !Coord(who + " to", x.to, error))
+                        return false;
+                    if (x.to - x.from <= Tol)
+                    {
+                        error = who + ": it's swept across its line from `from` to `to`, further to the left";
+                        return false;
+                    }
+                }
+                else
+                {
+                    if (!Boundary(who, r->boundary, error))
+                        return false;
+                    if (!(r->slope >= 0.0 && r->slope <= MaxSlope))
+                    {
+                        error = who + ": slope " + Num(r->slope) + "° isn't from 0° (flat) to " + Num(MaxSlope) + "°";
+                        return false;
+                    }
+                }
+                if (r->openings.size() > MaxRoofPoints)
+                {
+                    error = who + ": " + std::to_string(r->openings.size()) + " openings, more than " + std::to_string(MaxRoofPoints);
+                    return false;
+                }
+                for (const Ring& o : r->openings)
+                    if (!Boundary(who + " opening", o, error))
+                        return false;
+                if (r->extrusion && !r->courtyards.empty())
+                {
+                    error = who + ": courtyards are holes in a roof's footprint; cut an extrusion roof with `openings`";
+                    return false;
+                }
+                size_t courtyardPoints = 0;
+                for (const Ring& c : r->courtyards)
+                    courtyardPoints += c.size();
+                if (courtyardPoints > MaxRoofPoints)
+                {
+                    error = who + ": its courtyards have more than " + std::to_string(MaxRoofPoints) + " points between them";
+                    return false;
+                }
+                for (size_t i = 0; i < r->courtyards.size(); ++i)
+                    if (!Boundary(who + " courtyard " + std::to_string(i), r->courtyards[i], error))
+                        return false;
+                if (!Holes(who, "courtyard", r->boundary, r->courtyards, error))
+                    return false;
+                std::vector<std::pair<Ring, Plane>> pieces;
+                std::string why;
+                if (!RoofPieces(*r, pieces, why))
+                {
+                    error = who + ": " + why;
+                    return false;
+                }
+            }
             else if (const Wall* w = e.As<Wall>())
             {
                 if (!Known(who, w->typeName, types.wall, error) || !levelOk(w->level) || !Line(who, w->start, w->end, error) ||
@@ -994,8 +1428,7 @@ namespace MiniBIM::Bim
                     if (!at)
                         continue;
                     const Element* to = elements.Get(*at);
-                    // 屋顶在第 2b 步移植；现在只能贴着楼板
-                    if (!to || !to->As<Floor>())
+                    if (!to || !(to->As<Floor>() || to->As<Roof>()))
                     {
                         error = who + ": " + what + " " + Shown(*at) + " isn't a roof or a floor";
                         return false;

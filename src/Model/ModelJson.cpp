@@ -329,6 +329,76 @@ namespace MiniBIM::Bim
                 out = Element(std::move(x));
                 return true;
             }
+            if (category == "roomseparator")
+            {
+                RoomSeparator x;
+                if (!f.Allow({ "level", "start", "end" }) || !f.Id("level", x.level, true) || !f.Point("start", x.start, true) ||
+                    !f.Point("end", x.end, true) || !f.Finish())
+                    return false;
+                out = Element(std::move(x));
+                return true;
+            }
+            if (category == "ceiling")
+            {
+                Ceiling x;
+                if (!f.Allow({ "type", "level", "boundary", "openings", "offset" }) || !f.String("type", x.typeName, true) ||
+                    !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, true) || !f.Rings("openings", x.openings) ||
+                    !f.Number("offset", x.offset, true) || !f.Finish())
+                    return false;
+                out = Element(std::move(x));
+                return true;
+            }
+            if (category == "room")
+            {
+                Room x;
+                if (!f.Allow({ "level", "point", "name", "number" }) || !f.Id("level", x.level, true) || !f.Point("point", x.point, true) ||
+                    !f.String("name", x.name, true) || !f.String("number", x.number, true) || !f.Finish())
+                    return false;
+                out = Element(std::move(x));
+                return true;
+            }
+            if (category == "roof")
+            {
+                Roof x;
+                if (!f.Allow({ "type", "level", "boundary", "courtyards", "slope", "overhang", "gable", "gables", "offset", "openings", "join", "extrusion" }) ||
+                    !f.String("type", x.typeName, true) || !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, false) ||
+                    !f.Rings("courtyards", x.courtyards) || !f.Number("slope", x.slope, false) || !f.Number("overhang", x.overhang, false) ||
+                    !f.Bool("gable", x.gable))
+                    return false;
+                if (const Json* g = f.Raw("gables"))
+                {
+                    if (!g->is_array())
+                        return f.Fail("`gables` must be a list of edge numbers");
+                    for (const Json& n : *g)
+                    {
+                        const auto k = AsWhole(n);
+                        if (!k)
+                            return f.Fail("`gables` must be a list of edge numbers, got " + n.dump());
+                        x.gables.push_back(static_cast<size_t>(*k));
+                    }
+                }
+                if (!f.Number("offset", x.offset, false) || !f.Rings("openings", x.openings) || !f.OptId("join", x.join))
+                    return false;
+                if (const Json* xv = f.Raw("extrusion"))
+                {
+                    Fields g(*xv, who + " extrusion", path + "/extrusion", leftOut, error);
+                    Extrusion ex;
+                    std::optional<std::array<P2, 2>> line;
+                    if (!g.IsObject() || !g.Allow({ "line", "profile", "from", "to" }) || !g.Corners("line", line))
+                        return false;
+                    if (!line)
+                        return g.Missing("line");
+                    ex.line = *line;
+                    if (!g.Points("profile", ex.profile, true) || !g.Number("from", ex.from, false) || !g.Number("to", ex.to, true) ||
+                        !g.Finish())
+                        return false;
+                    x.extrusion = std::move(ex);
+                }
+                if (!f.Finish())
+                    return false;
+                out = Element(std::move(x));
+                return true;
+            }
             if (category == "door" || category == "window")
             {
                 Opening o;
@@ -355,8 +425,25 @@ namespace MiniBIM::Bim
                 skip = true;
                 return true;
             }
-            error = who + ": unknown variant `" + category + "`, expected one of level, grid, wall, floor, door, window";
+            error = who + ": unknown variant `" + category +
+                    "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof";
             return false;
+        }
+
+        Json RingJson(const Ring& ring)
+        {
+            Json out = Json::array();
+            for (const P2& p : ring)
+                out.push_back(ToJson(p));
+            return out;
+        }
+
+        Json RingsJson(const std::vector<Ring>& rings)
+        {
+            Json out = Json::array();
+            for (const Ring& r : rings)
+                out.push_back(RingJson(r));
+            return out;
         }
 
         Json LayersJson(const std::vector<Layer>& layers)
@@ -613,6 +700,63 @@ namespace MiniBIM::Bim
             if (f->patternAngle != 0.0)
                 j["pattern_angle"] = f->patternAngle;
         }
+        else if (const RoomSeparator* rs = e.As<RoomSeparator>())
+        {
+            j["level"] = ToJson(rs->level);
+            j["start"] = ToJson(rs->start);
+            j["end"]   = ToJson(rs->end);
+        }
+        else if (const Ceiling* c = e.As<Ceiling>())
+        {
+            j["type"]     = c->typeName;
+            j["level"]    = ToJson(c->level);
+            j["boundary"] = RingJson(c->boundary);
+            if (!c->openings.empty())
+                j["openings"] = RingsJson(c->openings);
+            j["offset"] = c->offset;
+        }
+        else if (const Room* r = e.As<Room>())
+        {
+            j["level"]  = ToJson(r->level);
+            j["point"]  = ToJson(r->point);
+            j["name"]   = r->name;
+            j["number"] = r->number;
+        }
+        else if (const Roof* r = e.As<Roof>())
+        {
+            j["type"]  = r->typeName;
+            j["level"] = ToJson(r->level);
+            if (!r->boundary.empty())
+                j["boundary"] = RingJson(r->boundary);
+            if (!r->courtyards.empty())
+                j["courtyards"] = RingsJson(r->courtyards);
+            j["slope"]    = r->slope;
+            j["overhang"] = r->overhang;
+            if (r->gable)
+                j["gable"] = true;
+            if (!r->gables.empty())
+            {
+                Json g = Json::array();
+                for (const size_t k : r->gables)
+                    g.push_back(static_cast<uint64_t>(k));
+                j["gables"] = std::move(g);
+            }
+            j["offset"] = r->offset;
+            if (!r->openings.empty())
+                j["openings"] = RingsJson(r->openings);
+            if (r->join)
+                j["join"] = ToJson(*r->join);
+            if (r->extrusion)
+            {
+                const Extrusion& x = *r->extrusion;
+                Json ex = Json::object();
+                ex["line"]    = Json::array({ ToJson(x.line[0]), ToJson(x.line[1]) });
+                ex["profile"] = RingJson(x.profile);
+                ex["from"]    = x.from;
+                ex["to"]      = x.to;
+                j["extrusion"] = std::move(ex);
+            }
+        }
         else if (const Opening* o = e.AsOpening())
         {
             j["type"] = o->typeName;
@@ -654,6 +798,18 @@ namespace MiniBIM::Bim
         t["floor"]  = layered(types.floor);
         t["door"]   = OpeningTypesJson(types.door);
         t["window"] = OpeningTypesJson(types.window);
+        t["roof"]   = layered(types.roof);
+        Json ceilings = Json::object();
+        for (const auto& [n, x] : types.ceiling)
+        {
+            Json y = Json::object();
+            y["thickness"] = x.thickness;
+            y["grid"]      = x.grid;
+            if (!x.layers.empty())
+                y["layers"] = LayersJson(x.layers);
+            ceilings[n] = std::move(y);
+        }
+        t["ceiling"] = std::move(ceilings);
         return t;
     }
 
@@ -811,7 +967,12 @@ namespace MiniBIM::Bim
                 !ReadNamed(t, "wall", m.types.wall, true, [&](Fields& g, WallType& x) { return layered(g, x); }) ||
                 !ReadNamed(t, "floor", m.types.floor, true, [&](Fields& g, FloorType& x) { return layered(g, x); }) ||
                 !ReadNamed(t, "door", m.types.door, true, ReadOpeningType) ||
-                !ReadNamed(t, "window", m.types.window, true, ReadOpeningType) || !t.Finish())
+                !ReadNamed(t, "window", m.types.window, true, ReadOpeningType) ||
+                !ReadNamed(t, "roof", m.types.roof, false, [&](Fields& g, RoofType& x) { return layered(g, x); }) ||
+                !ReadNamed(t, "ceiling", m.types.ceiling, false, [&](Fields& g, CeilingType& x)
+                {
+                    return layered(g, x) && g.Number("grid", x.grid, false);
+                }) || !t.Finish())
                 return false;
         }
 
@@ -915,7 +1076,7 @@ namespace MiniBIM::Bim
         if (!f.Finish())
             return false;
 
-        // 宽松读入后清理：宿主略去了的门窗也略去；贴着的东西不在了的墙松开
+        // 宽松读入后清理：宿主略去了的门窗也略去；贴着的东西不在了的墙松开（屋顶插进的总是屋顶，不会被略去）
         for (bool removed = true; removed;)
         {
             removed = false;
@@ -941,7 +1102,7 @@ namespace MiniBIM::Bim
             for (auto [key, at] : { std::pair{ "attach_top", &w.attachTop }, std::pair{ "attach_base", &w.attachBase } })
             {
                 const Element* to = *at ? m.elements.Get(**at) : nullptr;
-                if (*at && !(to && to->As<Floor>()))
+                if (*at && !(to && (to->As<Floor>() || to->As<Roof>())))
                 {
                     at->reset();
                     leftOut.push_back("/elements/" + std::to_string(id) + "/" + key);
