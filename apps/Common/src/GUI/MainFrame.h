@@ -8,8 +8,11 @@
 #include "Render/IRenderBackend.h"
 #include "Widgets/Menu.h"
 #include <filesystem>
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -18,7 +21,9 @@ namespace MiniGUI
     class UIContext;
     class Label;
     class Node;
+    class TextBox;
     class TitleBar;
+    class TreeView;
     class UiLayout;
     class ViewportHost;
     struct ViewportPointerEvent;
@@ -30,9 +35,11 @@ namespace MiniBIM
     //   - 整个界面由 MiniGUI 绘制：标题栏自绘，菜单栏在标题栏里；菜单与布局由界面描述文件 ui/minibim_ui.json 描述（UiLayout），
     //     保存后自动重新加载
     //   - 模型：Bim::Session（移植自 BIMCraft 的命令与撤销），界面只经命令改它；启动时打开示例房屋
+    //   - 停靠区（Panels.cpp）：特性面板 "properties"（类型选择器与选中元素的参数，改动经 modify 命令）、项目浏览器 "browser"
+    //     （视图与族的树，双击打开视图）；功能区与快速访问工具栏在界面描述文件里
     //   - 三维视口（面板 "viewport"）：模型经 ModelScene 用实体内核建成三角形；OrbitCamera，拖动左键环绕、拖动中键或右键平移、
     //     Shift + 拖动环绕、滚轮缩放。"视图 > 楼层平面"把视口换成一个标高的平面（Bim::Render 的显示列表，PlanView.cpp）：
-    //     拖动中键或右键平移、滚轮缩放、单击左键选中元素
+    //     拖动中键或右键平移、滚轮缩放、单击左键选中元素（Ctrl + 单击加进或拿出选择集，Esc 清空）
     //   - 状态栏（面板 "statusbar"）：操作提示、模型统计、语言、图形接口、版本
     //   - 多语言：界面文字经 MiniGUI::Tr / MiniBIM::Tr 翻译（I18n/Translator.h），"文件 > 语言"切换后整个界面按新语言重建；
     //     选择保存在 AppPlatform::GetUserDataDir() 下的 settings.json，没有保存过时跟随系统语言
@@ -84,15 +91,35 @@ namespace MiniBIM
         // ── 项目（MainCommands.cpp）────────────────────────────────
         // 执行模型命令；失败时弹出对话框（title 为英文原文），返回 false
         bool RunCommand(const char* id, const Bim::Json& params, const char* title, Bim::Json* result = nullptr);
+        // 有没有保存过之后的改动（模型不是最后打开或保存的那一份）
+        bool Dirty() const { return m_session.Snapshot() != m_savedModel; }
+        // 有未保存的改动时先问保存、不保存还是取消，然后（没取消、保存成功时）做 then
+        void Guard(std::function<void()> then);
         void NewProject();
         void OpenProject();
         bool SaveProject(bool saveAs);
+        void StepHistory(bool redo);
+        void DeleteSelection();
+        void FlipSelection();
         // 模型导出为 IFC4 文件：问存到哪里，不改项目自己的路径
         void ExportIfc();
         void OpenSample();
         // 模型变了（命令、新建、打开）之后：重建三维场景，刷新标题与状态栏；换了项目时相机重新框住模型
         void OnModelChanged();
         void RebuildScene();
+
+        // ── 选择集、特性面板、项目浏览器（Panels.cpp）─────────────────
+        void SetSelection(std::vector<Bim::Id> ids);
+        std::unique_ptr<MiniGUI::Node> CreateProperties();
+        std::unique_ptr<MiniGUI::Node> CreateBrowser();
+        // 模型、选择集或视图变了：下一轮消息循环里重建两块面板（不在控件自己的回调里拆掉它）
+        void RefreshPanels();
+        void BuildProperties();
+        void BuildBrowser();
+        // 特性面板里改了一个参数：经 modify 改选中的（或平面视图的标高）元素
+        void EditParameter(const std::vector<Bim::Id>& ids, const std::string& key, Bim::Json value);
+        void TogglePanel(const char* name);
+        bool PanelShown(const char* name) const;
 
         void RenderViewport(int pixelWidth, int pixelHeight);
         void OnViewportPointer(const MiniGUI::ViewportPointerEvent& e);
@@ -107,6 +134,7 @@ namespace MiniBIM
         void StepLevel(int by);
         // 模型变了：显示的标高不在了就换到最低的，下次画时重画显示列表
         void OnPlanModelChanged();
+        bool Selected(Bim::Id id) const;
         void RenderPlan(IRenderer& renderer, int pixelWidth, int pixelHeight);
         void OnPlanPointer(const MiniGUI::ViewportPointerEvent& e);
         // 平面的名称（标高名），以及选中的元素：状态栏用
@@ -136,6 +164,7 @@ namespace MiniBIM
         std::vector<std::string> m_startupCommands;
 
         Bim::Session m_session;
+        std::shared_ptr<const Bim::Model> m_savedModel;      // 最后打开、新建或保存的那一份：别的都是没保存的
         std::shared_ptr<const Bim::Model> m_sceneModel;      // 场景是按哪一份模型建的
         size_t       m_sceneResets = 0;                      // 场景建好时项目换过几次：换了项目时相机重新框住模型
         uint64_t     m_sceneVersion = 0;                     // 交给 IRenderer::SubmitCached：场景重建后加一，后端重新上传
@@ -157,9 +186,18 @@ namespace MiniBIM
         std::optional<Bim::Render::View> m_planView;         // 平面的比例与中心；空 = 下次画时框住整个平面
         std::unique_ptr<Bim::Render::Drawing> m_plan;        // 显示列表，按 m_planView 画的
         bool                             m_planDirty = true; // 模型或视图变了，要重画显示列表
-        std::optional<Bim::Id>           m_selected;         // 平面上单击选中的元素
+        std::vector<Bim::Id>             m_selection;        // 选中的元素（平面上单击、项目浏览器）
         bool                             m_planClick = false;// 左键按下后没拖动：松开时拾取
         MiniGUI::Vec2                    m_downPixel;
         std::vector<Vertex_P3_C4>        m_planVerts;
+
+        MiniGUI::Node*     m_propsBody   = nullptr;          // 特性面板里随选择集重建的部分
+        MiniGUI::Node*     m_browserBody = nullptr;          // 项目浏览器：搜索框下面的树
+        MiniGUI::TreeView* m_browserTree = nullptr;
+        std::string        m_browserFind;                    // 搜索框里的文字
+        std::set<std::string> m_collapsedGroups;             // 特性面板里收起的组（英文原文）
+        std::map<std::string, bool> m_branchOpen;            // 项目浏览器里各分支（按路径）展开着没有：重建时照旧
+        std::vector<std::function<void()>> m_browserActs;    // 树上各项双击时做什么（TreeItem 的 UserData 是下标）
+        bool               m_panelsPosted = false;
     };
 }

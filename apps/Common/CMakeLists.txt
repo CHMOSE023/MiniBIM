@@ -20,6 +20,8 @@ add_library(MiniBIMApp STATIC
     src/GUI/MainFrame.cpp
     src/GUI/MainCommands.cpp
     src/GUI/PlanView.cpp
+    src/GUI/Panels.cpp
+    src/GUI/Parameters.cpp
 )
 
 target_include_directories(MiniBIMApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${MINIBIM_VERSION_DIR})

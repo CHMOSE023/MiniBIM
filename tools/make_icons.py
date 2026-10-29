@@ -233,6 +233,51 @@ def _(i):
     i.arrow(50, 10, 50, 50, A, w=4.5, head=10)
 
 
+@icon("Undo")              # edit.undo：撤销（向左掉头的箭头：下面一横绕过右边回到上面，往左指）
+def _(i):
+    i.arc(36, 34, 16, 270, 450, G, w=4.5)
+    i.line([(36, 50), (22, 50)], G, 4.5)
+    i.line([(36, 18), (16, 18)], A, 4.5)
+    i.head(20, 18, 8, 18, A, head=12)
+
+
+@icon("Redo")              # edit.redo：重做（撤销的镜像，往右指）
+def _(i):
+    i.arc(28, 34, 16, 90, 270, G, w=4.5)
+    i.line([(28, 50), (42, 50)], G, 4.5)
+    i.line([(28, 18), (48, 18)], A, 4.5)
+    i.head(44, 18, 56, 18, A, head=12)
+
+
+@icon("Delete")            # edit.delete：删除（照 MiniCAD：垃圾桶 + 叉）
+def _(i):
+    i.rect(14, 18, 50, 56, G, w=3, r=3); i.line([(8, 14), (56, 14)], G, 3); i.line([(26, 14), (26, 8), (38, 8), (38, 14)], G, 3)
+    i.line([(24, 28), (40, 46)], A); i.line([(40, 28), (24, 46)], A)
+
+
+@icon("FlipWall")          # modify.flip：翻转墙（俯视的一段墙，外侧那面强调，两头的弯箭头把它翻到另一边）
+def _(i):
+    i.rect(8, 26, 56, 38, G, GF, w=3)
+    i.line([(8, 26), (56, 26)], A, 4)
+    i.arrow(32, 20, 32, 6, A, 3.5, 8)
+    i.arrow(32, 44, 32, 58, G, 3.5, 8)
+
+
+@icon("Properties")        # view.properties：特性面板（照 MiniCAD 的 PropertiesPanel：名称 | 值的几行）
+def _(i):
+    i.rect(8, 8, 56, 56, G, w=3, r=4); i.d.rectangle(i.P([(8, 8), (56, 18)]), fill=AF)
+    for y in (28, 38, 48):
+        i.line([(14, y), (26, y)], G, 3); i.line([(32, y), (50, y)], A, 3)
+
+
+@icon("ProjectBrowser")    # view.browser：项目浏览器（一棵树：根，下面缩进的几项）
+def _(i):
+    i.rect(8, 8, 20, 18, A, AF, w=3)
+    i.line([(14, 18), (14, 50)], G, 3)
+    for y in (32, 50):
+        i.line([(14, y), (24, y)], G, 3); i.rect(26, y - 5, 56, y + 5, G, w=3)
+
+
 # ── 程序图标 ───────────────────────────────────────────────────
 APP_GREEN = (88, 226, 19)      # 程序图标的绿色：与 MiniCAD 的程序图标同色（纯色，不用渐变）
 

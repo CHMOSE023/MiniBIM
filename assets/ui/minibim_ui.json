@@ -3,10 +3,12 @@
 // 多语言：title / label / tooltip / text 一律写英文原文，显示时按当前语言翻译（词典在 assets/i18n）；
 //   改了这里的文字后运行 python tools/extract_messages.py 更新词典，再补上译文
 // - 菜单文字不写助记符 &：菜单上不显示下划线，也不显示 "(F)" 这样的字母（键盘用 F10 激活菜单栏、方向键选择）
-// - menus 的项是命令 ID，"-" 为分隔线；{ "title": …, "dynamic": "languages" } 是程序生成的语言列表
-// - 宿主提供的面板：viewport（三维视口）、statusbar（状态栏）
+// - menus / toolbars 的项是命令 ID，"-" 为分隔线；{ "title": …, "dynamic": "languages" } 是程序生成的语言列表
+// - ribbons：功能区（布局里 { "type": "ribbon", "id": … } 引用）：选项卡 → 组 → 命令
+// - 宿主提供的面板：viewport（视图：三维或平面）、properties（特性）、browser（项目浏览器）、statusbar（状态栏）
+// - dock：停靠区，root 为布局树（split: row / column，tabs: 面板列表，size: 尺寸）；拖动面板标签可停靠到别处、合并为标签或浮出
 // - 图标（commands 的 "icon"、titlebar 的 "icon"）都在 assets/icons，由 tools/make_icons.py 生成：要新图标先在脚本里加，
-//   再在这里引用（python tools/make_icons.py --check 核对引用）。菜单项不显示图标，命令图标给以后的功能区、工具栏用
+//   再在这里引用（python tools/make_icons.py --check 核对引用）。菜单项不显示图标
 {
   "commands": {
     "file.new":     { "icon": "New.png", "shortcut": "Ctrl+N" },
@@ -16,26 +18,88 @@
     "file.exportIfc": { "icon": "ExportIfc.png" },
     "file.sample":  { "icon": "SampleHouse.png" },
     "file.exit":    { "icon": "Exit.png" },
+    "edit.undo":    { "icon": "Undo.png", "shortcut": "Ctrl+Z" },
+    "edit.redo":    { "icon": "Redo.png", "shortcut": "Ctrl+Y" },
+    "edit.delete":  { "icon": "Delete.png", "shortcut": "Delete" },
+    "edit.selectNone": { "shortcut": "Esc" },
+    "modify.flip":  { "icon": "FlipWall.png" },
     "view.3d":        { "icon": "View3D.png" },
     "view.plan":      { "icon": "FloorPlan.png" },
     "view.levelUp":   { "icon": "LevelUp.png", "shortcut": "PageUp" },
     "view.levelDown": { "icon": "LevelDown.png", "shortcut": "PageDown" },
     "view.home":    { "icon": "HomeView.png" },
     "view.zoomFit": { "icon": "ZoomFit.png" },
+    "view.properties": { "icon": "Properties.png" },
+    "view.browser":    { "icon": "ProjectBrowser.png" },
     "help.about":   { "icon": "About.png" }
   },
   "menus": [
     { "title": "File", "items": [ "file.new", "file.open", "file.save", "file.saveAs", "file.exportIfc", "-", "file.sample", "-",
                                   { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
-    { "title": "View", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown", "-", "view.home", "view.zoomFit" ] },
+    { "title": "Edit", "items": [ "edit.undo", "edit.redo", "-", "edit.delete", "modify.flip" ] },
+    { "title": "View", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown", "-", "view.home", "view.zoomFit", "-",
+                                  "view.properties", "view.browser" ] },
     { "title": "Help", "items": [ "help.about" ] }
   ],
+  "toolbars": {
+    "quick": [ "file.open", "file.save", "edit.undo", "edit.redo" ]
+  },
+  "ribbons": {
+    "main": {
+      "search": false,
+      "tabs": [
+        {
+          "title": "Modify",
+          "panels": [
+            { "title": "Properties", "items": [ "view.properties" ] },
+            { "title": "Modify", "items": [ "modify.flip", "edit.delete" ] }
+          ]
+        },
+        {
+          "title": "View",
+          "panels": [
+            { "title": "Create", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown" ] },
+            { "title": "Navigate", "items": [ "view.home", "view.zoomFit" ] },
+            { "title": "Palettes", "items": [ "view.properties", "view.browser" ] }
+          ]
+        }
+      ]
+    }
+  },
   "layout": {
     "type": "column",
     "children": [
-      { "type": "titlebar", "icon": "app.png", "children": [ { "type": "menubar" } ] },
-      { "type": "panel", "name": "viewport", "grow": 1 },
-      { "type": "panel", "name": "statusbar" }
+      {
+        "type": "titlebar",
+        "icon": "app.png",
+        "shrink": 0,
+        "children": [
+          { "type": "menubar", "compact": true, "shrink": 0 },
+          { "type": "toolbar", "id": "quick", "iconSize": 18, "padding": [ 0, 3, 4, 3 ] }
+        ]
+      },
+      { "type": "ribbon", "id": "main", "shrink": 0 },
+      // 特性在左上、项目浏览器在左下（同 Revit），右边是视图
+      {
+        "type": "dock",
+        "id": "main",
+        "grow": 1,
+        "root": {
+          "split": "row",
+          "children": [
+            {
+              "split": "column",
+              "size": 300,
+              "children": [
+                { "tabs": [ "properties" ] },
+                { "tabs": [ "browser" ], "size": 300 }
+              ]
+            },
+            { "tabs": [ { "panel": "viewport", "header": false, "closable": false } ] }
+          ]
+        }
+      },
+      { "type": "panel", "name": "statusbar", "shrink": 0 }
     ]
   }
 }

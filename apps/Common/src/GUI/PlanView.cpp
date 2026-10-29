@@ -98,9 +98,10 @@ namespace MiniBIM
     void MainFrame::ShowModel3D()
     {
         m_planLevel.reset();
-        m_selected.reset();
         m_drag = Drag::None;
+        UpdateTitle();
         UpdateStatus();
+        RefreshPanels();
         m_viewport->RequestRender();
     }
 
@@ -120,12 +121,12 @@ namespace MiniBIM
         {
             m_planLevel = level;
             m_planView.reset();
-            m_selected.reset();
         }
         m_planDirty = true;
         m_drag = Drag::None;
         UpdateTitle();
         UpdateStatus();
+        RefreshPanels();
         m_viewport->RequestRender();
     }
 
@@ -147,18 +148,23 @@ namespace MiniBIM
 
     void MainFrame::OnPlanModelChanged()
     {
+        const Bim::Model& m = m_session.GetModel();
+        // 删掉、撤销掉的元素离开选择集
+        std::erase_if(m_selection, [&](Bim::Id id) { return !m.elements.Contains(id); });
         if (!m_planLevel)
             return;
-        const Bim::Model& m = m_session.GetModel();
         if (!m.GetLevel(*m_planLevel))
         {
             m_planLevel.reset();
             ShowPlan(std::nullopt);
             return;
         }
-        if (m_selected && !m.elements.Contains(*m_selected))
-            m_selected.reset();
         m_planDirty = true;
+    }
+
+    bool MainFrame::Selected(Bim::Id id) const
+    {
+        return std::find(m_selection.begin(), m_selection.end(), id) != m_selection.end();
     }
 
     std::string MainFrame::PlanStatus() const
@@ -166,9 +172,14 @@ namespace MiniBIM
         const Bim::Model& m = m_session.GetModel();
         const Bim::Level* l = m_planLevel ? m.GetLevel(*m_planLevel) : nullptr;
         std::string out = l ? Format(Tr("Plan: {0}"), { l->name }) : std::string();
-        if (m_selected)
-            if (const Bim::Element* e = m.elements.Get(*m_selected))
-                out += "    " + Format(Tr("Selected: {0} {1}"), { Tr(CategoryLabel(e->Category())), std::to_string(*m_selected) });
+        if (m_selection.size() == 1)
+        {
+            if (const Bim::Element* e = m.elements.Get(m_selection.front()))
+                out += "    " + Format(Tr("Selected: {0} {1}"), { Tr(CategoryLabel(e->Category())), std::to_string(m_selection.front()) });
+        }
+        else if (!m_selection.empty())
+            out += "    " + Format(TrN("{0} element selected", "{0} elements selected", static_cast<long long>(m_selection.size())),
+                                   { std::to_string(m_selection.size()) });
         return out;
     }
 
@@ -204,7 +215,7 @@ namespace MiniBIM
         for (size_t i = 0; i < d.prims.size(); ++i)
         {
             const Bim::Render::Prim& p = d.prims[i];
-            const bool selected = m_selected && d.owners[i] == m_selected && p.color != Bim::Render::Paper;
+            const bool selected = d.owners[i] && Selected(*d.owners[i]) && p.color != Bim::Render::Paper;
             const VertexColor color = selected ? picked : ColorOf(p.color);
             if (p.kind == Bim::Render::Prim::Kind::Fill)
             {
@@ -252,12 +263,20 @@ namespace MiniBIM
         case PointerEventType::Up:
             if (m_planClick && e.button == MouseButton::Left)
             {
-                // 单击：拾取离指针最近、几个像素以内的元素
+                // 单击：拾取离指针最近、几个像素以内的元素；Ctrl + 单击把它加进或拿出选择集
                 m_planClick = false;
-                if (m_plan)
-                    m_selected = m_plan->Pick({ e.pixel.x, e.pixel.y }, 4.0f * m_dpiScale);
-                UpdateStatus();
-                m_viewport->RequestRender();
+                const std::optional<Bim::Id> hit = m_plan ? m_plan->Pick({ e.pixel.x, e.pixel.y }, 4.0f * m_dpiScale) : std::nullopt;
+                const bool ctrl = (e.modifiers & static_cast<uint8_t>(ModifierKey::Ctrl)) != 0;
+                std::vector<Bim::Id> picked = ctrl ? m_selection : std::vector<Bim::Id>{};
+                if (hit)
+                {
+                    const auto at = std::find(picked.begin(), picked.end(), *hit);
+                    if (at == picked.end())
+                        picked.push_back(*hit);
+                    else
+                        picked.erase(at);
+                }
+                SetSelection(std::move(picked));
             }
             if (e.buttons == 0)
                 m_drag = Drag::None;

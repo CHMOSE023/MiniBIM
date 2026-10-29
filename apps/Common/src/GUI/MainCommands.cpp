@@ -8,6 +8,7 @@
 #include "I18n/Translator.h"
 #include "Widgets/Dialog.h"
 #include "Widgets/ViewportHost.h"
+#include <algorithm>
 #include <filesystem>
 
 namespace MiniBIM
@@ -15,13 +16,16 @@ namespace MiniBIM
     void MainFrame::RegisterCommands()
     {
         using MiniGUI::Command;
-        auto add = [this](const char* id, const char* label, const char* tooltip, std::function<void()> execute)
+        auto add = [this](const char* id, const char* label, const char* tooltip, std::function<void()> execute,
+                          std::function<bool()> canExecute = {}, std::function<bool()> isChecked = {})
         {
             Command c;
-            c.id      = id;
-            c.label   = label;
-            c.tooltip = tooltip;
-            c.execute = std::move(execute);
+            c.id         = id;
+            c.label      = label;
+            c.tooltip    = tooltip;
+            c.execute    = std::move(execute);
+            c.canExecute = std::move(canExecute);
+            c.isChecked  = std::move(isChecked);
             m_commands.Register(std::move(c));
         };
 
@@ -31,13 +35,27 @@ namespace MiniBIM
         add("window.close",    N_("Close"),    "", [this] { m_platform->CloseWindow(); });
 
         // ── 文件 ─────────────────────────────────────────────────
-        add("file.new", N_("New"), N_("Start an empty project with two levels"), [this] { NewProject(); });
-        add("file.open", N_("Open..."), N_("Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"), [this] { OpenProject(); });
+        add("file.new", N_("New"), N_("Start an empty project with two levels"), [this] { Guard([this] { NewProject(); }); });
+        add("file.open", N_("Open..."), N_("Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"),
+            [this] { Guard([this] { OpenProject(); }); });
         add("file.save", N_("Save"), N_("Save the project"), [this] { SaveProject(false); });
         add("file.saveAs", N_("Save As..."), N_("Save the project under another name"), [this] { SaveProject(true); });
         add("file.exportIfc", N_("Export IFC..."), N_("Export the model as an IFC4 file for other BIM software"), [this] { ExportIfc(); });
-        add("file.sample", N_("Sample House"), N_("Open the sample house, built by commands"), [this] { OpenSample(); });
+        add("file.sample", N_("Sample House"), N_("Open the sample house, built by commands"), [this] { Guard([this] { OpenSample(); }); });
         add("file.exit", N_("Exit"), "", [this] { RequestExit(); });
+
+        // ── 编辑 ─────────────────────────────────────────────────
+        add("edit.undo", N_("Undo"), N_("Undo the last change"), [this] { StepHistory(false); }, [this] { return m_session.CanUndo(); });
+        add("edit.redo", N_("Redo"), N_("Redo the change undone last"), [this] { StepHistory(true); }, [this] { return m_session.CanRedo(); });
+        add("edit.delete", N_("Delete"), N_("Delete the selected elements; a wall takes its doors and windows with it"),
+            [this] { DeleteSelection(); }, [this] { return !m_selection.empty(); });
+        add("edit.selectNone", N_("Deselect"), N_("Clear the selection"), [this] { SetSelection({}); }, [this] { return !m_selection.empty(); });
+        add("modify.flip", N_("Flip Wall"), N_("Turn the selected walls round: their exterior sides go to the other side"), [this] { FlipSelection(); },
+            [this]
+            {
+                const Bim::Model& m = m_session.GetModel();
+                return std::any_of(m_selection.begin(), m_selection.end(), [&](Bim::Id id) { return m.GetWall(id) != nullptr; });
+            });
 
         // ── 视图 ─────────────────────────────────────────────────
         add("view.3d", N_("3D View"), N_("Show the model in 3D"), [this] { ShowModel3D(); });
@@ -46,6 +64,10 @@ namespace MiniBIM
         add("view.levelDown", N_("Level Below"), N_("Show the plan of the level below"), [this] { StepLevel(-1); });
         add("view.home", N_("Home View"), N_("Southwest isometric view of the whole model"), [this] { HomeView(); });
         add("view.zoomFit", N_("Zoom to Fit"), N_("Fit the whole model in the view without changing the direction"), [this] { ZoomToFit(); });
+        add("view.properties", N_("Properties"), N_("Show or hide the Properties palette"), [this] { TogglePanel("properties"); }, {},
+            [this] { return PanelShown("properties"); });
+        add("view.browser", N_("Project Browser"), N_("Show or hide the Project Browser"), [this] { TogglePanel("browser"); }, {},
+            [this] { return PanelShown("browser"); });
 
         // ── 帮助 ─────────────────────────────────────────────────
         add("help.about", N_("About MiniBIM"), "", [this] { ShowAbout(); });
@@ -83,6 +105,30 @@ namespace MiniBIM
             *result = std::move(out);
         OnModelChanged();
         return ok;
+    }
+
+    void MainFrame::Guard(std::function<void()> then)
+    {
+        if (!Dirty())
+        {
+            then();
+            return;
+        }
+        // 项目：保存过的显示文件名，否则显示项目名称
+        std::string name = m_session.GetModel().name;
+        if (const auto& path = m_session.Path())
+            name = ToUtf8(ToPath(*path).filename());
+        const std::string message = Format(Tr("Save changes to {0}?"), { name }) + "\n\n" +
+                                    Tr("If you don't, the changes since it was last saved are lost.");
+        MiniGUI::ShowMessageBox(*m_ui, "MiniBIM", message, { Tr("Save"), Tr("Don't Save"), Tr("Cancel") },
+            [this, then = std::move(then)](int button)
+            {
+                // 对话框关掉以后再做（可能还要弹出文件对话框）
+                if (button == 0)
+                    m_platform->Post([this, then] { if (SaveProject(false)) then(); });
+                else if (button == 1)
+                    m_platform->Post(then);
+            });
     }
 
     void MainFrame::NewProject()
@@ -133,7 +179,11 @@ namespace MiniBIM
                 return false;
         }
         const Bim::Json params = path.empty() ? Bim::Json::object() : Bim::Json{ { "path", path } };
-        return RunCommand("save", params, N_("Could not save the project"));
+        if (!RunCommand("save", params, N_("Could not save the project")))
+            return false;
+        m_savedModel = m_session.Snapshot();
+        UpdateTitle();
+        return true;
     }
 
     void MainFrame::ExportIfc()
@@ -143,8 +193,30 @@ namespace MiniBIM
         const std::string path = m_platform->ChooseIfcSavePath((stem.empty() ? std::string("Project") : stem) + ".ifc");
         if (path.empty())
             return;
-        // save 写 .ifc 时只导出，不改项目自己的路径
+        // save 写 .ifc 时只导出，不改项目自己的路径；项目仍然算没保存
         RunCommand("save", Bim::Json{ { "path", path } }, N_("Could not export IFC"));
+    }
+
+    void MainFrame::StepHistory(bool redo)
+    {
+        RunCommand(redo ? "redo" : "undo", Bim::Json::object(), redo ? N_("Could not redo") : N_("Could not undo"));
+    }
+
+    void MainFrame::DeleteSelection()
+    {
+        if (!m_selection.empty())
+            RunCommand("delete", Bim::Json{ { "ids", m_selection } }, N_("Could not delete"));
+    }
+
+    void MainFrame::FlipSelection()
+    {
+        const Bim::Model& m = m_session.GetModel();
+        std::vector<Bim::Id> walls;
+        for (const Bim::Id id : m_selection)
+            if (m.GetWall(id))
+                walls.push_back(id);
+        if (!walls.empty())
+            RunCommand("flip", Bim::Json{ { "ids", walls } }, N_("Could not flip the walls"));
     }
 
     void MainFrame::OpenSample()
@@ -163,15 +235,19 @@ namespace MiniBIM
     {
         if (m_session.Snapshot() != m_sceneModel)
             RebuildScene();
-        OnPlanModelChanged();
-        // 换了项目（新建、打开、示例）：相机重新框住模型
+        // 换了项目（新建、打开、示例）：相机重新框住模型，选择集清空，这一份算保存过的
         if (m_session.Resets() != m_sceneResets)
         {
             m_sceneResets  = m_session.Resets();
             m_cameraFitted = false;
+            m_selection.clear();
+            m_savedModel   = m_session.Snapshot();
         }
+        OnPlanModelChanged();
         UpdateTitle();
         UpdateStatus();
+        RefreshPanels();
+        m_commands.NotifyStateChanged();
         if (m_viewport)
             m_viewport->RequestRender();
         m_platform->RequestRedraw();

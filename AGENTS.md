@@ -53,7 +53,7 @@ MiniBIM → `src`（另有 `3rd/nlohmann/include`），MiniGUI → `src/UI`，�
 ## 架构
 
 - `MainFrame`（`apps/Common/src/GUI/MainFrame.h`）：整个界面由 MiniGUI 绘制；菜单与布局来自界面描述文件（`UiLayout`，保存后自动重新加载），
-  宿主面板 `viewport`、`statusbar` 由代码提供；所有操作注册为命令（`MainCommands.cpp`）
+  宿主面板 `viewport`、`properties`、`browser`（`Panels.cpp`）、`statusbar` 由代码提供；所有操作注册为命令（`MainCommands.cpp`）
 - `apps/Common` 必须保持平台无关：平台相关的一律经 `AppPlatform`，不要写 `#ifdef`；需要新的平台能力就在 `AppPlatform` 加虚函数，在各宿主里实现
 - 帧顺序（同 MiniCAD）：输入到达时立即更新状态并请求重绘 → 宿主在 `WM_PAINT` 调 `MainFrame::RenderFrame`：布局 → 渲染视口 → 画界面 → 呈现
 - 三维视口：`OrbitCamera`（正交、Z 向上、单位毫米）+ `IRenderer`；`Mat4` 为行向量约定（P' = P · M）

@@ -94,8 +94,10 @@ namespace MiniBIM
 
         // ── 宿主面板，交给界面描述文件摆放（标题写英文原文，UiLayout 应用时翻译）──
         m_layout = std::make_unique<MiniGUI::UiLayout>(m_commands, m_platform->GetResourceDir() + "/icons");
-        m_layout->RegisterPanel("viewport",  CreateViewport(), N_("3D View"));
-        m_layout->RegisterPanel("statusbar", CreateStatusBar());
+        m_layout->RegisterPanel("viewport",   CreateViewport(), N_("View"));
+        m_layout->RegisterPanel("properties", CreateProperties(), N_("Properties"));
+        m_layout->RegisterPanel("browser",    CreateBrowser(), N_("Project Browser"));
+        m_layout->RegisterPanel("statusbar",  CreateStatusBar());
         m_layout->SetDynamicMenuItems("languages", [this] { return BuildLanguageMenu(); });
 
         m_uiHost = m_ui->GetRoot()->AddChild<MiniGUI::Node>();
@@ -162,8 +164,8 @@ namespace MiniBIM
 
     void MainFrame::RequestExit()
     {
-        // 界面还没有编辑命令，模型只会被新建、打开换掉，没有要保存的改动；有了编辑工具后照 MiniCAD 询问是否保存
-        m_platform->Quit();
+        // 有没保存的改动时先问
+        Guard([this] { m_platform->Quit(); });
     }
 
     // =========================================================
@@ -200,8 +202,9 @@ namespace MiniBIM
 
     void MainFrame::RetranslateUi()
     {
-        // 界面描述生成的部分（标题栏、菜单、命令名称）整体重建；宿主面板里的文字由 UpdateStatus 等按当前语言重写
+        // 界面描述生成的部分（标题栏、菜单、命令名称）整体重建；宿主面板里的文字由 UpdateStatus、RefreshPanels 按当前语言重写
         ReloadUi();
+        RefreshPanels();
         m_ui->Update();
     }
 
@@ -254,6 +257,9 @@ namespace MiniBIM
         std::string project = m_session.GetModel().name;
         if (const auto& path = m_session.Path())
             project = ToUtf8(ToPath(*path).filename());
+        // 有没保存的改动时项目名前加 *
+        if (!project.empty() && Dirty())
+            project = "*" + project;
         const std::string title = (project.empty() ? std::string() : project + " - ") + "MiniBIM " MINIBIM_VERSION_STRING;
         m_platform->SetTitle(title);
         if (MiniGUI::TitleBar* bar = GetTitleBar())

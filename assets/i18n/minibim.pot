@@ -22,51 +22,51 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Undo"
 msgstr ""
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Redo"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Level"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Grid"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Wall"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Door"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Window"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Floor"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Ceiling"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Room"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Room Separator"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr ""
 
@@ -82,7 +82,7 @@ msgstr ""
 msgid "Load Family"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Component"
 msgstr ""
 
@@ -90,7 +90,7 @@ msgstr ""
 msgid "Flip"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp assets/ui/minibim_ui.json
 msgid "Modify"
 msgstr ""
 
@@ -102,7 +102,7 @@ msgstr ""
 msgid "Copy"
 msgstr ""
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Delete"
 msgstr ""
 
@@ -314,7 +314,35 @@ msgstr ""
 msgid "Exit"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Undo the last change"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Redo the change undone last"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Delete the selected elements; a wall takes its doors and windows with it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Deselect"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Clear the selection"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Flip Wall"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Turn the selected walls round: their exterior sides go to the other side"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
 msgstr ""
 
@@ -322,7 +350,7 @@ msgstr ""
 msgid "Show the model in 3D"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "Floor Plan"
 msgstr ""
 
@@ -330,7 +358,7 @@ msgstr ""
 msgid "Show the plan of a level: the one shown last, or the lowest"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Level Above"
 msgstr ""
 
@@ -362,8 +390,40 @@ msgstr ""
 msgid "Fit the whole model in the view without changing the direction"
 msgstr ""
 
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp assets/ui/minibim_ui.json
+msgid "Properties"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show or hide the Properties palette"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
+msgid "Project Browser"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show or hide the Project Browser"
+msgstr ""
+
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
 msgid "About MiniBIM"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save changes to {0}?"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "If you don't, the changes since it was last saved are lost."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Don't Save"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Cancel"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -399,7 +459,27 @@ msgid "Could not export IFC"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not redo"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not undo"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not delete"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not flip the walls"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not build the sample house"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp assets/ui/minibim_ui.json
+msgid "View"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
@@ -467,6 +547,318 @@ msgstr ""
 msgid "Language: {0}"
 msgstr ""
 
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Could not change the parameter"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "{0} ({1})"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Multiple Categories ({0})"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Floor Plan: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Multiple Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Type Selector"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Could not change the type"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Unconnected"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Not enclosed: the walls around it don't close."
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Search"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Floor Plans"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "3D Views"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Views (all)"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Families"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Constraints"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Location Line"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Base Constraint"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Base Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Base is Attached"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Top Constraint"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Unconnected Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Top is Attached"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Dimensions"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Length"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Radius"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Other"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Start"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "End"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Identity Data"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Mark"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Host Wall"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Flip Facing"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Flip Hand"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Sill Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Area"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Perimeter"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Number"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Name"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Location"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Height Offset From Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Slope (°)"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Thickness"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Structural"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Graphics"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Pattern Angle (°)"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Rotation (°)"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Base Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Extrusion Start"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Extrusion End"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Max Ridge Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Gable Ends"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "View Name"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Extents"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Associated Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Level Elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "View Range"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Top"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cut Plane"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Bottom"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "View Depth"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "`{0}` is not a length"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Yes"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "No"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "`{0}` is not a number"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "`{0}` is not a point; type x, y"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Walls"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Doors"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Windows"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Floors"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Rooms"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Levels"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Grids"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Components"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Roofs"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Ceilings"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Room Separators"
+msgstr ""
+
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"
 msgstr ""
@@ -474,6 +866,12 @@ msgstr ""
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Selected: {0} {1}"
 msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "{0} element selected"
+msgid_plural "{0} elements selected"
+msgstr[0] ""
+msgstr[1] ""
 
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "MiniBIM project"
@@ -504,9 +902,21 @@ msgid "Language"
 msgstr ""
 
 #: assets/ui/minibim_ui.json
-msgid "View"
+msgid "Edit"
 msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Help"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Create"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Navigate"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Palettes"
 msgstr ""

@@ -5,6 +5,7 @@
 # Model/    模型核心（移植自 BIMCraft）：几何、单位、ID、元素与检查、墙、库 → ModelTests
 # Commands/ 命令与会话（移植自 BIMCraft）：撤销、脚本、事务、建模、编辑、项目文件、示例房屋、恶意参数 → CommandTests
 # Ifc/      IFC 交换（移植自 BIMCraft）：STEP 的读法、IFC4 导出、IFC2x3 / IFC4 导入与往返 → IfcTests
+# App/      主窗口里不碰界面控件的部分（apps/Common/src/GUI/Parameters.cpp，直接编进来，只依赖核心库）：特性面板的参数、项目浏览器的搜索 → AppTests
 # 测试程序都是普通的可执行文件：打印 [PASS] / [FAIL]，有失败时返回非 0；输出到构建目录根（out/<preset>/），与 ctest 一起使用
 
 add_executable(I18nTests "I18n/I18nTests.cpp")
@@ -42,6 +43,14 @@ if(MSVC)
     target_compile_options(IfcTests PRIVATE /utf-8)
 endif()
 add_test(NAME IfcTests COMMAND IfcTests)
+
+add_executable(AppTests "App/AppTests.cpp" "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/Parameters.cpp")
+target_include_directories(AppTests PRIVATE "${CMAKE_SOURCE_DIR}/apps/Common/src")
+target_link_libraries(AppTests PRIVATE MiniBIM)
+if(MSVC)
+    target_compile_options(AppTests PRIVATE /utf-8)
+endif()
+add_test(NAME AppTests COMMAND AppTests)
 
 if(MINIBIM_WITH_SOLID)
     add_executable(SMLibSmokeTests "Solid/SMLibSmokeTests.cpp")

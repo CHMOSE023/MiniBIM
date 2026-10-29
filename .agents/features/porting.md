@@ -53,6 +53,15 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 - **项目文件**：内容与 BIMCraft 的 `.bimcraft` 相同（同一个 `format` 号，两边互相打开），扩展名 `.minibim`（不用 BIMCraft 的名称），也能打开 `.bimcraft`
 - **撤销**：照 BIMCraft 存整个模型的快照（`Session`），不用 MiniCAD 的 `ICommand` / `CommandStack`
 
+## 移植界面（第 3 阶段）
+
+- `crates/ui-egui` 基于 egui（立即模式），不能逐行翻译：在 MiniGUI（保留模式的控件树）上重写，照它的行为、文字和布局（同 Revit）。
+  分段见 `docs/PLAN.md` 第 3 阶段；来源行写 `crates/ui-egui/src/<文件>.rs`
+- 立即模式每帧重画，MiniGUI 的面板要在模型、选择集、视图变了时重建（`MainFrame::RefreshPanels`）；控件回调里不拆掉控件自己，改模型的命令经 `AppPlatform::Post` 推后
+- 不碰控件的逻辑（参数表、值的读写、搜索……）放进只依赖核心库的文件（如 `apps/Common/src/GUI/Parameters.cpp`），由 `AppTests` 测；BIMCraft 界面的测试（`crates/ui-egui/src/tests*`）
+  多半驱动 egui，能移植的是这类纯逻辑的
+- 界面文字照 BIMCraft 的英文原文（`msg!` 的那些）；中文译文可以先查 BIMCraft 的 `translations/ui/zh.po`，不合适的（如 Elevation 在标高上是"高程"）再改
+
 ## 测试与排查
 
 - BIMCraft 的测试大多经 Session 的 execute 驱动命令（`crates/core/src/tests.rs`），移植后同样经 C++ 的 Session 驱动，这样命令、检查、回滚一起测到
