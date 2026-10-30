@@ -337,6 +337,69 @@ def _(i):
     i.dashed([(32, 24), (32, 60)], G, 3.5)
 
 
+@icon("Move")              # modify.move：移动（十字四向箭头）
+def _(i):
+    i.arrow(32, 32, 32, 6, A, 3.5, 9); i.arrow(32, 32, 32, 58, A, 3.5, 9)
+    i.arrow(32, 32, 6, 32, A, 3.5, 9); i.arrow(32, 32, 58, 32, A, 3.5, 9)
+    i.rect(24, 24, 40, 40, G, GF, w=3)
+
+
+@icon("Copy")              # modify.copy：复制（两个错开的方块，加号）
+def _(i):
+    i.rect(6, 6, 36, 36, G, w=3.5)
+    i.rect(22, 22, 52, 52, A, AF, w=3.5)
+    i.line([(37, 30), (37, 44)], A, 3.5); i.line([(30, 37), (44, 37)], A, 3.5)
+
+
+@icon("Rotate")            # modify.rotate：旋转（转过一个角的方块，弧形箭头）
+def _(i):
+    i.poly([(14, 40), (34, 50), (24, 58), (4, 48)], G, GF, w=3)
+    i.arc(32, 36, 22, 200, 330, A, w=4)
+    i.head(46, 22, 52, 25, A, head=11)
+
+
+@icon("MirrorPick")        # modify.mirrorPick：镜像 - 拾取轴（点划线轴两边各一个三角）
+def _(i):
+    i.dashed([(32, 4), (32, 60)], A, 3.5)
+    i.poly([(26, 14), (26, 50), (6, 50)], G, GF, w=3)
+    i.poly([(38, 14), (38, 50), (58, 50)], A, AF, w=3)
+
+
+@icon("MirrorDraw")        # modify.mirrorDraw：镜像 - 绘制轴（斜的轴、两端的点）
+def _(i):
+    i.line([(14, 58), (50, 6)], A, 3.5)
+    i.dot(14, 58, 4.5); i.dot(50, 6, 4.5)
+    i.poly([(8, 20), (26, 10), (20, 34)], G, GF, w=3)
+
+
+@icon("Align")             # modify.align：对齐（一条参照线，一块方块靠上去）
+def _(i):
+    i.line([(10, 4), (10, 60)], A, 4.5)
+    i.rect(26, 18, 52, 46, G, GF, w=3.5)
+    i.arrow(24, 32, 14, 32, A, 3.5, 8)
+
+
+@icon("Trim")              # modify.trim：修剪 / 延伸到角（两面墙伸到一个拐角）
+def _(i):
+    i.line([(8, 16), (40, 16)], G, 6)
+    i.line([(48, 56), (48, 24)], G, 6)
+    i.dashed([(40, 16), (48, 16), (48, 24)], A, 3.5)
+    i.dot(48, 16, 4.5)
+
+
+@icon("Split")             # modify.split：拆分（一面墙，中间一道切口）
+def _(i):
+    i.rect(4, 26, 28, 38, G, GF, w=3); i.rect(36, 26, 60, 38, G, GF, w=3)
+    i.line([(32, 12), (32, 52)], A, 4)
+
+
+@icon("Offset")            # modify.offset：偏移（一面墙，旁边平行的一面，带距离箭头）
+def _(i):
+    i.rect(6, 12, 58, 22, G, GF, w=3)
+    i.rect(6, 42, 58, 52, A, AF, w=3)
+    i.arrow(32, 24, 32, 40, A, 3, 7, both=True)
+
+
 @icon("Properties")        # view.properties：特性面板（照 MiniCAD 的 PropertiesPanel：名称 | 值的几行）
 def _(i):
     i.rect(8, 8, 56, 56, G, w=3, r=4); i.d.rectangle(i.P([(8, 8), (56, 18)]), fill=AF)

@@ -400,9 +400,29 @@ namespace MiniBIM
                 const bool shift = (e.modifiers & static_cast<uint8_t>(ModifierKey::Shift)) != 0;
                 m_drag = (e.button == MouseButton::Left || shift) ? Drag::Orbit : Drag::Pan;
                 m_lastPixel = e.pixel;
+                m_downPixel = e.pixel;
             }
             break;
         case PointerEventType::Up:
+            // 左键没拖动：拾取射线最先碰到的元素（Ctrl 加进或拿出），同平面上的单击
+            if (e.button == MouseButton::Left && std::hypot(e.pixel.x - m_downPixel.x, e.pixel.y - m_downPixel.y) <= 4.0f * m_dpiScale &&
+                m_camera.GetViewportWidth() > 0 && m_camera.GetViewportHeight() > 0)
+            {
+                const double x = 2.0 * e.pixel.x / m_camera.GetViewportWidth() - 1.0, y = 1.0 - 2.0 * e.pixel.y / m_camera.GetViewportHeight();
+                const Math::Point3 origin = Math::Mat4::Inverse(m_camera.GetViewProj()).TransformPoint({ x, y, 0.0 });
+                const std::optional<Bim::Id> hit = m_scene.Pick(origin, m_camera.GetForward());
+                const bool ctrl = (e.modifiers & static_cast<uint8_t>(ModifierKey::Ctrl)) != 0;
+                std::vector<Bim::Id> picked = ctrl ? m_selection : std::vector<Bim::Id>{};
+                if (hit)
+                {
+                    const auto at = std::find(picked.begin(), picked.end(), *hit);
+                    if (at == picked.end())
+                        picked.push_back(*hit);
+                    else
+                        picked.erase(at);
+                }
+                SetSelection(std::move(picked));
+            }
             if (e.buttons == 0)
                 m_drag = Drag::None;
             break;
@@ -473,6 +493,22 @@ namespace MiniBIM
                 m_edgeVerts.push_back({ { static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z) }, edge });
             }
             renderer.Submit(m_edgeVerts, viewProj, PrimitiveType::Line, true);
+
+            // 选中的元素：它的三角形再画一遍，强调色，同样往相机挪一点
+            m_edgeVerts.clear();
+            const VertexColor picked(0.0f, 0.47f, 0.84f, 1.0f);
+            for (const Bim::Id id : m_selection)
+            {
+                const auto [first, last] = m_scene.RangeOf(id);
+                for (size_t i = first; i < last; ++i)
+                {
+                    const auto& p = m_scene.GetTriangles()[i].pos;
+                    const Math::Point3 q = Math::Point3{ p.x, p.y, p.z } + toward;
+                    m_edgeVerts.push_back({ { static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z) }, picked });
+                }
+            }
+            if (!m_edgeVerts.empty())
+                renderer.Submit(m_edgeVerts, viewProj, PrimitiveType::Triangle, true);
         }
         renderer.EndFrame();
 

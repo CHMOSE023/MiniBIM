@@ -19,6 +19,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Csg.h` | `csg.rs` | 族的空心形体用的网格布尔运算（BSP，工作表不递归，`Csg::Meter` 限制花费） |
 | `src/Model/FamilyLibrary.cpp` | `family.rs` 的 library、`fixtures.rs` | 新项目带的 34 个族：家具 10、门窗 6、各专业的器具 18 |
 | `src/Model/Render.h` | `render.rs`、`pen.rs`、`styles.rs` 的平面部分 | 平面图的显示列表（像素里的填色环与折线）：墙的剖切填充与边线、门窗、房间标签、轴网、屋顶、楼板、构件；线宽（笔）；拾取 |
+| `src/Model/Align.h` | `align.rs`、`model.rs` 的 `reference_line` | 对齐：元素在平面上的直边与参照轴线（墙的中心线、两面、两端，门窗的中线与门框，轴网……），把一条线放到另一条上的刚体运动 |
 | `src/Model/Snap.h` | `snap.rs` | 捕捉：平面上点下的点落在哪（端点、中点、交点、圆心、垂足、墙中心线、角度引导线、最近的 10 毫米），标尺的读数与刻度 |
 | `src/Model/Font.h` | `font.rs` | 平面图注释用的单线字（拉丁、西里尔大写，附加符号；没有的字画问号） |
 | `src/Model/Skeleton.h` | `skeleton.rs` | 多边形（含天井）的直骨架：坡屋顶的斜脊、天沟、屋脊与各坡面 |
@@ -26,7 +27,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/ModelJson.h` | `model.rs`、`ids.rs`、`library.rs`、`lenient.rs` | 元素与项目文件的 JSON |
 | `src/Model/Walls.h` | `walls.rs` 与它的 index 子模块 | 墙的定位线、墙面、斜接封口、轮廓、棱柱、加速索引 |
 | `src/Commands/Session.h` | `engine.rs` | `Session`：执行命令、回滚、撤销 / 重做、脚本、事务 |
-| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`，第 2c 步加了 `family`、`component`，门窗可带 `family`；第 2e 步 `open`、`save` 读写 `.ifc`） |
+| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 3c 步加了 `align`、`rotate`、`mirror`、`corner`、`split`（只认墙；详图线的部分随详图线移植）；第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`，第 2c 步加了 `family`、`component`，门窗可带 `family`；第 2e 步 `open`、`save` 读写 `.ifc`） |
 | `src/Commands/Sample.h` | `sample.rs` | 示例房屋脚本（已移植命令能做的部分） |
 
 ## 入口与数据流
@@ -56,6 +57,9 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   （剖到的、看到的、字）和笔；画完按对象样式把 `Pen::ByCategory` 换成类别的笔（`StyleOf`，门窗剖到的用中粗），再按 1 : n 的线宽表定宽。
   注释（轴网圆圈、房间标签）按 `AnnotationOf` 随比例放大。BIMCraft 平面图的视图图形覆盖、填充与线型图案、裁剪范围、尺寸与标记等注释、楼梯与设备、
   反射天花板平面还没移植。`Render::Sketch` 画还不在模型里的一个元素（工具预览）：放进模型的副本里画整个平面，只留它的几项
+- 移动、复制、旋转、镜像、对齐都经 `Commands.cpp` 里的 `Motion`（点怎么变，平移时门窗沿墙滑多少，是不是镜像）与 `Relocate` / `Duplicate`：
+  连着的墙伸缩保持相接，墙上的门窗随墙。镜像时墙反着走（外侧仍在镜像过去的那边）、楼板与天花板的轮廓反向、构件翻过来、门挂到另一侧门框；
+  复制的房间、轴网、门窗取下一个编号
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、楼板、天花板、屋顶）；详图线的象限点与切点、点云、草图模式（`in_sketch`）、
   视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）

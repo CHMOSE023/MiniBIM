@@ -104,10 +104,16 @@ namespace MiniBIM
         // 放东西要在平面上（标高在三维视图里也能建）
         if (tool != Tool::Modify && tool != Tool::Level && !m_planLevel)
             ShowPlan(std::nullopt);
-        if (tool != Tool::Modify && !m_selection.empty())
-            m_selection.clear();
+        if (NeedsSelection(tool) && m_selection.empty())
+            return;
         m_tool = tool;
+        if ((ToolCategory() || tool == Tool::Level) && !m_selection.empty())
+            m_selection.clear();
         m_toolPts.clear();
+        m_rotateCentre = tool == Tool::Rotate ? SelectionMiddle() : std::nullopt;
+        m_placeCentre  = false;
+        m_alignRef.reset();
+        m_trimFirst.reset();
         m_typedLength.clear();
         m_found.reset();
         BuildOptionsBar();
@@ -122,8 +128,12 @@ namespace MiniBIM
     {
         if (!m_typedLength.empty())
             m_typedLength.clear();
-        else if (!m_toolPts.empty())
+        else if (!m_toolPts.empty() || m_alignRef || m_trimFirst)
+        {
             m_toolPts.clear();
+            m_alignRef.reset();
+            m_trimFirst.reset();
+        }
         else if (m_tool != Tool::Modify)
         {
             SetTool(Tool::Modify);
@@ -171,6 +181,18 @@ namespace MiniBIM
         case Tool::Room:      return N_("Click inside walls to place a room; the outline shows the room you'd get.");
         case Tool::Level:     return N_("Type the new level's elevation in the Options Bar, then Create.");
         case Tool::Grid:      return m_toolPts.empty() ? N_("Click to enter the grid's start point.") : N_("Click to enter the grid's end point.");
+        case Tool::Move:      return m_toolPts.empty() ? N_("Click a base point to measure from.") : N_("Click where the base point goes. Esc cancels.");
+        case Tool::Copy:      return m_toolPts.empty() ? N_("Click a base point to measure from.") : N_("Click where the copy's base point goes. Esc cancels.");
+        case Tool::Rotate:    return m_placeCentre || !m_rotateCentre ? N_("Click the centre of rotation.")
+                                   : m_toolPts.empty() ? N_("Click the start of the angle, or type an angle in the Options Bar.")
+                                                       : N_("Click the end of the angle. Esc cancels.");
+        case Tool::MirrorPick: return N_("Pick a wall or grid to mirror across.");
+        case Tool::MirrorDraw: return m_toolPts.empty() ? N_("Click the start of the mirror axis.") : N_("Click the end of the mirror axis.");
+        case Tool::Align:     return m_alignRef ? N_("Pick the element's highlighted edge to move and turn onto the reference.")
+                                                : N_("Pick a reference edge or centre line; the line under the cursor is highlighted.");
+        case Tool::Trim:      return m_trimFirst ? N_("Pick the second wall, on the part to keep.") : N_("Pick the first wall, on the part to keep.");
+        case Tool::Split:     return N_("Click a wall where to split it.");
+        case Tool::Offset:    return N_("Point to a wall: the offset goes to the cursor's side. Click to place it.");
         }
         return "";
     }
@@ -233,6 +255,11 @@ namespace MiniBIM
             { Tool::Roof, N_("Modify | Create Roof Footprint") }, { Tool::Floor, N_("Modify | Create Floor") },
             { Tool::Ceiling, N_("Modify | Place Ceiling") }, { Tool::Room, N_("Modify | Place Room") },
             { Tool::Level, N_("Modify | Place Level") },     { Tool::Grid, N_("Modify | Place Grid") },
+            { Tool::Move, N_("Modify | Move") },             { Tool::Copy, N_("Modify | Copy") },
+            { Tool::Rotate, N_("Modify | Rotate") },         { Tool::MirrorPick, N_("Modify | Mirror Pick Axis") },
+            { Tool::MirrorDraw, N_("Modify | Mirror Draw Axis") }, { Tool::Align, N_("Modify | Align") },
+            { Tool::Trim, N_("Modify | Trim/Extend to Corner") }, { Tool::Split, N_("Modify | Split Element") },
+            { Tool::Offset, N_("Modify | Offset") },
         };
         for (const auto& [t, name] : names)
             if (t == m_tool)
@@ -323,6 +350,51 @@ namespace MiniBIM
             });
             break;
         }
+        case Tool::Move:
+            check(Tr("Constrain"), m_modifyOpt.constrain);
+            break;
+        case Tool::Copy:
+            check(Tr("Constrain"), m_modifyOpt.constrain);
+            check(Tr("Multiple"), m_modifyOpt.multiple);
+            break;
+        // 输入角度按 Enter 转；放中心；复制
+        case Tool::Rotate:
+        {
+            label(Tr("Angle:"));
+            auto* box = field(m_modifyOpt.rotateAngle, 70.0f, "°");
+            box->SetOnSubmit([this](const std::string& t)
+            {
+                m_platform->Post([this, t]
+                {
+                    double a = 0.0;
+                    if (!ReadNumber(t, a) || !m_rotateCentre)
+                    {
+                        MiniGUI::ShowMessageBox(*m_ui, Tr("Could not rotate"), Format(Tr("`{0}` is not an angle in degrees"), { t }));
+                        return;
+                    }
+                    Bim::Json made;
+                    if (RunCommand("rotate", Bim::Json{ { "ids", m_selection }, { "about", Bim::Json::array({ m_rotateCentre->x, m_rotateCentre->y }) },
+                                                        { "angle", a }, { "copy", m_modifyOpt.rotateCopy } }, N_("Could not rotate"), &made))
+                        Edited(made, m_modifyOpt.rotateCopy);
+                });
+            });
+            bar->AddChild<Button>(Tr("Place Centre"), [this]
+            {
+                m_placeCentre = true;
+                m_toolPts.clear();
+                UpdateStatus();
+            });
+            check(Tr("Copy"), m_modifyOpt.rotateCopy);
+            break;
+        }
+        case Tool::MirrorPick: case Tool::MirrorDraw:
+            check(Tr("Copy"), m_modifyOpt.mirrorCopy);
+            break;
+        case Tool::Offset:
+            label(Tr("Offset:"));
+            field(m_modifyOpt.offset, 80.0f, unit);
+            check(Tr("Copy"), m_modifyOpt.offsetCopy);
+            break;
         case Tool::Level:
         {
             label(Tr("Elevation"));
@@ -545,6 +617,7 @@ namespace MiniBIM
             break;
         }
         default:
+            ModifyClick(pixel, modifiers);
             break;
         }
     }
@@ -586,7 +659,16 @@ namespace MiniBIM
     bool MainFrame::OnPlanKey(const MiniGUI::KeyEvent& e)
     {
         using MiniGUI::Key;
-        if (e.type != MiniGUI::KeyEventType::Down || !m_planLevel || m_tool == Tool::Modify)
+        if (e.type != MiniGUI::KeyEventType::Down || !m_planLevel)
+            return false;
+        // Tab：光标下叠着的元素轮到下一个
+        if (e.key == Key::Tab && !e.Ctrl())
+        {
+            ++m_tabIndex;
+            m_viewport->RequestRender();
+            return true;
+        }
+        if (m_tool == Tool::Modify)
             return false;
         switch (e.key)
         {
@@ -637,18 +719,92 @@ namespace MiniBIM
     // =========================================================
     // 预览
     // =========================================================
+    Bim::P2 MainFrame::DrawSnap(Bim::Render::Drawing& d, const Bim::Snap::Found& f, std::string& tip)
+    {
+        const Bim::Render::View& v = *m_planView;
+        const float px = m_dpiScale;
+        m_found = f;
+        const auto [x, y] = v.ToPx(f.at);
+        const float r = 6.0f * px, w = 2.0f * px;
+        if (f.guide)
+        {
+            const auto [gx, gy] = v.ToPx(f.guide->from);
+            const float dx = x - gx, dy = y - gy, len = std::hypot(dx, dy);
+            if (len > 1.0f)
+            {
+                const float ux = dx / len, uy = dy / len, back = std::min(len, 4000.0f) + 24.0f * px, on = 28.0f * px;
+                Stroke(d, { { x - ux * back, y - uy * back }, { x + ux * on, y + uy * on } }, 1.0f * px, false,
+                       std::vector<float>{ 6.0f * px, 4.0f * px });
+            }
+        }
+        using K = Bim::Snap::Kind;
+        switch (f.kind)
+        {
+        case K::Endpoint:
+            Stroke(d, { { x - r, y - r }, { x + r, y - r }, { x + r, y + r }, { x - r, y + r } }, w, true);
+            break;
+        case K::Midpoint:
+            Stroke(d, { { x, y - r }, { x + r, y + r * 0.8f }, { x - r, y + r * 0.8f } }, w, true);
+            break;
+        case K::Intersection:
+            Stroke(d, { { x - r, y - r }, { x + r, y + r } }, w);
+            Stroke(d, { { x - r, y + r }, { x + r, y - r } }, w);
+            break;
+        case K::Centre:
+        {
+            std::vector<Bim::Render::Px> c;
+            for (int k = 0; k < 16; ++k)
+                c.emplace_back(x + r * std::cos(k * 0.3927f), y + r * std::sin(k * 0.3927f));
+            Stroke(d, std::move(c), w, true);
+            break;
+        }
+        case K::Perpendicular:
+            Stroke(d, { { x - r, y + r * 0.8f }, { x + r, y + r * 0.8f } }, w);
+            Stroke(d, { { x, y + r * 0.8f }, { x, y - r } }, w);
+            break;
+        case K::Nearest:
+            Stroke(d, { { x, y - r }, { x + r, y }, { x, y + r }, { x - r, y } }, w, true);
+            break;
+        case K::Angle:
+            Stroke(d, { { x - r * 0.4f, y }, { x + r * 0.4f, y } }, 3.0f * px);
+            break;
+        case K::Free:
+            Stroke(d, { { x - r * 0.7f, y - r * 0.7f }, { x + r * 0.7f, y - r * 0.7f }, { x + r * 0.7f, y + r * 0.7f }, { x - r * 0.7f, y + r * 0.7f } }, w, true);
+            break;
+        }
+        if (f.kind != K::Free && f.kind != K::Angle)
+            tip = Tr(Bim::Snap::Name(f.kind));
+        return f.at;
+    }
+
     void MainFrame::BuildPreview(Bim::Render::Drawing& d)
     {
         if (m_planTipBox)
             m_planTipBox->SetVisible(false);
         m_found.reset();
-        if (m_tool == Tool::Modify || m_tool == Tool::Level || !m_hoverPixel || !m_planLevel || !m_planView)
+        if (m_tool == Tool::Level || !m_planLevel || !m_planView)
+            return;
+        std::string tip;
+        // 修改与修改工具：夹点、框选、拖动、各工具的预览（Modify.cpp）
+        if (m_tool == Tool::Modify || ToolCategory() == nullptr)
+        {
+            BuildModifyPreview(d, tip);
+            if (m_planTipBox && !tip.empty() && m_hoverPixel)
+            {
+                m_planTip->SetText(tip);
+                MiniGUI::LayoutStyle& s = m_planTipBox->EditLayoutStyle();
+                s.left = m_hoverPixel->x / m_dpiScale + 14.0f;
+                s.top  = std::max(0.0f, m_hoverPixel->y / m_dpiScale - 30.0f);
+                m_planTipBox->SetVisible(true);
+            }
+            return;
+        }
+        if (!m_hoverPixel)
             return;
         const Bim::Model& m = m_session.GetModel();
         const Bim::Render::View& v = *m_planView;
         const float px = m_dpiScale;
         const Bim::P2 mm = v.ToMm({ m_hoverPixel->x, m_hoverPixel->y });
-        std::string tip;
         // 一个还不在模型里的元素：照平面会画的样子，用强调色
         auto sketched = [&](const Bim::Element& e)
         {
@@ -662,61 +818,7 @@ namespace MiniBIM
             }
         };
         // 捕捉到的点：记号与引导线
-        auto marker = [&](const Bim::Snap::Found& f)
-        {
-            m_found = f;
-            const auto [x, y] = v.ToPx(f.at);
-            const float r = 6.0f * px, w = 2.0f * px;
-            if (f.guide)
-            {
-                const auto [gx, gy] = v.ToPx(f.guide->from);
-                const float dx = x - gx, dy = y - gy, len = std::hypot(dx, dy);
-                if (len > 1.0f)
-                {
-                    const float ux = dx / len, uy = dy / len, back = std::min(len, 4000.0f) + 24.0f * px, on = 28.0f * px;
-                    Stroke(d, { { x - ux * back, y - uy * back }, { x + ux * on, y + uy * on } }, 1.0f * px, false,
-                           std::vector<float>{ 6.0f * px, 4.0f * px });
-                }
-            }
-            using K = Bim::Snap::Kind;
-            switch (f.kind)
-            {
-            case K::Endpoint:
-                Stroke(d, { { x - r, y - r }, { x + r, y - r }, { x + r, y + r }, { x - r, y + r } }, w, true);
-                break;
-            case K::Midpoint:
-                Stroke(d, { { x, y - r }, { x + r, y + r * 0.8f }, { x - r, y + r * 0.8f } }, w, true);
-                break;
-            case K::Intersection:
-                Stroke(d, { { x - r, y - r }, { x + r, y + r } }, w);
-                Stroke(d, { { x - r, y + r }, { x + r, y - r } }, w);
-                break;
-            case K::Centre:
-            {
-                std::vector<Bim::Render::Px> c;
-                for (int k = 0; k < 16; ++k)
-                    c.emplace_back(x + r * std::cos(k * 0.3927f), y + r * std::sin(k * 0.3927f));
-                Stroke(d, std::move(c), w, true);
-                break;
-            }
-            case K::Perpendicular:
-                Stroke(d, { { x - r, y + r * 0.8f }, { x + r, y + r * 0.8f } }, w);
-                Stroke(d, { { x, y + r * 0.8f }, { x, y - r } }, w);
-                break;
-            case K::Nearest:
-                Stroke(d, { { x, y - r }, { x + r, y }, { x, y + r }, { x - r, y } }, w, true);
-                break;
-            case K::Angle:
-                Stroke(d, { { x - r * 0.4f, y }, { x + r * 0.4f, y } }, 3.0f * px);
-                break;
-            case K::Free:
-                Stroke(d, { { x - r * 0.7f, y - r * 0.7f }, { x + r * 0.7f, y - r * 0.7f }, { x + r * 0.7f, y + r * 0.7f }, { x - r * 0.7f, y + r * 0.7f } }, w, true);
-                break;
-            }
-            if (f.kind != K::Free && f.kind != K::Angle)
-                tip = Tr(Bim::Snap::Name(f.kind));
-            return f.at;
-        };
+        auto marker = [&](const Bim::Snap::Found& f) { return DrawSnap(d, f, tip); };
         const Bim::Json level = Bim::ToJson(*m_planLevel);
         switch (m_tool)
         {

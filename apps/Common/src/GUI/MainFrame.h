@@ -1,6 +1,7 @@
 #pragma once
 #include "Commands/Session.h"
 #include "GUI/AppPlatform.h"
+#include "Model/Align.h"
 #include "Model/Render.h"
 #include "Model/Snap.h"
 #include "View/ModelScene.h"
@@ -143,7 +144,10 @@ namespace MiniBIM
 
         // ── 工具（Tools.cpp）──────────────────────────────────────
         // 平面上单击做什么：选（修改），或放一类东西
-        enum class Tool { Modify, Wall, Door, Window, Component, Roof, Floor, Ceiling, Room, Level, Grid };
+        enum class Tool { Modify, Wall, Door, Window, Component, Roof, Floor, Ceiling, Room, Level, Grid,
+                          Move, Copy, Rotate, MirrorPick, MirrorDraw, Align, Trim, Split, Offset };
+        // 改选择集的工具（移动、复制、旋转、镜像）要先选东西
+        static bool NeedsSelection(Tool t) { return t == Tool::Move || t == Tool::Copy || t == Tool::Rotate || t == Tool::MirrorPick || t == Tool::MirrorDraw; }
         void SetTool(Tool tool);
         // Esc：先丢掉输入的长度，再丢掉画了一半的（墙链、轴网的起点），再退出工具，最后清空选择集
         void Escape();
@@ -168,6 +172,29 @@ namespace MiniBIM
         std::optional<Bim::Json> WallTop(std::string& error) const;
         // 构件工具放的族与类型：选的，否则第一个可载入族的第一个类型
         std::optional<std::pair<std::string, std::string>> Placing() const;
+
+        // ── 修改（Modify.cpp）：框选、Tab 切换、拖动、夹点、修改工具 ──────────
+        // 光标下的元素：几个叠在一起时按 Tab 轮换
+        std::optional<Bim::Id> Hovered() const;
+        // 光标下离它最近的一条直线（镜像的轴、对齐的线）：光标附近各元素的对齐线里最近的，Tab 轮换
+        std::optional<std::pair<Bim::Id, Bim::Align::Line>> HoveredLine() const;
+        // 光标下的墙（修剪、拆分、偏移只认墙）
+        std::optional<Bim::Id> HoveredWall() const;
+        // 左键在修改工具下按下：夹点、拖动元素或框选，等拖出几个像素才开始
+        void BeginPlanDrag(MiniGUI::Vec2 pixel);
+        void UpdatePlanDrag(MiniGUI::Vec2 pixel);
+        void FinishPlanDrag(MiniGUI::Vec2 pixel, uint8_t modifiers);
+        // 单击选中（修改工具下）：Ctrl 加进或拿出
+        void PickAt(MiniGUI::Vec2 pixel, uint8_t modifiers);
+        // 修改工具（移动、复制、旋转、镜像、对齐、修剪、拆分、偏移）的单击
+        void ModifyClick(MiniGUI::Vec2 pixel, uint8_t modifiers);
+        void BuildModifyPreview(Bim::Render::Drawing& d, std::string& tip);
+        // 捕捉到的点的记号与引导线（读数 tip 写捕捉到什么）；返回那个点
+        Bim::P2 DrawSnap(Bim::Render::Drawing& d, const Bim::Snap::Found& f, std::string& tip);
+        // 选择集的中心（外框的中点）：旋转的默认中心
+        std::optional<Bim::P2> SelectionMiddle() const;
+        // 旋转或镜像之后回到修改，复制的选中副本
+        void Edited(const Bim::Json& made, bool copied);
         void RenderPlan(IRenderer& renderer, int pixelWidth, int pixelHeight);
         void OnPlanPointer(const MiniGUI::ViewportPointerEvent& e);
         // 平面的名称（标高名），以及选中的元素：状态栏用
@@ -259,6 +286,29 @@ namespace MiniBIM
             std::optional<std::pair<std::string, std::string>> component;
         } m_toolOpt;
         MiniGUI::Node*  m_optionsBody = nullptr;
+        // 修改工具的状态
+        std::optional<Bim::P2>          m_rotateCentre;     // 旋转中心：选工具时为选择集的中心
+        bool                            m_placeCentre = false;  // 下一下单击放旋转中心
+        std::optional<Bim::Align::Line> m_alignRef;         // 对齐：已拾取的参照线
+        std::optional<std::pair<Bim::Id, Bim::P2>> m_trimFirst;  // 修剪到角：第一面墙与拾取处（保留的那部分）
+        struct ModifyOptions
+        {
+            bool        constrain  = false;
+            bool        multiple   = false;
+            bool        rotateCopy = false;
+            std::string rotateAngle;
+            bool        mirrorCopy = true;
+            std::string offset     = "1000";
+            bool        offsetCopy = true;
+        } m_modifyOpt;
+        size_t m_tabIndex = 0;                              // 光标下几个元素时 Tab 轮到第几个
+        // 修改工具下左键拖动：框选、拖动选中的元素、拖墙端的夹点
+        enum class PlanDrag { None, Box, Move, Grip };
+        PlanDrag                        m_planDrag = PlanDrag::None;
+        PlanDrag                        m_pendingDrag = PlanDrag::None;
+        std::optional<std::pair<Bim::Id, bool>> m_grip;     // 拖的是哪面墙的哪一端（true 为起点）
+        std::optional<Bim::Id>          m_dragElement;      // 按下时光标下的元素：拖动时没选中就先选中它
+        MiniGUI::Vec2                   m_dragNow;
         MiniGUI::Node*  m_planTipBox  = nullptr;            // 平面上跟着光标的读数（长度、角度、面积、捕捉到什么）
         MiniGUI::Label* m_planTip     = nullptr;
     };

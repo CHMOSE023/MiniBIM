@@ -216,10 +216,17 @@ namespace MiniBIM
         Triangle(m_planVerts, { 0.0f, 0.0f }, { fw, 0.0f }, { fw, fh }, paper);
         Triangle(m_planVerts, { 0.0f, 0.0f }, { fw, fh }, { 0.0f, fh }, paper);
         const Bim::Render::Drawing& d = *m_plan;
+        // 修改工具下光标下的元素也高亮（拖动、框选时不）
+        // 修改工具下光标下的元素；修剪、拆分、偏移是光标下的墙（对齐、镜像拾取轴画它们自己的线）
+        const bool walls = m_tool == Tool::Trim || m_tool == Tool::Split || m_tool == Tool::Offset;
+        const std::optional<Bim::Id> hovered = m_planDrag != PlanDrag::None ? std::nullopt
+                                             : m_tool == Tool::Modify    ? Hovered()
+                                             : walls                     ? HoveredWall()
+                                                                         : std::nullopt;
         for (size_t i = 0; i < d.prims.size(); ++i)
         {
             const Bim::Render::Prim& p = d.prims[i];
-            const bool selected = d.owners[i] && Selected(*d.owners[i]) && p.color != Bim::Render::Paper;
+            const bool selected = d.owners[i] && (Selected(*d.owners[i]) || (hovered && *d.owners[i] == *hovered)) && p.color != Bim::Render::Paper;
             const VertexColor color = selected ? picked : ColorOf(p.color);
             if (p.kind == Bim::Render::Prim::Kind::Fill)
             {
@@ -263,65 +270,64 @@ namespace MiniBIM
         switch (e.type)
         {
         case PointerEventType::Down:
-            if (m_drag == Drag::None)
+            if (m_drag == Drag::None && m_planDrag == PlanDrag::None)
             {
                 m_lastPixel = e.pixel;
                 m_downPixel = e.pixel;
                 if (e.button == MouseButton::Left)
+                {
                     m_planClick = true;
+                    if (m_tool == Tool::Modify)
+                        BeginPlanDrag(e.pixel);
+                }
                 else
                     m_drag = Drag::Pan;
             }
             break;
         case PointerEventType::Up:
-            if (m_planClick && e.button == MouseButton::Left && m_tool != Tool::Modify)
-            {
-                m_planClick = false;
+            if (m_planDrag != PlanDrag::None && e.button == MouseButton::Left)
+                FinishPlanDrag(e.pixel, e.modifiers);
+            else if (m_planClick && e.button == MouseButton::Left && m_tool != Tool::Modify)
                 ToolClick(e.pixel, e.modifiers);
-            }
             else if (m_planClick && e.button == MouseButton::Left)
+                PickAt(e.pixel, e.modifiers);
+            if (e.button == MouseButton::Left)
             {
-                // 单击：拾取离指针最近、几个像素以内的元素；Ctrl + 单击把它加进或拿出选择集
-                m_planClick = false;
-                const std::optional<Bim::Id> hit = m_plan ? m_plan->Pick({ e.pixel.x, e.pixel.y }, 4.0f * m_dpiScale) : std::nullopt;
-                const bool ctrl = (e.modifiers & static_cast<uint8_t>(ModifierKey::Ctrl)) != 0;
-                std::vector<Bim::Id> picked = ctrl ? m_selection : std::vector<Bim::Id>{};
-                if (hit)
-                {
-                    const auto at = std::find(picked.begin(), picked.end(), *hit);
-                    if (at == picked.end())
-                        picked.push_back(*hit);
-                    else
-                        picked.erase(at);
-                }
-                SetSelection(std::move(picked));
+                m_planClick   = false;
+                m_pendingDrag = PlanDrag::None;
             }
             if (e.buttons == 0)
                 m_drag = Drag::None;
             break;
         case PointerEventType::Move:
-            // 放东西的工具：光标处的预览跟着它
-            if (m_tool != Tool::Modify)
-            {
-                m_hoverPixel = e.pixel;
-                m_hoverShift = (e.modifiers & static_cast<uint8_t>(ModifierKey::Shift)) != 0;
-                m_viewport->RequestRender();
-            }
-            // 左键拖出几个像素也是平移
+        {
+            // 预览跟着光标：放东西的工具的，修改时光标下的元素
+            const bool moved = !m_hoverPixel || m_hoverPixel->x != e.pixel.x || m_hoverPixel->y != e.pixel.y;
+            m_hoverPixel = e.pixel;
+            m_hoverShift = (e.modifiers & static_cast<uint8_t>(ModifierKey::Shift)) != 0;
+            if (moved)
+                m_tabIndex = 0;
+            // 左键拖出几个像素：修改工具下是框选、拖动或夹点，别的工具下平移
             if (m_planClick && std::hypot(e.pixel.x - m_downPixel.x, e.pixel.y - m_downPixel.y) > 4.0f * m_dpiScale)
             {
                 m_planClick = false;
-                m_drag = Drag::Pan;
+                if (m_pendingDrag != PlanDrag::None)
+                    m_planDrag = m_pendingDrag;
+                else
+                    m_drag = Drag::Pan;
             }
+            if (m_planDrag != PlanDrag::None)
+                UpdatePlanDrag(e.pixel);
             if (m_drag == Drag::Pan)
             {
                 v.cx -= (e.pixel.x - m_lastPixel.x) / v.scale;
                 v.cy += (e.pixel.y - m_lastPixel.y) / v.scale;
                 m_lastPixel = e.pixel;
                 m_planDirty = true;
-                m_viewport->RequestRender();
             }
+            m_viewport->RequestRender();
             break;
+        }
         case PointerEventType::Wheel:
             if (e.wheelDelta.y != 0.0f)
             {

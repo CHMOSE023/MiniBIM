@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Parameters.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/Parameters.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -8,7 +8,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 
 整个界面由 MiniGUI 绘制（`src/UI`，复制自 MiniCAD），主窗口的逻辑在 `MiniBIM::MainFrame`（`apps/Common/src/GUI/MainFrame.h`），与平台无关；
 平台服务经 `AppPlatform`，现在只有 Win32 宿主 `Win32Window`（`apps/Win32/src/Host/Win32Window.h`）。结构照 MiniCAD 的主窗口，但精简了很多：
-没有文档标签、浮动窗口、起始页。界面按 `docs/PLAN.md` 第 3 阶段从 BIMCraft 的 `crates/ui-egui` 移植（在 MiniGUI 上重写），现在做到 3b：
+没有文档标签、浮动窗口、起始页。界面按 `docs/PLAN.md` 第 3 阶段从 BIMCraft 的 `crates/ui-egui` 移植（在 MiniGUI 上重写），现在做到 3c：
 标题栏（菜单栏 + 快速访问工具栏：打开、保存、撤销、重做）、功能区（"建筑"、"修改"、"视图"三个选项卡）、选项栏、停靠区（左上特性、左下项目浏览器，同 Revit）、视图、状态栏。
 
 ## 入口与数据流
@@ -30,7 +30,15 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   新建、打开、示例房屋、退出（含标题栏的关闭）都经 `MainFrame::Guard`：有改动时问保存、不保存、取消
 - 编辑：`edit.undo`（Ctrl+Z）、`edit.redo`（Ctrl+Y）走模型命令 `undo` / `redo`；`edit.delete`（Delete）删选择集，`modify.flip` 翻转其中的墙；
   `edit.escape`（Esc，`MainFrame::Escape`）先丢掉输入的长度、画了一半的，再退出工具，最后清空选择集。命令的 `canExecute` 按撤销历史与选择集，模型或选择集变了时 `CommandRegistry::NotifyStateChanged`
-- 选择集 `MainFrame::SetSelection`：平面上单击选中、Ctrl + 单击加进或拿出；模型变了时删掉的元素离开选择集（`MainFrame::OnPlanModelChanged`）。三维视图里还不能选（3c）
+- 选择集 `MainFrame::SetSelection`：平面上单击选中、Ctrl + 单击加进或拿出；模型变了时删掉的元素离开选择集（`MainFrame::OnPlanModelChanged`）。
+  三维视图里左键单击（没拖动）经 `ModelScene::Pick` 选中，选中的元素画成强调色
+- 修改（`Modify.cpp`，移植自 `canvas.rs`、`lib.rs` 的选择与修改部分）：光标下的元素高亮（`MainFrame::Hovered`，几个叠在一起时 Tab 轮换）；
+  左键在空白处拖是框选（从左往右窗选、只选整个在框里的，从右往左交叉选，按各元素画出来的外框算），在元素上拖是移动选择集（没选中的先选中，取整到 10 毫米），
+  选中一面墙时两端是夹点（`MainFrame::BeginPlanDrag` → `MainFrame::FinishPlanDrag`，拖夹点是 `move` 的 `end`）。别的工具下左键拖还是平移。
+  功能区"修改"的修改工具：对齐（先参照线再要对上去的线，`MainFrame::HoveredLine` 在光标附近各元素的 `Align::Lines` 里取最近的）、偏移（墙复制或移到光标一侧，
+  距离在选项栏）、镜像（拾取轴 / 绘制轴，默认复制）、拆分（单击墙）、移动、复制（两点，"约束""多个"）、旋转（中心默认在选择集外框的中点，"放置中心"另点；
+  两点定角度，或选项栏输入角度按 Enter；"复制"）、修剪 / 延伸为角（两面墙，点在要保留的部分上）。移动、复制、旋转、镜像要先选东西（`MainFrame::NeedsSelection`）。
+  预览：选择集画出来的线按要去的地方搬过去（虚影），镜像的轴是点划线，对齐、修剪拾到的线加粗
 - 特性面板（`MainFrame::BuildProperties`，移植自 `properties.rs`）：类型选择器（这一类的类型；门窗另有门窗族的"族: 类型"，构件只有族的），"类别（个数）"，
   按组列出参数（行表 `Props::RowsOf`、楼层平面的 `Props::PlanRows`，在 `Parameters.cpp`，只依赖核心库，`tests/App/AppTests.cpp` 测）。
   选中的是一类元素时，取值都一样的才显示；没选东西时是楼层平面（读写它的标高：名称、高程、视图范围），三维视图没有参数。
@@ -70,7 +78,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   折线（含虚线）展开成带宽度的四边形，按画的先后一起交给 `IRenderer::Submit`（后画的盖住先画的：门的缺口盖住墙的填色）。平面画在白纸上，
   不随界面主题；拖动平移（左键拖出几个像素、中键、右键）、滚轮以指针处为中心缩放（都要重画显示列表）、单击左键拾取（`Drawing::Pick`），
   选择集里的元素用强调色，状态栏写平面名与选中的元素（几个时写个数）。模型变了（`OnModelChanged` → `MainFrame::OnPlanModelChanged`）下次画时重画；显示的标高删了回到最低的
-- 平面上还不能移动、复制、修剪东西，也不能框选（3c）；BIMCraft 墙工具的其他画法（矩形、多边形、圆、弧、拾取线）、两个字母的快捷键（WA、DR，3e）、
+- BIMCraft 的修剪 / 延伸单个与多个元素、添加与删除顶点、详图线的偏移与拆分随详图线移植；墙工具的其他画法（矩形、多边形、圆、弧、拾取线）、两个字母的快捷键（WA、DR，3e）、
   门窗与构件的临时尺寸、捕捉设置对话框、拉伸屋顶、老虎窗等还没移植
 - 调试版是控制台程序：`Process.MainWindowHandle` 拿到的是控制台窗口，找主窗口要按类名 `MiniBIMWin`（skill `ui-check` 的脚本）
 - 图标：程序图标编在 exe 里（`MiniBIM.rc` 的 `IDI_ICON`，`Win32Window::InitWindow` 从资源加载，不依赖当前目录），标题栏图标是界面描述文件 titlebar 的 `"icon": "app.png"`，

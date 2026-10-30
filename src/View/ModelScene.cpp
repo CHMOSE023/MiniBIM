@@ -117,6 +117,7 @@ namespace MiniBIM
     {
         m_triangles.clear();
         m_edges.clear();
+        m_owners.clear();
         m_bounds = AABB::Empty();
         m_counts = {};
         if (!kernel)
@@ -222,6 +223,7 @@ namespace MiniBIM
         for (const auto& [id, ptr] : m.elements.Items())
         {
             const Bim::Element& e = *ptr;
+            m_owners.emplace_back(m_triangles.size(), id);
             bool ok = true;
             if (const Bim::Wall* w = e.As<Bim::Wall>())
             {
@@ -382,5 +384,49 @@ namespace MiniBIM
             return false;
         }
         return true;
+    }
+
+    std::optional<Bim::Id> ModelScene::Pick(const Math::Point3& origin, const Math::Vec3& dir) const
+    {
+        // Möller–Trumbore：最近的正向交点
+        auto cross = [](const Math::Vec3& a, const Math::Vec3& b) { return Math::Vec3{ a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x }; };
+        auto dot   = [](const Math::Vec3& a, const Math::Vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; };
+        auto at    = [&](size_t i) { const auto& p = m_triangles[i].pos; return Math::Point3{ p.x, p.y, p.z }; };
+        double best = INFINITY;
+        std::optional<Bim::Id> hit;
+        size_t owner = 0;
+        for (size_t i = 0; i + 2 < m_triangles.size(); i += 3)
+        {
+            while (owner + 1 < m_owners.size() && m_owners[owner + 1].first <= i)
+                ++owner;
+            const Math::Point3 a = at(i), b = at(i + 1), c = at(i + 2);
+            const Math::Vec3 e1 = b - a, e2 = c - a, pv = cross(dir, e2);
+            const double det = dot(e1, pv);
+            if (std::abs(det) < 1e-12)
+                continue;
+            const Math::Vec3 tv = origin - a;
+            const double u = dot(tv, pv) / det;
+            if (u < 0.0 || u > 1.0)
+                continue;
+            const Math::Vec3 qv = cross(tv, e1);
+            const double v = dot(dir, qv) / det;
+            if (v < 0.0 || u + v > 1.0)
+                continue;
+            const double t = dot(e2, qv) / det;
+            if (t > 0.0 && t < best && owner < m_owners.size())
+            {
+                best = t;
+                hit  = m_owners[owner].second;
+            }
+        }
+        return hit;
+    }
+
+    std::pair<size_t, size_t> ModelScene::RangeOf(Bim::Id id) const
+    {
+        for (size_t i = 0; i < m_owners.size(); ++i)
+            if (m_owners[i].second == id)
+                return { m_owners[i].first, i + 1 < m_owners.size() ? m_owners[i + 1].first : m_triangles.size() };
+        return { 0, 0 };
     }
 }

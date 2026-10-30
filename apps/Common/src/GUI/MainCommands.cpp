@@ -52,6 +52,21 @@ namespace MiniBIM
         add("edit.escape", N_("Cancel"), N_("Drop what the tool has drawn so far, then the tool, then the selection"), [this] { Escape(); });
         add("modify.select", N_("Modify"), N_("Select and change elements"), [this] { SetTool(Tool::Modify); }, {},
             [this] { return m_tool == Tool::Modify; });
+        // 修改工具（Modify.cpp）：移动、复制、旋转、镜像要先选东西
+        auto modifyTool = [&](const char* id, const char* label, const char* tooltip, Tool t)
+        {
+            add(id, label, tooltip, [this, t] { SetTool(m_tool == t ? Tool::Modify : t); },
+                [this, t] { return !NeedsSelection(t) || !m_selection.empty(); }, [this, t] { return m_tool == t; });
+        };
+        modifyTool("modify.align", N_("Align"), N_("Align: pick a reference line, then what to line up with it"), Tool::Align);
+        modifyTool("modify.offset", N_("Offset"), N_("Offset: pick a wall; a copy goes to the cursor's side"), Tool::Offset);
+        modifyTool("modify.mirrorPick", N_("Mirror Pick Axis"), N_("Mirror, Pick Axis: pick a wall or grid to mirror across"), Tool::MirrorPick);
+        modifyTool("modify.mirrorDraw", N_("Mirror Draw Axis"), N_("Mirror, Draw Axis: click the axis's two ends"), Tool::MirrorDraw);
+        modifyTool("modify.split", N_("Split Element"), N_("Split Element: click a wall where to split it"), Tool::Split);
+        modifyTool("modify.move", N_("Move"), N_("Move: click a base point, then where it goes"), Tool::Move);
+        modifyTool("modify.copy", N_("Copy"), N_("Copy: click a base point, then where the copy goes"), Tool::Copy);
+        modifyTool("modify.rotate", N_("Rotate"), N_("Rotate: click the angle's start, then its end"), Tool::Rotate);
+        modifyTool("modify.trim", N_("Trim/Extend to Corner"), N_("Trim/Extend to Corner: pick two walls, on the parts to keep"), Tool::Trim);
         add("modify.flip", N_("Flip Wall"), N_("Turn the selected walls round: their exterior sides go to the other side"), [this] { FlipSelection(); },
             [this]
             {

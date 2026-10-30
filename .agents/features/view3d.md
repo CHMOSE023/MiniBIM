@@ -31,6 +31,9 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 - 什么时候重建：命令改了模型（`Bim::Session::Snapshot` 换了）之后 `MainFrame::OnModelChanged` → `MainFrame::RebuildScene`，场景版本加一
   （`IRenderer::SubmitCached` 的 version 变了，后端才重新上传）；换了项目时相机重新 `HomeView`
 - 绘制顺序：背景渐变（裁剪空间坐标、单位矩阵、不写深度）→ 面（`IRenderer::SubmitCached`，几何没变时后端复用上传过的缓冲）→ 边线（每帧沿视线往相机挪一点，见下）
+  → 选中的元素（它的三角形 `ModelScene::RangeOf` 再画一遍，强调色，同样往相机挪一点）
+- 拾取：建场景时记下每个元素的三角形从哪个顶点起（按元素顺序），`ModelScene::Pick` 用射线与每个三角形求交（Möller–Trumbore），取最近的。
+  三维视图里左键单击（没拖动）时，`MainFrame::OnViewportPointer` 把像素经 `OrbitCamera::GetViewProj` 的逆矩阵变到近平面，沿 `OrbitCamera::GetForward` 拾取
 - 渲染目标尺寸变了后着色器资源会变，要重新登记成界面纹理（`AppPlatform::RegisterViewportTexture`，`MainFrame::RenderViewport` 末尾）
 
 ## 约束与坑

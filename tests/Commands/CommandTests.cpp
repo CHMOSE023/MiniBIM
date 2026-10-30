@@ -4,6 +4,7 @@
 #include "Commands/Commands.h"
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
+#include "Model/Align.h"
 #include "Model/ModelJson.h"
 #include "Model/Render.h"
 #include "Model/Walls.h"
@@ -1352,6 +1353,102 @@ grid {"start": [0, -2000], "end": [0, 8000]})", out, error))
         }
         Check(ok, "命令：恶意参数不会让命令出内部错误，也不会弄坏模型");
     }
+
+    bool Near(const Json& a, double x, double y)
+    {
+        return a.is_array() && std::abs(a[0].get<double>() - x) < 0.5 && std::abs(a[1].get<double>() - y) < 0.5;
+    }
+
+    Id FirstId(const Json& r) { return r["ids"][0].get<Id>(); }
+
+    // 旋转、镜像、修剪到角、拆分、对齐（移植自 BIMCraft tests.rs 与 align.rs 的测试）
+    void TestModifyTools()
+    {
+        {
+            Session s;
+            const auto ids = House(s);
+            const Id part = FirstId(Run(s, "wall", R"({"points": [[4000, 0], [4000, 6000]], "type": "Interior - 100mm"})"));
+            // 隔墙绕中点转 10°：两端滑回它原来连着的墙上
+            Run(s, "RO", Json{ { "ids", { part } }, { "about", Pt(4000, 3000) }, { "angle", 10 } });
+            auto [a, b] = Ends(s, part);
+            bool ok = Near(a, 4529, 0) && Near(b, 3471, 6000);
+            // 整圈转 90°：整数还是整数，接头也还在
+            Run(s, "rotate", Json{ { "ids", { ids[0], ids[1], ids[2], ids[3] } }, { "about", Pt(4000, 3000) }, { "angle", 90 } });
+            ok = ok && Ends(s, ids[0]) == std::pair{ Pt(7000, -1000), Pt(7000, 7000) };
+            const Id door = Run(s, "door", R"({"at": [7000, 3000]})")["id"].get<Id>();
+            ok = ok && Contains(Refused(s, "rotate", Json{ { "ids", { door } }, { "about", Pt(0, 0) }, { "angle", 5 } }), "with its wall");
+            Check(ok, "旋转：绕一点转，连着的墙保持相接");
+        }
+        {
+            Session s;
+            const auto ids = House(s);
+            const Id door = Run(s, "door", R"({"at": [2000, 0]})")["id"].get<Id>();
+            const Json made = Run(s, "MM", Json{ { "ids", { ids[0] } }, { "axis", Json::array({ Pt(10000, -5000), Pt(10000, 5000) }) }, { "copy", true } });
+            const Id wall = made["ids"][0].get<Id>(), twin = made["ids"][1].get<Id>();
+            // 镜像反着走，外侧是原来那面的镜像
+            bool ok = Ends(s, wall) == std::pair{ Pt(12000, 0), Pt(20000, 0) };
+            const Json d = ElementOf(s, door), t = ElementOf(s, twin);
+            ok = ok && IdOf(s, t["host"]) == wall && t["at"] == Pt(18000, 0);
+            // 挂在镜像的门框上，朝同一边开
+            ok = ok && t["flip_facing"] == d["flip_facing"] && d["flip_hand"] == false && t["flip_hand"] == true;
+            const Id grid = Run(s, "grid", R"({"start": [0, -1000], "end": [0, 7000]})")["id"].get<Id>();
+            Run(s, "mirror", Json{ { "ids", { grid } }, { "axis", Json::array({ Pt(4000, 0), Pt(4000, 1000) }) } });
+            ok = ok && ElementOf(s, grid)["start"] == Pt(8000, -1000);
+            ok = ok && Contains(Refused(s, "mirror", Json{ { "ids", { grid } }, { "axis", Json::array({ Pt(1, 1), Pt(1, 1) }) } }), "axis");
+            Check(ok, "镜像：复制的门朝镜像的方向开，不复制时轴网自己过去");
+        }
+        {
+            Session s;
+            const Id a = FirstId(Run(s, "wall", R"({"points": [[0, 0], [4000, 0]]})"));
+            const Id b = FirstId(Run(s, "wall", R"({"points": [[5000, 1000], [5000, 6000]]})"));
+            Run(s, "TR", Json{ { "ids", { a, b } } });
+            bool ok = Ends(s, a).second == Pt(5000, 0) && Ends(s, b).first == Pt(5000, 0);
+            // 相交的墙：keep 说每面墙留哪部分
+            const Id c = FirstId(Run(s, "wall", R"({"points": [[-2000, 3000], [3000, 3000]]})"));
+            const Id d = FirstId(Run(s, "wall", R"({"points": [[1000, 1500], [1000, 5000]]})"));
+            Run(s, "corner", Json{ { "ids", { c, d } }, { "keep", Json::array({ Pt(-1000, 3000), Pt(1000, 4500) }) } });
+            ok = ok && Ends(s, c) == std::pair{ Pt(-2000, 3000), Pt(1000, 3000) } && Ends(s, d) == std::pair{ Pt(1000, 3000), Pt(1000, 5000) };
+            const Id e = FirstId(Run(s, "wall", R"({"points": [[0, 8000], [4000, 8000]]})"));
+            ok = ok && Contains(Refused(s, "corner", Json{ { "ids", { a, e } } }), "parallel");
+            Check(ok, "修剪到角：两面墙伸缩到相交处");
+        }
+        {
+            Session s;
+            const auto ids = House(s);
+            const Id room = Run(s, "room", R"({"point": [4000, 3000]})")["id"].get<Id>();
+            const Id door = Run(s, "door", R"({"at": [2000, 0]})")["id"].get<Id>();
+            const Id window = Run(s, "window", R"({"at": [6000, 0]})")["id"].get<Id>();
+            const Json pieces = Run(s, "SL", Json{ { "id", ids[0] }, { "at", Pt(4000, 20) } });
+            const Id made = pieces["ids"][1].get<Id>();
+            bool ok = Ends(s, ids[0]) == std::pair{ Pt(0, 0), Pt(4000, 0) } && Ends(s, made) == std::pair{ Pt(4000, 0), Pt(8000, 0) };
+            ok = ok && IdOf(s, ElementOf(s, door)["host"]) == ids[0] && IdOf(s, ElementOf(s, window)["host"]) == made;
+            ok = ok && ElementOf(s, window)["at"] == Pt(6000, 0) && ElementOf(s, room)["area_m2"] == 48.0;
+            ok = ok && Contains(Refused(s, "split", Json{ { "id", ids[0] }, { "at", Pt(2000, 0) } }), "in the way");
+            ok = ok && Contains(Refused(s, "split", Json{ { "id", ids[0] }, { "at", Pt(2000, 3000) } }), "isn't on");
+            Check(ok, "拆分：墙一分为二，门窗随它所在的一段");
+        }
+        {
+            Session s;
+            House(s);
+            // 一面斜的隔墙对齐到 x = 7000 的线上：先转平，再移过去
+            const Id part = FirstId(Run(s, "wall", R"({"points": [[3000, 1000], [3200, 5000]], "type": "Interior - 100mm"})"));
+            const auto lines = Align::Lines(s.GetModel(), part);
+            const auto near = Align::Nearest(s.GetModel(), part, { 3100, 3000 });
+            bool ok = lines.size() == 5 && near && near->second < 1e-6;
+            const Json r = Run(s, "AL", Json{ { "id", part }, { "reference", Json::array({ Pt(7000, 0), Pt(7000, 6000) }) },
+                                               { "line", Json::array({ ToJson(near->first.first), ToJson(near->first.second) }) } });
+            const auto [a, b] = Ends(s, part);
+            ok = ok && !r.is_null() && std::abs(a[0].get<double>() - 7000.0) < 0.01 && std::abs(b[0].get<double>() - 7000.0) < 0.01;
+            // 门窗只能沿墙滑
+            const Id door = Run(s, "door", R"({"at": [2000, 0]})")["id"].get<Id>();
+            ok = ok && Contains(Refused(s, "align", Json{ { "id", door }, { "reference", Json::array({ Pt(0, 0), Pt(1000, 1000) }) },
+                                                         { "line", Json::array({ Pt(1550, -150), Pt(1550, 150) }) } }), "slide along");
+            Run(s, "align", Json{ { "id", door }, { "reference", Json::array({ Pt(1000, -500), Pt(1000, 500) }) },
+                                  { "line", Json::array({ Pt(1550, -150), Pt(1550, 150) }) } });
+            ok = ok && ElementOf(s, door)["at"] == Pt(1450, 0);
+            Check(ok, "对齐：转到与参照平行再移上去，门窗沿墙滑");
+        }
+    }
 }
 
 int main()
@@ -1367,6 +1464,7 @@ int main()
     TestFamiliesAndComponents();
     TestPlan();
     TestSample();
+    TestModifyTools();
     TestHostileParams();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;

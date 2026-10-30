@@ -8,7 +8,7 @@ covers: .agents/features/*.md
 
 | 指南 | 内容 | 主要代码 | 测试 |
 |---|---|---|---|
-| [main-window](main-window.md) | 主窗口：界面描述文件、命令、功能区与停靠区、特性面板、项目浏览器、选择集、放东西的工具与选项栏、未保存提示、帧顺序、平台接口、Win32 宿主、用户设置、平面视图 | `apps/Common/src/GUI`、`apps/Win32`、`MiniGUI::UiLayout` | skill `ui-check`、`AppTests` |
+| [main-window](main-window.md) | 主窗口：界面描述文件、命令、功能区与停靠区、特性面板、项目浏览器、选择集、放东西的工具与选项栏、框选与修改工具、未保存提示、帧顺序、平台接口、Win32 宿主、用户设置、平面视图 | `apps/Common/src/GUI`、`apps/Win32`、`MiniGUI::UiLayout` | skill `ui-check`、`AppTests` |
 | [view3d](view3d.md) | 三维视口：相机、渲染、边线、实体内核与模型的三维场景 | `src/View/OrbitCamera.h`、`src/View/ModelScene.h`、`apps/Render`、`src/Solid` | `ViewTests`、`SMLibSmokeTests`、`ModelSceneTests` |
 | [model](model.md) | 模型核心（移植自 BIMCraft）：元素与检查、墙、族、库与文件、命令与撤销、平面图、示例房屋 | `src/Model`、`src/Commands` | `ModelTests`、`CommandTests` |
 | [ifc](ifc.md) | IFC 交换（移植自 BIMCraft）：STEP 的读法、IFC4 导出、IFC2x3 / IFC4 导入 | `src/Ifc` | `IfcTests` |

@@ -37,7 +37,7 @@ msgstr "标高"
 msgid "Grid"
 msgstr "轴网"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
 msgid "Wall"
 msgstr "墙"
 
@@ -93,13 +93,33 @@ msgstr "翻转"
 msgid "Modify"
 msgstr "修改"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Move"
 msgstr "移动"
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Copy"
 msgstr "复制"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Align"
+msgstr "对齐"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Rotate"
+msgstr "旋转"
+
+#: src/Commands/Commands.cpp
+msgid "Mirror"
+msgstr "镜像"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Trim/Extend to Corner"
+msgstr "修剪/延伸为角"
+
+#: src/Commands/Commands.cpp
+msgid "Split"
+msgstr "拆分"
 
 #: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Delete"
@@ -366,6 +386,58 @@ msgid "Select and change elements"
 msgstr "选择并修改元素"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Align: pick a reference line, then what to line up with it"
+msgstr "对齐：先拾取参照线，再拾取要对齐到它的线"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Offset"
+msgstr "偏移"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Offset: pick a wall; a copy goes to the cursor's side"
+msgstr "偏移：拾取一面墙，副本放到光标那一侧"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror Pick Axis"
+msgstr "镜像 - 拾取轴"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror, Pick Axis: pick a wall or grid to mirror across"
+msgstr "镜像 - 拾取轴：拾取一面墙或轴网作镜像轴"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror Draw Axis"
+msgstr "镜像 - 绘制轴"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror, Draw Axis: click the axis's two ends"
+msgstr "镜像 - 绘制轴：单击镜像轴的两端"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Split Element"
+msgstr "拆分图元"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Split Element: click a wall where to split it"
+msgstr "拆分图元：在墙上要拆开的地方单击"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Move: click a base point, then where it goes"
+msgstr "移动：单击基点，再单击它去的地方"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Copy: click a base point, then where the copy goes"
+msgstr "复制：单击基点，再单击副本去的地方"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rotate: click the angle's start, then its end"
+msgstr "旋转：单击角度的起始边，再单击终止边"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Trim/Extend to Corner: pick two walls, on the parts to keep"
+msgstr "修剪/延伸为角：在要保留的部分上拾取两面墙"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Flip Wall"
 msgstr "翻转墙"
 
@@ -604,6 +676,46 @@ msgstr "按 MIT 许可证发布。第三方组件及其许可证见 THIRD_PARTY_
 msgid "Language: {0}"
 msgstr "语言：{0}"
 
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not move"
+msgstr "无法移动"
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not copy"
+msgstr "无法复制"
+
+#: apps/Common/src/GUI/Modify.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not rotate"
+msgstr "无法旋转"
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not mirror"
+msgstr "无法镜像"
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not align"
+msgstr "无法对齐"
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not trim or extend the walls"
+msgstr "无法修剪或延伸墙"
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not split the wall"
+msgstr "无法拆分墙"
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not offset"
+msgstr "无法偏移"
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Offset takes straight walls."
+msgstr "偏移只用于直墙。"
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "`{0}` is not a distance"
+msgstr "“{0}”不是距离"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Could not change the parameter"
 msgstr "无法修改参数"
@@ -731,10 +843,6 @@ msgstr "标记"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Host Wall"
 msgstr "主体墙"
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Offset"
-msgstr "偏移"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Flip Facing"
@@ -986,6 +1094,66 @@ msgid "Click to enter the grid's end point."
 msgstr "单击输入轴网的终点。"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click a base point to measure from."
+msgstr "单击一个基点作为测量起点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the base point goes. Esc cancels."
+msgstr "单击基点要去的地方。按 Esc 取消。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the copy's base point goes. Esc cancels."
+msgstr "单击副本基点要去的地方。按 Esc 取消。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the centre of rotation."
+msgstr "单击旋转中心。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the angle, or type an angle in the Options Bar."
+msgstr "单击角度的起始边，或在选项栏中输入角度。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the angle. Esc cancels."
+msgstr "单击角度的终止边。按 Esc 取消。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a wall or grid to mirror across."
+msgstr "拾取作为镜像轴的墙或轴网。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the mirror axis."
+msgstr "单击镜像轴的起点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the mirror axis."
+msgstr "单击镜像轴的终点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the element's highlighted edge to move and turn onto the reference."
+msgstr "拾取元素高亮的边，把它移动、转到参照线上。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
+msgstr "拾取参照边或中心线；光标下的线会高亮。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the second wall, on the part to keep."
+msgstr "在要保留的部分上拾取第二面墙。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the first wall, on the part to keep."
+msgstr "在要保留的部分上拾取第一面墙。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a wall where to split it."
+msgstr "在墙上要拆开的地方单击。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Point to a wall: the offset goes to the cursor's side. Click to place it."
+msgstr "指向一面墙：偏移到光标那一侧，单击放置。"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Wall"
 msgstr "修改 | 放置墙"
 
@@ -1026,6 +1194,42 @@ msgid "Modify | Place Grid"
 msgstr "修改 | 放置轴网"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Move"
+msgstr "修改 | 移动"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Copy"
+msgstr "修改 | 复制"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Rotate"
+msgstr "修改 | 旋转"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Mirror Pick Axis"
+msgstr "修改 | 镜像 - 拾取轴"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Mirror Draw Axis"
+msgstr "修改 | 镜像 - 绘制轴"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Align"
+msgstr "修改 | 对齐"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Trim/Extend to Corner"
+msgstr "修改 | 修剪/延伸为角"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Split Element"
+msgstr "修改 | 拆分图元"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Offset"
+msgstr "修改 | 偏移"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Pick a tool on the Architecture tab to place walls, doors, windows, roofs and more."
 msgstr "在“建筑”选项卡上选一个工具，放置墙、门、窗、屋顶等。"
 
@@ -1060,6 +1264,30 @@ msgstr "高度偏移："
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Rotation:"
 msgstr "旋转："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Constrain"
+msgstr "约束"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Multiple"
+msgstr "多个"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Angle:"
+msgstr "角度："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not an angle in degrees"
+msgstr "“{0}”不是以度为单位的角度"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Place Centre"
+msgstr "放置中心"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Offset:"
+msgstr "偏移："
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "the next free name"

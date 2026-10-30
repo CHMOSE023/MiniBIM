@@ -2,7 +2,10 @@
 #pragma once
 #include "Core/GeomKernel/AABB.hpp"
 #include "Core/Math/Point3.hpp"
+#include "Model/Ids.h"
 #include "Render/VertexTypes.hpp"
+#include <optional>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -40,10 +43,15 @@ namespace MiniBIM
         const std::vector<Vertex_P3_C4>&    GetTriangles() const { return m_triangles; }
         // 实体的边，每两个点一段
         const std::vector<Math::Point3>&    GetEdges() const { return m_edges; }
+        // 从 origin 沿 dir 的射线最先碰到的三角形是哪个元素的：三维视图里单击拾取（正交相机，射线都朝视线方向）
+        std::optional<Bim::Id> Pick(const Math::Point3& origin, const Math::Vec3& dir) const;
+        // 元素 id 的三角形在 GetTriangles() 里的顶点范围 [first, last)；没有时为空范围
+        std::pair<size_t, size_t> RangeOf(Bim::Id id) const;
 
     private:
         std::vector<Vertex_P3_C4> m_triangles;
         std::vector<Math::Point3> m_edges;
+        std::vector<std::pair<size_t, Bim::Id>> m_owners;   // 每个元素的三角形从 m_triangles 的哪个顶点起（按顺序，到下一个元素为止）
         AABB                      m_bounds = AABB::Empty();
         Counts                    m_counts;
     };

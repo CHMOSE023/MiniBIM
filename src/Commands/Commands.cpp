@@ -7,6 +7,7 @@
 #include "Commands/Commands.h"
 #include "I18n/Translator.h"
 #include "Ifc/Ifc.h"
+#include "Model/Align.h"
 #include "Model/ModelJson.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
@@ -1892,11 +1893,13 @@ namespace MiniBIM::Bim
             return true;
         }
 
-        // 命令怎样带动元素：经 map（平移）。平移时单独选中的门窗只沿墙滑动 slide 的那部分
+        // 命令怎样带动元素：经 map（平移、旋转或镜像）。平移时单独选中的门窗只沿墙滑动 slide 的那部分；
+        // mirror 时是镜像：墙反过来走（外侧仍在镜像过去的那边），楼板、天花板的轮廓反向，构件翻过来，门换到另一侧门框
         struct Motion
         {
             std::function<P2(P2)> map;
             std::optional<P2>     slide;
+            bool                  mirror = false;
         };
 
         // 方向 angle 度
@@ -1918,8 +1921,9 @@ namespace MiniBIM::Bim
                 return Fail(error, c, "level " + std::to_string(id) + " has no place in plan; change its elevation, or add a level");
             if (Wall* w = out.As<Wall>())
             {
-                w->start = f(w->start);
-                w->end   = f(w->end);
+                const P2 a = f(w->start), b = f(w->end);
+                w->start = mo.mirror ? b : a;
+                w->end   = mo.mirror ? a : b;
             }
             else if (Grid* g = out.As<Grid>())
             {
@@ -1933,6 +1937,9 @@ namespace MiniBIM::Bim
                 for (Ring& r : fl->openings)
                     for (P2& q : r)
                         q = f(q);
+                // 镜像让轮廓变成顺时针；楼板的轮廓保持逆时针
+                if (mo.mirror)
+                    std::reverse(fl->boundary.begin(), fl->boundary.end());
                 if (fl->arrow)
                     for (P2& q : *fl->arrow)
                         q = f(q);
@@ -1950,11 +1957,17 @@ namespace MiniBIM::Bim
                 for (Ring& r : cl->openings)
                     for (P2& q : r)
                         q = f(q);
+                if (mo.mirror)
+                    std::reverse(cl->boundary.begin(), cl->boundary.end());
             }
             else if (Room* r = out.As<Room>())
                 r->point = f(r->point);
+            // 镜像是族翻过来
             else if (Component* cp = out.As<Component>())
+            {
                 std::tie(cp->at, cp->angle) = Turned(f, cp->at, cp->angle);
+                cp->mirrored = cp->mirrored != mo.mirror;
+            }
             else if (Roof* r = out.As<Roof>())
             {
                 // 边保持编号，山墙随之
@@ -1965,8 +1978,13 @@ namespace MiniBIM::Bim
                         for (P2& q : ring)
                             q = f(q);
                 if (r->extrusion)
+                {
                     for (P2& q : r->extrusion->line)
                         q = f(q);
+                    // 镜像过去扫向另一边
+                    if (mo.mirror)
+                        std::tie(r->extrusion->from, r->extrusion->to) = std::pair{ -r->extrusion->to + 0.0, -r->extrusion->from + 0.0 };
+                }
             }
             else if (Opening* o = out.AsOpening())
             {
@@ -2092,6 +2110,9 @@ namespace MiniBIM::Bim
                 Opening* n = copy.AsOpening();
                 const Walls::Axis axis = Walls::Axis::Of(after->second);
                 n->offset = after->second.arc == 0.0 ? (at - after->second.start).Dot(axis.Tangent(0.0)) : axis.Project(at).first;
+                // 镜像过去墙反着走：门挂到另一侧门框，仍朝同一边开
+                if (mo.mirror && carried(o->host))
+                    n->flipHand = !n->flipHand;
                 const Id oid = id;
                 others.erase(std::remove_if(others.begin(), others.end(), [oid](const auto& x) { return x.first == oid; }), others.end());
                 others.emplace_back(oid, std::move(copy));
@@ -2125,7 +2146,18 @@ namespace MiniBIM::Bim
             }
             for (const auto& [id, e] : m.elements.Items())
                 if (const Opening* o = e->AsOpening(); o && copyingGuids.count(o->host))
-                    copies.emplace_back(id, *e);
+                {
+                    Element copy = *e;
+                    // 镜像的副本反着走：从另一端量，挂在另一侧门框
+                    if (mo.mirror)
+                    {
+                        Opening* n = copy.AsOpening();
+                        if (const Wall* w = m.GetWall(n->host))
+                            n->offset = Walls::Axis::Of(*w).Length() - n->offset;
+                        n->flipHand = !n->flipHand;
+                    }
+                    copies.emplace_back(id, std::move(copy));
+                }
             Model& mm = s.ModelMut();
             std::vector<Id> made;
             std::map<Guid, Guid> hosts;
@@ -2133,6 +2165,14 @@ namespace MiniBIM::Bim
             {
                 if (Grid* g = e.As<Grid>())
                     g->name = NextGridName(mm);
+                else if (Room* r = e.As<Room>())
+                {
+                    std::vector<std::string> numbers;
+                    for (const auto& [_, x] : mm.elements.Items())
+                        if (const Room* rr = x->As<Room>())
+                            numbers.push_back(rr->number);
+                    r->number = NextNumber(numbers);
+                }
                 else if (Opening* o = e.AsOpening())
                 {
                     if (const auto it = hosts.find(o->host); it != hosts.end())
@@ -2197,6 +2237,195 @@ namespace MiniBIM::Bim
             if (!IdsParam(c, s.GetModel(), p, ids, error) || !P.PointReq("by", by))
                 return false;
             return Duplicate(c, s, ids, Motion{ [by](P2 q) { return q + by; }, by }, result, error);
+        }
+
+        P2 Rotated(P2 q, P2 about, double angle)
+        {
+            const double r = angle * kPi / 180.0, sn = std::sin(r), cs = std::cos(r);
+            const P2 d = q - about;
+            return Micron(about + P2(d.x * cs - d.y * sn, d.x * sn + d.y * cs));
+        }
+
+        bool RotateCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "rotate";
+            Params P(c, p, error);
+            std::vector<Id> ids;
+            P2 about;
+            std::optional<double> angle;
+            bool copy = false;
+            if (!IdsParam(c, s.GetModel(), p, ids, error) || !P.PointReq("about", about) || !P.Num("angle", angle) || !P.Flag("copy", copy))
+                return false;
+            if (!angle)
+                return P.Fail("`angle` in degrees, counter-clockwise, is required");
+            const double a = *angle;
+            const Motion mo{ [about, a](P2 q) { return Rotated(q, about, a); }, std::nullopt, false };
+            if (copy)
+                return Duplicate(c, s, ids, mo, result, error);
+            if (!Relocate(c, s, ids, mo, std::nullopt, error))
+                return false;
+            result = Json{ { "rotated", ids } };
+            return true;
+        }
+
+        bool MirrorCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "mirror";
+            Params P(c, p, error);
+            std::vector<Id> ids;
+            std::vector<P2> axis;
+            bool copy = false;
+            if (!IdsParam(c, s.GetModel(), p, ids, error) || !P.Points("axis", axis) || !P.Flag("copy", copy))
+                return false;
+            if (axis.size() != 2 || !(axis[0].Dist(axis[1]) > Tol))
+                return P.Fail("`axis` is two different points [[x, y], [x, y]]");
+            const P2 a = axis[0], u = (axis[1] - axis[0]).Unit();
+            const Motion mo{ [a, u](P2 q) { const P2 d = q - a; return Micron(a + u * (2.0 * d.Dot(u)) - d); }, std::nullopt, true };
+            if (copy)
+                return Duplicate(c, s, ids, mo, result, error);
+            if (!Relocate(c, s, ids, mo, std::nullopt, error))
+                return false;
+            result = Json{ { "mirrored", ids } };
+            return true;
+        }
+
+        bool CornerCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "corner";
+            Params P(c, p, error);
+            std::vector<Id> ids;
+            if (!IdsParam(c, s.GetModel(), p, ids, error))
+                return false;
+            const Model& m = s.GetModel();
+            if (ids.size() != 2 || !m.GetWall(ids[0]) || !m.GetWall(ids[1]))
+                return P.Fail("`ids` takes two walls");
+            const Wall wa = *m.GetWall(ids[0]), wb = *m.GetWall(ids[1]);
+            if (wa.arc != 0.0 || wb.arc != 0.0)
+                return P.Fail("it trims and extends straight walls; a curved one changes by its ends or its `arc`");
+            std::vector<P2> keep;
+            if (!P.Absent("keep") && !P.Points("keep", keep))
+                return false;
+            if (!keep.empty() && keep.size() != 2)
+                return P.Fail("`keep` is a point on each wall, [[x, y], [x, y]]");
+            const auto x = Geom::LineIntersection(wa.start, wa.end, wb.start, wb.end);
+            if (!x)
+                return P.Fail("the walls are parallel: they never meet");
+            const P2 hit = Micron(*x);
+            for (size_t i = 0; i < 2; ++i)
+            {
+                const Wall* now = s.GetModel().GetWall(ids[i]);
+                if (!now)
+                    continue;
+                const Wall w = *now;
+                const P2 u = (w.end - w.start).Unit();
+                auto at = [&](P2 q) { return (q - w.start).Dot(u); };
+                // 去拐角的那一端：离保留的那部分远的一端，否则离拐角近的一端
+                const bool start = !keep.empty() ? at(keep[i]) > at(hit) : hit.Dist(w.start) < hit.Dist(w.end);
+                const P2 by = hit - (start ? w.start : w.end);
+                if (by.Length() > 1e-6 && !Relocate(c, s, { ids[i] }, Motion{ [by](P2 q) { return q + by; }, by, false }, start, error))
+                    return false;
+            }
+            result = Json{ { "corner", ToJson(hit) } };
+            return true;
+        }
+
+        bool SplitCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "split";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<Guid> g;
+            P2 at;
+            if (!P.IdOpt("id", g))
+                return false;
+            if (!g)
+                return P.Fail("`id`, a wall, is required");
+            const Wall* found = m.GetWall(*g);
+            if (!found)
+                return P.Fail(g->ToString() + " is not a wall");
+            if (!P.PointReq("at", at))
+                return false;
+            const Wall w = *found;
+            const Id id = *m.elements.IdOf(*g);
+            const Walls::Axis axis = Walls::Axis::Of(w);
+            if (axis.Distance(at, 0.0) > m.Thickness(w) / 2.0 + 100.0)
+                return P.Fail("[" + Num(at.x) + ", " + Num(at.y) + "] isn't on wall " + std::to_string(id));
+            const double len = axis.Length();
+            // 直墙沿它取到微米；弧墙按它的比例
+            const double along = w.arc == 0.0 ? std::round(axis.Project(at).first * 1e3) / 1e3 : axis.Project(at).first;
+            if (along <= Tol || along >= len - Tol)
+                return P.Fail("split between the wall's ends");
+            const P2 cut = Micron(axis.At(along, 0.0));
+            // 门窗随它所在的那一段；跨在切口上的挡着
+            std::vector<Id> later;
+            for (const auto& [oid, e] : m.elements.Items())
+            {
+                const Opening* o = e->AsOpening();
+                if (!o || !m.Same(o->host, *g))
+                    continue;
+                const auto t = m.OpeningTypeOf(*e);
+                const double half = t ? t->width / 2.0 : 0.0;
+                if (o->offset + half <= along + Tol)
+                    continue;
+                if (o->offset - half < along - Tol)
+                    return P.Fail(std::string(e->Category()) + " " + std::to_string(oid) + " is in the way; split elsewhere");
+                later.push_back(oid);
+            }
+            Wall first = w, second = w;
+            first.end    = cut;
+            second.start = cut;
+            // 弧按长度分转角
+            first.arc  = std::round(first.arc * along / len * 1e9) / 1e9;
+            second.arc = std::round((w.arc - first.arc) * 1e9) / 1e9;
+            Model& mm = s.ModelMut();
+            mm.elements.Insert(id, Element{ first });
+            const Id made = mm.Insert(Element{ second });
+            const Guid host = mm.GuidOf(made);
+            for (const Id oid : later)
+            {
+                Opening* o = mm.elements.GetMut(oid)->AsOpening();
+                o->host = host;
+                o->offset -= along;
+            }
+            result = Json{ { "ids", Json::array({ id, made }) } };
+            return true;
+        }
+
+        bool AlignCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "align";
+            Params P(c, p, error);
+            std::optional<Guid> g;
+            if (!P.IdOpt("id", g))
+                return false;
+            if (!g)
+                return P.Fail("`id` is required");
+            std::vector<P2> reference, line;
+            if (!P.Points("reference", reference) || !P.Points("line", line))
+                return false;
+            if (reference.size() != 2)
+                return P.Fail("`reference` must contain two points");
+            if (line.size() != 2)
+                return P.Fail("`line` must contain two points");
+            Align::Placement pl;
+            std::string why;
+            if (!Align::Placement::Make({ reference[0], reference[1] }, { line[0], line[1] }, pl, why))
+                return Fail(error, c, why);
+            const Model& m = s.GetModel();
+            const auto id = m.elements.IdOf(*g);
+            if (!id)
+                return P.Fail("no element " + g->ToString());
+            if (Align::Lines(m, *id).empty())
+                return P.Fail("element " + std::to_string(*id) + " has no straight alignment line in plan");
+            const Element* e = m.elements.Get(*id);
+            if (const Opening* o = e->AsOpening())
+                if (const Wall* w = m.GetWall(o->host); w && (std::abs(pl.angle) > 1e-9 || std::abs(pl.by.Cross((w->end - w->start).Unit())) > Tol))
+                    return P.Fail("a door or window can only slide along its host wall; align its jambs, or align the wall");
+            const std::optional<P2> slide = std::abs(pl.angle) <= 1e-9 ? std::optional<P2>(pl.by) : std::nullopt;
+            if (!Relocate(c, s, { *id }, Motion{ [pl](P2 q) { return pl.Map(q); }, slide, false }, std::nullopt, error))
+                return false;
+            result = Json{ { "aligned", *id }, { "angle", pl.angle }, { "by", ToJson(pl.by) } };
+            return true;
         }
 
         bool DeleteCmd(Session& s, const Json& p, Json& result, std::string& error)
@@ -2494,6 +2723,21 @@ namespace MiniBIM::Bim
               "doors and windows slide along their walls. With `end`, only that end of one wall moves", MoveCmd, true },
             { "copy", N_("Copy"), { "CO" }, "{ids: [id,…], by: [dx, dy]} copies elements, with the doors and windows of copied walls; returns the copies' ids",
               CopyCmd, true },
+            { "align", N_("Align"), { "AL" },
+              "{id, reference: [[x,y],[x,y]], line: [[x,y],[x,y]]} aligns an element's picked line with a reference in plan: turns by the "
+              "smaller angle about the picked line's midpoint, then moves it onto the reference, keeping its size. Doors and windows slide "
+              "along their host wall; they cannot turn independently. Returns {aligned, angle, by}", AlignCmd, true },
+            { "rotate", N_("Rotate"), { "RO" },
+              "{ids: [id,…], about: [x, y], angle, copy?} turns elements about a point by `angle` degrees, counter-clockwise; walls joined "
+              "to them stay joined, and doors and windows turn with their walls", RotateCmd, true },
+            { "mirror", N_("Mirror"), { "MM", "DM" },
+              "{ids: [id,…], axis: [[x, y], [x, y]], copy?} mirrors elements across the line through two points; mirrored doors and "
+              "windows face the other way", MirrorCmd, true },
+            { "corner", N_("Trim/Extend to Corner"), { "TR" },
+              "{ids: [a, b], keep?: [[x, y], [x, y]]} trims or extends two walls to meet where their lines cross; `keep` is a point on "
+              "the part of each to keep", CornerCmd, true },
+            { "split", N_("Split"), { "SL" },
+              "{id, at: [x, y]} splits a wall in two at `at`: its doors and windows go with their part", SplitCmd, true },
             { "delete", N_("Delete"), { "DE" }, "{ids: [id,…]} deleting a wall deletes its doors and windows", DeleteCmd, true },
             { "units", N_("Project Units"), { "UN" },
               "{length?: mm|cm|m|in|ft|ft-in} how lengths are shown and typed; the model, and every command, keep millimetres", UnitsCmd, true },

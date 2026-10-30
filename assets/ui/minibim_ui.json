@@ -25,6 +25,15 @@
     "edit.escape":  { "shortcut": "Esc" },
     "modify.select": { "icon": "Select.png" },
     "modify.flip":  { "icon": "FlipWall.png" },
+    "modify.align":      { "icon": "Align.png" },
+    "modify.offset":     { "icon": "Offset.png" },
+    "modify.mirrorPick": { "icon": "MirrorPick.png" },
+    "modify.mirrorDraw": { "icon": "MirrorDraw.png" },
+    "modify.split":      { "icon": "Split.png" },
+    "modify.move":       { "icon": "Move.png" },
+    "modify.copy":       { "icon": "Copy.png" },
+    "modify.rotate":     { "icon": "Rotate.png" },
+    "modify.trim":       { "icon": "Trim.png" },
     "arch.wall":      { "icon": "Wall.png" },
     "arch.door":      { "icon": "Door.png" },
     "arch.window":    { "icon": "Window.png" },
@@ -74,7 +83,9 @@
           "panels": [
             { "title": "Select", "items": [ "modify.select" ] },
             { "title": "Properties", "items": [ "view.properties" ] },
-            { "title": "Modify", "items": [ "modify.flip", "edit.delete" ] }
+            { "title": "Modify", "items": [ "modify.align", "modify.offset", "modify.mirrorPick", "modify.mirrorDraw", "modify.split",
+                                            "modify.move", "modify.copy", "modify.rotate", "modify.trim", "edit.delete" ] },
+            { "title": "Wall", "items": [ "modify.flip" ] }
           ]
         },
         {

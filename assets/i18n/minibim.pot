@@ -38,7 +38,7 @@ msgstr ""
 msgid "Grid"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
 msgid "Wall"
 msgstr ""
 
@@ -94,12 +94,32 @@ msgstr ""
 msgid "Modify"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Move"
 msgstr ""
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Copy"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Align"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Rotate"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Mirror"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Trim/Extend to Corner"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Split"
 msgstr ""
 
 #: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
@@ -367,6 +387,58 @@ msgid "Select and change elements"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Align: pick a reference line, then what to line up with it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Offset: pick a wall; a copy goes to the cursor's side"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror Pick Axis"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror, Pick Axis: pick a wall or grid to mirror across"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror Draw Axis"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror, Draw Axis: click the axis's two ends"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Split Element"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Split Element: click a wall where to split it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Move: click a base point, then where it goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Copy: click a base point, then where the copy goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rotate: click the angle's start, then its end"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Trim/Extend to Corner: pick two walls, on the parts to keep"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Flip Wall"
 msgstr ""
 
@@ -611,6 +683,46 @@ msgstr ""
 msgid "Language: {0}"
 msgstr ""
 
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not move"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not copy"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not rotate"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not mirror"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not align"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not trim or extend the walls"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not split the wall"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Offset takes straight walls."
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "`{0}` is not a distance"
+msgstr ""
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Could not change the parameter"
 msgstr ""
@@ -737,10 +849,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Host Wall"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Offset"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -994,6 +1102,66 @@ msgid "Click to enter the grid's end point."
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click a base point to measure from."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the base point goes. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the copy's base point goes. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the centre of rotation."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the angle, or type an angle in the Options Bar."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the angle. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a wall or grid to mirror across."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the mirror axis."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the mirror axis."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the element's highlighted edge to move and turn onto the reference."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the second wall, on the part to keep."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the first wall, on the part to keep."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a wall where to split it."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Point to a wall: the offset goes to the cursor's side. Click to place it."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Wall"
 msgstr ""
 
@@ -1034,6 +1202,42 @@ msgid "Modify | Place Grid"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Move"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Copy"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Rotate"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Mirror Pick Axis"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Mirror Draw Axis"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Align"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Trim/Extend to Corner"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Split Element"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Pick a tool on the Architecture tab to place walls, doors, windows, roofs and more."
 msgstr ""
 
@@ -1067,6 +1271,30 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Rotation:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Constrain"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Multiple"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Angle:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not an angle in degrees"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Place Centre"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Offset:"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp

@@ -62,6 +62,14 @@ namespace
         Check(Near(b.Min.x, -650.0, 1.0) && Near(b.Min.y, -650.0, 1.0) && Near(b.Max.x, 10650.0, 1.0) && Near(b.Max.y, 7650.0, 1.0) &&
                   Near(b.Min.z, -200.0, 1.0) && Near(b.Max.z, ridge, 1.0),
               "三维场景：范围是屋顶的檐口、楼板底到屋脊");
+        // 拾取：从上往下先碰到屋顶；从屋檐下面朝上碰到的是天花板（屋顶下面）以外的东西也行，这里看从下往上先碰到楼板
+        const Bim::Model& m = s.GetModel();
+        const auto top = scene.Pick({ 2000.0, 2000.0, 20000.0 }, { 0.0, 0.0, -1.0 });
+        const auto bottom = scene.Pick({ 2000.0, 2000.0, -5000.0 }, { 0.0, 0.0, 1.0 });
+        const auto miss = scene.Pick({ 50000.0, 50000.0, 20000.0 }, { 0.0, 0.0, -1.0 });
+        Check(top && m.elements.Get(*top) && std::string(m.elements.Get(*top)->Category()) == "roof" && bottom &&
+                  std::string(m.elements.Get(*bottom)->Category()) == "floor" && !miss,
+              "三维场景：拾取射线最先碰到的元素");
     }
 
     void TestOpeningsAreCut()
