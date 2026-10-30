@@ -2428,6 +2428,170 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // 名字列表，报错里用：" (there are: a, b)"
+        std::string KnownNames(const std::vector<std::string>& names)
+        {
+            std::string out;
+            for (const std::string& n : names)
+                out += (out.empty() ? "" : ", ") + n;
+            return out.empty() ? std::string() : " (there are: " + out + ")";
+        }
+
+        // 参数说的库条目：类别与类型（category、type）、族（family）、族的类型（family、type，库里写作"族: 类型"）
+        bool EntryOf(Params& P, const Model& m, Kind& kind, std::string& name)
+        {
+            std::optional<std::string> category, family, type;
+            if (!P.String("category", category) || !P.String("family", family) || !P.String("type", type))
+                return false;
+            if (category && !family && type)
+            {
+                const auto names = m.TypeNames(*category);
+                if (std::find(names.begin(), names.end(), *type) == names.end())
+                    return P.Fail("there is no " + *category + " type `" + *type + "`" + KnownNames(names));
+                kind = Kind::Type(*category);
+                name = *type;
+                return true;
+            }
+            if (!category && family)
+            {
+                const auto f = m.families.find(*family);
+                if (f == m.families.end())
+                {
+                    std::vector<std::string> names;
+                    for (const auto& [n, _] : m.families)
+                        names.push_back(n);
+                    return P.Fail("there is no family `" + *family + "`" + KnownNames(names));
+                }
+                if (!type)
+                {
+                    kind = Kind::Of(Kind::Tag::Family);
+                    name = *family;
+                    return true;
+                }
+                if (!f->second.types.count(*type))
+                {
+                    std::vector<std::string> names;
+                    for (const auto& [n, _] : f->second.types)
+                        names.push_back(n);
+                    return P.Fail("family `" + *family + "` has no type `" + *type + "`" + KnownNames(names));
+                }
+                kind = Kind::Of(Kind::Tag::FamilyType);
+                name = *family + ": " + *type;
+                return true;
+            }
+            return P.Fail("give `category` and `type`, or `family`, or `family` and `type`");
+        }
+
+        // 每个库条目被引用了几次：元素的类型与族、类型的层的材质……没被引用的是没用的
+        std::map<std::pair<Kind, std::string>, size_t> LibraryUses(const Model& m)
+        {
+            std::map<std::pair<Kind, std::string>, size_t> uses;
+            Model copy = m;
+            copy.LibRefsMut([&](const Kind& k, std::string& n) { ++uses[{ k, n }]; });
+            return uses;
+        }
+
+        // 一类类型的表：类别的
+        template <class F>
+        bool WithTypes(Model& m, const std::string& category, F f)
+        {
+            if (category == "wall") return f(m.types.wall);
+            if (category == "floor") return f(m.types.floor);
+            if (category == "door") return f(m.types.door);
+            if (category == "window") return f(m.types.window);
+            if (category == "roof") return f(m.types.roof);
+            if (category == "ceiling") return f(m.types.ceiling);
+            return false;
+        }
+
+        bool DeleteTypeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "delete_type";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Kind kind;
+            std::string name;
+            if (!EntryOf(P, m, kind, name))
+                return false;
+            const std::string label = kind.Label();
+            const auto uses = LibraryUses(m);
+            if (const auto u = uses.find({ kind, name }); u != uses.end() && u->second > 0)
+                return P.Fail(label + " `" + name + "` is used " + std::to_string(u->second) + " time" + (u->second == 1 ? "" : "s") +
+                              ": change or delete what uses it first");
+            if (kind.tag == Kind::Tag::Type && m.TypeNames(kind.category).size() <= 1)
+                return P.Fail("`" + name + "` is the last " + label + ": a " + kind.category + " needs one; make another first");
+            const size_t colon = name.find(": ");
+            if (kind.tag == Kind::Tag::FamilyType && m.families.at(name.substr(0, colon)).types.size() <= 1)
+                return P.Fail("`" + name + "` is its family's last type: delete the family");
+            Model& mm = s.ModelMut();
+            if (kind.tag == Kind::Tag::Type)
+                WithTypes(mm, kind.category, [&](auto& t) { return t.erase(name) > 0; });
+            else if (kind.tag == Kind::Tag::Family)
+                mm.families.erase(name);
+            else
+                mm.families.at(name.substr(0, colon)).types.erase(name.substr(colon + 2));
+            result = Json{ { "deleted", Json{ { "kind", label }, { "name", name } } } };
+            return true;
+        }
+
+        bool RenameTypeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "rename_type";
+            Params P(c, p, error);
+            if (p.is_object())
+                for (auto it = p.begin(); it != p.end(); ++it)
+                    if (it.key() != "category" && it.key() != "family" && it.key() != "type" && it.key() != "name")
+                        return P.Fail("`" + it.key() + "` isn't one of its parameters: category, family, type, name");
+            std::optional<std::string> given;
+            if (!P.String("name", given))
+                return false;
+            const std::string to = given ? std::string(Text::Trim(*given)) : std::string();
+            if (to.empty())
+                return P.Fail("`name` is required: the type's new name");
+            Kind kind;
+            std::string from;
+            if (!EntryOf(P, s.GetModel(), kind, from))
+                return false;
+            if (kind.tag == Kind::Tag::Family)
+                return P.Fail("give the family's `type` to rename; families rename with `family` and `rename`");
+            const std::string label = kind.Label();
+            // 族的类型在库里是"族: 类型"
+            const size_t colon = from.find(": ");
+            const std::string toEntry = kind.tag == Kind::Tag::FamilyType ? from.substr(0, colon) + ": " + to : to;
+            const std::string shownFrom = kind.tag == Kind::Tag::FamilyType ? from.substr(colon + 2) : from;
+            if (toEntry == from)
+            {
+                result = Json{ { "renamed", Json{ { "kind", label }, { "from", shownFrom }, { "to", to } } } };
+                return true;
+            }
+            for (const auto& [k, n] : s.GetModel().LibraryNames())
+                if (k == kind && n == toEntry)
+                    return P.Fail("there's already a " + label + " `" + to + "`");
+            Model& m = s.ModelMut();
+            auto move = [&](auto& table, const std::string& a, const std::string& b)
+            {
+                auto node = table.extract(a);
+                if (node.empty())
+                    return false;
+                node.key() = b;
+                table.insert(std::move(node));
+                return true;
+            };
+            const bool moved = kind.tag == Kind::Tag::Type ? WithTypes(m, kind.category, [&](auto& t) { return move(t, from, to); })
+                                                           : move(m.families.at(from.substr(0, colon)).types, shownFrom, to);
+            if (!moved)
+                return P.Fail("there is no " + label + " `" + from + "`");
+            // 库里的条目保留 GUID；引用它的元素跟着改名
+            m.library.Renamed(kind, from, toEntry);
+            m.LibRefsMut([&](const Kind& k, std::string& n)
+            {
+                if (k == kind && n == from)
+                    n = toEntry;
+            });
+            result = Json{ { "renamed", Json{ { "kind", label }, { "from", shownFrom }, { "to", to } } } };
+            return true;
+        }
+
         bool DeleteCmd(Session& s, const Json& p, Json& result, std::string& error)
         {
             const char* c = "delete";
@@ -2723,6 +2887,14 @@ namespace MiniBIM::Bim
               "doors and windows slide along their walls. With `end`, only that end of one wall moves", MoveCmd, true },
             { "copy", N_("Copy"), { "CO" }, "{ids: [id,…], by: [dx, dy]} copies elements, with the doors and windows of copied walls; returns the copies' ids",
               CopyCmd, true },
+            { "delete_type", N_("Delete Type"), {},
+              "{category?: wall|floor|door|window|roof|ceiling, family?, type?} deletes a type of a category (`category` and `type`), a "
+              "family (`family`) or one of a family's types (`family` and `type`), as Revit's Delete on one in the Project Browser does; "
+              "refused while an element uses it (it says how many), and for the last type of a category or of a family", DeleteTypeCmd, true },
+            { "rename_type", N_("Rename Type"), {},
+              "{category?: wall|floor|door|window|roof|ceiling, family?, type, name} renames a type of a category (`category` and `type`) "
+              "or one of a family's types (`family` and `type`) to `name`, as Rename in Type Properties does: the elements of it follow, "
+              "and it keeps its GUID; refused for a name another type of it has", RenameTypeCmd, true },
             { "align", N_("Align"), { "AL" },
               "{id, reference: [[x,y],[x,y]], line: [[x,y],[x,y]]} aligns an element's picked line with a reference in plan: turns by the "
               "smaller angle about the picked line's midpoint, then moves it onto the reference, keeping its size. Doors and windows slide "

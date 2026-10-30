@@ -10,7 +10,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "New"
 msgstr ""
 
@@ -70,11 +70,11 @@ msgstr ""
 msgid "Roof"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "Edit Type"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Materials"
 msgstr ""
 
@@ -102,6 +102,14 @@ msgstr ""
 msgid "Copy"
 msgstr ""
 
+#: src/Commands/Commands.cpp
+msgid "Delete Type"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Rename Type"
+msgstr ""
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Align"
 msgstr ""
@@ -122,7 +130,7 @@ msgstr ""
 msgid "Split"
 msgstr ""
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "Delete"
 msgstr ""
 
@@ -246,7 +254,7 @@ msgstr ""
 msgid "Unknown command:"
 msgstr ""
 
-#: src/UI/Widgets/Dialog.h
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp
 msgid "OK"
 msgstr ""
 
@@ -270,7 +278,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Close"
 msgstr ""
 
@@ -316,6 +324,214 @@ msgstr ""
 
 #: src/View/ModelScene.cpp
 msgid "Some elements could not be modelled in 3D; see the log for which."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Structure"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Substrate"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Thermal"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Membrane"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Finish"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "None"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Solid Fill"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Diagonal"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Crosshatch"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Horizontal"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Vertical"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Square Grid"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Brick"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Concrete"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Insulation"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Construction"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Width"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Default Thickness"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Default Sill Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Thickness"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Tile Size"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "{0}: `{1}` is not a length"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "{0}: `{1}` is not a number"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Type Properties"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Family:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "System Family: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Type:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Duplicate..."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Rename..."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Name:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
+msgid "Create"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Rename"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Type Parameters"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Layers"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Function"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Material"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "(none)"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Out"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Up"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "In"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Down"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Insert Layer"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Could not change the type"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Cancel"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Apply"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Materials and Finishes"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Material:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Name"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Color"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Cut Pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Surface Pattern"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -372,10 +588,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Delete the selected elements; a wall takes its doors and windows with it"
-msgstr ""
-
-#: apps/Common/src/GUI/MainCommands.cpp
-msgid "Cancel"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -436,6 +648,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Trim/Extend to Corner: pick two walls, on the parts to keep"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit the type of the selected elements, or of what the tool places"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's materials: their colours and patterns"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -606,7 +826,7 @@ msgstr ""
 msgid "Could not undo"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "Could not delete"
 msgstr ""
 
@@ -751,10 +971,6 @@ msgstr ""
 msgid "Type Selector"
 msgstr ""
 
-#: apps/Common/src/GUI/Panels.cpp
-msgid "Could not change the type"
-msgstr ""
-
 #: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Unconnected"
 msgstr ""
@@ -765,6 +981,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Search"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Type Properties..."
 msgstr ""
 
 #: apps/Common/src/GUI/Panels.cpp
@@ -875,10 +1095,6 @@ msgstr ""
 msgid "Number"
 msgstr ""
 
-#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
-msgid "Name"
-msgstr ""
-
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Location"
 msgstr ""
@@ -889,10 +1105,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Slope (°)"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Thickness"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -1301,10 +1513,6 @@ msgstr ""
 msgid "the next free name"
 msgstr ""
 
-#: apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
-msgid "Create"
-msgstr ""
-
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not create the level"
 msgstr ""
@@ -1423,4 +1631,12 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Palettes"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Manage"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Settings"
 msgstr ""

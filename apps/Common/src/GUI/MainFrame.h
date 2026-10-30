@@ -195,6 +195,23 @@ namespace MiniBIM
         std::optional<Bim::P2> SelectionMiddle() const;
         // 旋转或镜像之后回到修改，复制的选中副本
         void Edited(const Bim::Json& made, bool copied);
+
+        // ── 对话框（Dialogs.cpp）：类型属性、族类型、材质 ─────────────
+        // 类型属性编辑的类型：类别与类型名，族的门窗与构件还有族；以及选中的元素（没选时空，编辑工具要放的类型）
+        struct TypeSubject
+        {
+            std::string category;
+            std::string name;
+            std::optional<std::string> family;
+            std::vector<Bim::Id> elements;
+        };
+        std::optional<TypeSubject> CurrentTypeSubject() const;
+        void EditType();
+        void OpenTypeDialog(const TypeSubject& t);
+        void OpenFamilyDialog(const TypeSubject& t);
+        void OpenMaterials();
+        // 执行模型命令，失败时不弹窗，原因放进 error（对话框里显示）
+        bool RunQuiet(const char* id, const Bim::Json& params, std::string& error, Bim::Json* result = nullptr);
         void RenderPlan(IRenderer& renderer, int pixelWidth, int pixelHeight);
         void OnPlanPointer(const MiniGUI::ViewportPointerEvent& e);
         // 平面的名称（标高名），以及选中的元素：状态栏用
@@ -257,7 +274,8 @@ namespace MiniBIM
         std::string        m_browserFind;                    // 搜索框里的文字
         std::set<std::string> m_collapsedGroups;             // 特性面板里收起的组（英文原文）
         std::map<std::string, bool> m_branchOpen;            // 项目浏览器里各分支（按路径）展开着没有：重建时照旧
-        std::vector<std::function<void()>> m_browserActs;    // 树上各项双击时做什么（TreeItem 的 UserData 是下标）
+        std::vector<std::function<void()>> m_browserActs;    // 树上各项双击时做什么（TreeItem 的 UserData 是下标 + 1）
+        std::vector<Bim::Json>             m_browserEntries; // 同一下标：类型或族，右键删除用（delete_type 的参数），别的为 null
         bool               m_panelsPosted = false;
 
         Tool                 m_tool = Tool::Modify;

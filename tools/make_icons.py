@@ -400,6 +400,23 @@ def _(i):
     i.arrow(32, 24, 32, 40, A, 3, 7, both=True)
 
 
+@icon("TypeProperties")    # modify.typeProperties：类型属性（特性表，右下一把扳手似的编辑笔）
+def _(i):
+    i.rect(6, 6, 46, 50, G, w=3, r=3); i.d.rectangle(i.P([(6, 6), (46, 15)]), fill=GF)
+    for y in (24, 33, 42):
+        i.line([(12, y), (20, y)], G, 3); i.line([(24, y), (40, y)], G, 3)
+    i.line([(34, 56), (56, 34)], A, 6)
+    i.d.polygon(i.P([(30, 60), (34, 56), (32, 58)]), fill=A)
+
+
+@icon("Materials")         # manage.materials：材质（三个色块的球，一块强调）
+def _(i):
+    i.circle(32, 32, 24, G, w=3.5)
+    i.circle(24, 26, 7, A, AF, w=3)
+    i.circle(40, 26, 7, G, GF, w=3)
+    i.circle(32, 42, 7, G, GF, w=3)
+
+
 @icon("Properties")        # view.properties：特性面板（照 MiniCAD 的 PropertiesPanel：名称 | 值的几行）
 def _(i):
     i.rect(8, 8, 56, 56, G, w=3, r=4); i.d.rectangle(i.P([(8, 8), (56, 18)]), fill=AF)

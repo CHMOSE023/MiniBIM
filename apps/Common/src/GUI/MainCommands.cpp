@@ -67,6 +67,9 @@ namespace MiniBIM
         modifyTool("modify.copy", N_("Copy"), N_("Copy: click a base point, then where the copy goes"), Tool::Copy);
         modifyTool("modify.rotate", N_("Rotate"), N_("Rotate: click the angle's start, then its end"), Tool::Rotate);
         modifyTool("modify.trim", N_("Trim/Extend to Corner"), N_("Trim/Extend to Corner: pick two walls, on the parts to keep"), Tool::Trim);
+        add("modify.typeProperties", N_("Type Properties"), N_("Edit the type of the selected elements, or of what the tool places"),
+            [this] { EditType(); }, [this] { return CurrentTypeSubject().has_value(); });
+        add("manage.materials", N_("Materials"), N_("The project's materials: their colours and patterns"), [this] { OpenMaterials(); });
         add("modify.flip", N_("Flip Wall"), N_("Turn the selected walls round: their exterior sides go to the other side"), [this] { FlipSelection(); },
             [this]
             {

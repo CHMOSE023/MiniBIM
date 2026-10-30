@@ -25,6 +25,8 @@
     "edit.escape":  { "shortcut": "Esc" },
     "modify.select": { "icon": "Select.png" },
     "modify.flip":  { "icon": "FlipWall.png" },
+    "modify.typeProperties": { "icon": "TypeProperties.png" },
+    "manage.materials":      { "icon": "Materials.png" },
     "modify.align":      { "icon": "Align.png" },
     "modify.offset":     { "icon": "Offset.png" },
     "modify.mirrorPick": { "icon": "MirrorPick.png" },
@@ -82,7 +84,7 @@
           "title": "Modify",
           "panels": [
             { "title": "Select", "items": [ "modify.select" ] },
-            { "title": "Properties", "items": [ "view.properties" ] },
+            { "title": "Properties", "items": [ "view.properties", "modify.typeProperties" ] },
             { "title": "Modify", "items": [ "modify.align", "modify.offset", "modify.mirrorPick", "modify.mirrorDraw", "modify.split",
                                             "modify.move", "modify.copy", "modify.rotate", "modify.trim", "edit.delete" ] },
             { "title": "Wall", "items": [ "modify.flip" ] }
@@ -94,6 +96,12 @@
             { "title": "Create", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown" ] },
             { "title": "Navigate", "items": [ "view.home", "view.zoomFit" ] },
             { "title": "Palettes", "items": [ "view.properties", "view.browser" ] }
+          ]
+        },
+        {
+          "title": "Manage",
+          "panels": [
+            { "title": "Settings", "items": [ "manage.materials" ] }
           ]
         }
       ]

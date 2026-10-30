@@ -5,6 +5,7 @@
 #include "GUI/Parameters.h"
 #include "I18n/Translator.h"
 #include "Style/Theme.hpp"
+#include "Widgets/Button.h"
 #include "Widgets/ComboBox.h"
 #include "Widgets/Controls.h"
 #include "Widgets/Dialog.h"
@@ -266,7 +267,17 @@ namespace MiniBIM
                 m_platform->Post([this, p] { RunCommand("modify", p, N_("Could not change the type")); RefreshPanels(); });
             });
         }
-        m_propsBody->AddChild<Label>(heading, 12.0f, Theme::TextDim);
+        // "类别（个数）"，右边"编辑类型"
+        {
+            auto* row = m_propsBody->AddChild<Node>();
+            LayoutStyle rs;
+            rs.direction  = FlexDirection::Row;
+            rs.alignItems = Align::Center;
+            row->SetLayoutStyle(rs);
+            row->AddChild<Label>(heading, 12.0f, Theme::TextDim)->SetLayoutStyle(Grow());
+            if (CurrentTypeSubject())
+                row->AddChild<Button>(Tr("Edit Type"), [this] { m_platform->Post([this] { EditType(); }); });
+        }
         if (ids.empty() || rows.empty())
             return;
 
@@ -472,6 +483,19 @@ namespace MiniBIM
             if (at > 0 && at <= m_browserActs.size())
                 m_platform->Post([act = m_browserActs[at - 1]] { act(); });
         });
+        // 右键：类型与族的"类型属性""删除"
+        tree->SetItemContextMenu([this](TreeItem* item)
+        {
+            std::vector<MenuItem> items;
+            const uint64_t at = item ? item->GetUserData() : 0;
+            if (at == 0 || at > m_browserEntries.size() || m_browserEntries[at - 1].is_null())
+                return items;
+            const Bim::Json entry = m_browserEntries[at - 1];
+            if (entry.contains("type"))
+                items.emplace_back(Tr("Type Properties..."), [this, act = m_browserActs[at - 1]] { m_platform->Post(act); });
+            items.emplace_back(Tr("Delete"), [this, entry] { m_platform->Post([this, entry] { RunCommand("delete_type", entry, N_("Could not delete")); }); });
+            return items;
+        });
         m_browserTree = tree;
         m_browserBody = panel.get();
         return panel;
@@ -492,6 +516,7 @@ namespace MiniBIM
             bool current = false;           // 正在显示的视图
             bool open    = false;           // 组默认展开着没有
             std::vector<Entry> kids;
+            Bim::Json entry;                // 类型或族：右键能删除（delete_type 的参数）
         };
         auto group = [](std::string label, bool open, std::vector<Entry> kids) { return Entry{ std::move(label), {}, false, open, std::move(kids) }; };
 
@@ -508,20 +533,26 @@ namespace MiniBIM
 
         // 族：系统族（墙、楼板……）的类型，再是可载入族的类型
         std::vector<Entry> families;
+        // 双击类型：类型属性；右键：类型属性、删除
         for (const char* c : { "wall", "floor", "roof", "ceiling", "door", "window" })
         {
             std::vector<Entry> types;
             for (const std::string& t : m.TypeNames(c))
-                types.push_back(Entry{ t, {}, false, false, {} });
+                types.push_back(Entry{ t, [this, c, t] { OpenTypeDialog(TypeSubject{ c, t, std::nullopt, {} }); }, false, false, {},
+                                       Bim::Json{ { "category", c }, { "type", t } } });
             if (!types.empty())
                 families.push_back(group(Tr(Props::CategoryName(c, true)), false, std::move(types)));
         }
         for (const auto& [name, f] : m.families)
         {
             std::vector<Entry> types;
+            const std::string category = f.category == Bim::Fam::Category::Door ? "door" : f.category == Bim::Fam::Category::Window ? "window" : "component";
             for (const auto& [t, _] : f.types)
-                types.push_back(Entry{ t, {}, false, false, {} });
-            families.push_back(group(name, false, std::move(types)));
+                types.push_back(Entry{ t, [this, category, name, t] { OpenFamilyDialog(TypeSubject{ category, t, name, {} }); }, false, false, {},
+                                       Bim::Json{ { "family", name }, { "type", t } } });
+            Entry fam = group(name, false, std::move(types));
+            fam.entry = Bim::Json{ { "family", name } };
+            families.push_back(std::move(fam));
         }
         std::vector<Entry> top;
         top.push_back(group(Tr("Views (all)"), true, std::move(views)));
@@ -544,6 +575,7 @@ namespace MiniBIM
 
         m_browserTree->Clear();
         m_browserActs.clear();
+        m_browserEntries.clear();
         TreeItem* selected = nullptr;
         // 一项显示出来，当它的名称配上了还没配上的每个词，或者它是组、里面有一项显示出来
         std::function<bool(const Entry&, const std::vector<std::string>&)> shows = [&](const Entry& e, const std::vector<std::string>& left)
@@ -564,9 +596,10 @@ namespace MiniBIM
                 if (!shows(e, left))
                     continue;
                 TreeItem* item = m_browserTree->AddItem(parent, e.label);
-                if (e.act)
+                if (e.act || !e.entry.is_null())
                 {
-                    m_browserActs.push_back(e.act);
+                    m_browserActs.push_back(e.act ? e.act : std::function<void()>([] {}));
+                    m_browserEntries.push_back(e.entry);
                     item->SetUserData(m_browserActs.size());
                 }
                 if (e.current)

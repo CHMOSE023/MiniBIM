@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/Parameters.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -8,7 +8,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 
 整个界面由 MiniGUI 绘制（`src/UI`，复制自 MiniCAD），主窗口的逻辑在 `MiniBIM::MainFrame`（`apps/Common/src/GUI/MainFrame.h`），与平台无关；
 平台服务经 `AppPlatform`，现在只有 Win32 宿主 `Win32Window`（`apps/Win32/src/Host/Win32Window.h`）。结构照 MiniCAD 的主窗口，但精简了很多：
-没有文档标签、浮动窗口、起始页。界面按 `docs/PLAN.md` 第 3 阶段从 BIMCraft 的 `crates/ui-egui` 移植（在 MiniGUI 上重写），现在做到 3c：
+没有文档标签、浮动窗口、起始页。界面按 `docs/PLAN.md` 第 3 阶段从 BIMCraft 的 `crates/ui-egui` 移植（在 MiniGUI 上重写），现在做到 3d：
 标题栏（菜单栏 + 快速访问工具栏：打开、保存、撤销、重做）、功能区（"建筑"、"修改"、"视图"三个选项卡）、选项栏、停靠区（左上特性、左下项目浏览器，同 Revit）、视图、状态栏。
 
 ## 入口与数据流
@@ -17,7 +17,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   选语言（`--lang` > 用户设置 > `AppPlatform::GetSystemLanguage`）、建 `UIContext`、注册命令、注册宿主面板、读界面描述文件、打开示例房屋（`MainFrame::OpenSample`），
   再依次执行启动参数 `--run` 给的界面命令（`MainFrame::AddStartupCommand`；看界面效果时用，如 `--run view.plan`）
 - 界面描述文件 `assets/ui/minibim_ui.json`（格式见 `src/UI/Widgets/UiLayout.h`）：菜单、快速访问工具栏、功能区与布局；宿主面板 `viewport`（`MiniGUI::ViewportHost`）、
-  `options`（选项栏，`Tools.cpp`）、`properties`、`browser`（`Panels.cpp`）、`statusbar`。停靠区的布局写在文件的 `dock` 里，用户拖动后的布局还不保存（3e 的设置再做）
+  `options`（选项栏，`Tools.cpp`）、`properties`、`browser`（`Panels.cpp`）、`statusbar`。停靠区的布局写在文件的 `dock` 里，用户拖动后的布局还不保存（3f 的设置再做）
   开发时读源码目录里的文件（宏 `MINIBIM_UI_SOURCE`），宿主监视它所在的目录，保存后 `MainFrame::CheckUiFileChanged` 重新加载；写错时保留原界面，状态栏显示原因
 - 命令：`MainCommands.cpp` 里注册为 `MiniGUI::Command`，名称和提示写英文原文并用 `N_` 标记，`MiniGUI::UiLayout` 每次应用时翻译；菜单只引用命令 ID。
   标题栏右侧的按钮执行 `window.minimize` / `window.maximize` / `window.close`，这三个命令必须有
@@ -55,6 +55,13 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。
   没选东西时特性面板显示工具要放的"新建 …"，类型选择器选的是工具接下来放的类型（`ToolOptions::types`、门窗的族、构件的族与类型）
 - 选项栏（`MainFrame::BuildOptionsBar`）在换工具、换语言时重建，输入框里的文字存进 `MainFrame` 的 `ToolOptions`，用时再读（同 BIMCraft）
+- 对话框（`Dialogs.cpp`，移植自 `typeprops.rs` 与 `properties.rs` 的对话框）：都是 `MiniGUI::Dialog`，状态放在一个 `shared_ptr` 里，
+  内容按状态整个重建（经 `AppPlatform::Post`，不在控件自己的回调里拆掉它）；命令经 `MainFrame::RunQuiet` 执行，失败时原因显示在对话框里而不弹窗。
+  类型属性（`MainFrame::OpenTypeDialog`）：族（系统族的类别）与类型，复制…、重命名…；类型参数（宽度、高度、窗台、板块尺寸……）；墙、楼板、屋顶、天花板的层
+  （功能、材质、厚度，向外 / 向内或向上 / 向下、删除、插入层，改了层时厚度由层定）；确定、取消、应用，都经 `type`、`rename_type`。
+  族类型（`MainFrame::OpenFamilyDialog`）：族的类型参数，公式算出的只显示；经 `family`、`rename_type`。确定后选中的元素换成显示的类型，没选东西时工具改放它。
+  打开哪个由 `MainFrame::CurrentTypeSubject` 定：选中的一类元素的同一个类型，或工具要放的类型；入口是"修改 > 类型属性"、特性面板的"编辑类型"、
+  项目浏览器里双击类型（右键还有删除，经 `delete_type`）。材质（`MainFrame::OpenMaterials`，"管理 > 材质"）：每个改动是一条 `material` 命令
 - 两块面板在模型、选择集、视图、语言变了时重建（`MainFrame::RefreshPanels` 经 `AppPlatform::Post` 推到当前消息之后，合并成一次；不在控件自己的回调里拆掉它）。
   控件回调里要改模型的，也经 `AppPlatform::Post` 再执行命令
 - 文件对话框经 `AppPlatform::PickProjectFile`、`AppPlatform::ChooseProjectSavePath`、`AppPlatform::ChooseIfcSavePath`
@@ -86,7 +93,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 
 ## 测试与排查
 
-- 界面效果：skill `ui-check`，中英文各截一张。截图脚本不能点视图，选中元素后的特性面板、工具的预览要靠手动看
+- 界面效果：skill `ui-check`，中英文各截一张。对话框可以用 `-Run` 直接打开（如 `-Run arch.wall,modify.typeProperties`、`-Run manage.materials`）。截图脚本不能点视图，选中元素后的特性面板、工具的预览要靠手动看
   （或临时加几行在第一次画平面后选上元素、选工具、调 `MainFrame::ToolClick` 再截，截完删掉）
 - `AppTests`：参数表、值的写法与读法、搜索，以及示例房屋里每个元素的每个可写参数照面板的写法交给 `modify` 都被接受
 - 界面描述文件写错：状态栏和控制台日志（`LOG_ERROR`）给出行列

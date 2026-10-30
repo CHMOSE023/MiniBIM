@@ -9,7 +9,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "New"
 msgstr "新建"
 
@@ -69,11 +69,11 @@ msgstr "房间分隔线"
 msgid "Roof"
 msgstr "屋顶"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "Edit Type"
 msgstr "编辑类型"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Materials"
 msgstr "材质"
 
@@ -101,6 +101,14 @@ msgstr "移动"
 msgid "Copy"
 msgstr "复制"
 
+#: src/Commands/Commands.cpp
+msgid "Delete Type"
+msgstr "删除类型"
+
+#: src/Commands/Commands.cpp
+msgid "Rename Type"
+msgstr "重命名类型"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Align"
 msgstr "对齐"
@@ -121,7 +129,7 @@ msgstr "修剪/延伸为角"
 msgid "Split"
 msgstr "拆分"
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "Delete"
 msgstr "删除"
 
@@ -245,7 +253,7 @@ msgstr "更多命令"
 msgid "Unknown command:"
 msgstr "没有这个命令："
 
-#: src/UI/Widgets/Dialog.h
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp
 msgid "OK"
 msgstr "确定"
 
@@ -269,7 +277,7 @@ msgstr "展开功能区（双击选项卡也可以）"
 msgid "Search commands"
 msgstr "搜索命令"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Close"
 msgstr "关闭"
 
@@ -316,6 +324,214 @@ msgstr "这个版本没有编入实体建模内核（MINIBIM_WITH_SOLID 关闭�
 #: src/View/ModelScene.cpp
 msgid "Some elements could not be modelled in 3D; see the log for which."
 msgstr "有些元素没能建成三维模型，详见日志。"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Structure"
+msgstr "结构"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Substrate"
+msgstr "衬底"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Thermal"
+msgstr "保温层"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Membrane"
+msgstr "隔汽层"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Finish"
+msgstr "面层"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "None"
+msgstr "无"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Solid Fill"
+msgstr "实体填充"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Diagonal"
+msgstr "斜线"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Crosshatch"
+msgstr "交叉线"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Horizontal"
+msgstr "水平线"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Vertical"
+msgstr "竖线"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Square Grid"
+msgstr "方格"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Brick"
+msgstr "砖"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Concrete"
+msgstr "混凝土"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Insulation"
+msgstr "保温"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Construction"
+msgstr "构造"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Width"
+msgstr "宽度"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Default Thickness"
+msgstr "默认厚度"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Height"
+msgstr "高度"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Default Sill Height"
+msgstr "默认窗台高度"
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Thickness"
+msgstr "厚度"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Tile Size"
+msgstr "板块尺寸"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "{0}: `{1}` is not a length"
+msgstr "{0}：“{1}”不是长度"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "{0}: `{1}` is not a number"
+msgstr "{0}：“{1}”不是数"
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Type Properties"
+msgstr "类型属性"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Family:"
+msgstr "族："
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "System Family: {0}"
+msgstr "系统族：{0}"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Type:"
+msgstr "类型："
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Duplicate..."
+msgstr "复制…"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Rename..."
+msgstr "重命名…"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Name:"
+msgstr "名称："
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
+msgid "Create"
+msgstr "创建"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Rename"
+msgstr "重命名"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Type Parameters"
+msgstr "类型参数"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Layers"
+msgstr "层"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Function"
+msgstr "功能"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Material"
+msgstr "材质"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "(none)"
+msgstr "（无）"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Out"
+msgstr "向外"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Up"
+msgstr "向上"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "In"
+msgstr "向内"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Down"
+msgstr "向下"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Insert Layer"
+msgstr "插入层"
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Could not change the type"
+msgstr "无法修改类型"
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Cancel"
+msgstr "取消"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Apply"
+msgstr "应用"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Materials and Finishes"
+msgstr "材质和装饰"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Material:"
+msgstr "材质："
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Name"
+msgstr "名称"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Color"
+msgstr "颜色"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Cut Pattern"
+msgstr "截面填充图案"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Surface Pattern"
+msgstr "表面填充图案"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Start an empty project with two levels"
@@ -372,10 +588,6 @@ msgstr "重做最后撤销的改动"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Delete the selected elements; a wall takes its doors and windows with it"
 msgstr "删除选中的元素；删除墙时连同墙上的门窗"
-
-#: apps/Common/src/GUI/MainCommands.cpp
-msgid "Cancel"
-msgstr "取消"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Drop what the tool has drawn so far, then the tool, then the selection"
@@ -436,6 +648,14 @@ msgstr "旋转：单击角度的起始边，再单击终止边"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Trim/Extend to Corner: pick two walls, on the parts to keep"
 msgstr "修剪/延伸为角：在要保留的部分上拾取两面墙"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit the type of the selected elements, or of what the tool places"
+msgstr "编辑选中元素的类型，或工具要放的类型"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's materials: their colours and patterns"
+msgstr "项目的材质：颜色与填充图案"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Flip Wall"
@@ -603,7 +823,7 @@ msgstr "无法重做"
 msgid "Could not undo"
 msgstr "无法撤销"
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "Could not delete"
 msgstr "无法删除"
 
@@ -744,10 +964,6 @@ msgstr "多个类别"
 msgid "Type Selector"
 msgstr "类型选择器"
 
-#: apps/Common/src/GUI/Panels.cpp
-msgid "Could not change the type"
-msgstr "无法修改类型"
-
 #: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Unconnected"
 msgstr "未连接"
@@ -759,6 +975,10 @@ msgstr "未封闭：四周的墙没有围合。"
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Search"
 msgstr "搜索"
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Type Properties..."
+msgstr "类型属性…"
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Floor Plans"
@@ -868,10 +1088,6 @@ msgstr "周长"
 msgid "Number"
 msgstr "编号"
 
-#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
-msgid "Name"
-msgstr "名称"
-
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Location"
 msgstr "位置"
@@ -883,10 +1099,6 @@ msgstr "距标高的高度偏移"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Slope (°)"
 msgstr "坡度（°）"
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Thickness"
-msgstr "厚度"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Structural"
@@ -1293,10 +1505,6 @@ msgstr "偏移："
 msgid "the next free name"
 msgstr "下一个可用的名称"
 
-#: apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
-msgid "Create"
-msgstr "创建"
-
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not create the level"
 msgstr "无法创建标高"
@@ -1416,3 +1624,11 @@ msgstr "导航"
 #: assets/ui/minibim_ui.json
 msgid "Palettes"
 msgstr "面板"
+
+#: assets/ui/minibim_ui.json
+msgid "Manage"
+msgstr "管理"
+
+#: assets/ui/minibim_ui.json
+msgid "Settings"
+msgstr "设置"

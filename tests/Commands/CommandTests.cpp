@@ -1449,6 +1449,86 @@ grid {"start": [0, -2000], "end": [0, 8000]})", out, error))
             Check(ok, "对齐：转到与参照平行再移上去，门窗沿墙滑");
         }
     }
+
+    std::vector<std::string> WallTypes(const Session& s)
+    {
+        std::vector<std::string> out;
+        for (const auto& [n, _] : s.GetModel().types.wall)
+            out.push_back(n);
+        return out;
+    }
+
+    // 新项目自带的家具里也有 Chair：测试的族用另一个名字，免得类型并进那个族
+    void Chair(Session& s)
+    {
+        Run(s, "family", R"({"name": "Test Chair", "category": "furniture", "types": {"Small": {}, "Large": {}},
+            "forms": [{"plane": "xy", "profile": [[-200, -200], [200, -200], [200, 200], [-200, 200]], "to": 450}]})");
+    }
+
+    // 删除、改名类型（移植自 BIMCraft purge_tests.rs）
+    void TestTypeEntries()
+    {
+        auto has = [](const std::vector<std::string>& v, const std::string& x) { return std::find(v.begin(), v.end(), x) != v.end(); };
+        {
+            Session s;
+            const Id wall = FirstId(Run(s, "wall", R"({"points": [[0, 0], [4000, 0]]})"));
+            Run(s, "type", R"({"category": "wall", "name": "Spare 100", "thickness": 100})");
+            bool ok = has(WallTypes(s), "Spare 100");
+            const Json r = Run(s, "delete_type", R"({"category": "wall", "type": "Spare 100"})");
+            ok = ok && r["deleted"] == Json::parse(R"({"kind": "wall type", "name": "Spare 100"})") && !has(WallTypes(s), "Spare 100");
+            const std::string used = s.GetModel().GetWall(wall)->typeName;
+            ok = ok && Contains(Refused(s, "delete_type", Json{ { "category", "wall" }, { "type", used } }), "is used 1 time");
+            const std::string e = Refused(s, "delete_type", R"({"category": "wall", "type": "No such"})");
+            ok = ok && Contains(e, "no wall type") && Contains(e, "there are:");
+            ok = ok && Contains(Refused(s, "delete_type", R"({"category": "wall"})"), "give `category` and `type`");
+            Run(s, "undo", Json::object());
+            ok = ok && has(WallTypes(s), "Spare 100");
+            Check(ok, "删除类型：没用的删掉，用着的拒绝并说几处用着，可以撤销");
+        }
+        {
+            Session s;
+            const auto names = WallTypes(s);
+            for (size_t i = 1; i < names.size(); ++i)
+                Run(s, "delete_type", Json{ { "category", "wall" }, { "type", names[i] } });
+            Check(WallTypes(s) == std::vector<std::string>{ names[0] } &&
+                      Contains(Refused(s, "delete_type", Json{ { "category", "wall" }, { "type", names[0] } }), "last wall type"),
+                  "删除类型：一个类别最后一个类型删不掉");
+        }
+        {
+            Session s;
+            Chair(s);
+            Run(s, "delete_type", R"({"family": "Test Chair", "type": "Large"})");
+            bool ok = Contains(Refused(s, "delete_type", R"({"family": "Test Chair", "type": "Small"})"), "last type: delete the family");
+            Run(s, "delete_type", R"({"family": "Test Chair"})");
+            ok = ok && !s.GetModel().families.count("Test Chair");
+            Check(ok, "删除类型：族的类型没用时删掉，最后一个删不掉，族可以删");
+        }
+        {
+            Session s;
+            const Id wall = FirstId(Run(s, "wall", R"({"points": [[0, 0], [4000, 0]]})"));
+            const std::string was = s.GetModel().GetWall(wall)->typeName;
+            const auto guid = s.GetModel().library.GuidOf(Kind::Type("wall"), was);
+            const Json r = Run(s, "rename_type", Json{ { "category", "wall" }, { "type", was }, { "name", " Brick 200 " } });
+            bool ok = r["renamed"] == Json{ { "kind", "wall type" }, { "from", was }, { "to", "Brick 200" } };
+            ok = ok && has(WallTypes(s), "Brick 200") && !has(WallTypes(s), was) && s.GetModel().GetWall(wall)->typeName == "Brick 200";
+            ok = ok && s.GetModel().library.GuidOf(Kind::Type("wall"), "Brick 200") == guid;
+            std::string taken;
+            for (const std::string& n : WallTypes(s))
+                if (n != "Brick 200")
+                    taken = n;
+            ok = ok && Contains(Refused(s, "rename_type", Json{ { "category", "wall" }, { "type", "Brick 200" }, { "name", taken } }), "already a wall type");
+            ok = ok && Contains(Refused(s, "rename_type", R"({"category": "wall", "type": "Brick 200", "name": "  "})"), "`name`");
+            // 族的类型，构件跟着
+            Chair(s);
+            const Id c = Run(s, "component", R"({"family": "Test Chair", "type": "Small", "at": [1000, 1000]})")["id"].get<Id>();
+            Run(s, "rename_type", R"({"family": "Test Chair", "type": "Small", "name": "Child"})");
+            const auto& types = s.GetModel().families.at("Test Chair").types;
+            ok = ok && types.count("Child") && !types.count("Small") && s.GetModel().elements.Get(c)->As<Component>()->typeName == "Child";
+            Run(s, "undo", Json::object());
+            ok = ok && s.GetModel().families.at("Test Chair").types.count("Small");
+            Check(ok, "类型改名：元素跟着，GUID 不变，重名、空名拒绝，族的类型也行");
+        }
+    }
 }
 
 int main()
@@ -1465,6 +1545,7 @@ int main()
     TestPlan();
     TestSample();
     TestModifyTools();
+    TestTypeEntries();
     TestHostileParams();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
