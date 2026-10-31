@@ -1529,6 +1529,148 @@ grid {"start": [0, -2000], "end": [0, 8000]})", out, error))
             Check(ok, "类型改名：元素跟着，GUID 不变，重名、空名拒绝，族的类型也行");
         }
     }
+
+    // 一个正方形的线，[x, y] 是西南角，顺时针画
+    Json SquareLines(double x, double y, double size)
+    {
+        const Json c[4] = { Pt(x, y), Pt(x, y + size), Pt(x + size, y + size), Pt(x + size, y) };
+        Json out = Json::array();
+        for (int i = 0; i < 4; ++i)
+            out.push_back(Json::array({ c[i], c[(i + 1) % 4] }));
+        return out;
+    }
+
+    Json WithHole()
+    {
+        Json ls = SquareLines(0, 0, 6000);
+        for (const Json& l : SquareLines(2000, 2000, 1000))
+            ls.push_back(l);
+        return ls;
+    }
+
+    Json SketchOf(Session& s, const Json& id)
+    {
+        const Json e = ElementOf(s, id.get<Id>());
+        return e.contains("sketch") ? e["sketch"] : Json::array();
+    }
+
+    // 草图经命令（移植自 BIMCraft sketch.rs 的 command_tests）
+    void TestSketches()
+    {
+        {
+            Session s;
+            const size_t steps = s.History().size();
+            const Json r = Run(s, "sketch", Json{ { "lines", WithHole() } });
+            bool ok = r["regions"].size() == 1 && r["regions"][0]["holes"].size() == 1 && r["area_m2"] == 35.0 &&
+                      r["regions"][0]["outline"][1] == Pt(6000, 0) && s.History().size() == steps;
+            Json ls = SquareLines(0, 0, 4000);
+            ls.erase(ls.size() - 1);
+            ls.push_back(Json::parse("[[-1000, 2000], [1000, 2000]]"));
+            const std::string e = Refused(s, "sketch", Json{ { "lines", ls } });
+            ok = ok && Contains(e, "line 0 and line 3 intersect at [0, 2000]") && Contains(e, "line 2 ends at [4000, 0] without meeting another");
+            ok = ok && Contains(Refused(s, "sketch", R"({"lines": [[[0, 0], [1]]]})"), "`lines`");
+            Check(ok, "草图：只解不改模型，一条条说出哪里不对");
+        }
+        {
+            Session s;
+            const Json f = Run(s, "floor", Json{ { "sketch", WithHole() } });
+            const Floor* fl = s.GetModel().elements.Get(f["id"].get<Id>())->As<Floor>();
+            bool ok = f["area_m2"] == 35.0 && fl->boundary.size() == 4 && fl->openings.size() == 1 && Geom::Area(fl->boundary) > 0.0;
+            ok = ok && Run(s, "ceiling", Json{ { "sketch", WithHole() } })["area_m2"] == 35.0;
+            const Json r = Run(s, "roof", Json{ { "sketch", WithHole() }, { "slope", 0 } });
+            ok = ok && s.GetModel().elements.Get(r["id"].get<Id>())->As<Roof>()->courtyards.size() == 1;
+            Json two = SquareLines(0, 0, 1000);
+            for (const Json& l : SquareLines(5000, 0, 1000))
+                two.push_back(l);
+            ok = ok && Contains(Refused(s, "floor", Json{ { "sketch", two } }), "2 separate outlines");
+            ok = ok && Contains(Refused(s, "floor", Json{ { "sketch", WithHole() }, { "boundary", Json::parse("[[0, 0], [1000, 0], [0, 1000]]") } }),
+                                "`sketch` or `boundary`");
+            Check(ok, "草图：楼板、天花板、屋顶的轮廓与洞可以画成草图");
+        }
+        {
+            Session s;
+            const Json f = Run(s, "floor", R"({"boundary": [[0, 0], [4000, 0], [4000, 4000], [0, 4000]]})")["id"];
+            bool ok = Run(s, "edit_boundary", Json{ { "id", f } })["sketch"].size() == 4;
+            ok = ok && Run(s, "edit_boundary", Json{ { "id", f }, { "sketch", WithHole() } })["area_m2"] == 35.0;
+            ok = ok && s.GetModel().elements.Get(f.get<Id>())->As<Floor>()->openings.size() == 1 && s.History().back() == "Edit Boundary";
+            Json open = SquareLines(0, 0, 4000);
+            open.erase(open.size() - 1);
+            const auto before = s.Snapshot();
+            ok = ok && Contains(Refused(s, "edit_boundary", Json{ { "id", f }, { "sketch", open } }), "open") && s.Snapshot() == before;
+            Run(s, "undo", Json::object());
+            ok = ok && s.GetModel().elements.Get(f.get<Id>())->As<Floor>()->openings.empty();
+            const Json w = Run(s, "wall", R"({"points": [[0, 0], [1000, 0]]})")["ids"][0];
+            ok = ok && Contains(Refused(s, "edit_boundary", Json{ { "id", w }, { "sketch", WithHole() } }), "floor, a ceiling or a roof's footprint");
+            Check(ok, "编辑边界：一步重画轮廓，不行时原样不动");
+        }
+        {
+            Session s;
+            const Json r = Run(s, "roof", R"({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "gables": [1, 3], "slope": 30})")["id"];
+            Run(s, "edit_boundary", Json{ { "id", r }, { "sketch", Json::parse(R"([[[0, -1000], [8000, -1000]], [[8000, -1000], [8000, 6000]], [[8000, 6000], [0, 6000]], [[0, 6000], [0, -1000]]])") } });
+            bool ok = s.GetModel().elements.Get(r.get<Id>())->As<Roof>()->gables.empty();
+            Run(s, "undo", Json::object());
+            Run(s, "edit_boundary", Json{ { "id", r }, { "sketch", Json::parse(R"([[[0, 0], [8000, 0]], [[8000, 0], [8000, 6000]], [[8000, 6000], [4000, 6000]], [[4000, 6000], [0, 6000]], [[0, 6000], [0, 0]]])") } });
+            ok = ok && s.GetModel().elements.Get(r.get<Id>())->As<Roof>()->gables == std::vector<size_t>{ 1, 4 };
+            const Json x = Run(s, "roof", R"({"extrusion": {"line": [[0, 0], [4000, 0]], "profile": [[0, 0], [2000, 1000], [4000, 0]], "to": 3000}})")["id"];
+            ok = ok && Contains(Refused(s, "edit_boundary", Json{ { "id", x }, { "sketch", WithHole() } }), "extrusion");
+            Check(ok, "编辑边界：屋顶的山墙留在迹线还有同一条边的地方");
+        }
+        {
+            Session s;
+            const Json f = Run(s, "floor", Json{ { "sketch", SquareLines(0, 0, 6000) } })["id"];
+            const Json kept = SketchOf(s, f);
+            std::vector<Id> ids;
+            for (const Json& l : kept)
+                if (l.contains("id"))
+                    ids.push_back(l["id"].get<Id>());
+            bool ok = ids.size() == 4 && std::all_of(ids.begin(), ids.end(), [](Id i) { return i >= 100000 && i <= 999999; }) &&
+                      std::all_of(kept.begin(), kept.end(), [](const Json& l) { return l["guid"].is_string(); });
+            const Json now = Run(s, "edit_boundary", Json{ { "id", f } })["sketch"];
+            Json again = Json::array();
+            for (size_t i = 0; i < 3; ++i)
+                again.push_back(Json{ { "id", now[i]["id"] }, { "start", now[i]["start"] }, { "end", now[i]["end"] } });
+            const Json mid = Pt(3000, 0);
+            again.push_back(Json::array({ now[3]["start"], mid }));
+            again.push_back(Json::array({ mid, now[3]["end"] }));
+            Run(s, "edit_boundary", Json{ { "id", f }, { "sketch", again } });
+            std::vector<Id> after;
+            for (const Json& l : SketchOf(s, f))
+                after.push_back(l["id"].get<Id>());
+            ok = ok && after.size() == 5 && std::equal(ids.begin(), ids.begin() + 3, after.begin()) &&
+                 std::none_of(after.begin() + 3, after.end(), [&](Id i) { return std::find(ids.begin(), ids.end(), i) != ids.end(); });
+            ok = ok && Contains(Refused(s, "edit_boundary", Json{ { "id", f }, { "sketch", Json::parse(R"([{"id": 123456, "start": [0, 0], "end": [1, 1]}])") } }),
+                                "123456 isn't a line of this sketch");
+            // 移动：草图跟着走，保留 ID；复制：副本的线是新的
+            const Json was = SketchOf(s, f);
+            Run(s, "move", Json{ { "ids", { f } }, { "by", Pt(1000, 0) } });
+            const Json moved = SketchOf(s, f);
+            ok = ok && moved[0]["id"] == was[0]["id"] && moved[0]["start"][0].get<double>() == was[0]["start"][0].get<double>() + 1000.0;
+            const Json copy = Run(s, "copy", Json{ { "ids", { f } }, { "by", Pt(0, 10000) } })["ids"][0];
+            const Json copied = SketchOf(s, copy);
+            ok = ok && copied.size() == 5 && std::none_of(copied.begin(), copied.end(), [&](const Json& l)
+                                                         { return std::find(after.begin(), after.end(), l["id"].get<Id>()) != after.end(); });
+            // 沿墙建的楼板没有草图，编辑边界时它的线是新的
+            Run(s, "wall", R"({"points": [[20000, 0], [26000, 0], [26000, 6000], [20000, 6000]], "closed": true})");
+            const Json w = Run(s, "floor", R"({"level": "Level 1"})")["id"];
+            ok = ok && SketchOf(s, w).empty();
+            const Json fresh = Run(s, "edit_boundary", Json{ { "id", w } })["sketch"];
+            ok = ok && std::none_of(fresh.begin(), fresh.end(), [](const Json& l) { return l.contains("id"); });
+            Check(ok, "草图线：各有 ID 与 GUID，编辑、移动时保留，复制的是新的");
+        }
+        {
+            Session s;
+            const Json f = Run(s, "floor", Json{ { "sketch", Json::parse("[[[0, 0], [4000, 0]], [[4000, 0], [0, 0], [2000, 2000]]]") } });
+            const double a = f["area_m2"].get<double>();
+            const double turn = SketchOf(s, f["id"])[1].value("arc", 0.0);
+            Check(std::abs(a - 2.0 * 3.14159265358979323846) < 0.1 && std::abs(turn - 180.0) < 1e-6, "草图：画了圆弧的楼板是圆的");
+            // 存成文件再读回来，草图还在
+            const std::string path = Temp("sketch.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            Check(SketchOf(t, f["id"]) == SketchOf(s, f["id"]), "草图：存进项目文件再打开还在");
+        }
+    }
 }
 
 int main()
@@ -1546,6 +1688,7 @@ int main()
     TestSample();
     TestModifyTools();
     TestTypeEntries();
+    TestSketches();
     TestHostileParams();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;

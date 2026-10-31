@@ -21,13 +21,14 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Render.h` | `render.rs`、`pen.rs`、`styles.rs` 的平面部分 | 平面图的显示列表（像素里的填色环与折线）：墙的剖切填充与边线、门窗、房间标签、轴网、屋顶、楼板、构件；线宽（笔）；拾取 |
 | `src/Model/Align.h` | `align.rs`、`model.rs` 的 `reference_line` | 对齐：元素在平面上的直边与参照轴线（墙的中心线、两面、两端，门窗的中线与门框，轴网……），把一条线放到另一条上的刚体运动 |
 | `src/Model/Snap.h` | `snap.rs` | 捕捉：平面上点下的点落在哪（端点、中点、交点、圆心、垂足、墙中心线、角度引导线、最近的 10 毫米），标尺的读数与刻度 |
+| `src/Model/Sketch.h` | `sketch.rs` | 草图：零散的直线与圆弧（`SketchLine`）解成闭合的环、嵌套成轮廓与洞（`Sketch::Solve`、`Sketch::SolveOne`），解不出时列出每个问题（相交、重叠、分叉、开口、没有面积、几个外轮廓）与涉及的线 |
 | `src/Model/Font.h` | `font.rs` | 平面图注释用的单线字（拉丁、西里尔大写，附加符号；没有的字画问号） |
 | `src/Model/Skeleton.h` | `skeleton.rs` | 多边形（含天井）的直骨架：坡屋顶的斜脊、天沟、屋脊与各坡面 |
 | `src/Model/Library.h` | `library.rs` | 库条目（类型、材质）与部件（类型的层）的 ID、GUID |
 | `src/Model/ModelJson.h` | `model.rs`、`ids.rs`、`library.rs`、`lenient.rs` | 元素与项目文件的 JSON |
 | `src/Model/Walls.h` | `walls.rs` 与它的 index 子模块 | 墙的定位线、墙面、斜接封口、轮廓、棱柱、加速索引 |
 | `src/Commands/Session.h` | `engine.rs` | `Session`：执行命令、回滚、撤销 / 重做、脚本、事务 |
-| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 3d 步加了 `rename_type`、`delete_type`；第 3c 步加了 `align`、`rotate`、`mirror`、`corner`、`split`（只认墙；详图线的部分随详图线移植）；第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`，第 2c 步加了 `family`、`component`，门窗可带 `family`；第 2e 步 `open`、`save` 读写 `.ifc`） |
+| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 3e 步加了 `edit_boundary`、`sketch`，`floor`、`ceiling`、`roof` 收 `sketch`；第 3d 步加了 `rename_type`、`delete_type`；第 3c 步加了 `align`、`rotate`、`mirror`、`corner`、`split`（只认墙；详图线的部分随详图线移植）；第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`，第 2c 步加了 `family`、`component`，门窗可带 `family`；第 2e 步 `open`、`save` 读写 `.ifc`） |
 | `src/Commands/Sample.h` | `sample.rs` | 示例房屋脚本（已移植命令能做的部分） |
 
 ## 入口与数据流
@@ -60,8 +61,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 - 移动、复制、旋转、镜像、对齐都经 `Commands.cpp` 里的 `Motion`（点怎么变，平移时门窗沿墙滑多少，是不是镜像）与 `Relocate` / `Duplicate`：
   连着的墙伸缩保持相接，墙上的门窗随墙。镜像时墙反着走（外侧仍在镜像过去的那边）、楼板与天花板的轮廓反向、构件翻过来、门挂到另一侧门框；
   复制的房间、轴网、门窗取下一个编号
-- 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、楼板、天花板、屋顶）；详图线的象限点与切点、点云、草图模式（`in_sketch`）、
-  视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
+- 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
+  详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
 - 房间只存一个点，边界每次由点四周的线找（`Model::RoomRegion`）：墙中心线与房间分隔线，或在墙面量时（`Model::roomArea`）墙轮廓的边与分隔线。
   墙动了房间跟着变；`floor`、`roof` 沿墙铺时，里面有房间的独立的一圈墙算室内
@@ -85,8 +86,10 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 - 数的读写不随系统区域设置：`Text::ParseNumber`（`from_chars`）、`Text::Shortest`（`to_chars`，照 Rust 的 `{}` 格式）
 - 移植时还没有的部分在代码里注明是哪一步补上：贴图、填充样式、竖井（BIMCraft 的 `less_shafts`）、项目参数（元素 `params` 里不是族参数的值，
   读文件时略去）、收藏夹（`favorite`）、镜像与旋转命令（构件的 `mirrored` 已有）。
-  画轮廓的草图（`sketch`：楼板、天花板、屋顶的"编辑边界"，BIMCraft 的 `sketch.rs`、`curves.rs`）随平面视图的编辑（第 2d 步）移植，
-  现在命令收到 `sketch` 就拒绝、读文件时略去
+  草图（第 3e 步）：楼板、天花板、迹线屋顶记着画它们或最后编辑它们的草图线（`Floor::sketch` 等，`Element::SketchOf`），每条线是一个部件
+  （"sketch line"，在 `Model::PartsNow`、`Model::SyncParts`、`Model::ForgetParts` 里），`Model::Check` 查线本身（`Sketch::Check`）；
+  `edit_boundary` 不带 `sketch` 时给出现在的线（记着的线还画得出轮廓时用它们，否则轮廓的边当作新线），带 `sketch` 时解了换掉轮廓，线带 `id` 的保留 ID 与 GUID。
+  只移植了直线与圆弧：`curves.rs` 的其他曲线（样条、椭圆……）读文件时整个草图略去（`left_out`），命令里拒绝
 - 直骨架照 BIMCraft 用二叉堆排事件：同一时刻的事件顺序与 Rust 的堆可能不同，结果一样（`ModelTests` 的 2000 个随机迹线检查面积与平面性）
 
 ## 测试与排查

@@ -8,6 +8,7 @@
 #include "I18n/Translator.h"
 #include "Ifc/Ifc.h"
 #include "Model/Align.h"
+#include "Model/Sketch.h"
 #include "Model/ModelJson.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
@@ -873,6 +874,219 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // ── 草图（移植自 commands.rs 的 sketch_param、sketched、edit_boundary）────────────
+        // 命令里的草图线：[[x,y],[x,y]] 直线，[[x,y],[x,y],[x,y]] 从第一点到第二点、经过第三点的圆弧，或 {id?, start, end, arc? | through?}；
+        // 带 id 的保留 old（正在编辑的草图）里那条线的 ID 与 GUID
+        bool SketchParam(Params& P, const Json& p, const char* key, const std::vector<SketchLine>& old, std::optional<std::vector<SketchLine>>& out)
+        {
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            const std::string shape = "`" + std::string(key) + "` is a list of lines, each [[x,y],[x,y]], an arc [[x,y],[x,y],[x,y]] (its ends, then a "
+                                      "point it passes through) or {id?, start, end, arc? | through?}";
+            if (!v->is_array())
+                return P.Fail(shape);
+            if (v->size() > MaxPoints)
+                return P.Fail("`" + std::string(key) + "` lists more than " + std::to_string(MaxPoints));
+            std::vector<SketchLine> lines;
+            for (size_t i = 0; i < v->size(); ++i)
+            {
+                const Json& g = (*v)[i];
+                const std::string at = "`" + std::string(key) + "` line " + std::to_string(i);
+                std::string why;
+                SketchLine l;
+                if (g.is_array())
+                {
+                    std::vector<P2> pts;
+                    for (const Json& q : g)
+                    {
+                        P2 pt;
+                        if (!FromJson(q, pt, why))
+                            return P.Fail(at + ": " + why);
+                        pts.push_back(pt);
+                    }
+                    if (pts.size() == 2)
+                    {
+                        l.start = pts[0];
+                        l.end   = pts[1];
+                    }
+                    else if (pts.size() == 3)
+                        l = Sketch::ArcThrough(pts[0], pts[1], pts[2]);
+                    else
+                        return P.Fail(shape);
+                }
+                else if (g.is_object())
+                {
+                    for (auto it = g.begin(); it != g.end(); ++it)
+                        if (it.key() != "id" && it.key() != "guid" && it.key() != "start" && it.key() != "end" && it.key() != "arc" && it.key() != "through")
+                            return P.Fail(at + ": `" + it.key() + "` isn't one it takes; lines and arcs are ported, other curves aren't yet");
+                    if (!g.contains("start") || !g.contains("end") || !FromJson(g["start"], l.start, why) || !FromJson(g["end"], l.end, why))
+                        return P.Fail(at + " needs `start` and `end` [x, y]" + (why.empty() ? "" : ": " + why));
+                    if (g.contains("arc") && g.contains("through"))
+                        return P.Fail(at + ": give an arc's `through` point or its `arc` turn, not both");
+                    if (g.contains("arc"))
+                    {
+                        if (!g["arc"].is_number())
+                            return P.Fail(at + ": `arc` is degrees");
+                        l.arc = g["arc"].get<double>();
+                    }
+                    if (g.contains("through"))
+                    {
+                        P2 t;
+                        if (!FromJson(g["through"], t, why))
+                            return P.Fail(at + ": `through`: " + why);
+                        l.arc = Sketch::ArcThrough(l.start, l.end, t).arc;
+                    }
+                    if (g.contains("id") && !g["id"].is_null())
+                    {
+                        const auto id = AsWhole(g["id"]);
+                        const auto was = id ? std::find_if(old.begin(), old.end(), [&](const SketchLine& o) { return o.id == static_cast<Id>(*id); })
+                                            : old.end();
+                        if (was == old.end())
+                            return P.Fail(at + ": " + g["id"].dump() + " isn't a line of this sketch; leave `id` out for a new one");
+                        l.id   = was->id;
+                        l.guid = was->guid;
+                    }
+                }
+                else
+                    return P.Fail(shape);
+                lines.push_back(l);
+            }
+            out = std::move(lines);
+            return true;
+        }
+
+        // `sketch` 解成一个外轮廓（逆时针）与它的洞（顺时针），与线一起；没给时为空。与 boundary 或 holes 一起给时拒绝
+        bool Sketched(Params& P, const Json& p, const char* holes, const std::vector<SketchLine>& old,
+                      std::optional<std::pair<Geom::Region, std::vector<SketchLine>>>& out)
+        {
+            std::optional<std::vector<SketchLine>> lines;
+            if (!SketchParam(P, p, "sketch", old, lines))
+                return false;
+            if (!lines)
+                return true;
+            for (const char* k : { "boundary", holes })
+                if (*k && !P.Absent(k))
+                    return P.Fail(std::string("give the outline as `sketch` or `boundary`") + (*holes ? std::string(" (with `") + holes + "`)" : std::string()) + ", not both");
+            Geom::Region r;
+            std::vector<Sketch::Problem> problems;
+            if (!Sketch::SolveOne(*lines, r, problems))
+                return P.Fail("the sketch isn't one outline: " + Sketch::Say(problems, Sketch::Namer(*lines)));
+            out = std::pair{ std::move(r), std::move(*lines) };
+            return true;
+        }
+
+        // 元素现在的草图：记着的，还是它的轮廓与洞时；否则它们的边，当作新的线
+        std::optional<std::vector<SketchLine>> BoundaryNow(const Element& e)
+        {
+            Ring outline;
+            std::vector<Ring> holes;
+            if (const Floor* f = e.As<Floor>())
+                std::tie(outline, holes) = std::pair{ f->boundary, f->openings };
+            else if (const Ceiling* c = e.As<Ceiling>())
+                std::tie(outline, holes) = std::pair{ c->boundary, c->openings };
+            else if (const Roof* r = e.As<Roof>(); r && !r->extrusion)
+                std::tie(outline, holes) = std::pair{ r->boundary, r->courtyards };
+            else
+                return std::nullopt;
+            const auto* kept = e.SketchOf();
+            if (kept && !kept->empty() && Sketch::Draws(*kept, outline, holes))
+                return *kept;
+            return Sketch::LinesOf(outline, holes);
+        }
+
+        bool EditBoundaryCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "edit_boundary";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<Guid> g;
+            if (!P.IdOpt("id", g))
+                return false;
+            if (!g)
+                return P.Fail("`id`, the floor, ceiling or roof to edit, is required");
+            const auto id = m.elements.IdOf(*g);
+            if (!id)
+                return P.Fail("no element " + g->ToString());
+            Element e = *m.elements.Get(*id);
+            if (const Roof* r = e.As<Roof>(); r && r->extrusion)
+                return P.Fail(std::to_string(*id) + " is an extrusion roof: change its profile, `modify` its `extrusion`");
+            const auto now = BoundaryNow(e);
+            if (!now)
+                return P.Fail(std::to_string(*id) + " isn't a floor, a ceiling or a roof's footprint");
+            std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sk;
+            if (!Sketched(P, p, "", *now, sk))
+                return false;
+            if (!sk)
+            {
+                result = Json{ { "id", *id }, { "sketch", SketchJson(*now) } };
+                return true;
+            }
+            auto& [r, lines] = *sk;
+            const double area = r.Area();
+            if (Floor* f = e.As<Floor>())
+                std::tie(f->boundary, f->openings, f->sketch) = std::tuple{ r.outer, r.holes, lines };
+            else if (Ceiling* x = e.As<Ceiling>())
+                std::tie(x->boundary, x->openings, x->sketch) = std::tuple{ r.outer, r.holes, lines };
+            else if (Roof* old = e.As<Roof>())
+            {
+                // 山墙留在新迹线上还有同一条边的地方，方向随意
+                const std::vector<Segment> before = old->Edges();
+                std::vector<Segment> kept;
+                for (const size_t k : old->gables)
+                    if (k < before.size())
+                        kept.push_back(before[k]);
+                old->boundary   = r.outer;
+                old->courtyards = r.holes;
+                old->sketch     = lines;
+                old->gables.clear();
+                const std::vector<Segment> after = old->Edges();
+                for (size_t k = 0; k < after.size(); ++k)
+                    for (const Segment& was : kept)
+                        if ((after[k].first.Dist(was.first) <= Tol && after[k].second.Dist(was.second) <= Tol) ||
+                            (after[k].first.Dist(was.second) <= Tol && after[k].second.Dist(was.first) <= Tol))
+                        {
+                            old->gables.push_back(k);
+                            break;
+                        }
+            }
+            s.ModelMut().elements.Insert(*id, std::move(e));
+            result = Json{ { "id", *id }, { "area_m2", M2(area) } };
+            return true;
+        }
+
+        bool SketchCmd(Session&, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "sketch";
+            Params P(c, p, error);
+            std::optional<std::vector<SketchLine>> lines;
+            if (!SketchParam(P, p, "lines", {}, lines))
+                return false;
+            if (!lines)
+                return P.Fail("`lines` [[[x,y],[x,y]],…] is required");
+            Sketch::Profile profile;
+            std::vector<Sketch::Problem> problems;
+            if (!Sketch::Solve(*lines, profile, problems))
+                return P.Fail("the lines don't make closed loops: " + Sketch::Say(problems, Sketch::Namer(*lines)));
+            auto RingJson = [](const Ring& ring)
+            {
+                Json out = Json::array();
+                for (const P2& q : ring)
+                    out.push_back(ToJson(q));
+                return out;
+            };
+            Json regions = Json::array();
+            for (const Geom::Region& r : profile.regions)
+            {
+                Json holes = Json::array();
+                for (const Ring& h : r.holes)
+                    holes.push_back(RingJson(h));
+                regions.push_back(Json{ { "outline", RingJson(r.outer) }, { "holes", std::move(holes) }, { "area_m2", M2(r.Area()) } });
+            }
+            result = Json{ { "regions", std::move(regions) }, { "area_m2", M2(profile.Area()) } };
+            return true;
+        }
+
         bool DoorCmd(Session& s, const Json& p, Json& result, std::string& error) { return OpeningCmd(s, p, result, error, true); }
         bool WindowCmd(Session& s, const Json& p, Json& result, std::string& error) { return OpeningCmd(s, p, result, error, false); }
 
@@ -885,11 +1099,17 @@ namespace MiniBIM::Bim
             std::string typeName;
             if (!LevelParam(c, m, p, "level", level, error) || !TypeParam(P, m, "floor", typeName))
                 return false;
-            if (!P.Absent("sketch"))
-                return P.Fail("`sketch` isn't ported yet (docs/PLAN.md, phase 2); give `boundary`");
+            std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sketched;
+            if (!Sketched(P, p, "openings", {}, sketched))
+                return false;
             Ring boundary;
             std::vector<Ring> found;
-            if (P.Absent("boundary"))
+            if (sketched)
+            {
+                boundary = sketched->first.outer;
+                found    = sketched->first.holes;
+            }
+            else if (P.Absent("boundary"))
             {
                 const auto outline = FloorOutline(m, level);
                 if (!outline)
@@ -932,6 +1152,8 @@ namespace MiniBIM::Bim
             f.slope      = slope.value_or(0.0);
             f.arrow      = arrow;
             f.structural = structural;
+            if (sketched)
+                f.sketch = sketched->second;
             // 洞口在它里面、互不相交，否则模型拒绝
             double area = Geom::Area(f.boundary);
             for (const Ring& o : f.openings)
@@ -950,14 +1172,20 @@ namespace MiniBIM::Bim
             std::string typeName;
             if (!LevelParam(c, m, p, "level", level, error) || !TypeParam(P, m, "ceiling", typeName))
                 return false;
-            if (!P.Absent("sketch"))
-                return P.Fail("`sketch` isn't ported yet (docs/PLAN.md, phase 2); give `point` or `boundary`");
+            std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sketched;
+            if (!Sketched(P, p, "openings", {}, sketched))
+                return false;
             std::optional<P2> at;
             if (!P.PointOpt("point", at))
                 return false;
             Ring boundary;
             std::vector<Ring> found;
-            if (!P.Absent("boundary"))
+            if (sketched)
+            {
+                boundary = sketched->first.outer;
+                found    = sketched->first.holes;
+            }
+            else if (!P.Absent("boundary"))
             {
                 std::vector<P2> pts;
                 if (!P.Points("boundary", pts))
@@ -989,6 +1217,8 @@ namespace MiniBIM::Bim
             x.boundary = boundary;
             x.openings = openings ? *openings : found;
             x.offset   = offset.value_or(CeilingHeight);
+            if (sketched)
+                x.sketch = sketched->second;
             // 洞口在它里面、互不相交，否则模型拒绝
             double area = Geom::Area(x.boundary);
             for (const Ring& o : x.openings)
@@ -1131,16 +1361,25 @@ namespace MiniBIM::Bim
             std::optional<Extrusion> extrusion;
             if (!TypeParam(P, m, "roof", typeName) || !ExtrusionParam(P, extrusion))
                 return false;
-            if (!P.Absent("sketch"))
-                return P.Fail("`sketch` isn't ported yet (docs/PLAN.md, phase 2); give `boundary`");
-            const bool given = !P.Absent("boundary");
+            std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sketched;
+            if (!Sketched(P, p, "courtyards", {}, sketched))
+                return false;
+            if (sketched && extrusion)
+                return P.Fail("an extrusion roof has no footprint to sketch");
+            const bool given = !P.Absent("boundary") || sketched;
             std::optional<double> overhang;
             if (!P.Num("overhang", overhang))
                 return false;
             Roof r;
             r.overhang = overhang.value_or(given || extrusion ? 0.0 : 500.0);
             std::vector<Ring> found;
-            if (given)
+            if (sketched)
+            {
+                r.boundary = sketched->first.outer;
+                found      = sketched->first.holes;
+                r.sketch   = sketched->second;
+            }
+            else if (given)
             {
                 std::vector<P2> pts;
                 if (!P.Points("boundary", pts))
@@ -1919,6 +2158,15 @@ namespace MiniBIM::Bim
             const auto& f = mo.map;
             if (out.As<Level>())
                 return Fail(error, c, "level " + std::to_string(id) + " has no place in plan; change its elevation, or add a level");
+            // 草图随元素走，线保留 ID；镜像时圆弧反过来转
+            if (std::vector<SketchLine>* lines = out.SketchOf())
+                for (SketchLine& l : *lines)
+                {
+                    l.start = f(l.start);
+                    l.end   = f(l.end);
+                    if (mo.mirror)
+                        l.arc = -l.arc + 0.0;
+                }
             if (Wall* w = out.As<Wall>())
             {
                 const P2 a = f(w->start), b = f(w->end);
@@ -2895,6 +3143,17 @@ namespace MiniBIM::Bim
               "{category?: wall|floor|door|window|roof|ceiling, family?, type, name} renames a type of a category (`category` and `type`) "
               "or one of a family's types (`family` and `type`) to `name`, as Rename in Type Properties does: the elements of it follow, "
               "and it keeps its GUID; refused for a name another type of it has", RenameTypeCmd, true },
+            { "edit_boundary", N_("Edit Boundary"), {},
+              "{id, sketch?: [[[x,y],[x,y]],…]} redraws a floor's, a ceiling's or a roof's footprint's outline and its holes (a floor's or a "
+              "ceiling's openings, a roof's courtyards) as a sketch, all at once (see `sketch`); a roof's gable edges stay gables where the new "
+              "footprint has the same edge. Without `sketch`, gives the outline and holes it has now, as the lines to edit (a line it kept from "
+              "its last sketch with its `id`: send it back with it to keep it)", EditBoundaryCmd, true },
+            { "sketch", N_("Sketch"), {},
+              "{lines: [[[x,y],[x,y]],…]} solves a sketch without making anything, as Finish Edit Mode does: lines in any order, either way "
+              "round, joined end to end (within 1 mm) into closed loops; a loop inside no other (or inside a hole) an outline, counter-clockwise, "
+              "one inside an outline a hole in it, clockwise. A line is [[x,y],[x,y]], an arc [[x,y],[x,y],[x,y]] (its ends, then a point it "
+              "passes through) or {start, end, arc?}. Gives each region's `outline`, `holes` and `area_m2`, or every problem with the lines it's "
+              "about (numbered from 0). `sketch` on floor, ceiling and roof, and `edit_boundary`, take lines the same way", SketchCmd, false },
             { "align", N_("Align"), { "AL" },
               "{id, reference: [[x,y],[x,y]], line: [[x,y],[x,y]]} aligns an element's picked line with a reference in plan: turns by the "
               "smaller angle about the picked line's midpoint, then moves it onto the reference, keeping its size. Doors and windows slide "
