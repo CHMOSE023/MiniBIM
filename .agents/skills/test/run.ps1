@@ -34,6 +34,7 @@ $rules = @(
     @('^tests/Model/|^src/Model/|^3rd/nlohmann/',               'ModelTests', 'CommandTests', 'IfcTests', 'ModelSceneTests', 'MiniBIMWin'),
     @('^tests/Commands/|^src/Commands/',                        'CommandTests', 'IfcTests', 'ModelSceneTests', 'AppTests', 'MiniBIMWin'),
     @('^tests/Ifc/|^src/Ifc/',                                  'IfcTests', 'CommandTests', 'MiniBIMWin'),
+    @('^tests/Rvt/|^src/Rvt/',                                  'RvtTests'),
     @('^src/Solid/|^3rd/SMLib/|^cmake/SMLib',                   'SMLibSmokeTests', 'MiniBIMWin'),
     @('^src/UI/',                                               'MiniBIMWin', 'i18n'),
     @('^src/(Core|Render)/|^apps/Render/|^apps/Win32/',         'MiniBIMWin'),

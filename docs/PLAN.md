@@ -128,7 +128,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - **分段**：
   - R1 ✅ 柱（核心）：`Column`、`StructuralColumn` 与它们的类型、命令 `column`、`structural_column`、检查、项目文件、对齐与捕捉（BIMCraft 的柱测试已移植进 `CommandTests`）
   - R2 ✅ 柱的三维、平面与 IFC 导出导入（放柱的界面工具与图标留到 R6 一起做）
-  - R3 rvt 底层：复合文档（MS-CFB）、gzip 与有界的 inflate、`BasicFileInfo`、`ProjectInformation` / `PartAtom`、预览图
+  - R3 ✅ rvt 底层：复合文档（MS-CFB，自己写）、gzip 与有界的 inflate（自己写）、`BasicFileInfo`、`ProjectInformation` / `PartAtom`、预览图（BIMCraft 的容器、gzip 与元数据测试已移植进 `RvtTests`，见 `.agents/features/rvt.md`）
   - R4 rvt 记录：`Formats/Latest` 的类表、`ElemTable`、分区里的元素记录与类型记录、标高、元素数据、名称、类型与层、曲线、放置、草图
   - R5 rvt 导入：墙、楼板与天花板、屋顶、门窗、房间、柱，读不了的列出原因
   - R6 界面打开 `.rvt`（后台读、提示框）、Linux 版与网页版、CI 与发布包

@@ -74,3 +74,16 @@ set_target_properties(I18nTests ViewTests ModelTests CommandTests IfcTests PROPE
 if(MINIBIM_WITH_SOLID)
     set_target_properties(SMLibSmokeTests ModelSceneTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endif()
+
+# Rvt/      Revit 文件读取器（移植自 BIMCraft crates/rvt，Apache-2.0）：复合文档、gzip 与页、BasicFileInfo、Atom 条目、预览图、
+#           许可的隔离 → RvtTests（MINIBIM_WITH_RVT 时）。样例在测试里现做（Fixture.cpp），不用 Autodesk 的文件
+if(MINIBIM_WITH_RVT)
+    add_executable(RvtTests "Rvt/RvtTests.cpp" "Rvt/Fixture.cpp")
+    target_link_libraries(RvtTests PRIVATE MiniBIMRvt)
+    target_compile_definitions(RvtTests PRIVATE MINIBIM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    if(MSVC)
+        target_compile_options(RvtTests PRIVATE /utf-8)
+    endif()
+    add_test(NAME RvtTests COMMAND RvtTests)
+    set_target_properties(RvtTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+endif()
