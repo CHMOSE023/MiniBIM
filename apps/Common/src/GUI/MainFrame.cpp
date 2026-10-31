@@ -44,6 +44,7 @@ namespace MiniBIM
 
     MainFrame::~MainFrame()
     {
+        AbandonRevit();
         MiniGUI::SetTranslator({});
     }
 
@@ -78,8 +79,10 @@ namespace MiniBIM
 
         InitUI();
         OnResize(width, height, pixelScale);
-        // 给了项目文件就打开它；给了 --run 的界面命令就在示例房屋上执行（看界面效果时用）；否则显示开始页
-        const bool opened = !m_startupFile.empty() && OpenPath(m_startupFile);
+        // 给了项目文件就打开它；给了 --run 的界面命令就在示例房屋上执行（看界面效果时用）；否则显示开始页。
+        // Revit 文件要读好一会儿：窗口先出来（开始页），再在后台读
+        const bool revit  = !m_startupFile.empty() && RevitReport::IsRevit(m_startupFile);
+        const bool opened = !m_startupFile.empty() && !revit && OpenPath(m_startupFile);
         if (!opened && !m_startupCommands.empty())
             OpenSample();
         else if (!opened)
@@ -90,6 +93,8 @@ namespace MiniBIM
         }
         // 打开了要打开的之后再开始：之前的换项目不算（启动时找的副本按这一份文档算）
         EnableAutosave();
+        if (revit)
+            OpenRevit(m_startupFile);
         for (const std::string& id : m_startupCommands)
             if (!m_commands.Execute(id))
                 LOG_WARN("启动参数 --run：没有界面命令 %s", id.c_str());
@@ -358,6 +363,9 @@ namespace MiniBIM
             m_statusHint->SetText(Tr("Interface description file:") + " " + m_uiError);
         else if (!m_sceneError.empty())
             m_statusHint->SetText(Tr(m_sceneError));
+        // Revit 导入进来了多少：直到模型变了或拿起了工具
+        else if (HasRevitReport() && m_session.Snapshot() == m_revitModel && m_tool == Tool::Modify)
+            m_statusHint->SetText(RevitReport::StatusLine(*m_revitReport));
         else if (m_planLevel || m_tool != Tool::Modify)
             m_statusHint->SetText(Tr(ToolPrompt()));
         else if (m_scene.Empty())
@@ -599,5 +607,11 @@ namespace MiniBIM
         m_platform->BeginUiPass();
         m_ui->Render();
         m_platform->EndUiPass();
+        // 没有后台线程时：Revit 文件的提示框画出来了再读（读的时候窗口不动）
+        if (m_revitJob && m_revitJob->here && !m_revitJob->drawn)
+        {
+            m_revitJob->drawn = true;
+            m_platform->Post([this] { ReadRevit(); });
+        }
     }
 }

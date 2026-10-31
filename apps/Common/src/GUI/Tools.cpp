@@ -162,6 +162,7 @@ namespace MiniBIM
         case Tool::Wall:      return "wall";
         case Tool::Door:      return "door";
         case Tool::Window:    return "window";
+        case Tool::Column:    return "column";
         case Tool::Component: return "component";
         case Tool::Roof:      return "roof";
         case Tool::Floor:     return "floor";
@@ -182,6 +183,7 @@ namespace MiniBIM
                                                        : N_("Click to build the wall to the next point, or type a length and press Enter. Enter or Esc ends the chain, Shift keeps it square.");
         case Tool::Door:      return N_("Click a wall to place the door.");
         case Tool::Window:    return N_("Click a wall to place the window.");
+        case Tool::Column:    return N_("Click to place a column, as high as the Options Bar says.");
         case Tool::Component: return N_("Click where the component goes; Space turns it a quarter turn.");
         case Tool::Roof:      return N_("Click inside the walls to roof them, on the level above: the overhang runs past their faces.");
         case Tool::Floor:     return N_("Click inside the walls to floor them: the slab runs under their outline, its top at the level.");
@@ -263,7 +265,8 @@ namespace MiniBIM
 
         static const std::pair<Tool, const char*> names[] = {
             { Tool::Wall, N_("Modify | Place Wall") },       { Tool::Door, N_("Modify | Place Door") },
-            { Tool::Window, N_("Modify | Place Window") },   { Tool::Component, N_("Modify | Place Component") },
+            { Tool::Window, N_("Modify | Place Window") },   { Tool::Column, N_("Modify | Place Column") },
+            { Tool::Component, N_("Modify | Place Component") },
             { Tool::Roof, N_("Modify | Create Roof Footprint") }, { Tool::Floor, N_("Modify | Create Floor") },
             { Tool::Ceiling, N_("Modify | Place Ceiling") }, { Tool::Room, N_("Modify | Place Room") },
             { Tool::Level, N_("Modify | Place Level") },     { Tool::Grid, N_("Modify | Place Grid") },
@@ -274,6 +277,39 @@ namespace MiniBIM
             { Tool::Offset, N_("Modify | Offset") },
         };
         const std::string unit = Bim::UnitsOf::Name(m.units);
+        // 高度：上面的某个标高（没选时上一层），或未连接时输入的高度（墙、柱）
+        auto heightOptions = [&](std::optional<std::optional<Bim::Guid>>& top, std::string& height)
+        {
+            if (!m_planLevel)
+                return;
+            const double z = m.Elevation(*m_planLevel);
+            std::vector<std::pair<Bim::Guid, std::string>> above;
+            for (const auto& [id, l] : m.Levels())
+                if (l->elevation > z)
+                    above.emplace_back(m.GuidOf(id), l->name);
+            const std::optional<Bim::Guid> now = top           ? *top
+                                               : above.empty() ? std::nullopt
+                                                               : std::optional<Bim::Guid>(above.front().first);
+            std::vector<std::string> items;
+            int at = static_cast<int>(above.size());
+            for (size_t i = 0; i < above.size(); ++i)
+            {
+                items.push_back(above[i].second);
+                if (now && m.Same(*now, above[i].first))
+                    at = static_cast<int>(i);
+            }
+            items.push_back(Tr("Unconnected"));
+            label(Tr("Height:"));
+            combo(items, at, 130.0f, [this, above, &top](int i)
+            {
+                if (i < 0)
+                    return;
+                top = static_cast<size_t>(i) < above.size() ? std::optional<Bim::Guid>(above[static_cast<size_t>(i)].first) : std::nullopt;
+                m_platform->Post([this] { BuildOptionsBar(); });
+            });
+            if (!now)
+                field(height, 70.0f, unit);
+        };
         // 草图模式：画的是什么、完成与取消；新建天花板、屋顶时还有它们的设置
         if (m_sketch)
         {
@@ -314,37 +350,7 @@ namespace MiniBIM
             break;
         case Tool::Wall:
         {
-            // 高度：上面的某个标高，或未连接时输入的高度
-            if (m_planLevel)
-            {
-                const double z = m.Elevation(*m_planLevel);
-                std::vector<std::pair<Bim::Guid, std::string>> above;
-                for (const auto& [id, l] : m.Levels())
-                    if (l->elevation > z)
-                        above.emplace_back(m.GuidOf(id), l->name);
-                const std::optional<Bim::Guid> now = m_toolOpt.wallTop ? *m_toolOpt.wallTop
-                                                   : above.empty()     ? std::nullopt
-                                                                       : std::optional<Bim::Guid>(above.front().first);
-                std::vector<std::string> items;
-                int at = static_cast<int>(above.size());
-                for (size_t i = 0; i < above.size(); ++i)
-                {
-                    items.push_back(above[i].second);
-                    if (now && m.Same(*now, above[i].first))
-                        at = static_cast<int>(i);
-                }
-                items.push_back(Tr("Unconnected"));
-                label(Tr("Height:"));
-                combo(items, at, 130.0f, [this, above](int i)
-                {
-                    if (i < 0)
-                        return;
-                    m_toolOpt.wallTop = static_cast<size_t>(i) < above.size() ? std::optional<Bim::Guid>(above[static_cast<size_t>(i)].first) : std::nullopt;
-                    m_platform->Post([this] { BuildOptionsBar(); });
-                });
-                if (!now)
-                    field(m_toolOpt.wallHeight, 70.0f, unit);
-            }
+            heightOptions(m_toolOpt.wallTop, m_toolOpt.wallHeight);
             label(Tr("Location Line:"));
             std::vector<std::string> locations;
             int at = 0;
@@ -377,6 +383,9 @@ namespace MiniBIM
             label(Tr("Height Offset:"));
             field(m_toolOpt.ceilingHeight, 70.0f, unit);
             boundaryLine(SketchOf::Ceiling);
+            break;
+        case Tool::Column:
+            heightOptions(m_toolOpt.columnTop, m_toolOpt.columnHeight);
             break;
         case Tool::Component:
         {
@@ -510,16 +519,15 @@ namespace MiniBIM
         return p;
     }
 
-    std::optional<Bim::Json> MainFrame::WallTop(std::string& error) const
+    std::optional<Bim::Json> MainFrame::TopParams(const std::optional<std::optional<Bim::Guid>>& top, const std::string& height, std::string& error) const
     {
         const Bim::Model& m = m_session.GetModel();
-        std::optional<Bim::Guid> top = m_toolOpt.wallTop ? *m_toolOpt.wallTop : m.LevelAbove(*m_planLevel);
-        if (top)
-            return Bim::Json{ { "top_level", Bim::ToJson(*top) } };
-        const auto h = Bim::UnitsOf::Parse(m.units, m_toolOpt.wallHeight);
+        if (const std::optional<Bim::Guid> level = top ? *top : m.LevelAbove(*m_planLevel))
+            return Bim::Json{ { "top_level", Bim::ToJson(*level) } };
+        const auto h = Bim::UnitsOf::Parse(m.units, height);
         if (!h || *h <= 0.0)
         {
-            error = Format(Tr("`{0}` is not a height"), { m_toolOpt.wallHeight });
+            error = Format(Tr("`{0}` is not a height"), { height });
             return std::nullopt;
         }
         return Bim::Json{ { "height", *h } };
@@ -555,7 +563,7 @@ namespace MiniBIM
             if (last.Dist(p) <= Bim::Tol)
                 break;
             std::string error;
-            const auto top = WallTop(error);
+            const auto top = TopParams(m_toolOpt.wallTop, m_toolOpt.wallHeight, error);
             if (!top)
             {
                 MiniGUI::ShowMessageBox(*m_ui, Tr("Could not build the wall"), error);
@@ -584,6 +592,20 @@ namespace MiniBIM
                 RunCommand("grid", Bim::Json{ { "start", Pt(a) }, { "end", Pt(p) } }, N_("Could not place the grid"));
             }
             break;
+        case Tool::Column:
+        {
+            std::string error;
+            const auto top = TopParams(m_toolOpt.columnTop, m_toolOpt.columnHeight, error);
+            if (!top)
+            {
+                MiniGUI::ShowMessageBox(*m_ui, Tr("Could not place the column"), error);
+                break;
+            }
+            Bim::Json params = Typed("column", Bim::Json{ { "at", Pt(p) }, { "level", level } });
+            params.update(*top);
+            RunCommand("column", params, N_("Could not place the column"));
+            break;
+        }
         case Tool::Component:
             if (const auto what = Placing())
                 RunCommand("component", Bim::Json{ { "family", what->first }, { "type", what->second }, { "at", Pt(p) }, { "level", level },
@@ -617,7 +639,7 @@ namespace MiniBIM
         case Tool::Wall: case Tool::Grid:
             PlacePoint(SnapAt(pixel, m_toolPts, shift).at);
             return;
-        case Tool::Component:
+        case Tool::Column: case Tool::Component:
             PlacePoint(SnapAt(pixel, {}, false).at);
             return;
         // 离那一段墙的中点近时放在正中
@@ -915,6 +937,22 @@ namespace MiniBIM
                 const std::string reading = Bim::UnitsOf::WithUnit(m.units, last.Dist(next)) + "  " +
                                             Degrees(angle.value_or(Bim::Snap::Measure(last, next).angle));
                 tip = !m_typedLength.empty() ? m_typedLength + " (Enter)" : (tip.empty() ? reading : tip + "    " + reading);
+            }
+            break;
+        }
+        // 会放下的柱：选的类型，否则项目默认的
+        case Tool::Column:
+        {
+            const Bim::P2 at = marker(SnapAt(*m_hoverPixel, {}, false));
+            const auto chosen = m_toolOpt.types.find("column");
+            const std::optional<std::string> type = chosen != m_toolOpt.types.end() ? std::optional<std::string>(chosen->second) : m.DefaultType("column");
+            if (type)
+            {
+                Bim::Column c;
+                c.typeName = *type;
+                c.level    = *m_planLevel;
+                c.at       = at;
+                sketched(Bim::Element{ c });
             }
             break;
         }

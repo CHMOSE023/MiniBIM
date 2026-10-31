@@ -20,6 +20,7 @@ namespace MiniBIM
     enum class FileKind
     {
         Project,    // .minibim / .bimcraft / .ifc
+        ProjectOrRevit, // 同上，再加 .rvt（宿主接上了 Revit 读取器时，MainFrame::SetRevitReader）
         Shortcuts,  // 快捷键文件：.json / .xml（Revit 导出的）/ .txt / .md
     };
 

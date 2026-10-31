@@ -8,8 +8,11 @@ covers: src/Rvt/*, tests/Rvt/*, cmake/Rvt.cmake
 
 移植自 BIMCraft `crates/rvt`（`f3bbb33`），在 `src/Rvt/`（目标 `MiniBIMRvt`，定义在 `cmake/Rvt.cmake`，命名空间 `MiniBIM::Rvt`），
 开关 `MINIBIM_WITH_RVT`（默认开）。**这部分是 Apache-2.0，不是 MIT**：BIMCraft 的读取器有一部分又移植自 rvt-rs，许可原文与 NOTICE 在 `src/Rvt/`。
-分段计划见 `docs/PLAN.md` 的"Revit 文件"；现在做完 R5（底层、记录层与导入）：`Rvt::Import` 把项目的墙、楼板、天花板、屋顶、门窗、房间、柱读成 MiniBIM 的模型，
-读不了的列出原因。界面（R6）还没有：桌面版还打不开 `.rvt`。
+分段计划见 `docs/PLAN.md` 的"Revit 文件"，R1～R6 都做完了：`Rvt::Import` 把项目的墙、楼板、天花板、屋顶、门窗、房间、柱读成 MiniBIM 的模型，
+读不了的列出原因；桌面版、Linux 版、网页版都能打开 `.rvt`（界面见 `.agents/features/main-window.md` 的"Revit 文件"）。
+主窗口（`apps/Common`）不依赖读取器：宿主链接 `MiniBIMRvt`（得到宏 `MINIBIM_WITH_RVT`），在 `#ifdef MINIBIM_WITH_RVT` 里把 `Rvt::ImportPath`
+交给 `MainFrame::SetRevitReader`（`apps/Win32/src/Host/GuiMain.cpp`、`apps/Linux/src/Host/LinuxMain.cpp`、`apps/Web/src/Host/WebMain.cpp`），
+同 BIMCraft 的桌面版 `main.rs` 把读取器交给 `ui-egui`。关掉开关时主窗口说"这个版本没有 Revit 支持"，打开对话框里没有 `.rvt`
 
 | 代码 | 来自 BIMCraft | 内容 |
 |---|---|---|
@@ -61,7 +64,9 @@ R5 的导入在这之上把墙、楼板等建成模型。
 
 ## 约束与坑
 
-- **许可的隔离**：核心库（`src/Model`、`src/Commands`、`src/Ifc` 等）不包含 `Rvt/` 下的头文件，`cmake/MiniBIM.cmake` 里没有 `src/Rvt`（`RvtTests` 查这两条）。
+- **许可的隔离**：核心库（`src/Model`、`src/Commands`、`src/Ifc` 等）不包含 `Rvt/` 下的头文件，`cmake/MiniBIM.cmake` 里没有 `src/Rvt`；
+  主窗口（`apps/Common`）也不 `#include "Rvt/…"`，三个宿主在 `MINIBIM_WITH_RVT` 下接上读取器（`RvtTests` 查这几条）。
+  发布包里附 `LICENSE-Rvt` 与 `NOTICE-Rvt`（桌面版由 `apps/Win32/CMakeLists.txt` 构建后复制到 exe 旁，Linux 版与网页版在 `.github/workflows/build.yml` 打包时复制）
   每个文件开头写来源行（移植的写 `// 移植自 BIMCraft crates/rvt/src/<文件>.rs（f3bbb33），Apache-2.0 许可（不是 MIT），已改写为 C++，见 src/Rvt/NOTICE`，
   自己写的写"随 src/Rvt 以 Apache-2.0 发布"）；含 rvt-rs 代码的再用英文写 rvt-rs 的提交 `b6086d41b9758fd9b92f42f0a47b8345b9c58056`、文件、`Changed:` 与版权行，`RvtTests` 逐个文件查
 - 只照 BIMCraft 的 docs/rvt-provenance.md 已列来源的读法移植，不自己逆向；Autodesk 的文件不进仓库，测试的文件都由 `tests/Rvt/Fixture.cpp` 现做
@@ -82,7 +87,9 @@ R5 的导入在这之上把墙、楼板等建成模型。
 
 - `RvtTests`（要 `MINIBIM_WITH_RVT`），检查函数在 `tests/Rvt/Check.h`：
   - `tests/Rvt/RvtTests.cpp`：移植 BIMCraft 读取器的 src/tests/mod.rs 里的容器、gzip、恶意输入与 metadata.rs 里的 BasicFileInfo、Atom、预览图测试；
-    另有自己写的 inflate（`tests/Rvt/DeflateVectors.inc` 是 zlib 压的动态 Huffman 块）与复合文档（第 4 版、DIFAT、环）的测试，以及许可的隔离
+    另有自己写的 inflate（`tests/Rvt/DeflateVectors.inc` 是 zlib 压的动态 Huffman 块）与复合文档（第 4 版、DIFAT、环）的测试，以及许可的隔离；
+    `tests/Rvt/ImportTests.cpp` 还有 BIMCraft 桌面版 `main.rs` 的两条：宿主接上的读取器按文件名给项目命名，读取器略去的就是窗口数的
+    （`RevitReport::CountLeftOut`，`RvtTests` 为此编进 `apps/Common/src/GUI/RevitReport.cpp` 与它要的 `Parameters.cpp`）
   - `tests/Rvt/RecordTests.cpp`：metadata.rs 里的类表、records.rs、inventory.rs 的合成文件测试（每个版本 2500 轮随机破坏，Debug 下每个版本几秒）
   - `tests/Rvt/DecoderTests.cpp`：decoders.rs（曲线、层、墙的朝向、名字、放置、名字条目、记录链）与 sketch.rs
   - `tests/Rvt/ImportTests.cpp`（import.rs 与 walls.rs）、`tests/Rvt/FloorTests.cpp`（floors.rs 与 roofs.rs）、`tests/Rvt/OpeningTests.cpp`（openings.rs、rooms.rs 与 columns.rs）：

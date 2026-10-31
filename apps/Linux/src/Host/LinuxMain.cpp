@@ -2,6 +2,9 @@
 // 用法：MiniBIMLinux [项目文件] [--ui 界面描述文件.json] [--gpu vulkan|gl] [--lang 语言代码] [--run 界面命令 ID]…
 // 参数与桌面版 MiniBIMWin 相同（见 apps/Win32/src/Host/GuiMain.cpp）；图形后端也可以用环境变量 MINIBIM_GPU 指定（命令行优先）
 #include "Host/LinuxApp.h"
+#ifdef MINIBIM_WITH_RVT
+#include "Rvt/Import.h"
+#endif
 #include <cstdlib>
 #include <string>
 
@@ -11,6 +14,10 @@ int main(int argc, char** argv)
 {
     LinuxApp   app;
     MainFrame& frame = app.GetFrame();
+#ifdef MINIBIM_WITH_RVT
+    // Revit 文件的读取器（src/Rvt，Apache-2.0）：主窗口不依赖它，由宿主接上
+    frame.SetRevitReader(&Rvt::ImportPath);
+#endif
 
     const char* envGpu = std::getenv("MINIBIM_GPU");
     std::string gpu    = envGpu ? envGpu : "";

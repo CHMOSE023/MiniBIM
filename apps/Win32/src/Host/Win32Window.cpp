@@ -373,7 +373,9 @@ namespace MiniBIM
     // 打开 / 保存的文件对话框（系统对话框是模态的：选完才返回）。筛选器的文字随界面语言
     void Win32Window::PickFile(FileKind kind, std::function<void(const std::string&)> done)
     {
-        const std::string path = ShowProjectDialog(kind == FileKind::Shortcuts ? FileDialog::Shortcuts : FileDialog::Open, {});
+        const std::string path = ShowProjectDialog(kind == FileKind::Shortcuts      ? FileDialog::Shortcuts
+                                                 : kind == FileKind::ProjectOrRevit ? FileDialog::OpenRevit
+                                                                                    : FileDialog::Open, {});
         if (!path.empty() && done)
             done(path);
     }
@@ -385,7 +387,7 @@ namespace MiniBIM
 
     std::string Win32Window::ShowProjectDialog(FileDialog kind, const std::string& suggestedName)
     {
-        const bool save = kind != FileDialog::Open && kind != FileDialog::Shortcuts;
+        const bool save = kind == FileDialog::SaveProject || kind == FileDialog::SaveIfc;
         // 筛选器：名称\0模式\0……\0\0；名称经 Tr 翻译
         std::wstring filter;
         auto add = [&](const std::string& label, const wchar_t* pattern)
@@ -401,6 +403,14 @@ namespace MiniBIM
             add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
         else if (kind == FileDialog::Shortcuts)
             add(Tr("Shortcuts file") + " (*.json;*.xml;*.txt;*.md)", L"*.json;*.xml;*.txt;*.md");
+        else if (kind == FileDialog::OpenRevit)
+        {
+            add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", L"*.minibim;*.bimcraft;*.ifc;*.rvt");
+            add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
+            add(Tr("BIMCraft project") + " (*.bimcraft)", L"*.bimcraft");
+            add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
+            add(Tr("Revit project") + " (*.rvt)", L"*.rvt");
+        }
         else
         {
             add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc)", L"*.minibim;*.bimcraft;*.ifc");

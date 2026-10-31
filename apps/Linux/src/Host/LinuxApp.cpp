@@ -61,6 +61,14 @@ namespace MiniBIM
         {
             if (kind == FileKind::Shortcuts)
                 f.Add(Tr("Shortcuts file") + " (*.json;*.xml;*.txt;*.md)", "json;xml;txt;md");
+            else if (kind == FileKind::ProjectOrRevit)
+            {
+                f.Add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", "minibim;bimcraft;ifc;rvt");
+                f.Add(Tr("MiniBIM project") + " (*.minibim)", "minibim");
+                f.Add(Tr("BIMCraft project") + " (*.bimcraft)", "bimcraft");
+                f.Add(Tr("IFC file") + " (*.ifc)", "ifc");
+                f.Add(Tr("Revit project") + " (*.rvt)", "rvt");
+            }
             else
             {
                 f.Add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc)", "minibim;bimcraft;ifc");

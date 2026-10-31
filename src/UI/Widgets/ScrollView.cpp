@@ -11,6 +11,7 @@ namespace MiniGUI
     namespace
     {
         constexpr float kMinThumb = 24.0f;
+        constexpr float kSlack    = 1.0f;     // 内容超出不到这么多时不算超出（见 OnLayout）
     }
 
     ScrollView::ScrollView()
@@ -71,18 +72,19 @@ namespace MiniGUI
         }
 
         // 先按"无滚动条"测量；出现竖直滚动条后内容宽度要让出滚动条，重新测量一次
+        // 按内容定高的视图，布局把边对齐到设备像素后可能比测量值小不到一个像素：这不算超出，不出滚动条
         Vec2 m = m_content->Measure({ m_hEnabled ? kInfinity : size.x, m_vEnabled ? kInfinity : size.y });
-        m_showV = m_vEnabled && m.y > size.y;
-        m_showH = m_hEnabled && m.x > size.x - (m_showV ? kBarSize : 0.0f);
-        if (m_showH && m_vEnabled && !m_showV && m.y > size.y - kBarSize)
+        m_showV = m_vEnabled && m.y > size.y + kSlack;
+        m_showH = m_hEnabled && m.x > size.x + kSlack - (m_showV ? kBarSize : 0.0f);
+        if (m_showH && m_vEnabled && !m_showV && m.y > size.y + kSlack - kBarSize)
             m_showV = true;
         if (m_showV && !m_hEnabled)
             m = m_content->Measure({ size.x - kBarSize, kInfinity });
 
         m_viewport = { std::max(0.0f, size.x - (m_showV ? kBarSize : 0.0f)),
                        std::max(0.0f, size.y - (m_showH ? kBarSize : 0.0f)) };
-        m_contentSize = { m_hEnabled ? std::max(m.x, m_viewport.x) : m_viewport.x,
-                          m_vEnabled ? std::max(m.y, m_viewport.y) : m_viewport.y };
+        m_contentSize = { m_showH ? std::max(m.x, m_viewport.x) : m_viewport.x,
+                          m_showV ? std::max(m.y, m_viewport.y) : m_viewport.y };
 
         const Vec2 maxScroll = GetMaxScroll();
         m_scroll = { std::clamp(m_scroll.x, 0.0f, maxScroll.x), std::clamp(m_scroll.y, 0.0f, maxScroll.y) };

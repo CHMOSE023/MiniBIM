@@ -279,7 +279,9 @@ namespace MiniBIM
     {
         const int id = m_nextPickId++;
         m_pickRequests[id] = std::move(done);
-        MiniBIMWeb_PickFile(id, kind == FileKind::Shortcuts ? ".json,.xml,.txt,.md" : ".minibim,.bimcraft,.ifc");
+        MiniBIMWeb_PickFile(id, kind == FileKind::Shortcuts      ? ".json,.xml,.txt,.md"
+                              : kind == FileKind::ProjectOrRevit ? ".minibim,.bimcraft,.ifc,.rvt"
+                                                                 : ".minibim,.bimcraft,.ifc");
     }
 
     void WebApp::OnFilePicked(int requestId, const char* path, const char* error)

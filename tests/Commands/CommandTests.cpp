@@ -1675,6 +1675,8 @@ grid {"start": [0, -2000], "end": [0, 8000]})", out, error))
             Session t;
             Run(t, "open", Json{ { "path", path } });
             Check(SketchOf(t, f["id"]) == SketchOf(s, f["id"]), "草图：存进项目文件再打开还在");
+            std::error_code ec;
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
         }
     }
 }

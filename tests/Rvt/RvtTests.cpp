@@ -799,6 +799,21 @@ namespace
                 }
         Check(clean, "核心库不包含 Rvt/ 下的头文件");
         Check(!Contains(ReadText(root / "cmake/MiniBIM.cmake"), "src/Rvt"), "核心库的源文件里没有 src/Rvt");
+        // 主窗口（apps/Common）也不包含：读取器由宿主接上（MainFrame::SetRevitReader），三个宿主都在 MINIBIM_WITH_RVT 下接
+        bool app = true;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(root / "apps/Common"))
+            if (entry.is_regular_file() && Contains(ReadText(entry.path()), "#include \"Rvt/"))
+            {
+                const auto u8 = entry.path().u8string();
+                Check(false, "主窗口包含了读取器：" + std::string(u8.begin(), u8.end()));
+                app = false;
+            }
+        Check(app, "主窗口不包含 Rvt/ 下的头文件");
+        for (const char* host : { "apps/Win32/src/Host/GuiMain.cpp", "apps/Linux/src/Host/LinuxMain.cpp", "apps/Web/src/Host/WebMain.cpp" })
+        {
+            const std::string text = ReadText(root / host);
+            Check(Contains(text, "#ifdef MINIBIM_WITH_RVT") && Contains(text, "SetRevitReader(&"), std::string(host) + " 接上 Revit 读取器");
+        }
     }
 }
 

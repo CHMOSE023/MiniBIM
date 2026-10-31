@@ -46,7 +46,8 @@ endif()
 add_test(NAME IfcTests COMMAND IfcTests)
 
 add_executable(AppTests "App/AppTests.cpp" "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/Parameters.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/Recent.cpp" "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/Shortcuts.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/Recent.cpp" "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/Shortcuts.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/RevitReport.cpp")
 target_include_directories(AppTests PRIVATE "${CMAKE_SOURCE_DIR}/apps/Common/src")
 target_link_libraries(AppTests PRIVATE MiniBIM)
 if(MSVC)
@@ -82,6 +83,9 @@ endif()
 if(MINIBIM_WITH_RVT)
     add_executable(RvtTests "Rvt/RvtTests.cpp" "Rvt/Fixture.cpp" "Rvt/ProjectFixture.cpp" "Rvt/RecordTests.cpp" "Rvt/DecoderTests.cpp"
                             "Rvt/ImportFixture.cpp" "Rvt/ImportTests.cpp" "Rvt/FloorTests.cpp" "Rvt/OpeningTests.cpp")
+    # 主窗口里不碰界面控件的 RevitReport（数略去了几个）与它要的类别名称：读取器的说明和窗口的数法对得上
+    target_sources(RvtTests PRIVATE "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/RevitReport.cpp" "${CMAKE_SOURCE_DIR}/apps/Common/src/GUI/Parameters.cpp")
+    target_include_directories(RvtTests PRIVATE "${CMAKE_SOURCE_DIR}/apps/Common/src")
     target_link_libraries(RvtTests PRIVATE MiniBIMRvt)
     target_compile_definitions(RvtTests PRIVATE MINIBIM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     if(MSVC)

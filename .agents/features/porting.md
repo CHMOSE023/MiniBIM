@@ -18,7 +18,7 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 - 只看 BIMCraft 的 `crates/core`、`crates/ui-egui`、`crates/i18n` 与 `crates/rvt`（2026-10-31 起移植，见 `docs/PLAN.md` 的"Revit 文件"）
 - `crates/rvt` 移植到 `src/Rvt/`，是 **Apache-2.0**：来源行写成
   `// 移植自 BIMCraft crates/rvt/src/<文件>.rs（f3bbb33），Apache-2.0 许可（不是 MIT），已改写为 C++，见 src/Rvt/NOTICE`；
-  核心库不包含 `src/Rvt` 的头文件。只照 BIMCraft 仓库里 docs/rvt-provenance.md 列了来源的读法移植，不另外逆向；测试用合成的文件（`fixture.rs`、`project_fixture.rs`），
+  核心库与 `apps/Common` 不包含 `src/Rvt` 的头文件（宿主接上读取器）。只照 BIMCraft 仓库里 docs/rvt-provenance.md 列了来源的读法移植，不另外逆向；测试用合成的文件（`fixture.rs`、`project_fixture.rs`），
   不把 Autodesk 的文件放进仓库。已移植的部分、自己写的复合文档与 inflate、测试的合成样例见 `.agents/features/rvt.md`
 
 ## 来源标注（许可要求）

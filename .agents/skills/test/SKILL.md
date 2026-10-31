@@ -42,7 +42,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .agents/skills/test/run.ps1 all   
 - 测试程序是普通的可执行文件：打印 `[PASS]` / `[FAIL]` 行，有失败时返回非 0（照 `tests/I18n/I18nTests.cpp` 的 `Check` 写）；登记在 `tests/CMakeLists.txt`，输出到构建目录根
 - 新增测试程序时在 `run.ps1` 的 `$rules` 里加一条对照（CI 的 Linux 任务编全部目标、跑全部登记的测试，不用另外登记）
 - 现有的测试程序：`I18nTests`、`ViewTests`、`ModelTests`、`CommandTests`（模型核心，见 `.agents/features/model.md`）、`IfcTests`（IFC 交换，见 `.agents/features/ifc.md`），
-  `RvtTests`（Revit 文件读取器与导入，要 `MINIBIM_WITH_RVT`，Debug 下约一分半，见 `.agents/features/rvt.md`），`AppTests`（主窗口里不碰界面控件的部分，直接编进 `apps/Common/src/GUI/Parameters.cpp`、`apps/Common/src/GUI/Recent.cpp`、`apps/Common/src/GUI/Shortcuts.cpp`，见 `.agents/features/main-window.md`），`SMLibSmokeTests`、`ModelSceneTests`（要 SMLib）
+  `RvtTests`（Revit 文件读取器与导入，要 `MINIBIM_WITH_RVT`，Debug 下约一分半，见 `.agents/features/rvt.md`），`AppTests`（主窗口里不碰界面控件的部分，直接编进 `apps/Common/src/GUI/Parameters.cpp`、`apps/Common/src/GUI/Recent.cpp`、`apps/Common/src/GUI/Shortcuts.cpp`、`apps/Common/src/GUI/RevitReport.cpp`，见 `.agents/features/main-window.md`），`SMLibSmokeTests`、`ModelSceneTests`（要 SMLib）
 - 测试也要能在 Linux（GCC）上编译运行（CI 的 Linux 任务编译核心库和测试）：Windows 专有的调用放进 `#ifdef _WIN32`；不用 `fopen_s` 这类 MSVC 独有的函数；用到的标准库头文件写全（MSVC 会顺带包含，GCC 不会）
 - 不依赖本机文件：样例在临时目录里现做；中文路径按 UTF-8 构造 `std::filesystem::path`（`std::u8string`）
 - 移植 BIMCraft 的模块时，把它的 `*_tests.rs` 一起移植（见 `.agents/features/porting.md`）

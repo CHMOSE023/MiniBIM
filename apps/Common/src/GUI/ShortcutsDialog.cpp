@@ -35,7 +35,7 @@ namespace MiniBIM
         // 模型命令（Bim::Command，它的 aliases 是快捷名）是哪个界面命令
         constexpr std::pair<const char*, const char*> Tools[] = {
             { "level", "arch.level" },   { "grid", "arch.grid" },          { "wall", "arch.wall" },     { "door", "arch.door" },
-            { "window", "arch.window" }, { "room", "arch.room" },          { "component", "arch.component" },
+            { "window", "arch.window" }, { "room", "arch.room" },          { "component", "arch.component" }, { "column", "arch.column" },
             { "move", "modify.move" },   { "copy", "modify.copy" },        { "align", "modify.align" }, { "rotate", "modify.rotate" },
             { "corner", "modify.trim" }, { "split", "modify.split" },      { "delete", "edit.delete" },
         };

@@ -28,6 +28,11 @@ if(MINIBIM_WITH_SOLID)
     target_compile_definitions(MiniBIMLinux PRIVATE MINIBIM_WITH_SOLID)
 endif()
 
+# Revit 文件读取器（Apache-2.0，cmake/Rvt.cmake）：得到宏 MINIBIM_WITH_RVT，LinuxMain.cpp 接上它
+if(TARGET MiniBIMRvt)
+    target_link_libraries(MiniBIMLinux PRIVATE MiniBIMRvt)
+endif()
+
 set_target_properties(MiniBIMLinux PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/MiniBIMLinux"
 )

@@ -1,15 +1,20 @@
 // Revit 读取器的导入（R5）：读成模型的标高、说明的写法、元素在文件里是什么，以及墙。
 // 移植自 BIMCraft crates/rvt/src/tests/import.rs 与 walls.rs 的测试（f3bbb33），Apache-2.0 许可（不是 MIT），已改写为 C++，见 src/Rvt/NOTICE。
+// 主窗口接上的读取器的两条移植自 apps/bimcraft/src/main.rs 的测试（MIT），要 apps/Common 的 RevitReport（不碰界面控件）
 // 要样例文件（BIMCRAFT_RVT_SAMPLES）的测试没有移植
 #include "Check.h"
 #include "Fixture.h"
 #include "ImportFixture.h"
 #include "ProjectFixture.h"
 
+#include "GUI/RevitReport.h"
 #include "Rvt/Import.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -98,6 +103,49 @@ namespace
         const auto counted = [&](const std::string& kind, const std::string& what)
         { return std::any_of(i.skipped.begin(), i.skipped.end(), [&](const std::string& s) { return ImportFixture::StartsWith(s, "1 " + kind + " left out, ") && Contains(s, what); }); };
         Check(counted("level", "inside other elements") && counted("level", "no name") && counted("level", "Far away"), "三条都是计数的说明" + Skipped(i));
+    }
+
+    // 宿主给主窗口接上的读取器（Rvt::ImportPath，项目以文件名命名）读得了 Revit 项目，读不了的说原因
+    void TheReaderTheWindowIsGivenNamesTheProjectForItsFile()
+    {
+        const std::filesystem::path dir = std::filesystem::temp_directory_path() / ("minibim-desktop-rvt-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        const std::filesystem::path file = dir / u8"Barn House.rvt";
+        auto write = [&](const Bytes& bytes)
+        {
+            std::ofstream f(file, std::ios::binary);
+            f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        };
+        const auto u8 = file.u8string();
+        const std::string path(u8.begin(), u8.end());
+        const MiniBIM::RevitReport::Reader read = &Rvt::ImportPath;
+        write(Project(2024).File());
+        Bim::Ifc::Imported i;
+        std::string e;
+        Check(read(path, MiniBIM::RevitReport::ProjectName(path), i, e) && i.model.name == "Barn House" && i.schema == "Revit 2024",
+              "读成以文件名命名的项目：" + i.model.name + " " + i.schema + " " + e);
+        write(Fixture::Of("not a Revit file"));
+        Bim::Ifc::Imported j;
+        e.clear();
+        Check(!read(path, "Barn House", j, e) && !e.empty(), "不是 Revit 的文件说原因，不崩：" + e);
+        std::filesystem::remove_all(dir, ec);
+    }
+
+    // 读取器略去的，就是窗口数的"略去了几个"（RevitReport::CountLeftOut）
+    void WhatTheReaderLeavesOutIsWhatTheWindowCountsAsLeftOut()
+    {
+        Project p(2024);
+        Lev inside(11, "Inside", 5.0);
+        inside.owner = 4321;
+        Lev nameless(12, "x", 9.0);
+        nameless.named = false;
+        p.levels = { Lev(10, "Level 1", 0.0), inside, nameless };
+        const Imported i = ImportFixture::Import(p);
+        size_t left = 0;
+        for (const std::string& n : i.skipped)
+            left += MiniBIM::RevitReport::CountLeftOut(n).value_or(0);
+        Check(left == 2, "一个在族里、一个没名字：略去两个" + Skipped(i));
     }
 
     void AFileThatIsNotAProjectIsRefused()
@@ -625,6 +673,8 @@ namespace RvtTest
         LevelsComeInLowestFirst();
         LevelsThatShareANameAreToldApart();
         WhatTheInventoryCannotMakeALevelOfIsListed();
+        TheReaderTheWindowIsGivenNamesTheProjectForItsFile();
+        WhatTheReaderLeavesOutIsWhatTheWindowCountsAsLeftOut();
         AFileThatIsNotAProjectIsRefused();
         ANoteListsTheFirstEightIds();
         UnnamedLevelsAreCountedInTheSingularOrThePlural();

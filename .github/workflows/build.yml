@@ -123,6 +123,8 @@ jobs:
           strip "dist/$name/MiniBIMLinux"
           cp README*.md LICENSE THIRD_PARTY_NOTICES.md "dist/$name/"
           cp 3rd/SMLib/LICENSE "dist/$name/LICENSE-SMLib"
+          cp src/Rvt/LICENSE "dist/$name/LICENSE-Rvt"
+          cp src/Rvt/NOTICE "dist/$name/NOTICE-Rvt"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
 
       - name: Upload artifact
@@ -163,6 +165,8 @@ jobs:
           cp out/web/MiniBIMWeb/index.* "dist/$name/"
           cp README*.md LICENSE THIRD_PARTY_NOTICES.md "dist/$name/"
           cp 3rd/SMLib/LICENSE "dist/$name/LICENSE-SMLib"
+          cp src/Rvt/LICENSE "dist/$name/LICENSE-Rvt"
+          cp src/Rvt/NOTICE "dist/$name/NOTICE-Rvt"
           (cd dist && zip -r "$name.zip" "$name")
 
       - name: Upload artifact

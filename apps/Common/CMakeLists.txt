@@ -28,6 +28,8 @@ add_library(MiniBIMApp STATIC
     src/GUI/Dialogs.cpp
     src/GUI/Parameters.cpp
     src/GUI/Recent.cpp
+    src/GUI/Revit.cpp
+    src/GUI/RevitReport.cpp
     src/GUI/StartPage.cpp
     src/GUI/Autosave.cpp
     src/GUI/Settings.cpp

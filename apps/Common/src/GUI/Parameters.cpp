@@ -13,7 +13,7 @@ namespace MiniBIM::Props
     {
         using enum Kind;     // 函数 Text、Shown 与同名的编辑方式重名：函数一律写 Props::Text
 
-        // 还没移植的类别（柱、楼梯、注释、视图……）的行等那些元素移植后再加
+        // 还没移植的类别（楼梯、注释、视图……）的行等那些元素移植后再加
         constexpr Row Wall[] = {
             { N_("Constraints"), "location", N_("Location Line"), LocationLine },
             { "Constraints", "level", N_("Base Constraint"), Level },
@@ -80,6 +80,15 @@ namespace MiniBIM::Props
             { "Constraints", "offset", "Height Offset From Level", Length },
             { "Other", "at", "Location", Point },
             { "Other", "angle", N_("Rotation (°)"), Number },
+        };
+        // 柱与结构柱：底部在标高上（可偏移），顶部到上面的标高或未连接时的高度
+        constexpr Row Column[] = {
+            { "Constraints", "level", "Base Level", Level },
+            { "Constraints", "base_offset", "Base Offset", Length },
+            { "Constraints", "top_level", N_("Top Level"), TopLevel },
+            { "Constraints", "height", "Unconnected Height", Height },
+            { "Other", "at", "Location", Point },
+            { "Other", "angle", "Rotation (°)", Number },
         };
         constexpr Row Roof[] = {
             { "Constraints", "level", N_("Base Level"), Level },
@@ -161,6 +170,7 @@ namespace MiniBIM::Props
         if (category == "level") return LevelRows;
         if (category == "grid") return Grid;
         if (category == "component") return Component;
+        if (category == "column" || category == "structuralcolumn") return Column;
         if (category == "roof") return Roof;
         return {};
     }
@@ -310,6 +320,7 @@ namespace MiniBIM::Props
             { "grid", N_("Grid"), N_("Grids") },           { "component", N_("Component"), N_("Components") },
             { "roof", N_("Roof"), N_("Roofs") },           { "ceiling", N_("Ceiling"), N_("Ceilings") },
             { "roomseparator", N_("Room Separator"), N_("Room Separators") },
+            { "column", N_("Column"), N_("Columns") },     { "structuralcolumn", N_("Structural Column"), N_("Structural Columns") },
         };
         for (const auto& n : names)
             if (category == n.category)

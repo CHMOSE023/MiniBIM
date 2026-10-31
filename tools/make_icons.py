@@ -322,6 +322,14 @@ def _(i):
         i.line([(18, y), (46, y)], A, 3)
 
 
+@icon("Column")            # arch.column：柱（俯视的一根方柱：方框里一个叉，立在两条轴线的交点上）
+def _(i):
+    for a, b in ((4, 17), (47, 60)):
+        i.dashed([(a, 32), (b, 32)], G, 3); i.dashed([(32, a), (32, b)], G, 3)
+    i.rect(20, 20, 44, 44, A, AF, w=4)
+    i.line([(20, 20), (44, 44)], A, 3); i.line([(44, 20), (20, 44)], A, 3)
+
+
 @icon("Component")         # arch.component：构件（俯视的一张扶手椅）
 def _(i):
     i.rect(14, 14, 50, 50, G, w=3.5, r=4)

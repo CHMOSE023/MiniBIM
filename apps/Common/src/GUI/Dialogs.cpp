@@ -81,6 +81,7 @@ namespace MiniBIM
                 return { { "Dimensions", "width", "Width" }, { "Dimensions", "height", "Height" }, { "Construction", "sill", N_("Default Sill Height") } };
             if (category == "roof") return { { "Construction", "thickness", N_("Thickness") } };
             if (category == "ceiling") return { { "Construction", "thickness", "Thickness" }, { "Construction", "grid", N_("Tile Size") } };
+            if (category == "column" || category == "structuralcolumn") return { { "Dimensions", "width", "Width" }, { "Dimensions", "depth", N_("Depth") } };
             return {};
         }
 
@@ -91,6 +92,8 @@ namespace MiniBIM
             if (category == "floor") return get(m.types.floor, [](const auto& t) { return t.thickness; });
             if (category == "roof") return get(m.types.roof, [](const auto& t) { return t.thickness; });
             if (category == "ceiling") return get(m.types.ceiling, [&](const auto& t) { return key == "grid" ? t.grid : t.thickness; });
+            if (category == "column" || category == "structuralcolumn")
+                return get(category == "column" ? m.types.column : m.types.structuralColumn, [&](const auto& t) { return key == "width" ? t.width : t.depth; });
             const auto& openings = category == "door" ? m.types.door : m.types.window;
             return get(openings, [&](const auto& t) { return key == "width" ? t.width : key == "height" ? t.height : t.sill; });
         }
@@ -271,7 +274,11 @@ namespace MiniBIM
     std::optional<MainFrame::TypeSubject> MainFrame::CurrentTypeSubject() const
     {
         const Bim::Model& m = m_session.GetModel();
-        auto typed = [](const std::string& c) { return c == "wall" || c == "floor" || c == "roof" || c == "ceiling" || c == "door" || c == "window" || c == "component"; };
+        auto typed = [](const std::string& c)
+        {
+            return c == "wall" || c == "floor" || c == "roof" || c == "ceiling" || c == "door" || c == "window" || c == "component" ||
+                   c == "column" || c == "structuralcolumn";
+        };
         TypeSubject t;
         if (!m_selection.empty())
         {

@@ -26,6 +26,10 @@ if(MINIBIM_WITH_SOLID)
     # SMLib 的数值算法递归较深，emcc 默认 64 KB 的栈在建模时会溢出（表现为 call_indirect 报错），给 8 MB
     target_link_options(MiniBIMWeb PRIVATE -sSTACK_SIZE=8388608)
 endif()
+# Revit 文件读取器（Apache-2.0，cmake/Rvt.cmake）：得到宏 MINIBIM_WITH_RVT，WebMain.cpp 接上它
+if(TARGET MiniBIMRvt)
+    target_link_libraries(MiniBIMWeb PRIVATE MiniBIMRvt)
+endif()
 target_link_options(MiniBIMWeb PRIVATE
     -sMIN_WEBGL_VERSION=2
     -sMAX_WEBGL_VERSION=2

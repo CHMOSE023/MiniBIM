@@ -537,7 +537,7 @@ namespace MiniBIM
         // 族：系统族（墙、楼板……）的类型，再是可载入族的类型
         std::vector<Entry> families;
         // 双击类型：类型属性；右键：类型属性、删除
-        for (const char* c : { "wall", "floor", "roof", "ceiling", "door", "window" })
+        for (const char* c : { "wall", "floor", "roof", "ceiling", "door", "window", "column", "structuralcolumn" })
         {
             std::vector<Entry> types;
             for (const std::string& t : m.TypeNames(c))

@@ -48,6 +48,7 @@
     "arch.wall":      { "icon": "Wall.png" },
     "arch.door":      { "icon": "Door.png" },
     "arch.window":    { "icon": "Window.png" },
+    "arch.column":    { "icon": "Column.png" },
     "arch.component": { "icon": "Component.png" },
     "arch.roof":      { "icon": "Roof.png" },
     "arch.floor":     { "icon": "Floor.png" },
@@ -67,7 +68,7 @@
   },
   "menus": [
     { "title": "File", "items": [ "file.new", "file.open", { "title": "Open Recent", "dynamic": "recent" }, "file.save", "file.saveAs",
-                                  "file.exportIfc", "-", "file.start", "file.sample", "-",
+                                  "file.exportIfc", "file.revitReport", "-", "file.start", "file.sample", "-",
                                   { "title": "Language", "dynamic": "languages" }, "file.settings", "file.shortcuts", "-", "file.exit" ] },
     { "title": "Edit", "items": [ "edit.undo", "edit.redo", "-", "edit.delete", "modify.flip" ] },
     { "title": "View", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown", "-", "view.home", "view.zoomFit", "-",
@@ -85,7 +86,7 @@
           "title": "Architecture",
           "panels": [
             { "title": "Select", "items": [ "modify.select" ] },
-            { "title": "Build", "items": [ "arch.wall", "arch.door", "arch.window", "arch.component", "arch.roof", "arch.floor", "arch.ceiling" ] },
+            { "title": "Build", "items": [ "arch.wall", "arch.door", "arch.window", "arch.column", "arch.component", "arch.roof", "arch.floor", "arch.ceiling" ] },
             { "title": "Room & Area", "items": [ "arch.room" ] },
             { "title": "Datum", "items": [ "arch.level", "arch.grid" ] }
           ]

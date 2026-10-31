@@ -1,10 +1,12 @@
-// 主窗口里不碰界面控件的部分（apps/Common/src/GUI/Parameters.*、Recent.*）：特性面板的参数表、值的写法与读法，项目浏览器的搜索，最近打开。
-// 移植自 BIMCraft crates/ui-egui/src/browser.rs、recent.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
+// 主窗口里不碰界面控件的部分（apps/Common/src/GUI/Parameters.*、Recent.*、RevitReport.*）：特性面板的参数表、值的写法与读法，
+// 项目浏览器的搜索，最近打开，Revit 导入的报告。
+// 移植自 BIMCraft crates/ui-egui/src/browser.rs、recent.rs、tests/revit.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Commands/Commands.h"
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
 #include "GUI/Parameters.h"
 #include "GUI/Recent.h"
+#include "GUI/RevitReport.h"
 #include "GUI/Shortcuts.h"
 #include <algorithm>
 #include <cstdio>
@@ -274,6 +276,86 @@ namespace
     }
 }
 
+namespace
+{
+    // Revit 导入得到的：一个叫 Survey 的项目（新项目的两个标高与一面墙），notes 是导入的说明
+    Bim::Ifc::Imported Survey(std::vector<std::string> notes)
+    {
+        Bim::Session s;
+        Json r;
+        std::string error;
+        s.Execute("wall", Json{ { "points", Json::array({ Json::array({ 0, 0 }), Json::array({ 3000, 0 }) }) } }, r, error);
+        Bim::Ifc::Imported i;
+        i.model      = s.GetModel();
+        i.model.name = "Survey";
+        i.schema     = "Revit 2024";
+        i.skipped    = std::move(notes);
+        return i;
+    }
+
+    // 略去了两组（7 个元素），还有一条说进来的元素
+    const std::vector<std::string> Notes = {
+        "2 walls left out, their type has no layers (ids 7, 9)",
+        "5 rooms left out, their walls do not enclose them (ids 1, 2, 3, 4, 5)",
+        "1 window: narrowed to fit its neighbour (ids 12)",
+    };
+
+    bool Contains(const std::string& s, const std::string& part) { return s.find(part) != std::string::npos; }
+
+    void TestRevitReport()
+    {
+        using namespace RevitReport;
+        // 认出 Revit 项目；族与样板不在这里读
+        Check(IsRevit("/projects/house.rvt") && IsRevit("HOUSE.RVT") && !IsRevit("door.rfa") && !IsRevit("house.ifc") && !IsRevit("rvt"),
+              "revit: a project is told by its .rvt");
+        Check(ProjectName("/projects/Barn House.rvt") == "Barn House" && ProjectName("") == "Project", "revit: the project is named for its file");
+
+        // 一条说明说略去了几个
+        Check(CountLeftOut("2 walls left out, their type has no layers (ids 7, 9)") == 2, "left out: a count");
+        Check(CountLeftOut("1 roof left out, it is by extrusion (ids 243274)") == 1, "left out: one");
+        Check(!CountLeftOut("1 window: narrowed to fit its neighbour (ids 12)"), "left out: it came in");
+        Check(!CountLeftOut("3 levels with no name or elevation the reader can find (its block is missing or damaged)"), "left out: says something else");
+        Check(!CountLeftOut("many walls left out, whatever"), "left out: no count is no count");
+        Check(!CountLeftOut(""), "left out: nothing");
+        Check(!CountLeftOut("2 windows: the one left of the door was narrowed, to fit (ids 3)"), "left out: `left` is not `left out`");
+
+        // 说明与它的 id
+        using Split = std::pair<std::string_view, std::optional<std::string_view>>;
+        Check(SplitIds("2 walls left out, no layers (ids 7, 9)") == Split{ "2 walls left out, no layers", "ids 7, 9" }, "ids: split off");
+        Check(SplitIds("1 window: narrowed to fit (the big one)") == Split{ "1 window: narrowed to fit (the big one)", std::nullopt }, "ids: brackets that are not ids");
+        Check(SplitIds("the file has no levels") == Split{ "the file has no levels", std::nullopt }, "ids: none");
+        Check(SplitIds("5 doors (ids 1, \xE2\x80\xA6)") == Split{ "5 doors", "ids 1, \xE2\x80\xA6" }, "ids: a list that goes on");
+
+        // 进来的按类别，多的在前；略去的与别的说明分开
+        const Report r = Of("house.rvt", Survey(Notes));
+        const size_t levels = Survey({}).model.Levels().size();
+        Check(!r.counts.empty() && r.counts.front() == std::pair<std::string, size_t>{ "level", levels }, "report: the most numerous first");
+        Check(std::is_sorted(r.counts.begin(), r.counts.end(), [](const auto& a, const auto& b) { return a.second > b.second; }), "report: by count");
+        Check(r.LeftOutCount() == 7 && r.LeftOut().size() == 2 && r.Noted().size() == 1, "report: two notes left out 7, one noted");
+        Check(StatusLine(r) == "Opened from Revit 2024: " + std::to_string(r.CameIn()) + " elements, 7 left out.", "report: the status line, " + StatusLine(r));
+        Report one;
+        one.schema = "Revit 2024";
+        one.counts = { { "wall", 1 } };
+        Check(StatusLine(one) == "Opened from Revit 2024: 1 element, 0 left out.", "report: one element, none left out");
+        Check(CountLine("wall", 1) == "1 Wall" && CountLine("level", 2) == "2 Levels" && CountLine("thing", 3) == "3 thing", "report: a category's line");
+
+        // 纯文本：窗口显示的全部，再长也一样
+        const std::string text = Text(r);
+        Check(text.rfind("house.rvt \xC2\xB7 Revit 2024\n\nCame in: ", 0) == 0, "report text: its head");
+        Check(Contains(text, "\nLeft out: 7\n") && Contains(text, "\n\xE2\x80\xA2 2 walls left out, their type has no layers (ids 7, 9)\n") &&
+              Contains(text, "\nNoted\n\xE2\x80\xA2 1 window: narrowed to fit its neighbour (ids 12)\n") && Contains(text, "\n1 Wall\n"),
+              "report text: the notes with their ids");
+        std::vector<std::string> many;
+        for (int k = 0; k < 120; ++k)
+            many.push_back("1 door left out, door " + std::to_string(k) + " and door " + std::to_string(k + 1) + " overlap in wall 34 (ids " + std::to_string(1000 + k) + ")");
+        const std::string long_ = Text(Of("house.rvt", Survey(many)));
+        Check(Contains(long_, "\nLeft out: 120\n") && std::all_of(many.begin(), many.end(), [&](const std::string& n) { return Contains(long_, "\xE2\x80\xA2 " + n + "\n"); }),
+              "report text: all 120 notes");
+        const std::string clean = Text(Of("house.rvt", Survey({})));
+        Check(Contains(clean, "Nothing was left out.") && !Contains(clean, "Noted"), "report text: nothing left out, nothing noted");
+    }
+}
+
 int main()
 {
     TestRows();
@@ -284,6 +366,7 @@ int main()
     TestRoundTrip();
     TestRecent();
     TestShortcuts();
+    TestRevitReport();
     std::printf("\n%s：%d 项失败\n", g_failed ? "失败" : "全部通过", g_failed);
     return g_failed ? 1 : 0;
 }

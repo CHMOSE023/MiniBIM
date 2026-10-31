@@ -73,11 +73,11 @@ msgstr "房间"
 msgid "Room Separator"
 msgstr "房间分隔线"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Column"
 msgstr "柱"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Structural Column"
 msgstr "结构柱"
 
@@ -301,7 +301,7 @@ msgstr "展开功能区（双击选项卡也可以）"
 msgid "Search commands"
 msgstr "搜索命令"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "关闭"
 
@@ -466,6 +466,10 @@ msgid "Tile Size"
 msgstr "板块尺寸"
 
 #: apps/Common/src/GUI/Dialogs.cpp
+msgid "Depth"
+msgstr "深度"
+
+#: apps/Common/src/GUI/Dialogs.cpp
 msgid "{0}: `{1}` is not a length"
 msgstr "{0}：“{1}”不是长度"
 
@@ -598,8 +602,20 @@ msgid "Open..."
 msgstr "打开..."
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open a MiniBIM project, a BIMCraft one, or an IFC or Revit file as a new project"
+msgstr "打开 MiniBIM 项目、BIMCraft 项目，或把 IFC、Revit 文件作为新项目打开"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"
 msgstr "打开 MiniBIM 项目、BIMCraft 项目，或把 IFC 文件作为新项目打开"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Revit.cpp
+msgid "Revit Import Report"
+msgstr "Revit 导入报告"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "What the last Revit file brought in, what it left out and why, with the element ids"
+msgstr "上一个 Revit 文件导入了什么、哪些未导入及原因，附图元 ID"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Save the project"
@@ -802,6 +818,10 @@ msgid "Window: click a wall"
 msgstr "窗：单击一面墙"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Column: click where it stands"
+msgstr "柱：单击柱的位置"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Component: a family's type, where you click; Space turns it"
 msgstr "构件：在单击处放一个族类型；空格键旋转"
 
@@ -913,7 +933,7 @@ msgstr "不保存"
 msgid "Could not create a project"
 msgstr "无法新建项目"
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Revit.cpp
 msgid "Could not open the project"
 msgstr "无法打开项目"
 
@@ -1285,6 +1305,10 @@ msgid "Rotation (°)"
 msgstr "旋转（°）"
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Top Level"
+msgstr "顶部标高"
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr "底部标高"
 
@@ -1404,6 +1428,14 @@ msgstr "天花板"
 msgid "Room Separators"
 msgstr "房间分隔线"
 
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Columns"
+msgstr "柱"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Structural Columns"
+msgstr "结构柱"
+
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"
 msgstr "平面：{0}"
@@ -1449,6 +1481,55 @@ msgstr[0] "{0} 个月前"
 msgid "{0} year ago"
 msgid_plural "{0} years ago"
 msgstr[0] "{0} 年前"
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "{0}: this build of MiniBIM was made without Revit support (MINIBIM_WITH_RVT=OFF); build it with that option on to read Revit files"
+msgstr "{0}：这个版本的 MiniBIM 编译时没有带 Revit 支持（MINIBIM_WITH_RVT=OFF）；打开这个选项重新编译才能读 Revit 文件"
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Couldn't open {0}: {1}"
+msgstr "无法打开 {0}：{1}"
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Opening a Revit file: {0}"
+msgstr "正在打开 Revit 文件：{0}"
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "A big file can take a few minutes."
+msgstr "大文件可能要几分钟。"
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Came in: {0}"
+msgstr "已导入：{0}"
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Left out: {0}"
+msgstr "未导入：{0}"
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Nothing was left out."
+msgstr "没有未导入的内容。"
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Noted"
+msgstr "备注"
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Copy Report"
+msgstr "复制报告"
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Copied"
+msgstr "已复制"
+
+#: apps/Common/src/GUI/RevitReport.cpp
+msgid "{0} element"
+msgid_plural "{0} elements"
+msgstr[0] "{0} 个图元"
+
+#: apps/Common/src/GUI/RevitReport.cpp
+msgid "Opened from {0}: {1}, {2} left out."
+msgstr "已从 {0} 打开：{1}，未导入 {2} 个。"
 
 #: apps/Common/src/GUI/Settings.cpp
 msgid "User Interface"
@@ -1694,6 +1775,10 @@ msgid "An empty project to model in."
 msgstr "一个空项目，从头建模。"
 
 #: apps/Common/src/GUI/StartPage.cpp
+msgid "A MiniBIM or BIMCraft project, an IFC or a Revit file."
+msgstr "MiniBIM 或 BIMCraft 项目、IFC 或 Revit 文件。"
+
+#: apps/Common/src/GUI/StartPage.cpp
 msgid "A MiniBIM or BIMCraft project, or an IFC file."
 msgstr "MiniBIM 或 BIMCraft 项目，或 IFC 文件。"
 
@@ -1760,6 +1845,10 @@ msgstr "单击一面墙放置门。"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click a wall to place the window."
 msgstr "单击一面墙放置窗。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place a column, as high as the Options Bar says."
+msgstr "单击以放置柱，高度由选项栏指定。"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click where the component goes; Space turns it a quarter turn."
@@ -1886,6 +1975,10 @@ msgid "Modify | Place Window"
 msgstr "修改 | 放置窗"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Column"
+msgstr "修改 | 放置柱"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Component"
 msgstr "修改 | 放置构件"
 
@@ -1950,6 +2043,10 @@ msgid "Modify | Offset"
 msgstr "修改 | 偏移"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Height:"
+msgstr "高度："
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Create Floor Boundary"
 msgstr "修改 | 创建楼层边界"
 
@@ -1976,10 +2073,6 @@ msgstr "边界线"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Pick a tool on the Architecture tab to place walls, doors, windows, roofs and more."
 msgstr "在“建筑”选项卡上选一个工具，放置墙、门、窗、屋顶等。"
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Height:"
-msgstr "高度："
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Location Line:"
@@ -2042,6 +2135,10 @@ msgid "Could not place the grid"
 msgstr "无法放置轴网"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the column"
+msgstr "无法放置柱"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the component"
 msgstr "无法放置构件"
 
@@ -2088,6 +2185,10 @@ msgstr "BIMCraft 项目"
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "IFC file"
 msgstr "IFC 文件"
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Revit project"
+msgstr "Revit 项目"
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All files"

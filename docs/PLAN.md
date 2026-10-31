@@ -127,11 +127,14 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   不对合法性下结论；这个风险由项目所有者承担。只移植那份文档已列来源的读法，不自己逆向，Autodesk 的文件不进仓库（测试用合成的文件）
 - **分段**：
   - R1 ✅ 柱（核心）：`Column`、`StructuralColumn` 与它们的类型、命令 `column`、`structural_column`、检查、项目文件、对齐与捕捉（BIMCraft 的柱测试已移植进 `CommandTests`）
-  - R2 ✅ 柱的三维、平面与 IFC 导出导入（放柱的界面工具与图标留到 R6 一起做）
+  - R2 ✅ 柱的三维、平面与 IFC 导出导入（放柱的界面工具与图标在 R6 做了）
   - R3 ✅ rvt 底层：复合文档（MS-CFB，自己写）、gzip 与有界的 inflate（自己写）、`BasicFileInfo`、`ProjectInformation` / `PartAtom`、预览图（BIMCraft 的容器、gzip 与元数据测试已移植进 `RvtTests`，见 `.agents/features/rvt.md`）
   - R4 ✅ rvt 记录：`Formats/Latest` 的类表、`ElemTable`、分区里的元素记录与类型记录、标高、元素数据、名称、类型与层、曲线、放置、草图（BIMCraft 的 records.rs、inventory.rs、decoders.rs、sketch.rs 与类表的测试已移植，合成项目见 `tests/Rvt/ProjectFixture.cpp`）
   - R5 ✅ rvt 导入：墙、楼板与天花板、屋顶（迹线与拉伸）、门窗、房间、柱，读不了的列出原因（`Rvt::Import`；BIMCraft 的 import.rs、walls.rs、floors.rs、roofs.rs、openings.rs、rooms.rs、columns.rs 里不要样例文件的测试已移植）
-  - R6 界面打开 `.rvt`（后台读、提示框）、Linux 版与网页版、CI 与发布包
+  - R6 ✅ 界面打开 `.rvt`：宿主接上读取器（主窗口不依赖它），后台线程读、提示框盖住窗口，读进来的是新的没保存的项目，导入报告（按类别、未导入与原因、复制报告），
+    文件 > Revit 导入报告；Linux 版与网页版编入（网页版没有线程，提示框画出来后在界面线程上读）；发布包附 `LICENSE-Rvt`、`NOTICE-Rvt`；
+    放柱的工具（功能区"建筑 > 柱"，CL，高度同墙）与图标，柱与结构柱的参数、类型（项目浏览器、类型属性）。BIMCraft `ui-egui` 的 `tests/revit.rs` 里不驱动 egui 的
+    （数略去了几个、拆 id、报告的文字）移植进 `AppTests`。留到后面的：结构柱的工具（随"结构"选项卡）、拖进窗口打开文件、读的时候系统再要打开的文件排队
 
 ## 第 4 阶段：平台
 
@@ -163,6 +166,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   `TitleBar` 里写死的中文改成英文原文 + `Tr`（菜单文字去掉了助记符 `&`，不显示下划线和 `(X)`）；`Win32Fonts` 加了韩文回退字体
 - MiniGUI：`UIContext::SetUnhandledTextHandler`（没有节点要的文字交给宿主，两个字母的快捷键用）
 - MiniGUI：`DockSpace::SetOnPanelMenu`、`DockSpace::PanelMenuOfFloat`、`FloatingPanel::SetOnMenu`（右键标签或浮动窗口的标题栏，宿主弹出面板菜单）
+- MiniGUI：`ScrollView::OnLayout` 里内容超出视口不到 1 像素时不出滚动条（按内容定高的视图在 150% 缩放下，边对齐到设备像素后会矮一点）
 - `cmake/Render.cmake` 照 MiniCAD 分 Windows、Linux、网页三段；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`、`PostDelayed`，
   文件对话框同 MiniCAD 是异步的 `PickFile` 与 `ChooseSavePath`，但 `FileKind` / `SaveKind` 换成项目、IFC、快捷键文件（没有 DWG 的格式与版本）
 - 没有复制：MiniDWG、节点图、天正、CAD 实体 / 场景 / 编辑器（`src/Core/Entity`、`src/Scene`、`src/Document`、`src/Editor`、`src/Viewport`）

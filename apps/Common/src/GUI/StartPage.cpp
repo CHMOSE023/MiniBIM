@@ -197,7 +197,8 @@ namespace MiniBIM
             note->SetWrap(true);
         };
         action("New.png", Tr("New Project"), N_("An empty project to model in."), "Ctrl+N", [this] { Guard([this] { NewProject(); }); });
-        action("Open.png", Tr("Open..."), N_("A MiniBIM or BIMCraft project, or an IFC file."), "Ctrl+O", [this] { Guard([this] { OpenProject(); }); });
+        action("Open.png", Tr("Open..."), m_revitReader ? N_("A MiniBIM or BIMCraft project, an IFC or a Revit file.") : N_("A MiniBIM or BIMCraft project, or an IFC file."),
+               "Ctrl+O", [this] { Guard([this] { OpenProject(); }); });
         action("SampleHouse.png", Tr("Sample House"), N_("A small house to look around and try the tools on."), "",
                [this] { Guard([this] { OpenSample(); }); });
         if (m_startOver)

@@ -3,6 +3,7 @@
 #include "Commands/Session.h"
 #include "GUI/AppPlatform.h"
 #include "GUI/Recent.h"
+#include "GUI/RevitReport.h"
 #include "GUI/Shortcuts.h"
 #include "Model/Align.h"
 #include "Model/Render.h"
@@ -31,6 +32,7 @@ namespace MiniGUI
     enum class DockSide;
     class Label;
     class Node;
+    class Popup;
     class TextBox;
     class TitleBar;
     class TreeView;
@@ -73,6 +75,15 @@ namespace MiniBIM
         void AddStartupCommand(std::string id) { m_startupCommands.push_back(std::move(id)); }
         // 启动参数给的项目文件（双击 .minibim 打开程序时）：打开它；没给文件也没给 --run 时启动后显示开始页
         void SetStartupFile(std::string utf8Path) { m_startupFile = std::move(utf8Path); }
+        // Revit 文件的读取器：读 path，读进来的项目叫 name，读不了时原因放在 error。读取器（src/Rvt，Apache-2.0）主窗口不依赖：
+        // 宿主链接了 MiniBIMRvt（MINIBIM_WITH_RVT）时接上 Rvt::ImportPath，在 Initialize 之前。没接时打开对话框里没有 .rvt，
+        // 给了 .rvt 时说这个版本读不了。它在工作线程上运行（平台有后台线程时）
+        using RevitReader = RevitReport::Reader;
+        void SetRevitReader(RevitReader reader) { m_revitReader = std::move(reader); }
+        bool HasRevitReader() const { return static_cast<bool>(m_revitReader); }
+        // 正在读 Revit 文件
+        bool ImportingRevit() const { return m_revitJob.has_value(); }
+        struct RevitRead;                       // 工作线程交给界面线程的结果（Revit.cpp）
 
         // 平台对象必须比 MainFrame 活得久。尺寸为逻辑像素，pixelScale = 物理像素 / 逻辑像素
         bool Initialize(AppPlatform& platform, float width, float height, float pixelScale);
@@ -129,6 +140,21 @@ namespace MiniBIM
         // 模型导出为 IFC4 文件：问存到哪里，不改项目自己的路径
         void ExportIfc();
         void OpenSample();
+
+        // ── Revit 文件（Revit.cpp）：在后台线程上读，提示框盖住窗口；读进来的是新的、没保存的项目 ──
+        // 开始读（一次一个）；返回开始了没有。没有读取器时说为什么
+        bool OpenRevit(const std::string& path);
+        // 平台没有后台线程（网页版）：提示框画出来之后在界面线程上读
+        void ReadRevit();
+        // 读完了（界面线程）：换上读进来的项目，或说为什么不行
+        void FinishRevit();
+        // 退出时：不等读完，读完的结果没人要
+        void AbandonRevit();
+        void InstallRevit(const std::string& file, Bim::Ifc::Imported imported);
+        // 文件 > Revit 导入报告：最后一次导入进来了什么、略去了什么与原因，项目还是那一个时才有
+        bool HasRevitReport() const;
+        void ShowRevitReport();
+
         // 模型变了（命令、新建、打开）之后：重建三维场景，刷新标题与状态栏；换了项目时相机重新框住模型
         void OnModelChanged();
         void RebuildScene();
@@ -173,7 +199,7 @@ namespace MiniBIM
 
         // ── 工具（Tools.cpp）──────────────────────────────────────
         // 平面上单击做什么：选（修改），或放一类东西
-        enum class Tool { Modify, Wall, Door, Window, Component, Roof, Floor, Ceiling, Room, Level, Grid,
+        enum class Tool { Modify, Wall, Door, Window, Column, Component, Roof, Floor, Ceiling, Room, Level, Grid,
                           Move, Copy, Rotate, MirrorPick, MirrorDraw, Align, Trim, Split, Offset,
                           SketchLine, SketchRect, SketchPick };
         // 改选择集的工具（移动、复制、旋转、镜像）要先选东西
@@ -200,8 +226,8 @@ namespace MiniBIM
         void BuildPreview(Bim::Render::Drawing& d);
         // 选项栏与特性面板选的类型（和门窗的族）放进命令参数
         Bim::Json Typed(const std::string& category, Bim::Json p) const;
-        // 墙的顶部：选项栏选的标高，或未连接时的高度；读不出高度时为空，原因放在 error
-        std::optional<Bim::Json> WallTop(std::string& error) const;
+        // 墙、柱的顶部（选项栏的"高度"）：选的标高（没选时上一层），或未连接时输入的高度；读不出高度时为空，原因放在 error
+        std::optional<Bim::Json> TopParams(const std::optional<std::optional<Bim::Guid>>& top, const std::string& height, std::string& error) const;
         // 构件工具放的族与类型：选的，否则第一个可载入族的第一个类型
         std::optional<std::pair<std::string, std::string>> Placing() const;
 
@@ -364,6 +390,21 @@ namespace MiniBIM
         int  m_startColumns = 0;
         std::string m_startupFile;                            // 启动参数给的项目文件：打开它，不显示开始页
 
+        struct RevitJob
+        {
+            std::string path;
+            std::string file;                                 // 文件名（提示框、报错）
+            std::shared_ptr<RevitRead> read;
+            MiniGUI::Popup* box = nullptr;                    // 提示框
+            bool here  = false;                               // 没有后台线程：在界面线程上读
+            bool drawn = false;                               // here 时：提示框画出来了，接着读
+        };
+        RevitReader m_revitReader;
+        std::optional<RevitJob> m_revitJob;
+        std::optional<RevitReport::Report> m_revitReport;     // 最后一次导入的报告
+        size_t m_revitResets = 0;                             // 报告说的是哪一个项目（Session::Resets）
+        std::shared_ptr<const Bim::Model> m_revitModel;      // 读进来的那一份：模型还是它时状态栏说进来了多少
+
         struct AutosaveState
         {
             std::unique_ptr<Bim::Autosave::Worker> worker;
@@ -436,6 +477,8 @@ namespace MiniBIM
             std::string   wallHeight   = "3000";
             Bim::Location wallLocation = Bim::Location::Centre;
             bool          chain        = true;
+            std::optional<std::optional<Bim::Guid>> columnTop;  // 柱的顶部，同 wallTop
+            std::string   columnHeight = "3000";
             std::string   roofSlope    = "30";
             std::string   roofOverhang = "500";
             bool          roofGable    = false;

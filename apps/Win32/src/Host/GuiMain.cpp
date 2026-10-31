@@ -1,10 +1,13 @@
 // MiniBIMWin：MiniBIM 桌面版入口（界面由 MiniGUI 绘制）
 // 用法：MiniBIMWin.exe [项目文件] [--ui 界面描述文件.json] [--gpu d3d12|d3d11|warp] [--lang 语言代码] [--run 界面命令 ID]…
 // 图形接口也可以用环境变量 MINIBIM_GPU 指定（命令行优先）；指定的不可用时按默认顺序回退。
-// 给了项目文件（.minibim、.bimcraft、.ifc）就打开它，否则启动后显示开始页。
+// 给了项目文件（.minibim、.bimcraft、.ifc，编入了 Revit 读取器时还有 .rvt）就打开它，否则启动后显示开始页。
 // --lang（如 zh_CN、en）只对这一次启动有效，不改用户设置；--run（如 view.plan，可给多个）在打开示例房屋后依次执行
 // 以 USE_WIN32 编译时为窗口程序（没有控制台，日志不可见）
 #include "Host/Win32Window.h"
+#ifdef MINIBIM_WITH_RVT
+#include "Rvt/Import.h"
+#endif
 #include <shellapi.h>
 #include <iterator>
 #include <string>
@@ -29,6 +32,10 @@ namespace
         Win32Window window;
         MainFrame&  frame = window.GetFrame();
         std::string gpu;
+#ifdef MINIBIM_WITH_RVT
+        // Revit 文件的读取器（src/Rvt，Apache-2.0）：主窗口不依赖它，由宿主接上
+        frame.SetRevitReader(&Rvt::ImportPath);
+#endif
 
         // 命令行参数按 UTF-8 取（--ui 的路径可能含中文）
         int argc = 0;

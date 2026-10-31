@@ -74,11 +74,11 @@ msgstr ""
 msgid "Room Separator"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Column"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Structural Column"
 msgstr ""
 
@@ -302,7 +302,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr ""
 
@@ -467,6 +467,10 @@ msgid "Tile Size"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
+msgid "Depth"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
 msgid "{0}: `{1}` is not a length"
 msgstr ""
 
@@ -599,7 +603,19 @@ msgid "Open..."
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open a MiniBIM project, a BIMCraft one, or an IFC or Revit file as a new project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Revit.cpp
+msgid "Revit Import Report"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "What the last Revit file brought in, what it left out and why, with the element ids"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -803,6 +819,10 @@ msgid "Window: click a wall"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Column: click where it stands"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Component: a family's type, where you click; Space turns it"
 msgstr ""
 
@@ -914,7 +934,7 @@ msgstr ""
 msgid "Could not create a project"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Revit.cpp
 msgid "Could not open the project"
 msgstr ""
 
@@ -1292,6 +1312,10 @@ msgid "Rotation (°)"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Top Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr ""
 
@@ -1411,6 +1435,14 @@ msgstr ""
 msgid "Room Separators"
 msgstr ""
 
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Columns"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Structural Columns"
+msgstr ""
+
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"
 msgstr ""
@@ -1462,6 +1494,56 @@ msgid "{0} year ago"
 msgid_plural "{0} years ago"
 msgstr[0] ""
 msgstr[1] ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "{0}: this build of MiniBIM was made without Revit support (MINIBIM_WITH_RVT=OFF); build it with that option on to read Revit files"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Couldn't open {0}: {1}"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Opening a Revit file: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "A big file can take a few minutes."
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Came in: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Left out: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Nothing was left out."
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Noted"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Copy Report"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Copied"
+msgstr ""
+
+#: apps/Common/src/GUI/RevitReport.cpp
+msgid "{0} element"
+msgid_plural "{0} elements"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/RevitReport.cpp
+msgid "Opened from {0}: {1}, {2} left out."
+msgstr ""
 
 #: apps/Common/src/GUI/Settings.cpp
 msgid "User Interface"
@@ -1709,6 +1791,10 @@ msgid "An empty project to model in."
 msgstr ""
 
 #: apps/Common/src/GUI/StartPage.cpp
+msgid "A MiniBIM or BIMCraft project, an IFC or a Revit file."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
 msgid "A MiniBIM or BIMCraft project, or an IFC file."
 msgstr ""
 
@@ -1774,6 +1860,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click a wall to place the window."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place a column, as high as the Options Bar says."
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -1901,6 +1991,10 @@ msgid "Modify | Place Window"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Column"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Component"
 msgstr ""
 
@@ -1965,6 +2059,10 @@ msgid "Modify | Offset"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Height:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Create Floor Boundary"
 msgstr ""
 
@@ -1990,10 +2088,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Pick a tool on the Architecture tab to place walls, doors, windows, roofs and more."
-msgstr ""
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Height:"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -2057,6 +2151,10 @@ msgid "Could not place the grid"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the column"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the component"
 msgstr ""
 
@@ -2102,6 +2200,10 @@ msgstr ""
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "IFC file"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Revit project"
 msgstr ""
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp

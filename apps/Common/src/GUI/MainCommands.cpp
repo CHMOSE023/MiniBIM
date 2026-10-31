@@ -42,8 +42,11 @@ namespace MiniBIM
 
         // ── 文件 ─────────────────────────────────────────────────
         add("file.new", N_("New"), N_("Start an empty project with two levels"), [this] { Guard([this] { NewProject(); }); });
-        add("file.open", N_("Open..."), N_("Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"),
+        add("file.open", N_("Open..."), m_revitReader ? N_("Open a MiniBIM project, a BIMCraft one, or an IFC or Revit file as a new project")
+                                                      : N_("Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"),
             [this] { Guard([this] { OpenProject(); }); });
+        add("file.revitReport", N_("Revit Import Report"), N_("What the last Revit file brought in, what it left out and why, with the element ids"),
+            [this] { ShowRevitReport(); }, [this] { return HasRevitReport(); });
         add("file.save", N_("Save"), N_("Save the project"), [this] { SaveProject(false, {}); });
         add("file.saveAs", N_("Save As..."), N_("Save the project under another name"), [this] { SaveProject(true, {}); });
         add("file.exportIfc", N_("Export IFC..."), N_("Export the model as an IFC4 file for other BIM software"), [this] { ExportIfc(); });
@@ -116,6 +119,7 @@ namespace MiniBIM
         tool("arch.wall", N_("Wall"), N_("Wall: each click builds a wall; Enter or Esc ends the chain"), Tool::Wall);
         tool("arch.door", N_("Door"), N_("Door: click a wall"), Tool::Door);
         tool("arch.window", N_("Window"), N_("Window: click a wall"), Tool::Window);
+        tool("arch.column", N_("Column"), N_("Column: click where it stands"), Tool::Column);
         tool("arch.component", N_("Component"), N_("Component: a family's type, where you click; Space turns it"), Tool::Component);
         tool("arch.roof", N_("Roof"), N_("Roof by Footprint: click inside the walls to roof them, on the level above"), Tool::Roof);
         tool("arch.floor", N_("Floor"), N_("Floor: click inside the walls to floor them"), Tool::Floor);
@@ -206,7 +210,7 @@ namespace MiniBIM
 
     void MainFrame::OpenProject()
     {
-        m_platform->PickFile(FileKind::Project, [this](const std::string& path)
+        m_platform->PickFile(m_revitReader ? FileKind::ProjectOrRevit : FileKind::Project, [this](const std::string& path)
         {
             if (!path.empty())
                 OpenPath(path);
@@ -215,6 +219,9 @@ namespace MiniBIM
 
     bool MainFrame::OpenPath(const std::string& path)
     {
+        // Revit 文件在后台读：读进来时才换掉项目；不进最近打开
+        if (RevitReport::IsRevit(path))
+            return OpenRevit(path);
         Bim::Json r;
         if (!RunCommand("open", Bim::Json{ { "path", path } }, N_("Could not open the project"), &r))
         {

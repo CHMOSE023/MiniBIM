@@ -39,6 +39,7 @@ $rules = @(
     @('^src/UI/',                                               'MiniBIMWin', 'i18n'),
     @('^src/(Core|Render)/|^apps/Render/|^apps/Win32/',         'MiniBIMWin'),
     @('^tests/App/|^apps/Common/src/GUI/Parameters',            'AppTests'),
+    @('^apps/Common/src/GUI/RevitReport',                       'AppTests', 'RvtTests'),
     @('^apps/Common/',                                          'MiniBIMWin', 'i18n'),
     @('^assets/ui/',                                            'MiniBIMWin', 'i18n', 'icons'),
     @('^tools/make_icons\.py$|^assets/icons/',                  'MiniBIMWin', 'icons'),
