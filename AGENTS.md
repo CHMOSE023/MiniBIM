@@ -22,7 +22,7 @@
 ## 项目概览
 
 C++20 的开源 BIM 软件（MIT）。界面、渲染、构建、代码风格沿用 MiniCAD（复制自 MiniCAD 提交 `0bd1687`），几何内核 `3rd/SMLib`，
-建模功能按 `docs/PLAN.md` 从 BIMCraft（Rust）移植。第一阶段只有 Windows 桌面版。
+建模功能按 `docs/PLAN.md` 从 BIMCraft（Rust）移植。有 Windows 桌面版与 Linux 版（SDL3）。
 
 ### 目录
 
@@ -33,9 +33,10 @@ C++20 的开源 BIM 软件（MIT）。界面、渲染、构建、代码风格沿
 - `src/Solid/`：三维实体内核接口 `ISolidKernel.h`（只用 MiniBIM 类型）；SMLib 实现在 `src/Solid/SMLib/`（目标 `MiniBIMSolid`，唯一包含 SMLib 头文件的地方）
 - `src/UI/`：MiniGUI（目标 `MiniGUI`，定义在 `cmake/MiniGUI.cmake`，命名空间 `MiniGUI`），复制自 MiniCAD；与 MiniCAD 的差异记在 `docs/PLAN.md`
 - `apps/Common/`：主窗口的界面与逻辑（目标 `MiniBIMApp`），平台服务经 `AppPlatform`（`apps/Common/src/GUI/AppPlatform.h`）
-- `apps/Render/`：渲染后端（`cmake/Render.cmake`），Windows 为 D3D12 / D3D11；宿主经 `IGraphicsDevice` 使用
-- `apps/Win32/`：桌面版宿主 `Win32Window`（目标 `MiniBIMWin`）
-- `assets/`：界面描述文件 `ui/minibim_ui.json`、词典 `i18n/*.po`、图标 `icons/`（全部由 `tools/make_icons.py` 生成）；构建后复制到可执行文件旁
+- `apps/Render/`：渲染后端（`cmake/Render.cmake`），Windows 为 D3D12 / D3D11，Linux 为 Vulkan / GLES3；宿主经 `IGraphicsDevice` 使用
+- `apps/Win32/`：桌面版宿主 `Win32Window`（目标 `MiniBIMWin`）；`apps/Linux/`：Linux 版宿主 `LinuxApp`（目标 `MiniBIMLinux`，SDL3，缺 SDL3 时不编）
+- `assets/`：界面描述文件 `ui/minibim_ui.json`、词典 `i18n/*.po`、图标 `icons/`（全部由 `tools/make_icons.py` 生成）、
+  Linux 版的界面字体 `fonts/NotoSansSC-UI.ttf`（`tools/make_web_font.py` 生成，词典里有了新的字时重新生成）；构建后复制到可执行文件旁
 - `3rd/`：SMLib（Apache-2.0，本地修改见 `3rd/SMLib/README.md`，开关 `MINIBIM_WITH_SOLID`）、stb、nlohmann/json（MIT，`3rd/nlohmann`）
 - `tools/extract_messages.py`：收集界面原文、更新词典；`tools/make_icons.py`：生成全部图标；`tests/`：测试
 
@@ -47,7 +48,7 @@ MiniBIM → `src`（另有 `3rd/nlohmann/include`），MiniGUI → `src/UI`，�
 ### 源文件登记
 
 源文件逐个列出（不用通配），新增 `.cpp` 要加到对应位置：核心库 `cmake/MiniBIM.cmake`，MiniGUI `cmake/MiniGUI.cmake`，
-共用应用 `apps/Common/CMakeLists.txt`，渲染后端 `cmake/Render.cmake`，宿主 `apps/Win32/CMakeLists.txt`，测试 `tests/CMakeLists.txt`。
+共用应用 `apps/Common/CMakeLists.txt`，渲染后端 `cmake/Render.cmake`，宿主 `apps/Win32/CMakeLists.txt`、`apps/Linux/CMakeLists.txt`，测试 `tests/CMakeLists.txt`。
 例外：`3rd/SMLib` 在 `cmake/SMLib.cmake` 里按目录通配。
 
 ## 架构

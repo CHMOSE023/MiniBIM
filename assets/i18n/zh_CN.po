@@ -269,7 +269,7 @@ msgstr "更多命令"
 msgid "Unknown command:"
 msgstr "没有这个命令："
 
-#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp
 msgid "OK"
 msgstr "确定"
 
@@ -2037,29 +2037,37 @@ msgstr "无法创建楼板"
 msgid "Not a length"
 msgstr "不是长度"
 
-#: apps/Win32/src/Host/Win32Window.cpp
-msgid "MiniBIM project"
-msgstr "MiniBIM 项目"
-
-#: apps/Win32/src/Host/Win32Window.cpp
-msgid "IFC file"
-msgstr "IFC 文件"
-
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "Shortcuts file"
 msgstr "快捷键文件"
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"
 msgstr "所有项目"
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "MiniBIM project"
+msgstr "MiniBIM 项目"
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "BIMCraft project"
 msgstr "BIMCraft 项目"
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "IFC file"
+msgstr "IFC 文件"
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All files"
 msgstr "所有文件"
+
+#: apps/Linux/src/Host/LinuxApp.cpp
+msgid "Could not show the file dialog"
+msgstr "无法打开文件对话框"
+
+#: apps/Linux/src/Host/LinuxApp.cpp
+msgid "{0}\n\nThe file dialog needs xdg-desktop-portal or zenity. You can also give a project file on the command line."
+msgstr "{0}\n\n文件对话框需要 xdg-desktop-portal 或 zenity。也可以在命令行上给出项目文件。"
 
 #: assets/ui/minibim_ui.json
 msgid "File"

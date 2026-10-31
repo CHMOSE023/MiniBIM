@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>An open-source BIM application written in C++20.</strong><br />
-  Runs on Windows, models with the SMLib solid kernel, ports its BIM features from BIMCraft, and speaks several languages.
+  Runs on Windows and Linux, models with the SMLib solid kernel, ports its BIM features from BIMCraft, and speaks several languages.
 </p>
 
 <p align="center">
@@ -55,6 +55,42 @@ cmake --build --preset debug
 Command-line options: `--lang zh_CN` (the language for this run only), `--gpu d3d12|d3d11|warp` (or the environment variable
 `MINIBIM_GPU`), `--ui <interface description file.json>`.
 
+### Building on Linux
+
+You need CMake 3.20+, Ninja, GCC 13+ or Clang (C++20), the OpenGL ES 3 / EGL development packages and
+[SDL3](https://github.com/libsdl-org/SDL). On Ubuntu / Debian:
+
+```bash
+sudo apt install build-essential cmake ninja-build pkg-config libegl-dev libgles-dev \
+    libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev \
+    libxkbcommon-dev libwayland-dev wayland-protocols libdbus-1-dev libudev-dev
+```
+
+The Vulkan renderer (optional; used first when present, with OpenGL ES 3 as the fallback) also needs the headers and the shader compiler:
+
+```bash
+sudo apt install libvulkan-dev glslang-tools mesa-vulkan-drivers
+```
+
+SDL3 is `sudo apt install libsdl3-dev` on Ubuntu 25.04 / Debian 13 and later; on older releases build it from source, for example into `~/sdl3`:
+
+```bash
+cmake -S SDL3-3.4.18 -B sdl3-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/sdl3 -DSDL_TESTS=OFF
+cmake --build sdl3-build && cmake --install sdl3-build
+```
+
+Then build MiniBIM (leave out `CMAKE_PREFIX_PATH` when SDL3 is installed system-wide):
+
+```bash
+cmake -S . -B out/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$HOME/sdl3
+cmake --build out/linux
+out/linux/MiniBIMLinux/MiniBIMLinux [project file]
+```
+
+Without SDL3 or OpenGL ES 3 only the core library and the tests are built (`ctest --test-dir out/linux`); without the Vulkan
+packages only OpenGL ES 3 is used. The command-line options are the Windows ones, with `--gpu vulkan|gl`. The open and save
+dialogs need xdg-desktop-portal or zenity.
+
 ### Tests
 
 ```bat
@@ -80,11 +116,11 @@ works.
 | `src/Model/`, `src/Commands/` | The building model, its commands and undo, ported from BIMCraft |
 | `src/UI/` | The MiniGUI interface library (copied from MiniCAD) |
 | `apps/Common/` | The main window's interface and logic (platform-independent) |
-| `apps/Render/` | Renderers (D3D12, D3D11) |
-| `apps/Win32/` | The Windows desktop host |
-| `assets/` | The interface description `ui/minibim_ui.json`, the catalogs in `i18n/` and the icons in `icons/` |
+| `apps/Render/` | Renderers (D3D12 and D3D11 on Windows, Vulkan and OpenGL ES 3 on Linux) |
+| `apps/Win32/`, `apps/Linux/` | The Windows desktop host; the Linux host (SDL3) |
+| `assets/` | The interface description `ui/minibim_ui.json`, the catalogs in `i18n/`, the icons in `icons/` and the Linux interface font in `fonts/` |
 | `3rd/` | SMLib (NURBS B-rep solid kernel, Apache-2.0), stb and nlohmann/json (MIT) |
-| `tools/` | `extract_messages.py`: collects interface text and updates the catalogs; `make_icons.py`: draws every icon MiniBIM uses |
+| `tools/` | `extract_messages.py`: collects interface text and updates the catalogs; `make_icons.py`: draws every icon MiniBIM uses; `make_web_font.py`: makes the interface font for Linux |
 | `tests/` | Tests |
 | `.agents/` | Notes, feature guides and skills for AI coding assistants (start at [AGENTS.md](AGENTS.md)) |
 

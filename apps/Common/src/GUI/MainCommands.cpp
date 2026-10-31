@@ -32,10 +32,13 @@ namespace MiniBIM
             m_commands.Register(std::move(c));
         };
 
-        // ── 窗口（标题栏右侧的按钮执行这三个）───────────────────────
-        add("window.minimize", N_("Minimize"), "", [this] { m_platform->MinimizeWindow(); });
-        add("window.maximize", N_("Maximize"), "", [this] { m_platform->ToggleMaximizeWindow(); });
-        add("window.close",    N_("Close"),    "", [this] { m_platform->CloseWindow(); });
+        // ── 窗口（标题栏右侧的按钮执行这三个；平台没有这三个按钮时不注册，标题栏就不显示）───────
+        if (m_platform->HasWindowControls())
+        {
+            add("window.minimize", N_("Minimize"), "", [this] { m_platform->MinimizeWindow(); });
+            add("window.maximize", N_("Maximize"), "", [this] { m_platform->ToggleMaximizeWindow(); });
+            add("window.close",    N_("Close"),    "", [this] { m_platform->CloseWindow(); });
+        }
 
         // ── 文件 ─────────────────────────────────────────────────
         add("file.new", N_("New"), N_("Start an empty project with two levels"), [this] { Guard([this] { NewProject(); }); });

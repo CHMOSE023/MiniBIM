@@ -48,7 +48,7 @@ include(cmake/SMLib.cmake)
 # ── MiniBIM（平台无关的核心库）───────────────────────────────────────
 include(cmake/MiniBIM.cmake)
 
-# ── 渲染后端（apps/Render，第一阶段只有 Windows）──────────────────────
+# ── 渲染后端（apps/Render：Windows 为 D3D12 / D3D11，Linux 为 Vulkan / GLES3）─────────
 include(cmake/Render.cmake)
 
 # ── 平台应用 ────────────────────────────────────────────────────────
@@ -57,7 +57,10 @@ add_subdirectory("apps/Common")     # 主窗口界面与逻辑（各平台宿主
 if(WIN32 AND NOT EMSCRIPTEN)
     add_subdirectory("apps/Win32")
 endif()
-# 网页版（apps/Web）、Linux 版（apps/Linux）：docs/PLAN.md 第 4 阶段，参照 MiniCAD 的同名目录
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    add_subdirectory("apps/Linux")  # 缺 SDL3 或 OpenGL ES 3 时跳过（只编核心库与测试）
+endif()
+# 网页版（apps/Web）：docs/PLAN.md 第 4 阶段，参照 MiniCAD 的同名目录
 
 # ── 测试 ────────────────────────────────────────────────────────────
 option(MINIBIM_BUILD_TESTS "Build MiniBIM tests" ON)

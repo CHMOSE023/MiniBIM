@@ -39,7 +39,7 @@ namespace MiniBIM
         virtual ~AppPlatform() = default;
 
         // ── 图形 ─────────────────────────────────────────────────
-        virtual MiniGUI::IRenderBackend& GetUiBackend()      = 0;   // 界面渲染后端（D3D12Backend / D3D11Backend）
+        virtual MiniGUI::IRenderBackend& GetUiBackend()      = 0;   // 界面渲染后端（D3D12Backend、VulkanBackend 等）
         virtual IRenderer&               GetRenderer()       = 0;   // 三维视口渲染器
         virtual IRenderTarget&           GetViewportTarget() = 0;   // 主窗口视口的离屏渲染目标
         // 把视口渲染目标的着色器资源（IRenderTarget::GetNativeShaderResource）登记为界面纹理
@@ -48,10 +48,12 @@ namespace MiniBIM
         virtual void RequestRedraw() = 0;       // 安排一次重绘（Win32：InvalidateRect）
         virtual void BeginUiPass()   = 0;       // 绑定窗口的帧缓冲并清屏
         virtual void EndUiPass()     = 0;       // 呈现，并同步输入法位置等平台输入状态
-        virtual const char* GetGraphicsName() const = 0;    // 关于对话框显示，例如 "D3D12"
+        virtual const char* GetGraphicsName() const = 0;    // 关于对话框显示，例如 "D3D12"、"Vulkan"
 
         // ── 窗口 ─────────────────────────────────────────────────
         virtual void SetTitle(const std::string& utf8) = 0;
+        // 标题栏是否显示最小化 / 最大化 / 关闭：Linux 版用系统的标题栏和边框，网页版没有窗口，都不显示
+        virtual bool HasWindowControls() const { return true; }
         virtual bool IsWindowMaximized() const { return false; }
         virtual void MinimizeWindow()       {}
         virtual void ToggleMaximizeWindow() {}

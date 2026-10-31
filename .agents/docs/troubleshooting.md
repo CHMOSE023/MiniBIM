@@ -95,6 +95,12 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
 - 原因：输出被重定向时按系统代码页编码，读的一方按 UTF-8 解
 - 做法：`tools/extract_messages.py` 重定向时已改用 UTF-8；别的脚本设 `PYTHONIOENCODING=utf-8`
 
+### Linux 上没有 `MiniBIMLinux` 目标（只编出了核心库和测试）
+- 原因：配置时没找到 SDL3 或 OpenGL ES 3（cmake 输出"MiniBIMLinux：缺少 SDL3 或 OpenGL ES 3，跳过"）。SDL3 自己编译安装在 `~/sdl3` 时要告诉 CMake
+- 做法：`cmake -S . -B out/linux -DCMAKE_PREFIX_PATH=$HOME/sdl3`；OpenGL ES 3 装 `libgles-dev libegl-dev`（见 README 的 Linux 编译）。
+  没有显示器的机器上看界面：`xvfb-run -a -s '-screen 0 1400x900x24'` 里运行，用 ImageMagick 的 `import -window root` 截屏；
+  llvmpipe 的 Vulkan 与 OpenGL ES 3 都能画，`--gpu gl` 换后端
+
 ## 改文件
 
 ### 经 Bash 写进文件的内容里，`\n` 变成了真换行、`\v` 变成了控制字符

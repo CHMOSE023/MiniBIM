@@ -270,7 +270,7 @@ msgstr ""
 msgid "Unknown command:"
 msgstr ""
 
-#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp
 msgid "OK"
 msgstr ""
 
@@ -2052,28 +2052,36 @@ msgstr ""
 msgid "Not a length"
 msgstr ""
 
-#: apps/Win32/src/Host/Win32Window.cpp
-msgid "MiniBIM project"
-msgstr ""
-
-#: apps/Win32/src/Host/Win32Window.cpp
-msgid "IFC file"
-msgstr ""
-
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "Shortcuts file"
 msgstr ""
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"
 msgstr ""
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "MiniBIM project"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "BIMCraft project"
 msgstr ""
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "IFC file"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All files"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp
+msgid "Could not show the file dialog"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp
+msgid "{0}\n\nThe file dialog needs xdg-desktop-portal or zenity. You can also give a project file on the command line."
 msgstr ""
 
 #: assets/ui/minibim_ui.json

@@ -270,7 +270,7 @@ msgstr "Más comandos"
 msgid "Unknown command:"
 msgstr "Comando desconocido:"
 
-#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp
 msgid "OK"
 msgstr "Aceptar"
 
@@ -2052,29 +2052,37 @@ msgstr "No se pudo crear el piso"
 msgid "Not a length"
 msgstr "No es una longitud"
 
-#: apps/Win32/src/Host/Win32Window.cpp
-msgid "MiniBIM project"
-msgstr "Proyecto de MiniBIM"
-
-#: apps/Win32/src/Host/Win32Window.cpp
-msgid "IFC file"
-msgstr "Archivo IFC"
-
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "Shortcuts file"
 msgstr "Archivo de métodos abreviados"
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"
 msgstr "Todos los proyectos"
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "MiniBIM project"
+msgstr "Proyecto de MiniBIM"
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "BIMCraft project"
 msgstr "Proyecto BIMCraft"
 
-#: apps/Win32/src/Host/Win32Window.cpp
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "IFC file"
+msgstr "Archivo IFC"
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All files"
 msgstr "Todos los archivos"
+
+#: apps/Linux/src/Host/LinuxApp.cpp
+msgid "Could not show the file dialog"
+msgstr "No se pudo mostrar el diálogo de archivos"
+
+#: apps/Linux/src/Host/LinuxApp.cpp
+msgid "{0}\n\nThe file dialog needs xdg-desktop-portal or zenity. You can also give a project file on the command line."
+msgstr "{0}\n\nEl diálogo de archivos necesita xdg-desktop-portal o zenity. También puedes indicar un archivo de proyecto en la línea de comandos."
 
 #: assets/ui/minibim_ui.json
 msgid "File"

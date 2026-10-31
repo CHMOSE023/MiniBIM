@@ -157,7 +157,8 @@ namespace MiniBIM
             m_uiError = m_layout->GetError();
             LOG_ERROR("界面描述文件：%s", m_uiError.c_str());
         }
-        if (MiniGUI::TitleBar* bar = GetTitleBar())
+        MiniGUI::TitleBar* bar = GetTitleBar();
+        if (bar && m_platform->HasWindowControls())
         {
             MiniGUI::TitleBar::WindowActions actions;
             actions.minimize       = [this] { m_platform->MinimizeWindow(); };

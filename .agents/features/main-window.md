@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -100,7 +100,11 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   （Win32 用 `GetOpenFileNameW` / `GetSaveFileNameW`，筛选器文字经 `Tr`）。所以 `MainFrame::SaveProject` 不返回结果，保存成功后做传进来的 `then`
   （`MainFrame::Guard` 的"保存"之后接着新建 / 打开 / 退出）；`MainFrame::AskSavePath` 在平台没有系统另存为对话框（`AppPlatform::HasSaveDialog`，网页版）时
   自己问文件名。每写完一个文件（保存、导出 IFC）调用 `AppPlatform::OnDocumentSaved`（网页版下载到本机）。
-  `AppPlatform::HasBackgroundThread` 为 false 的平台不开自动保存（恢复副本在工作线程上写）。打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径）；
+  `AppPlatform::HasBackgroundThread` 为 false 的平台不开自动保存（恢复副本在工作线程上写）。
+- 宿主：Windows 为 `Win32Window`（`apps/Win32`，无边框窗口、自绘标题栏）；Linux 为 `LinuxApp`（`apps/Linux`，SDL3，复制自 MiniCAD）：
+  系统的标题栏和边框（`AppPlatform::HasWindowControls` 为 false，不注册 `window.*` 命令，标题栏不显示那三个按钮），
+  文件对话框经 SDL3（xdg-desktop-portal / zenity，打开是异步的），`PostDelayed` 用 SDL 定时器，界面字体用自带的 `assets/fonts/NotoSansSC-UI.ttf`。
+  新加平台服务时两个宿主都要实现（Linux 版没有显示器时在 Xvfb 里运行、截图，见 `.agents/docs/troubleshooting.md`）打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径）；
   保存只直接写回 `.minibim`：打开的是 BIMCraft 的 `.bimcraft` 或 IFC 时"保存"也走另存为，免得把略去了内容的项目写回原文件；
   打开时有略去的内容（项目文件的 `left_out`、IFC 的 `skipped`）会弹窗说几个。"导出 IFC…"（`file.exportIfc`）是 `save` 到 `.ifc`，不改项目的路径
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）

@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>开源 BIM 软件，使用 C++20 开发。</strong><br />
-  在 Windows 上运行，几何内核使用 SMLib，建模功能移植自 BIMCraft，界面支持多语言。
+  在 Windows 和 Linux 上运行，几何内核使用 SMLib，建模功能移植自 BIMCraft，界面支持多语言。
 </p>
 
 <p align="center">
@@ -53,6 +53,40 @@ cmake --build --preset debug
 
 启动参数：`--lang zh_CN`（只对这一次启动指定语言）、`--gpu d3d12|d3d11|warp`（也可以用环境变量 `MINIBIM_GPU`）、`--ui <界面描述文件.json>`。
 
+### Linux 版编译
+
+需要 CMake 3.20+、Ninja、GCC 13+ 或 Clang（C++20）、OpenGL ES 3 / EGL 开发包、[SDL3](https://github.com/libsdl-org/SDL)。以 Ubuntu / Debian 为例：
+
+```bash
+sudo apt install build-essential cmake ninja-build pkg-config libegl-dev libgles-dev \
+    libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev \
+    libxkbcommon-dev libwayland-dev wayland-protocols libdbus-1-dev libudev-dev
+```
+
+Vulkan 后端（可选，有就先用它，不行时改用 OpenGL ES 3）还要头文件与着色器编译器：
+
+```bash
+sudo apt install libvulkan-dev glslang-tools mesa-vulkan-drivers
+```
+
+SDL3：Ubuntu 25.04 / Debian 13 起可以 `sudo apt install libsdl3-dev`；更早的发行版从源码编译安装（例如装到 `~/sdl3`）：
+
+```bash
+cmake -S SDL3-3.4.18 -B sdl3-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/sdl3 -DSDL_TESTS=OFF
+cmake --build sdl3-build && cmake --install sdl3-build
+```
+
+编译 MiniBIM（SDL3 装在系统目录时去掉 `CMAKE_PREFIX_PATH`）：
+
+```bash
+cmake -S . -B out/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$HOME/sdl3
+cmake --build out/linux
+out/linux/MiniBIMLinux/MiniBIMLinux [项目文件]
+```
+
+找不到 SDL3 或 OpenGL ES 3 时只编译核心库与测试（`ctest --test-dir out/linux`）；找不到 Vulkan 开发文件时只用 OpenGL ES 3。
+启动参数同 Windows 版，`--gpu vulkan|gl`。打开、保存的文件对话框需要 xdg-desktop-portal 或 zenity。
+
 ### 测试
 
 ```bat
@@ -76,11 +110,11 @@ GitHub Actions 在每个到 `main` 的 PR 上编译 Windows 版并运行测试�
 | `src/Model/`、`src/Commands/` | 建筑模型、命令与撤销（移植自 BIMCraft） |
 | `src/UI/` | 界面库 MiniGUI（复制自 MiniCAD） |
 | `apps/Common/` | 主窗口的界面与逻辑（与平台无关） |
-| `apps/Render/` | 渲染后端（D3D12、D3D11） |
-| `apps/Win32/` | Windows 桌面版宿主 |
-| `assets/` | 界面描述文件 `ui/minibim_ui.json`、词典 `i18n/`、图标 `icons/` |
+| `apps/Render/` | 渲染后端（Windows 为 D3D12、D3D11，Linux 为 Vulkan、OpenGL ES 3） |
+| `apps/Win32/`、`apps/Linux/` | Windows 桌面版宿主；Linux 版宿主（SDL3） |
+| `assets/` | 界面描述文件 `ui/minibim_ui.json`、词典 `i18n/`、图标 `icons/`、Linux 版的界面字体 `fonts/` |
 | `3rd/` | SMLib（NURBS BRep 实体内核，Apache-2.0）、stb、nlohmann/json（MIT） |
-| `tools/` | `extract_messages.py`：收集界面原文、更新词典；`make_icons.py`：生成 MiniBIM 用到的全部图标 |
+| `tools/` | `extract_messages.py`：收集界面原文、更新词典；`make_icons.py`：生成 MiniBIM 用到的全部图标；`make_web_font.py`：生成 Linux 版的界面字体 |
 | `tests/` | 测试 |
 | `.agents/` | AI 编程助手的说明、功能指南与 skill（入口是 [AGENTS.md](AGENTS.md)） |
 
