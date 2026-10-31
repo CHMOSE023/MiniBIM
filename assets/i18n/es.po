@@ -1573,6 +1573,26 @@ msgstr "Claro"
 msgid "The views keep their own colours."
 msgstr "Las vistas conservan sus propios colores."
 
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Layout"
+msgstr "Disposición"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Floating"
+msgstr "Flotante"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The ribbon, the palettes and the bars as cards floating over the view"
+msgstr "La cinta de opciones, las paletas y las barras como tarjetas flotando sobre la vista"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Compact"
+msgstr "Compacta"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The ribbon, the palettes and the bars flush to the window's edges"
+msgstr "La cinta de opciones, las paletas y las barras pegadas a los bordes de la ventana"
+
 #: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Language"
 msgstr "Idioma"

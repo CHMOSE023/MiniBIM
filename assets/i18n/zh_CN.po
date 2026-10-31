@@ -1559,6 +1559,26 @@ msgstr "浅色"
 msgid "The views keep their own colours."
 msgstr "视图保持自己的颜色。"
 
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Layout"
+msgstr "布局"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Floating"
+msgstr "浮动"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The ribbon, the palettes and the bars as cards floating over the view"
+msgstr "功能区、面板和工具栏以卡片形式浮在视图上方"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Compact"
+msgstr "紧凑"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The ribbon, the palettes and the bars flush to the window's edges"
+msgstr "功能区、面板和工具栏紧贴窗口边缘"
+
 #: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Language"
 msgstr "语言"

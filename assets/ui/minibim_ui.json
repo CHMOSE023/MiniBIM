@@ -10,6 +10,8 @@
 // - dock：停靠区，root 为布局树（split: row / column，tabs: 面板列表，size: 尺寸）；拖动面板标签可停靠到别处、合并为标签或浮出
 // - 图标（commands 的 "icon"、titlebar 的 "icon"）都在 assets/icons，由 tools/make_icons.py 生成：要新图标先在脚本里加，
 //   再在这里引用（python tools/make_icons.py --check 核对引用）。菜单项不显示图标
+// - 布局（设置 > 界面 > 布局）：默认"浮动"，功能区、选项栏、停靠面板、状态栏是圆角卡片（"card": true，停靠区 "gap" > 0），
+//   之间留缝露出窗口底色；"紧凑"时程序选用变体 compact，各节点 "variants": { "compact": { … } } 里的属性覆盖原来的（去掉缝、方角贴边）
 {
   "commands": {
     "file.new":     { "icon": "New.png", "shortcut": "Ctrl+N" },
@@ -133,30 +135,43 @@
           { "type": "toolbar", "id": "quick", "iconSize": 18, "padding": [ 0, 3, 4, 3 ] }
         ]
       },
-      { "type": "ribbon", "id": "main", "shrink": 0 },
-      // 选项栏：当前工具的选项（墙的高度与定位线、屋顶的坡度……），没有工具时只有一行提示
-      { "type": "panel", "name": "options", "shrink": 0 },
-      // 特性在左上、项目浏览器在左下（同 Revit），右边是视图
+      // 标题栏以下：浮动布局里各部分是卡片，四周与之间留 6 像素的缝；紧凑布局里紧贴
       {
-        "type": "dock",
-        "id": "main",
+        "type": "column",
         "grow": 1,
-        "root": {
-          "split": "row",
-          "children": [
-            {
-              "split": "column",
-              "size": 300,
+        "padding": 6,
+        "gap": 6,
+        "background": "Background",
+        "variants": { "compact": { "padding": 0, "gap": 0 } },
+        "children": [
+          { "type": "ribbon", "id": "main", "shrink": 0, "variants": { "compact": { "card": false } } },
+          // 选项栏：当前工具的选项（墙的高度与定位线、屋顶的坡度……），没有工具时只有一行提示
+          { "type": "panel", "name": "options", "shrink": 0, "card": true, "variants": { "compact": { "card": false } } },
+          // 特性在左上、项目浏览器在左下（同 Revit），右边是视图
+          {
+            "type": "dock",
+            "id": "main",
+            "grow": 1,
+            "gap": 6,
+            "variants": { "compact": { "gap": 0 } },
+            "root": {
+              "split": "row",
               "children": [
-                { "tabs": [ "properties" ] },
-                { "tabs": [ "browser" ], "size": 300 }
+                {
+                  "split": "column",
+                  "size": 300,
+                  "children": [
+                    { "tabs": [ "properties" ] },
+                    { "tabs": [ "browser" ], "size": 300 }
+                  ]
+                },
+                { "tabs": [ { "panel": "viewport", "header": false, "closable": false } ] }
               ]
-            },
-            { "tabs": [ { "panel": "viewport", "header": false, "closable": false } ] }
-          ]
-        }
-      },
-      { "type": "panel", "name": "statusbar", "shrink": 0 }
+            }
+          },
+          { "type": "panel", "name": "statusbar", "shrink": 0, "card": true, "variants": { "compact": { "card": false } } }
+        ]
+      }
     ]
   }
 }

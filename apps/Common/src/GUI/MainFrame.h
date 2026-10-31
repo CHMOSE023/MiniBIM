@@ -116,7 +116,7 @@ namespace MiniBIM
         std::vector<MiniGUI::MenuItem> BuildLanguageMenu();
         // restore：重建后恢复用户的面板布局（换语言时）；界面描述文件改了时为 false，用文件里的布局
         void ReloadUi(bool restore = true);
-        void RetranslateUi();                                     // 切换语言后：重建界面描述生成的部分，刷新宿主自己的文字
+        void RetranslateUi();                                     // 切换语言或布局后：重建界面描述生成的部分，刷新宿主自己的文字
         void UpdateTitle();
         void UpdateStatus();
         void ShowAbout();
@@ -323,6 +323,7 @@ namespace MiniBIM
         // 文件 > 设置（Settings.cpp）；主题按 m_themeSetting
         void OpenSettings();
         void ApplyTheme();
+        void SetCompactLayout(bool compact);                      // 布局：紧凑 / 浮动（默认），存进设置并重建界面
         // 两个字母的快捷键（ShortcutsDialog.cpp）：默认的表、在视图上打的字母、键盘快捷键对话框（KS）
         void RegisterShortcuts();
         bool OnShortcutText(std::string_view text);
@@ -382,6 +383,7 @@ namespace MiniBIM
 
         std::string m_languageSetting;                        // 用户选的语言，空 = 跟随系统
         std::string m_themeSetting = "dark";                  // 界面主题：dark、light
+        bool        m_compactLayout = false;                  // 布局（settings.json 的 "layout"）：false = 浮动，各部分是卡片；true = 紧凑，紧贴窗口边缘
         MiniGUI::JsonValue       m_dockLayout;                // 用户的面板布局（settings.json 的 "dock"）；空 = 用界面描述文件的
         std::vector<std::string> m_dockPanels;                // 保存布局时有的面板（"dock_panels"）：之后新增的面板据此识别
         MiniGUI::JsonValue       m_dockDefault;               // 界面描述文件里的布局

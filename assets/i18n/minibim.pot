@@ -1573,6 +1573,26 @@ msgstr ""
 msgid "The views keep their own colours."
 msgstr ""
 
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Layout"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Floating"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The ribbon, the palettes and the bars as cards floating over the view"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Compact"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The ribbon, the palettes and the bars flush to the window's edges"
+msgstr ""
+
 #: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Language"
 msgstr ""

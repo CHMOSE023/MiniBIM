@@ -151,6 +151,7 @@ namespace MiniBIM
     void MainFrame::ReloadUi(bool restore)
     {
         m_uiFileTime = FileTime(m_uiPath);
+        m_layout->SetVariant(m_compactLayout ? "compact" : "");    // 紧凑布局：界面描述文件里的变体 compact
         if (m_layout->ApplyFile(m_uiHost, m_uiPath))
         {
             m_uiError.clear();
@@ -241,7 +242,7 @@ namespace MiniBIM
 
     void MainFrame::RetranslateUi()
     {
-        // 界面描述生成的部分（标题栏、菜单、命令名称）整体重建；宿主面板里的文字由 UpdateStatus、RefreshPanels 按当前语言重写
+        // 界面描述生成的部分（标题栏、菜单、命令名称、布局）整体重建；宿主面板里的文字由 UpdateStatus、RefreshPanels 按当前语言重写
         ReloadUi();
         RefreshPanels();
         BuildOptionsBar();
@@ -275,6 +276,7 @@ namespace MiniBIM
         m_languageSetting = doc["language"].AsString("");
         if (const std::string theme = doc["theme"].AsString(""); theme == "light" || theme == "dark")
             m_themeSetting = theme;
+        m_compactLayout = doc["layout"].AsString("") == "compact";
         const double minutes = doc["autosave_minutes"].AsNumber(m_autosave.minutes);
         if (minutes >= 0 && minutes <= 120)
             m_autosave.minutes = static_cast<int>(minutes);
@@ -298,6 +300,7 @@ namespace MiniBIM
         MiniGUI::JsonValue doc = MiniGUI::JsonValue::MakeObject();
         doc.Set("language", m_languageSetting);
         doc.Set("theme", m_themeSetting);
+        doc.Set("layout", m_compactLayout ? "compact" : "floating");
         doc.Set("autosave_minutes", static_cast<double>(m_autosave.minutes));
         MiniGUI::JsonValue keys;
         MiniGUI::JsonError err;

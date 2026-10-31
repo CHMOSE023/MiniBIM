@@ -109,7 +109,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   竖井与填充区域的草图、命令的 `check_edits`（简单轮廓的检查）
 - **3f 程序（已完成）**：开始页（`start.rs`：新建、打开、示例房屋、最近的卡片，Ctrl+D 叫出与回去）、最近打开（`recent.rs`，`recent.json`）、
   自动保存与恢复（`autosave.rs`：核心 `Bim::Autosave` 的后台线程，命令 `autosave`、`recover`；启动与打开项目时问恢复 / 放弃 / 稍后）、
-  设置（`settings.rs`：主题、语言、面板、自动保存间隔）、两个字母的快捷键（`shortcuts.rs`：WA、DR、ZF……，键盘快捷键对话框 KS，从文件读入）；
+  设置（`settings.rs`：主题、布局浮动 / 紧凑、语言、面板、自动保存间隔）、两个字母的快捷键（`shortcuts.rs`：WA、DR、ZF……，键盘快捷键对话框 KS，从文件读入）；
   合并 BIMCraft 的界面译文：新增西班牙语、葡萄牙语（原文相同的沿用 BIMCraft 的译文，其余新译，`Cut` 意思不同不沿用）。
   留到后面的：开始页卡片的项目缩略图、自动保存的文件锁（两个程序开同一个项目）、视口与平面视图跟着主题换颜色、BIMCraft 设置里的性能 / 图形 / 更新页、
   快捷键里 MiniBIM 还没有的动作（捕捉替代 SE、SM……，可见性 VV、临时隐藏 HH……）随那些功能再加；西语、葡语的新译文请母语者校对
@@ -169,6 +169,9 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - MiniGUI：`UIContext::SetUnhandledTextHandler`（没有节点要的文字交给宿主，两个字母的快捷键用）
 - MiniGUI：`DockSpace::SetOnPanelMenu`、`DockSpace::PanelMenuOfFloat`、`FloatingPanel::SetOnMenu`（右键标签或浮动窗口的标题栏，宿主弹出面板菜单）
 - MiniGUI：`ScrollView::OnLayout` 里内容超出视口不到 1 像素时不出滚动条（按内容定高的视图在 150% 缩放下，边对齐到设备像素后会矮一点）
+- MiniGUI：界面描述文件的节点属性 `card`（row / column / 宿主面板画成圆角带边框的卡片，功能区 false 时方角贴边）与 `variants`（`UiLayout::SetVariant` 选的变体覆盖节点属性），
+  `Ribbon::SetCard`（MiniCAD 的功能区总是卡片）：设置里的布局浮动 / 紧凑用
+- MiniGUI：`UIContext::UpdateHover` 在关掉提示之后才取树的版本号（修复：提示显示着时指针直接跳到相邻控件，新控件收不到 Enter、点了不触发；MiniCAD 也有这个问题）
 - `cmake/Render.cmake` 照 MiniCAD 分 Windows、Linux、网页三段；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`、`PostDelayed`，
   文件对话框同 MiniCAD 是异步的 `PickFile` 与 `ChooseSavePath`，但 `FileKind` / `SaveKind` 换成项目、IFC、快捷键文件（没有 DWG 的格式与版本）
 - 没有复制：MiniDWG、节点图、天正、CAD 实体 / 场景 / 编辑器（`src/Core/Entity`、`src/Scene`、`src/Document`、`src/Editor`、`src/Viewport`）

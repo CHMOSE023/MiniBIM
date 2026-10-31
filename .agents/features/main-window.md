@@ -18,6 +18,9 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   如 `--run view.plan`）就打开示例房屋（`MainFrame::OpenSample`）后依次执行，都没有时显示开始页
 - 界面描述文件 `assets/ui/minibim_ui.json`（格式见 `src/UI/Widgets/UiLayout.h`）：菜单、快速访问工具栏、功能区与布局；宿主面板 `viewport`（`MiniGUI::ViewportHost`）、
   `options`（选项栏，`Tools.cpp`）、`properties`、`browser`（`Panels.cpp`）、`statusbar`。停靠区的布局写在文件的 `dock` 里，用户改过的布局存进 settings.json（见下面"面板的停靠与浮动"）
+- 布局（移植自 BIMCraft 的 Layout 设置）：默认"浮动"，标题栏以下的功能区、选项栏、停靠面板（含视图）、状态栏都是圆角卡片，之间留 6 像素的缝露出窗口底色
+  （界面描述文件里 `"card": true`、停靠区 `"gap": 6`，功能区本来就是卡片）；"紧凑"时 `MainFrame::ReloadUi` 让 `MiniGUI::UiLayout::SetVariant` 选用变体 `compact`，
+  各节点 `"variants": { "compact": { … } }` 去掉缝、方角贴边（`MiniGUI::Ribbon::SetCard`）。BIMCraft 卡片的阴影没有做（同 MiniCAD 的外观）
 - 面板的停靠与浮动（`Palettes.cpp`，移植自 `dock.rs`）：拖标签停到别处、拖出停靠区或双击标签浮出成窗口、拖浮动窗口的标题栏停回去、双击标题栏回原处，
   都是 MiniGUI 的 `MiniGUI::DockSpace` 做的（浮动窗口是同一窗口里的 `MiniGUI::FloatingPanel` 弹层，不是独立的系统窗口）。右键面板的标签或浮动窗口的标题栏
   （`MiniGUI::DockSpace::SetOnPanelMenu`）弹出菜单（`MainFrame::ShowPanelMenu`）：停靠在左侧 / 右侧 / 底部（`MainFrame::DockPanelTo`：那一侧已有面板就排在最后一个后面，
@@ -45,7 +48,8 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   换项目或不保存就退出时（`MainFrame::RetireAutosave`）删掉。启动时（`MainFrame::EnableAutosave`，在打开启动的项目之后）找临时文件夹里的副本，打开项目时找它旁边的，
   找到了就问"恢复 / 放弃 / 稍后"（`MainFrame::ShowRecovery`）：恢复经 `recover` 命令打开成没保存的工作（`MainFrame::RecoverBackup`），之后接着写那份副本；
   还没决定的副本不覆盖、不删
-- 设置（`Settings.cpp`，移植自 `settings.rs`）：文件 > 设置（`file.settings`）弹出的对话框，左边各页：界面（主题深色 / 浅色 `MainFrame::ApplyTheme`、语言、两块面板的显示与重置面板布局）、
+- 设置（`Settings.cpp`，移植自 `settings.rs`）：文件 > 设置（`file.settings`）弹出的对话框，左边各页：界面（主题深色 / 浅色 `MainFrame::ApplyTheme`、布局浮动 / 紧凑
+  `MainFrame::SetCompactLayout`（同换语言重建界面）、语言、两块面板的显示与重置面板布局）、
   文件（自动保存开关与间隔）。改了马上生效并写 settings.json。主题只换 MiniGUI 的颜色，视口与平面视图不跟着换。BIMCraft 设置里的性能、图形、更新等页随那些功能再加
 - 两个字母的快捷键（`Shortcuts.h` 的 `Shortcuts` 管键表、不碰控件；`ShortcutsDialog.cpp`；移植自 `shortcuts.rs` 与 `lib.rs` 的 `SHORTCUTS`）：
   在视图上（或没有焦点时）打字母，最后两个凑成一个快捷键就执行它的界面命令（WA 墙、DR 门、ZF 缩放匹配……）。字母经
@@ -136,12 +140,12 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）
 - 帧顺序（同 MiniCAD）：输入到达时立即改状态并 `RequestRender` → 消息队列空了收到 `WM_PAINT` → `MainFrame::RenderFrame`：`UIContext::Update` 布局 →
   `ViewportHost::RenderContent` 按最新尺寸渲染视口 → `AppPlatform::BeginUiPass` → `UIContext::Render` → `AppPlatform::EndUiPass`（呈现）
-- 用户设置：`%LOCALAPPDATA%\MiniBIM\settings.json`（`AppPlatform::GetUserDataDir`），有 `language`（空 = 跟随系统）、`theme`（`dark` / `light`）、`autosave_minutes`、`shortcuts`、`dock` 与 `dock_panels`（面板布局）；`MainFrame::LoadSettings` / `MainFrame::SaveSettings`
+- 用户设置：`%LOCALAPPDATA%\MiniBIM\settings.json`（`AppPlatform::GetUserDataDir`），有 `language`（空 = 跟随系统）、`theme`（`dark` / `light`）、`layout`（`floating` / `compact`）、`autosave_minutes`、`shortcuts`、`dock` 与 `dock_panels`（面板布局）；`MainFrame::LoadSettings` / `MainFrame::SaveSettings`
 
 ## 约束与坑
 
 - `apps/Common` 里不写 `#ifdef`：需要新的平台能力就在 `AppPlatform` 加虚函数，在 `Win32Window` 里实现（以后的 Web、Linux 宿主各实现一份）
-- 切换语言要重建界面：`MainFrame::SetLanguage` → `MainFrame::RetranslateUi` → `MainFrame::ReloadUi`（界面描述生成的部分整体重建，命令名称重新翻译），
+- 切换语言（布局同样）要重建界面：`MainFrame::SetLanguage` → `MainFrame::RetranslateUi` → `MainFrame::ReloadUi`（界面描述生成的部分整体重建，命令名称重新翻译），
   宿主面板里的文字由 `MainFrame::UpdateStatus` 之类按当前语言重写。新加的宿主面板如果显示文字，也要在 `RetranslateUi` 里刷新
 - 菜单项的回调里不要直接重建界面：经 `AppPlatform::Post` 放到当前消息之后（语言菜单就是这样做的）
 - 状态栏、对话框里的句子用 `Format(Tr(…))`，标点也随语言（`TrC("list of four items", "{0}, {1}, {2}, {3}")`）

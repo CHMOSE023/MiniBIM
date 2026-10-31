@@ -1,5 +1,5 @@
 // 文件 > 设置：窗口自己的设置，属于用户、不属于项目，存在用户设置目录的 settings.json（MainFrame::SaveSettings）。
-// 现在有：界面的主题、语言、两块面板，自动保存的间隔。BIMCraft 设置里的性能、图形、更新等页随那些功能再加
+// 现在有：界面的主题、布局、语言、两块面板，自动保存的间隔。BIMCraft 设置里的性能、图形、更新等页随那些功能再加
 // 移植自 BIMCraft crates/ui-egui/src/settings.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "GUI/MainFrame.h"
 #include "Core/UIContext.h"
@@ -50,14 +50,24 @@ namespace MiniBIM
         m_ui->SetTheme(m_themeSetting == "light" ? ThemeColors::Light() : ThemeColors::Dark());
     }
 
+    void MainFrame::SetCompactLayout(bool compact)
+    {
+        if (compact == m_compactLayout)
+            return;
+        m_compactLayout = compact;
+        SaveSettings();
+        RetranslateUi();    // 按界面描述文件里的变体整体重建，面板布局照旧
+    }
+
     void MainFrame::OpenSettings()
     {
         auto page   = std::make_shared<Page>(Page::Interface);
+        auto layout = std::make_shared<RadioGroup>();     // 布局的两个单选按钮（每次重建页时重新放）
         auto dialog = std::make_unique<Dialog>(Tr("Settings"));
         Dialog* dlg = dialog.get();
         auto build  = std::make_shared<std::function<void()>>();
         auto rebuild = [this, build] { m_platform->Post([build] { if (*build) (*build)(); }); };
-        *build = [this, dlg, page, rebuild]
+        *build = [this, dlg, page, layout, rebuild]
         {
             dlg->SetTitle(Tr("Settings"));     // 换了语言时跟着换
             Node* body = dlg->GetBody();
@@ -67,7 +77,7 @@ namespace MiniBIM
             bs.alignItems = Align::Start;
             bs.gap        = 16.0f;
             bs.width      = 600.0f;
-            bs.height     = 300.0f;
+            bs.height     = 360.0f;
 
             // 左边：各页
             auto* list = body->AddChild<Node>();
@@ -101,6 +111,20 @@ namespace MiniBIM
                     SaveSettings();
                 });
                 content->AddChild<Label>(Tr("The views keep their own colours."), 12.0f, Theme::TextDim);
+
+                Heading(content, N_("Layout"));
+                layout->SetOnChanged(nullptr);
+                layout->SetValue(m_compactLayout ? 1 : 0);
+                Node* layouts = Row(content, 16.0f);
+                layouts->AddChild<RadioButton>(layout.get(), 0, Tr("Floating"))
+                    ->SetTooltip(Tr("The ribbon, the palettes and the bars as cards floating over the view"));
+                layouts->AddChild<RadioButton>(layout.get(), 1, Tr("Compact"))
+                    ->SetTooltip(Tr("The ribbon, the palettes and the bars flush to the window's edges"));
+                layout->SetOnChanged([this, rebuild](int v)
+                {
+                    // 换布局会重建整个界面（同换语言）：等这次点击处理完
+                    m_platform->Post([this, compact = v == 1, rebuild] { SetCompactLayout(compact); rebuild(); });
+                });
 
                 Heading(content, N_("Language"));
                 // 各语言的名称用它自己的语言写（同语言菜单）
