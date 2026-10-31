@@ -280,6 +280,7 @@ namespace MiniBIM::Bim
         const Graphics g = own.Resolved(*this);
         Look look;
         look.style = g.style;
+        look.layers = own.layers;
         // 视图画的模型里有链接造的东西（ID 最大的是链接的）时，它们都要半色调
         const bool linked = !elements.Items().empty() && Links::IsLinked(elements.Items().rbegin()->first);
         if (g.categories.empty() && g.filters.empty() && g.elements.empty() && !linked)

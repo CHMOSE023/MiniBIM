@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <set>
 #include <tuple>
 
 namespace MiniBIM::Bim::Render
@@ -862,6 +863,15 @@ namespace MiniBIM::Bim::Render
 
     double Pen::Mm() const { return n < Widths.size() ? Widths[n] : 0.0; }
 
+    uint8_t Pen::Nearest(double mm)
+    {
+        uint8_t best = 1;
+        for (uint8_t p = 2; p < Widths.size(); ++p)
+            if (std::abs(Widths[p] - mm) < std::abs(Widths[best] - mm))
+                best = p;
+        return best;
+    }
+
     Weights Weights::At(Units units, double n) { return Of(LineWeights::Default(units), n); }
 
     Weights Weights::Of(const LineWeights& lw, double n)
@@ -949,6 +959,25 @@ namespace MiniBIM::Bim::Render
             p.color = color;
             for (const auto& [a, b] : line)
                 p.pts.emplace_back(at.first + a, at.second + b);
+            Push(std::move(p));
+        }
+        m_part = saved;
+    }
+
+    void Drawing::TextTurned(std::string_view text, Px at, float height, float angle, Rgb color)
+    {
+        const float s = std::sin(angle), c = std::cos(angle);
+        const float w = Font::Width(text, height);
+        const Part saved = m_part;
+        m_part = Part::Text;
+        for (auto& line : Font::Strokes(text, -w / 2.0f, height / 2.0f, height))
+        {
+            Prim p;
+            p.kind  = Prim::Kind::Line;
+            p.width = std::max(height / 10.0f, 1.0f);
+            p.color = color;
+            for (const auto& [a, b] : line)
+                p.pts.emplace_back(at.first + a * c - b * s, at.second + a * s + b * c);
             Push(std::move(p));
         }
         m_part = saved;
@@ -1301,6 +1330,100 @@ namespace MiniBIM::Bim::Render
         return View{ fitsAt, (lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, width, height };
     }
 
+    namespace
+    {
+        // 图案填充的填充色：颜色往纸色走大半
+        uint8_t Pale(uint8_t v) { return static_cast<uint8_t>(v + (255 - v) / 4 * 3); }
+
+        // 平面画的 CAD 图纸，在除点云以外的一切下面，同 Revit 在背景里画导入：放在它标高上、在它每个平面或只在这个平面里的，
+        // 导入与视图显示的图层的。每个图元用它的颜色（没有时、或导入画成黑白时用视图的墨色）、它的笔与线型画；实心填充填满，
+        // 图案填充画成它的颜色的淡色；文字照图纸的字高、转角与对齐写
+        void CadImports(Drawing& d, const Model& m, Guid key, Guid level, const Look& look)
+        {
+            // 视图在模型毫米里的范围：外面的不画
+            const float w = static_cast<float>(d.view.width), h = static_cast<float>(d.view.height);
+            const std::array<P2, 4> corners = { d.view.ToMm({ 0.0f, 0.0f }), d.view.ToMm({ w, 0.0f }), d.view.ToMm({ w, h }), d.view.ToMm({ 0.0f, h }) };
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const CadImport* ci = e->As<CadImport>();
+                if (!ci || !m.Same(ci->level, level) || (ci->view && !m.Same(*ci->view, key)) || !look.Shows(id))
+                    continue;
+                const auto c = m.cads.find(ci->cad);
+                if (c == m.cads.end())
+                    continue;
+                const Cad& cad = c->second;
+                std::vector<std::array<P2, 2>> boxes;
+                for (const P2& q : corners)
+                {
+                    const P2 p = ci->Unplace(q);
+                    boxes.push_back({ p, p });
+                }
+                const auto [lo, hi] = *Dxf::Union(boxes);
+                const auto seen = [&](const std::array<P2, 2>& b) { return b[0].x <= hi.x && b[1].x >= lo.x && b[0].y <= hi.y && b[1].y >= lo.y; };
+                // 每个图纸单位多少像素
+                const double k = ci->scale * d.view.scale;
+                const std::set<std::string>* inView = look.HiddenLayers(ci->cad);
+                const auto rgb = [](const Dxf::Rgb& x) { return Rgb{ x.r, x.g, x.b }; };
+                d.Own(id);
+                for (const Dxf::Entity& ent : cad.Drawing().entities)
+                {
+                    if (!cad.Shows(ent, ci->hidden) || (inView && inView->count(ent.layer)) || !seen(Dxf::Bounds(ent.shape)))
+                        continue;
+                    const auto own = cad.ColorOf(ent, ci->colors);
+                    const Rgb color = own ? rgb(*own) : Ink;
+                    if (const Dxf::Text* t = std::get_if<Dxf::Text>(&ent.shape))
+                    {
+                        const float px = static_cast<float>(t->height * k);
+                        if (px < 1.0f)
+                            continue;
+                        const double wide = Font::Width(t->text, px) / k;
+                        const double a = t->angle * kPi / 180.0;
+                        const P2 u(std::cos(a), std::sin(a)), v(-std::sin(a), std::cos(a));
+                        const P2 left = t->align.h == Dxf::Horizontal::Left ? t->at : t->align.h == Dxf::Horizontal::Center ? t->at - u * (wide / 2.0) : t->at - u * wide;
+                        const P2 base = t->align.v == Dxf::Vertical::Middle ? left - v * (t->height / 2.0) : t->align.v == Dxf::Vertical::Top ? left - v * t->height : left;
+                        const Px middle = d.view.ToPx(ci->Place(base + u * (wide / 2.0) + v * (t->height / 2.0)));
+                        d.TextTurned(t->text, middle, px, static_cast<float>(-((t->angle + ci->angle) * kPi / 180.0)), color);
+                    }
+                    else if (std::holds_alternative<Dxf::Point>(ent.shape))
+                        continue;
+                    else if (const Dxf::Fill* f = std::get_if<Dxf::Fill>(&ent.shape))
+                    {
+                        std::vector<Ring> rings;
+                        for (const auto& r : f->rings)
+                        {
+                            Ring placed;
+                            for (const P2& p : r)
+                                placed.push_back(ci->Place(p));
+                            rings.push_back(std::move(placed));
+                        }
+                        d.Fill(rings, f->solid ? color : Rgb{ Pale(color.r), Pale(color.g), Pale(color.b) });
+                    }
+                    else
+                    {
+                        std::optional<std::vector<float>> dash;
+                        if (const auto dd = cad.Dash(ent))
+                        {
+                            const float a = static_cast<float>((*dd)[0] * k), b = static_cast<float>((*dd)[1] * k);
+                            if (a >= 1.0f && b >= 1.0f)
+                                dash = std::vector<float>{ a, b };
+                        }
+                        const auto weight = cad.WeightOf(ent);
+                        const uint8_t pen = weight ? Pen::Nearest(*weight) : Pen::Fine;
+                        for (const auto& [pts, closed] : Cads::Paths(ent.shape))
+                        {
+                            std::vector<Px> px;
+                            px.reserve(pts.size());
+                            for (const P2& p : pts)
+                                px.push_back(d.view.ToPx(ci->Place(p)));
+                            d.Stroke(std::move(px), pen, color, dash, closed);
+                        }
+                    }
+                }
+            }
+            d.Own(std::nullopt);
+        }
+    }
+
     std::vector<P2> PlanShows(const Model& m, Guid plan)
     {
         if (const auto crop = m.CropOf(plan))
@@ -1320,6 +1443,12 @@ namespace MiniBIM::Bim::Render
                 if (m.Spans(*w, r.cut) || (r.depth < top && top <= r.cut))
                     for (const P2& q : Walls::Outline(m, id, &index))
                         extent.push_back(q);
+            }
+            else if (const CadImport* ci = e->As<CadImport>())
+            {
+                if (m.Same(ci->level, level) && (!ci->view || m.Same(*ci->view, plan)))
+                    if (const auto b = m.CadBox(id))
+                        extent.insert(extent.end(), b->begin(), b->end());
             }
             else if (const auto st = Stands(m, *e))
             {
@@ -1412,6 +1541,8 @@ namespace MiniBIM::Bim::Render
         d.paper   = PaperOf(n, view.scale);
         d.weights = Weights::Of(m.LineWeightsOf(), n);
         const PlanRange range = RangeOf(m, plan);
+        // CAD 图纸在其余一切下面
+        CadImports(d, m, plan, level, look);
         // 剖切面以下、视图深度以上看得到顶面的楼板：轮廓与洞口的轮廓，坡楼板的坡度箭头
         for (const auto& [id, e] : items)
         {

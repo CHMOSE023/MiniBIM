@@ -148,6 +148,20 @@ namespace MiniBIM::Props
             { "Other", "at", N_("Origin"), Point },
             { "Other", "angle", N_("Angle"), Number },
         };
+        // 导入与链接的 CAD 图纸：它在的标高、读出的图纸，位置、转角与比例可改
+        constexpr Row CadRows[] = {
+            { "Constraints", "level", N_("Level"), Level },
+            { "Identity Data", "cad", N_("Drawing"), Shown },
+            { "Identity Data", "source", N_("File"), Shown },
+            { "Identity Data", "linked", N_("Linked File"), Shown },
+            { "Other", "unit", N_("Units"), Shown },
+            { "Other", "entities", N_("Entities"), Shown },
+            { "Other", "layers", N_("CAD Layers"), Shown },
+            { "Other", "at", N_("Position"), Point },
+            { "Other", "angle", N_("Angle"), Number },
+            { "Other", "scale", N_("Scale"), Number },
+            { "Graphics", "colors", N_("Colors"), Shown },
+        };
         constexpr Row Roof[] = {
             { "Constraints", "level", N_("Base Level"), Level },
             { "Constraints", "offset", "Base Offset", Length },
@@ -249,6 +263,7 @@ namespace MiniBIM::Props
         if (category == "line") return LineRows;
         if (category == "region") return RegionRows;
         if (category == "link") return LinkRows;
+        if (category == "cadimport") return CadRows;
         return {};
     }
 
@@ -408,6 +423,7 @@ namespace MiniBIM::Props
             { "section", N_("Section"), N_("Sections") },   { "elevation", N_("Elevation View"), N_("Elevations") },
             { "sheet", N_("Sheet"), N_("Sheets") },         { "viewport", N_("Viewport"), N_("Viewports") },
             { "link", N_("Linked Model"), N_("Linked Models") },
+            { "cadimport", N_("CAD Import"), N_("CAD Imports") },
             { "mass", N_("Mass"), N_("Masses") },           { "massfloor", N_("Mass Floor"), N_("Mass Floors") },
             { "dimension", N_("Dimension"), N_("Dimensions") }, { "text", N_("Text Note"), N_("Text Notes") },
             { "spot", N_("Spot Elevation"), N_("Spot Elevations") }, { "tag", N_("Tag"), N_("Tags") },

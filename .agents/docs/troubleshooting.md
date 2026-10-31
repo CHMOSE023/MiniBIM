@@ -114,6 +114,11 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
   vector 里是指向已释放模型的指针。实例：链接的测试里找 "Shell: Roof deck" 找不到
 - 做法：先存成局部变量（`const auto seen = SeenOf(s);`）再遍历；返回值类型的（`WallsOf` 复制出来的）不受影响
 
+### 测试断言项目文件里按 GUID 记的东西，Windows 与 Linux 都失败
+- 原因：`Model::ToJson()` 是模型的样子，库里的引用仍是名称；只有写成文件时（`Model::ToFile`）才经 `Element::LibRefsMut` 换成 GUID。
+  实例：CAD 测试找 "plan" 图纸的 GUID 作为图层可见性的键，在 `ToJson().dump()` 里找不到
+- 做法：要看文件里写了什么就用 `Model::ToFile(text, error)`；新加的按库名引用的字段（如视图图形的图层键）也要在 `Element::LibRefsMut` 里映射
+
 ### PowerShell 里 `cmd /c "build_wasm.bat"` 报 "is not recognized"
 - 原因：这台机器的 cmd 不在当前目录里找批处理（`NoDefaultCurrentDirectoryInExePath`）
 - 做法：写成 `cmd /c ".\build_wasm.bat"`（`build.bat`、`run_tests.bat` 同理）

@@ -697,6 +697,24 @@ namespace MiniBIM::Bim
                     out.options[it.key()] = it->get<std::string>();
                 }
             }
+            if (const Json* ls = g.Raw("layers"))
+            {
+                if (!ls->is_object())
+                    return g.Fail("`layers` must be {drawing: [layer, …]}");
+                for (auto it = ls->begin(); it != ls->end(); ++it)
+                {
+                    if (!it->is_array())
+                        return g.Fail("`layers`: `" + it.key() + "` must be a list of layer names");
+                    std::set<std::string> names;
+                    for (const Json& n : *it)
+                    {
+                        if (!n.is_string())
+                            return g.Fail("`layers`: `" + it.key() + "` lists layers by name, not " + n.dump());
+                        names.insert(n.get<std::string>());
+                    }
+                    out.layers[it.key()] = std::move(names);
+                }
+            }
             if (!g.OptString("template", out.templateName) || !g.OptString("phase", out.phase) || !g.OptString("phase_filter", out.phaseFilter) ||
                 !g.OptNumber("scale", out.scale) || !EnumName(g, "detail", out.detail, DetailKey, "coarse, medium, fine") ||
                 !EnumName(g, "style", out.style, StyleKey, "shaded, hidden_line, wireframe"))
@@ -916,6 +934,38 @@ namespace MiniBIM::Bim
                     !f.Point("at", l.at, true) || !f.Number("angle", l.angle, false) || !f.Finish())
                     return false;
                 out = Element(std::move(l));
+                return true;
+            }
+            if (category == "cadimport")
+            {
+                CadImport ci;
+                std::optional<std::string> colors;
+                if (!f.Allow({ "cad", "level", "at", "origin", "scale", "angle", "view", "hidden", "colors" }) || !f.String("cad", ci.cad, true) ||
+                    !f.Id("level", ci.level, true) || !f.Point("at", ci.at, true) || !f.Point("origin", ci.origin, false) ||
+                    !f.Number("scale", ci.scale, true) || !f.Number("angle", ci.angle, false) || !f.OptId("view", ci.view) ||
+                    !f.OptString("colors", colors))
+                    return false;
+                if (const Json* h = f.Raw("hidden"))
+                {
+                    if (!h->is_array())
+                        return f.Fail("`hidden` must be a list of layer names");
+                    for (const Json& n : *h)
+                    {
+                        if (!n.is_string())
+                            return f.Fail("`hidden` lists layers by name, not " + n.dump());
+                        ci.hidden.insert(n.get<std::string>());
+                    }
+                }
+                if (colors)
+                {
+                    const auto c = CadColorsFrom(*colors);
+                    if (!c || *colors != Name(*c))
+                        return f.Fail("`colors`: unknown variant `" + *colors + "`, expected one of preserve, invert, black");
+                    ci.colors = *c;
+                }
+                if (!f.Finish())
+                    return false;
+                out = Element(std::move(ci));
                 return true;
             }
             if (category == "viewport")
@@ -2185,6 +2235,23 @@ namespace MiniBIM::Bim
             j["name"]   = sh->name;
             j["size"]   = sh->size;
         }
+        else if (const CadImport* ci = e.As<CadImport>())
+        {
+            j["cad"]   = ci->cad;
+            j["level"] = ToJson(ci->level);
+            j["at"]    = ToJson(ci->at);
+            if (ci->origin != P2(0.0, 0.0))
+                j["origin"] = ToJson(ci->origin);
+            j["scale"] = ci->scale;
+            if (ci->angle != 0.0)
+                j["angle"] = ci->angle;
+            if (ci->view)
+                j["view"] = ToJson(*ci->view);
+            if (!ci->hidden.empty())
+                j["hidden"] = Json(std::vector<std::string>(ci->hidden.begin(), ci->hidden.end()));
+            if (ci->colors != CadColors::Preserve)
+                j["colors"] = Name(ci->colors);
+        }
         else if (const Link* lk = e.As<Link>())
         {
             j["name"] = lk->name;
@@ -2608,6 +2675,13 @@ namespace MiniBIM::Bim
             j["detail"] = Text::AsciiLower(DetailOf::Name(g.detail));
         if (g.style != VisualStyle::Shaded)
             j["style"] = VisualStyleOf::Key(g.style);
+        if (!g.layers.empty())
+        {
+            Json l = Json::object();
+            for (const auto& [cad, names] : g.layers)
+                l[cad] = Json(std::vector<std::string>(names.begin(), names.end()));
+            j["layers"] = std::move(l);
+        }
         return j;
     }
 
@@ -2914,6 +2988,19 @@ namespace MiniBIM::Bim
                 model.push_back(Json{ { "scale", s.scale }, { "widths", s.widths } });
             j["line_weights"] = Json{ { "model", std::move(model) }, { "annotation", lineWeights->annotation } };
         }
+        if (!cads.empty())
+        {
+            Json cs = Json::object();
+            for (const auto& [n, c] : cads)
+            {
+                Json y = Json{ { "source", c.Source() } };
+                if (c.Path())
+                    y["path"] = *c.Path();
+                y["dxf"] = c.Packed();
+                cs[n] = std::move(y);
+            }
+            j["cads"] = std::move(cs);
+        }
         if (!objectStyles.empty())
         {
             Json os = Json::object();
@@ -3187,6 +3274,28 @@ namespace MiniBIM::Bim
             return ReadPenReq(g, "projection", x.projection) && ReadPenReq(g, "cut", x.cut);
         }))
             return false;
+        // CAD 图纸：多出项目能放的那张在解开之前就拒绝，每张最多解开别的剩下的
+        if (const Json* cs = f.Raw("cads"))
+        {
+            if (!cs->is_object())
+                return f.Fail("`cads` must be an object of CAD drawings by name");
+            size_t held = 0;
+            for (auto it = cs->begin(); it != cs->end(); ++it)
+            {
+                if (m.cads.size() >= Cads::MaxCads)
+                    return f.Fail("the file holds more than " + std::to_string(Cads::MaxCads) + " CAD drawings, all a project may hold");
+                Fields g(it.value(), "CAD drawing `" + it.key() + "`", "/cads/" + Escaped(it.key()), nullptr, error);
+                std::string source, packed;
+                std::optional<std::string> path;
+                if (!g.IsObject() || !g.String("source", source, true) || !g.OptString("path", path) || !g.String("dxf", packed, true) || !g.Finish())
+                    return false;
+                Cad cad;
+                if (!Cad::FromFile(source, path, packed, Cads::MaxHeld - std::min(held, Cads::MaxHeld), cad, error))
+                    return false;
+                held += cad.Size();
+                m.cads.emplace(it.key(), std::move(cad));
+            }
+        }
         if (m.language != Language::English && m.lineStyles == Lines::Styles(Language::English) &&
             m.linePatterns == Lines::Patterns(Language::English))
         {

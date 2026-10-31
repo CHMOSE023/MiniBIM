@@ -23,6 +23,7 @@ namespace MiniBIM
         ProjectOrRevit, // 同上，再加 .rvt（宿主接上了 Revit 读取器时，MainFrame::SetRevitReader）
         Shortcuts,  // 快捷键文件：.json / .xml（Revit 导出的）/ .txt / .md
         FillPatterns,   // 填充图案文件：.pat
+        Dxf,        // CAD 图纸：.dxf（也列出 .dwg，选了时 import_cad 说怎样另存为 DXF）
     };
 
     // 要写的文件

@@ -394,6 +394,7 @@ namespace MiniBIM
     {
         const std::string path = ShowProjectDialog(kind == FileKind::Shortcuts      ? FileDialog::Shortcuts
                                                  : kind == FileKind::FillPatterns   ? FileDialog::Pat
+                                                 : kind == FileKind::Dxf            ? FileDialog::Dxf
                                                  : kind == FileKind::ProjectOrRevit ? FileDialog::OpenRevit
                                                                                     : FileDialog::Open, {});
         if (!path.empty() && done)
@@ -427,6 +428,8 @@ namespace MiniBIM
             add(Tr("Shortcuts file") + " (*.json;*.xml;*.txt;*.md)", L"*.json;*.xml;*.txt;*.md");
         else if (kind == FileDialog::Pat || kind == FileDialog::SavePat)
             add(Tr("Fill pattern file") + " (*.pat)", L"*.pat");
+        else if (kind == FileDialog::Dxf)
+            add(Tr("DXF drawings") + " (*.dxf;*.dwg)", L"*.dxf;*.dwg");
         else if (kind == FileDialog::OpenRevit)
         {
             add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", L"*.minibim;*.bimcraft;*.ifc;*.rvt");

@@ -329,6 +329,9 @@ namespace MiniBIM
         void LinkModel();
         void OpenManageLinks();
         void InsertFromFile();
+        // 插入 > 导入 CAD（link 为 false）或链接 CAD：选 DXF 文件，再开它的对话框（InsertDialogs.cpp）
+        void ImportCad(bool link);
+        void OpenImportCad(const std::string& path, bool link);
         // 可见性 / 图形（Dialogs.cpp）：正在显示的视图隐藏哪些类别，平面的比例与详细程度
         void OpenVisibilityGraphics();
         // 复制正在显示的平面（mode：duplicate、detailing、dependent），之后显示新的平面视图

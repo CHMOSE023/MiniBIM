@@ -98,6 +98,12 @@ namespace MiniBIM
         add("insert.link", N_("Link Model"), N_("Show another project as a reference that can't be edited (LK)"), [this] { LinkModel(); });
         add("insert.manageLinks", N_("Manage Links"), N_("The linked models: reload or remove them"), [this] { OpenManageLinks(); });
         add("insert.fromFile", N_("Insert from File"), N_("Bring the elements of another project into this one"), [this] { InsertFromFile(); });
+        add("insert.importCad", N_("Import CAD"),
+            N_("Import CAD: a DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"),
+            [this] { ImportCad(false); });
+        add("insert.linkCad", N_("Link CAD"),
+            N_("Link CAD: a DXF drawing shown in the plans of a level, read again from its file on Reload and when the project opens"),
+            [this] { ImportCad(true); });
         // ── 视图（移植自 BIMCraft 的视图选项卡）：可见性 / 图形、复制视图、裁剪 ─────────
         add("view.visibility", N_("Visibility/Graphics"), N_("What the view shows: hide or show categories; a plan's scale and detail level"),
             [this] { OpenVisibilityGraphics(); });

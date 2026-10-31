@@ -29,6 +29,9 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Pens.h` | `pen.rs`、`styles.rs` 的对象样式 | 笔 0–16 的宽度表、`LineWeights`（模型的笔按比例分列、注释的笔一列，`LineWeights::Default` 按单位）、`ObjectStyle` 与 `ObjectStyles::Default` |
 | `src/Model/Pat.h` | `fills.rs` 的 PAT | PAT 文件（`;%UNITS`、`;%TYPE=MODEL`）读成填充图案（`Pat::ReadText`，读不了的列出原因）、写出（`Pat::Write`，毫米） |
 | `src/Model/Insert.h` | `insert.rs`、`link.rs` | 从文件插入（`Bim::Insert`：要的元素与它们指着、这个项目没有的东西，ID 被占时另取、GUID 已有时是副本，库条目按 GUID 或名称）；链接的模型（`Links::Seen`：视图画的模型，项目加上每个读到的链接造的东西，ID 从 `Linked` 起，`Links::IsLinked`） |
+| `src/Model/Dxf.h` | `dxf.rs` | 读 DXF：组码对、表（图层、线型、文字样式）、块与插入（含阵列、嵌套的变换）、各图元成 `Dxf::Shape`（线、多段线、圆、圆弧、点、文字、填充），`Dxf::Read`（不是 UTF-8 的按 Latin-1）、单位 `$INSUNITS` |
+| `src/Model/Cad.h` | `cad.rs` | 导入的图纸 `Cad`（来源、链接的路径、读出的 `Dxf::Drawing`，主体的范围与远处的图元，`Cad::Packed` 存进文件的样子）、颜色怎样带进来 `CadColors`、图元的颜色线宽线型、`Cads::Nearest`（`cad_query`） |
+| `src/Model/Zlib.h` | （MiniBIM 自己的） | 项目文件里的大块数据：zlib 压缩（固定哈夫曼）与解压（三种块，有上限）、base64，`Zlib::Pack` / `Zlib::Unpack` |
 | `src/Model/Sheets.cpp` | `sheet.rs` | 图纸：标题栏、视口的框（`Render::Frames`）与默认位置（`Render::SpotOn`）、明细表的表格，`Render::DrawSheet`（声明在 `Render.h`） |
 | `src/Model/Views.cpp` | `model.rs`、`graphics.rs` 的视图部分 | 平面视图与三维视图：`Model::PlanLevel`、`PlanSource`（相关视图跟父视图）、`ViewRangeOf`、`CropOf`、`ViewGraphics`、`ScaleOf`、`ViewName`、`FreeViewName`、`Default3D`、`LookOf`（类别覆盖 → 过滤器 → 元素覆盖）、`CheckFollowed` |
 | `src/Model/Styles.h` | `lines.rs`、`fills.rs`、`model.rs` 的 `TextType` | 注释的库条目：线型图案、线样式、填充图案、填充区域类型、文字类型，各语言的默认条目与检查 |
@@ -182,6 +185,10 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   读文件（相对路径相对于项目文件，`ReadLink` 用一个新的 `Session` 照 `open` 读，不跟着它自己的链接）。视图、捕捉与三维场景用 `Links::Seen` 的结果：
   `Model::LookWith` 给 ID 不小于 `Linked` 的元素加半色调，`Render::Drawing::LinkedUnder` 把它们放在项目画的下面，`Render::Drawing::PickAll` 与 `ModelScene::Pick` 不拾取它们；
   剖到的并集另用拥有者 `Links::Union` 填。链接里的元素经 `Moved`（`move` 命令的 `Transformed`）照链接站的地方挪
+- CAD 导入（第 5g2 步）：图纸在 `Model::cads`（按名称），是 `Kind::Tag::Cad` 的库条目，项目文件里 `cads` 按 GUID 存 `{source, path?, dxf}`（DXF 压过的 base64，
+  读时先查个数与总大小再解压）；元素 `CadImport` 的 `cad` 存图纸的 GUID。`Session::Execute` 改了模型后去掉没有导入放的图纸（`Model::UnplacedCads`）
+  与视图图形里它们的图层（`Model::ForgetCadLayers`）。视图的 `Graphics::layers` 按图纸名称记隐藏的图层，落到 `Look::layers`。
+  平面在画别的之前画导入（`Render.cpp` 的 `CadImports`），`Render::PlanShows` 算进 `Model::CadBox`；捕捉（`Snap.cpp` 的 `CadScene`）与对齐认它的线
 - 直骨架照 BIMCraft 用二叉堆排事件：同一时刻的事件顺序与 Rust 的堆可能不同，结果一样（`ModelTests` 的 2000 个随机迹线检查面积与平面性）
 
 ## 测试与排查
@@ -200,6 +207,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   线型图案、线样式、填充图案的改名与删除，PAT 的读写与英寸，导入导出命令，清除未使用）
   与链接、插入（`TestLinks`、`TestInsert`：链接画在视图里、转与挪、别的高度的标高、平面的半色调与拾取与先后、捕捉、链接 IFC、相对路径与打开时再读、
   读不到时、reload、恢复副本、move 与 modify、撤销、拒绝、链接的链接、不带进注释；插入自己、别的项目的 ID 与 GUID、同名的标高、副本另起名称、拒绝）
+  与 CAD 导入（`TestZlib`、`TestCad`，移植自 `cad_tests.rs`：单位与定位、拒绝、DWG、仅当前视图、移动旋转复制与镜像、没人放时去掉与撤销、文件往返与插入、
+  文件里坏的图纸、图层与视图的图层、链接与重新载入、查询、远处的图元、平面的颜色与拾取、视图隐藏、填充文字虚线、捕捉、平面的范围；平面数画的项而不是 PNG 的像素）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

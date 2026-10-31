@@ -148,6 +148,8 @@ namespace MiniBIM::Bim
         std::optional<double>           scale;
         Detail                          detail = Detail::Fine;
         VisualStyle                     style  = VisualStyle::Shaded;
+        // 每张 CAD 图纸隐藏的图层，按图纸的名称：Revit 的"导入的类别"，一层一层地
+        std::map<std::string, std::set<std::string>> layers;
 
         bool IsDefault() const { return *this == Graphics{}; }
         // 视图的比例 n（1 : n）：自己的，否则项目单位的默认（1 : 100，或 1/8" = 1'-0"）
@@ -168,7 +170,15 @@ namespace MiniBIM::Bim
         std::set<Id>            hidden;
         std::map<Id, Override>  paint;
         VisualStyle             style = VisualStyle::Shaded;
+        // 每张 CAD 图纸视图隐藏的图层
+        std::map<std::string, std::set<std::string>> layers;
 
+        // 视图隐藏的 CAD 图纸 cad 的图层；没有时为空
+        const std::set<std::string>* HiddenLayers(const std::string& cad) const
+        {
+            const auto it = layers.find(cad);
+            return it == layers.end() ? nullptr : &it->second;
+        }
         bool Shows(Id id) const { return !hidden.count(id); }
         const Override* Paint(Id id) const
         {
@@ -195,7 +205,9 @@ namespace MiniBIM::Bim
         };
         inline constexpr std::array<const char*, 10> Annotation = { "dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section",
                                                                     "elevation" };
-        // 视图画这一类吗（BIMCraft 另有点云、CAD 导入两类，随插入选项卡移植）
+        // 导入的类别：CAD 导入（BIMCraft 另有点云，随第 5g3 步移植）
+        inline constexpr std::array<const char*, 1> Imported = { "cadimport" };
+        // 视图画这一类吗
         bool Drawn(std::string_view category);
         // 视图画的类别，逗号分开：报错里列出来
         std::string Names();

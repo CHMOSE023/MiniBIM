@@ -164,6 +164,13 @@ namespace MiniBIM::Bim
         {
             // 命令按 ID 给的引用换成元素的 GUID；放进库的东西给上 ID 和 GUID
             Model& m = ModelMut();
+            // CAD 图纸随放它的最后一个导入删掉，各视图也不再隐藏它的图层
+            if (const auto unplaced = m.UnplacedCads(); !unplaced.empty())
+            {
+                for (const std::string& n : unplaced)
+                    m.cads.erase(n);
+                m.ForgetCadLayers(unplaced);
+            }
             m.Resolve();
             m.SyncLibrary();
             ok = m.Check(error);

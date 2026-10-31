@@ -13,6 +13,7 @@
 #include "Model/Render.h"
 #include "Model/Snap.h"
 #include "Model/Walls.h"
+#include "Model/Zlib.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -21,6 +22,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -4370,6 +4372,562 @@ namespace
             Check(Contains(e, "no element 5"), "插入：那边没有的元素：" + e);
         }
     }
+
+    // ---------- CAD 导入（移植自 BIMCraft crates/core/src/cad_tests.rs） ----------
+
+    // 这个测试自己的目录
+    std::filesystem::path CadDir(const std::string& test)
+    {
+        const std::filesystem::path d = FsPath(Temp("cad-" + test));
+        std::filesystem::create_directories(d);
+        return d;
+    }
+
+    // 这个测试的目录里写一个文件
+    std::string CadFile(const std::string& test, const std::string& name, const std::string& text)
+    {
+        const std::filesystem::path p = CadDir(test) / FsPath(name);
+        std::ofstream(p, std::ios::binary) << text;
+        return Utf8(p);
+    }
+
+    // DXF 写的组：一行组码，一行值
+    std::string Pairs(std::initializer_list<std::pair<int, std::string>> list)
+    {
+        std::string s;
+        for (const auto& [c, v] : list)
+            s += std::to_string(c) + "\n" + v + "\n";
+        return s;
+    }
+
+    std::string Num(double x)
+    {
+        std::ostringstream o;
+        o << x;
+        return o.str();
+    }
+
+    struct CadLayer
+    {
+        const char* name;
+        const char* color;
+        bool        off;
+    };
+
+    // 单位为 units（$INSUNITS）的 DXF，带这些图层（名称、颜色、关闭）与图元
+    std::string DxfOf(const std::string& units, std::initializer_list<CadLayer> layers, const std::string& entities)
+    {
+        const std::string header = Pairs({ { 9, "$INSUNITS" }, { 70, units } });
+        std::string table = Pairs({ { 0, "TABLE" }, { 2, "LAYER" } });
+        for (const CadLayer& l : layers)
+            table += Pairs({ { 0, "LAYER" }, { 2, l.name }, { 70, "0" }, { 62, (l.off ? "-" : "") + std::string(l.color) }, { 6, "Continuous" } });
+        table += Pairs({ { 0, "ENDTAB" } });
+        return "0\nSECTION\n2\nHEADER\n" + header + "0\nENDSEC\n0\nSECTION\n2\nTABLES\n" + table + "0\nENDSEC\n0\nSECTION\n2\nENTITIES\n" + entities +
+               "0\nENDSEC\n0\nEOF\n";
+    }
+
+    std::string CadLine(const std::string& layer, P2 a, P2 b)
+    {
+        return Pairs({ { 0, "LINE" }, { 8, layer }, { 10, Num(a.x) }, { 20, Num(a.y) }, { 11, Num(b.x) }, { 21, Num(b.y) } });
+    }
+
+    // 以米画的 10 m × 6 m 的房间：墙在 WALLS（红），家具在 FURN（关闭），一行字在 TEXT
+    std::string CadPlan()
+    {
+        std::string walls;
+        for (const auto& [a, b] : { std::pair{ P2(0, 0), P2(10, 0) }, std::pair{ P2(10, 0), P2(10, 6) }, std::pair{ P2(10, 6), P2(0, 6) },
+                                    std::pair{ P2(0, 6), P2(0, 0) } })
+            walls += CadLine("WALLS", a, b);
+        const std::string furn = CadLine("FURN", P2(1, 1), P2(2, 1));
+        const std::string note = Pairs({ { 0, "TEXT" }, { 8, "TEXT" }, { 10, "1" }, { 20, "5" }, { 40, "0.25" }, { 1, "Kitchen" } });
+        return DxfOf("6", { { "WALLS", "1", false }, { "FURN", "3", true }, { "TEXT", "7", false } }, walls + furn + note);
+    }
+
+    // 文件末尾前再加几个图元
+    std::string CadPlanWith(const std::string& more)
+    {
+        std::string text = CadPlan();
+        const std::string end = "0\nENDSEC\n0\nEOF";
+        text.replace(text.rfind(end), end.size(), more + end);
+        return text;
+    }
+
+    Json CadOne(Session& s)
+    {
+        const Json all = Run(s, "elements", R"({"category": "cadimport"})");
+        Check(all["count"] == 1, "CAD：只有一个导入：" + all.dump());
+        return all["elements"][0];
+    }
+
+    bool Near(const Json& v, double x0, double y0, double x1, double y1)
+    {
+        const double want[2][2] = { { x0, y0 }, { x1, y1 } };
+        for (size_t i = 0; i < 2; ++i)
+            for (size_t k = 0; k < 2; ++k)
+                if (!v.is_array() || v.size() < 2 || !v[i].is_array() || !v[i][k].is_number() || std::abs(v[i][k].get<double>() - want[i][k]) > 1e-6)
+                    return false;
+        return true;
+    }
+
+    std::pair<Id, Id> TwoLevels(const Session& s)
+    {
+        const auto l = s.GetModel().Levels();
+        return { l[0].first, l[1].first };
+    }
+
+    Guid G(const Session& s, Id id) { return s.GetModel().GuidOf(id); }
+
+    // 画 id 的、颜色合 color 的几项
+    template <class F>
+    size_t Drawn(const Render::Drawing& d, std::optional<Id> id, F color)
+    {
+        size_t n = 0;
+        for (size_t i = 0; i < d.prims.size(); ++i)
+            if ((!id || d.owners[i] == id) && color(d.prims[i].color))
+                ++n;
+        return n;
+    }
+
+    bool Reddish(Render::Rgb c) { return c.r > 200 && int(c.r) - int(c.g) > 40 && std::abs(int(c.g) - int(c.b)) < 20; }
+    bool Greenish(Render::Rgb c) { return c.g > 200 && int(c.g) - int(c.r) > 40 && std::abs(int(c.r) - int(c.b)) < 20; }
+
+    bool Owns(const Render::Drawing& d, Id id) { return std::find(d.owners.begin(), d.owners.end(), std::optional<Id>(id)) != d.owners.end(); }
+
+    void TestZlib()
+    {
+        std::string mixed;
+        uint32_t x = 12345;
+        for (int i = 0; i < 70000; ++i)
+        {
+            x = x * 1103515245u + 12345u;
+            mixed += (i % 7 == 0) ? char(x >> 24) : "LINE\n0.25\n"[i % 11];
+        }
+        for (const std::string& bytes : { std::string(), std::string("a"), std::string(100000, 'x'), CadPlan(), mixed })
+        {
+            std::string out, error;
+            const std::string packed = Zlib::Pack(bytes);
+            Check(Zlib::Unpack("a test", packed, bytes.size() + 1, out, error) && out == bytes,
+                  "Zlib：压了再解回来，" + std::to_string(bytes.size()) + " 字节：" + error);
+        }
+        std::string out, error;
+        Check(Zlib::Deflate(std::string(100000, 'x')).size() < 2000, "Zlib：重复的压得小");
+        Check(!Zlib::Unpack("a test", Zlib::Pack(std::string(1000, 'x')), 999, out, error) && !error.empty(), "Zlib：解出的超过上限时拒绝：" + error);
+        Check(!Zlib::Unpack("a test", "!!!", 100, out, error) && Contains(error, "base64"), "Zlib：不是 base64：" + error);
+        Check(!Zlib::Unpack("a test", "aGVsbG8=", 100, out, error) && Contains(error, "zlib"), "Zlib：不是 zlib：" + error);
+        Check(Zlib::Unbase64(" aGVs\nbG8 ") == std::optional<std::string>("hello") && Zlib::Base64("hello") == "aGVsbG8=", "Zlib：base64");
+    }
+
+    void TestCad()
+    {
+        // 按文件的单位进来，中间在原点，文件里关闭的图层隐藏
+        {
+            Session s;
+            const Json r = Run(s, "import_cad", Json{ { "path", CadFile("in", "ground floor.dxf", CadPlan()) } });
+            Check(r["cad"] == "ground floor" && r["source"] == "ground floor.dxf" && r["unit"] == "m", "CAD：名称、来源、单位：" + r.dump());
+            Check(r["scale"] == 1000.0 && r["entities"] == 6 && r["layers"] == 3 && r["far"] == 0, "CAD：比例、图元、图层：" + r.dump());
+            Check(Near(r["extents"], -5000, -3000, 5000, 3000), "CAD：10 m × 6 m，中间在原点：" + r.dump());
+            const Json e = CadOne(s);
+            Check(e["id"] == r["id"] && e["cad"] == "ground floor" && e["hidden"] == Json::array({ "FURN" }) && e["layers"] == 3, "CAD：元素：" + e.dump());
+            Check(e["level"] == ToJson(G(s, TwoLevels(s).first)), "CAD：在第一个标高上");
+            Check(!e.contains("view") && !e.contains("colors"), "CAD：标高的每个平面，颜色照原样：" + e.dump());
+        }
+        // 单位、比例、定位、转角、图层与颜色由人说
+        {
+            Session s;
+            const std::string path = CadFile("say", "plan.dxf", CadPlan());
+            Json r = Run(s, "import_cad", Json{ { "path", path }, { "units", "cm" }, { "position", "origin" }, { "at", Pt(1000, 2000) }, { "angle", 90 } });
+            Check(Near(r["extents"], 940, 2000, 1000, 2100), "CAD：按厘米，原点在 (1000, 2000)，转 90 度：" + r.dump());
+            Check(r["unit"] == "cm (its file says m)", "CAD：读的单位：" + r["unit"].dump());
+            r = Run(s, "import_cad", R"({"cad": "plan", "scale": 2, "position": "origin", "layers": "all", "colors": "black"})");
+            Check(Near(r["extents"], 0, 0, 20, 12), "CAD：自己的比例：" + r.dump());
+            Check(r["unit"] == "a scale of its own (its file says m)", "CAD：自己的比例的单位：" + r["unit"].dump());
+            const Json e = Run(s, "elements", R"({"category": "cadimport"})")["elements"][1];
+            Check(!e.contains("hidden") && e["colors"] == "black", "CAD：全部图层，黑白：" + e.dump());
+            r = Run(s, "import_cad", R"({"cad": "plan", "layers": ["WALLS"]})");
+            Check(ElementOf(s, r["id"].get<Id>())["hidden"] == Json::array({ "FURN", "TEXT" }), "CAD：列出要显示的图层，其余隐藏");
+            const std::pair<Json, const char*> refused[] = {
+                { Json::parse(R"({"cad": "plan", "units": "furlong"})"), "units" },
+                { Json::parse(R"({"cad": "plan", "units": "mm", "scale": 2})"), "not both" },
+                { Json::parse(R"({"cad": "plan", "scale": 0})"), "scale" },
+                { Json::parse(R"({"cad": "plan", "position": "left"})"), "position" },
+                { Json::parse(R"({"cad": "plan", "colors": "pink"})"), "colors" },
+                { Json::parse(R"({"cad": "plan", "layers": ["NOPE"]})"), "no layer `NOPE`" },
+                { Json::parse(R"({"cad": "plan", "layers": 5})"), "layers" },
+                { Json::parse(R"({"cad": "plan", "link": true})"), "link" },
+                { Json::parse(R"({"cad": "nope"})"), "holds no CAD drawing named `nope`" },
+                { Json{ { "path", path }, { "cad", "plan" } }, "not both" },
+                { Json::object(), "give `path`" },
+                { Json{ { "path", path } }, "already holds a CAD drawing named `plan`" },
+            };
+            for (const auto& [p, says] : refused)
+            {
+                const std::string err = Refused(s, "import_cad", p);
+                Check(Contains(err, says), "CAD：拒绝 " + p.dump() + "：" + err);
+            }
+        }
+        // DWG 说存成 DXF；不是 DXF 的说原因
+        {
+            Session s;
+            std::string e = Refused(s, "import_cad", Json{ { "path", CadFile("dwg", "plan.dwg", "AC1032") } });
+            Check(Contains(e, "DWG") && Contains(e, "save it as DXF"), "CAD：DWG：" + e);
+            e = Refused(s, "import_cad", Json{ { "path", CadFile("dwg", "plan.pdf", "%PDF") } });
+            Check(Contains(e, "reads DXF"), "CAD：PDF：" + e);
+            e = Refused(s, "import_cad", Json{ { "path", CadFile("dwg", "broken.dxf", "0\nSECTION\n2\nENTITIES\nhello\n") } });
+            Check(Contains(e, "broken.dxf") && Contains(e, "group code"), "CAD：坏的 DXF：" + e);
+            e = Refused(s, "import_cad", Json{ { "path", CadFile("dwg", "empty.dxf", DxfOf("4", {}, "")) } });
+            Check(Contains(e, "draws nothing"), "CAD：什么都没画：" + e);
+            e = Refused(s, "import_cad", Json{ { "path", Utf8(CadDir("dwg") / "nowhere.dxf") } });
+            Check(Contains(e, "nowhere.dxf"), "CAD：没有的文件：" + e);
+            Check(s.GetModel().cads.empty(), "CAD：都没带进来");
+        }
+        // 仅当前视图：标高的一个平面
+        {
+            Session s;
+            const std::string path = CadFile("view", "plan.dxf", CadPlan());
+            const auto [level, upper] = TwoLevels(s);
+            Json r = Run(s, "import_cad", Json{ { "path", path }, { "view", level } });
+            Check(ElementOf(s, r["id"].get<Id>())["view"] == ToJson(G(s, level)), "CAD：只在这个平面");
+            const std::string e = Refused(s, "import_cad", Json{ { "cad", "plan" }, { "level", level }, { "view", upper } });
+            Check(Contains(e, "another level"), "CAD：别的标高的平面：" + e);
+            const Id pv = Run(s, "duplicate_view", Json{ { "view", upper } })["id"].get<Id>();
+            r = Run(s, "import_cad", Json{ { "cad", "plan" }, { "view", pv } });
+            const Json el = ElementOf(s, r["id"].get<Id>());
+            Check(el["view"] == ToJson(G(s, pv)) && el["level"] == ToJson(G(s, upper)), "CAD：平面视图说出它的标高：" + el.dump());
+        }
+        // 移动、旋转、复制，不能镜像
+        {
+            Session s;
+            const Id id = Run(s, "import_cad", Json{ { "path", CadFile("move", "plan.dxf", CadPlan()) } })["id"].get<Id>();
+            Run(s, "move", Json{ { "ids", { id } }, { "by", Pt(100, 200) } });
+            Run(s, "rotate", Json{ { "ids", { id } }, { "about", Pt(100, 200) }, { "angle", 90 } });
+            const Json e = CadOne(s);
+            Check(e["at"] == Pt(100, 200) && e["angle"] == 90.0, "CAD：挪了转了：" + e.dump());
+            Check(Near(e["extents"], -2900, -4800, 3100, 5200), "CAD：转后的范围：" + e["extents"].dump());
+            const std::string err = Refused(s, "mirror", Json{ { "ids", { id } }, { "axis", { Pt(0, 0), Pt(0, 1000) } } });
+            Check(Contains(err, "can't be mirrored"), "CAD：不能镜像：" + err);
+            Run(s, "copy", Json{ { "ids", { id } }, { "by", Pt(20000, 0) } });
+            Check(Count(s, "cadimport") == 2 && s.GetModel().cads.size() == 1, "CAD：复制，两个放同一张图纸");
+        }
+        // 没有导入放它时图纸去掉，撤销带回来
+        {
+            Session s;
+            const Id id = Run(s, "import_cad", Json{ { "path", CadFile("delete", "plan.dxf", CadPlan()) } })["id"].get<Id>();
+            const Id again = Run(s, "import_cad", R"({"cad": "plan", "at": [20000, 0]})")["id"].get<Id>();
+            Run(s, "delete", Json{ { "ids", { id } } });
+            Check(s.GetModel().cads.size() == 1, "CAD：还有一个放它");
+            Run(s, "delete", Json{ { "ids", { again } } });
+            Check(s.GetModel().cads.empty(), "CAD：没有放它的了，图纸去掉");
+            Run(s, "undo", Json::object());
+            Check(s.GetModel().cads.size() == 1, "CAD：撤销带回来");
+            Run(s, "undo", R"({"count": 2})");
+            Run(s, "undo", Json::object());
+            Check(s.GetModel().cads.empty(), "CAD：撤销到导入之前");
+        }
+        // 随项目存，打开如初，从文件插入带上它
+        {
+            Session s;
+            const std::string path = CadFile("save", "plan.dxf", CadPlan());
+            const Id id = Run(s, "import_cad", Json{ { "path", path }, { "angle", 30 }, { "at", Pt(100, 200) }, { "colors", "invert" } })["id"].get<Id>();
+            const Json before = CadOne(s);
+            const std::string project = Utf8(CadDir("save") / "project.minibim");
+            Run(s, "save", Json{ { "path", project } });
+            std::ifstream in(FsPath(project), std::ios::binary);
+            const Json saved = Json::parse(std::string(std::istreambuf_iterator<char>(in), {}));
+            Check(saved["cads"].is_object() && saved["cads"].size() == 1, "CAD：项目文件里有图纸：" + saved["cads"].dump().substr(0, 200));
+            const Json& entry = saved["cads"].begin().value();
+            Check(entry["dxf"].is_string() && entry["source"] == "plan.dxf", "CAD：存了压过的 DXF 与来源");
+            Check(Contains(saved["library"].dump(), "cad"), "CAD：图纸是库里的条目");
+            Session t;
+            Run(t, "open", Json{ { "path", project } });
+            Check(CadOne(t) == before && t.GetModel().cads == s.GetModel().cads, "CAD：打开如初");
+            Session u;
+            Run(u, "insert", Json{ { "path", project }, { "ids", { id } } });
+            Check(CadOne(u)["cad"] == "plan" && u.GetModel().cads.count("plan") && u.GetModel().cads.at("plan") == s.GetModel().cads.at("plan"),
+                  "CAD：从文件插入带上图纸");
+        }
+        // 文件里的图纸读的时候检查
+        {
+            Session s;
+            Run(s, "import_cad", Json{ { "path", CadFile("read", "plan.dxf", CadPlan()) } });
+            const Json good = s.GetModel().ToJson();
+            const std::string key = good["cads"].begin().key();
+            const std::pair<Json, const char*> bad[] = {
+                { Json("!!!"), "base64" }, { Json("aGVsbG8="), "zlib" }, { Json(Zlib::Pack("0\nEOF\n")), "ENTITIES" } };
+            for (const auto& [data, says] : bad)
+            {
+                Json f = good;
+                f["cads"][key]["dxf"] = data;
+                Model m;
+                std::vector<std::string> left;
+                std::string error;
+                Check(!Model::Read(f.dump(), m, left, error) && Contains(error, says), std::string("CAD：图纸的数据坏了（") + says + "）：" + error);
+            }
+            Json many = good;
+            for (size_t i = 0; i < Cads::MaxCads; ++i)
+            {
+                Json c = good["cads"][key];
+                c["source"] = "copy " + std::to_string(i) + ".dxf";
+                many["cads"]["copy " + std::to_string(i)] = c;
+            }
+            Model m;
+            std::vector<std::string> left;
+            std::string error;
+            Check(!Model::Read(many.dump(), m, left, error) && Contains(error, "CAD drawings") && Contains(error, std::to_string(Cads::MaxCads)),
+                  "CAD：图纸太多：" + error);
+            Json orphan = good;
+            orphan["cads"] = Json::object();
+            Model o;
+            const bool read = Model::Read(orphan.dump(), o, left, error);
+            Check((!read || !o.Check(error)) && Contains(error, "CAD drawing"), "CAD：放着没有的图纸：" + error);
+        }
+        // 图层到处隐藏与显示，或只在一个视图里
+        {
+            Session s;
+            const Id id = Run(s, "import_cad", Json{ { "path", CadFile("layers", "plan.dxf", CadPlan()) } })["id"].get<Id>();
+            const auto shown = [](const Json& r)
+            {
+                std::vector<std::pair<std::string, bool>> out;
+                for (const Json& l : r["layers"])
+                    out.emplace_back(l["name"].get<std::string>(), l["shown"].get<bool>());
+                return out;
+            };
+            using Shown = std::vector<std::pair<std::string, bool>>;
+            Json r = Run(s, "cad_layers", Json{ { "id", id } });
+            Check(shown(r) == Shown{ { "WALLS", true }, { "FURN", false }, { "TEXT", true } }, "CAD：图层与开关：" + r.dump());
+            Check(r["layers"][0]["color"] == Json::array({ 255, 0, 0 }), "CAD：图层的颜色");
+            r = Run(s, "cad_layers", Json{ { "id", id }, { "hide", { "TEXT" } }, { "show", { "FURN" } } });
+            Check(shown(r) == Shown{ { "WALLS", true }, { "FURN", true }, { "TEXT", false } }, "CAD：隐藏 TEXT，显示 FURN");
+            const Id level = TwoLevels(s).first;
+            r = Run(s, "cad_layers", Json{ { "id", id }, { "view", level }, { "hide", { "WALLS" } } });
+            Check(r["layers"][0]["shown_in_view"] == false && r["layers"][1]["shown_in_view"] == true, "CAD：在一个视图里隐藏：" + r.dump());
+            const Graphics* g = s.GetModel().ViewGraphics(G(s, level));
+            Check(g && g->layers.count("plan") && g->layers.at("plan") == std::set<std::string>{ "WALLS" }, "CAD：视图的图形按图纸的名称记");
+            Run(s, "undo", Json::object());
+            g = s.GetModel().ViewGraphics(G(s, level));
+            Check(!g || g->layers.empty(), "CAD：撤销视图的图层");
+            r = Run(s, "graphics", Json{ { "view", level }, { "layers", { { "plan", { "FURN", "TEXT" } } } } });
+            Check(r["layers"] == Json{ { "plan", { "FURN", "TEXT" } } }, "CAD：可见性 / 图形说一样的：" + r["layers"].dump());
+            std::string text, why;
+            Check(s.GetModel().ToFile(text, why), "CAD：写成文件：" + why);
+            const auto guid = s.GetModel().library.GuidOf(Kind::Of(Kind::Tag::Cad), "plan");
+            Check(guid && Contains(text, "\"" + ToJson(*guid).get<std::string>() + "\":"), "CAD：文件按 GUID 记图纸");
+            Model m;
+            std::vector<std::string> left;
+            std::string error;
+            const Graphics* mg = Model::Read(text, m, left, error) ? m.ViewGraphics(G(s, level)) : nullptr;
+            Check(mg && mg->layers.size() == 1 && mg->layers.count("plan"), "CAD：打开后视图的图层又按名称：" + error);
+            r = Run(s, "graphics", Json{ { "view", level }, { "layers", { { "plan", nullptr } } } });
+            Check(r["layers"] == Json::object(), "CAD：去掉视图的图层");
+            const std::pair<Json, const char*> refusedGraphics[] = {
+                { Json{ { "view", level }, { "layers", { { "plan", { "NOPE" } } } } }, "NOPE" },
+                { Json{ { "view", level }, { "layers", { { "other", { "WALLS" } } } } }, "other" },
+                { Json{ { "view", level }, { "layers", { { "plan", { 5 } } } } }, "by name" },
+                { Json{ { "view", level }, { "layers", 5 } }, "`layers`" },
+            };
+            for (const auto& [p, says] : refusedGraphics)
+            {
+                const std::string err = Refused(s, "graphics", p);
+                Check(Contains(err, says), "CAD：graphics 拒绝 " + p.dump() + "：" + err);
+            }
+            const std::pair<Json, const char*> refusedLayers[] = {
+                { Json{ { "id", id }, { "hide", { "NOPE" } } }, "no layer `NOPE`" },
+                { Json{ { "id", id }, { "hide", { "FURN" } }, { "show", { "FURN" } } }, "in `hide` and in `show`" },
+                { Json{ { "id", level } }, "isn't a CAD import" },
+                { Json::object(), "`id`" },
+            };
+            for (const auto& [p, says] : refusedLayers)
+            {
+                const std::string err = Refused(s, "cad_layers", p);
+                Check(Contains(err, says), "CAD：cad_layers 拒绝 " + p.dump() + "：" + err);
+            }
+            Run(s, "graphics", Json{ { "view", level }, { "layers", { { "plan", { "FURN" } } } } });
+            Run(s, "delete", Json{ { "ids", { id } } });
+            g = s.GetModel().ViewGraphics(G(s, level));
+            Check(!g || g->layers.empty(), "CAD：图纸去掉后视图不再记它的图层");
+        }
+        // 链接的图纸：重新载入与打开项目时再读文件
+        {
+            Session s;
+            const std::string path = CadFile("link", "plan.dxf", CadPlan());
+            Run(s, "import_cad", Json{ { "path", path }, { "link", true } });
+            Check(CadOne(s)["linked"] == path, "CAD：链接的文件");
+            Check(Run(s, "reload_cad", R"({"cad": "plan"})")["changed"] == false, "CAD：文件没变");
+            std::ofstream(FsPath(path), std::ios::binary) << CadPlanWith(CadLine("WALLS", P2(0, 0), P2(10, 6)));
+            const Json r = Run(s, "reload_cad", R"({"cad": "plan"})");
+            Check(r["changed"] == true && r["entities"] == 7, "CAD：重新载入读到多的一条线：" + r.dump());
+            Run(s, "undo", Json::object());
+            Check(s.GetModel().cads.at("plan").Drawing().entities.size() == 6, "CAD：撤销重新载入");
+            const std::string project = Utf8(CadDir("link") / "project.minibim");
+            Run(s, "save", Json{ { "path", project } });
+            Session t;
+            Run(t, "open", Json{ { "path", project } });
+            Check(t.GetModel().cads.at("plan").Drawing().entities.size() == 7, "CAD：打开项目时再读文件");
+            Remove(path);
+            const Json o = Run(t, "open", Json{ { "path", project } });
+            Check(t.GetModel().cads.at("plan").Drawing().entities.size() == 6, "CAD：文件没了，用项目里存的");
+            Check(o["cads_not_reloaded"][0]["cad"] == "plan", "CAD：说哪张没能再读：" + o.dump());
+            Session u;
+            Run(u, "import_cad", Json{ { "path", CadFile("link", "other.dxf", CadPlan()) } });
+            const std::string e = Refused(u, "reload_cad", R"({"cad": "other"})");
+            Check(Contains(e, "isn't linked"), "CAD：导入的不能重新载入：" + e);
+        }
+        // 查询离一点最近的图元
+        {
+            Session s;
+            const Id id = Run(s, "import_cad", Json{ { "path", CadFile("query", "plan.dxf", CadPlan()) }, { "position", "origin" } })["id"].get<Id>();
+            const Json r = Run(s, "cad_query", Json{ { "id", id }, { "at", Pt(5000, 30) } });
+            Check(r["kind"] == "line" && r["layer"] == "WALLS" && r["color"] == Json::array({ 255, 0, 0 }) && std::abs(r["distance"].get<double>() - 30.0) < 1e-6,
+                  "CAD：查询：" + r.dump());
+            Check(Run(s, "cad_query", Json{ { "id", id }, { "at", Pt(1500, 1000) }, { "reach", 50 } })["found"] == false, "CAD：隐藏的图层查不到");
+            Check(Run(s, "cad_query", Json{ { "id", id }, { "at", Pt(1000, 5000) } })["kind"] == "text", "CAD：查到字");
+        }
+        // 离得远的零散图元：数出来，不算进范围
+        {
+            std::string entities;
+            for (int i = 0; i < 40; ++i)
+                entities += CadLine("WALLS", P2(i * 0.25, 0), P2(i * 0.25 + 0.25, 6));
+            entities += CadLine("JUNK", P2(100000, 100000), P2(100001, 100000));
+            Session s;
+            const Json r = Run(s, "import_cad", Json{ { "path", CadFile("far", "plan.dxf", DxfOf("6", {}, entities)) } });
+            Check(r["far"] == 1 && r.contains("warning") && Contains(r["warning"].get<std::string>(), "far from the rest"), "CAD：远处的图元：" + r.dump());
+            Check(Near(r["extents"], -5000, -3000, 5000, 3000), "CAD：范围是主体的：" + r.dump());
+            const std::string e = Refused(s, "import_cad", R"({"cad": "plan", "at": [1e9, 0]})");
+            Check(Contains(e, "place it nearer"), "CAD：放得太远：" + e);
+        }
+        // 平面：照它的颜色画，拾取为一个
+        {
+            Session s;
+            const Id id = Run(s, "import_cad", Json{ { "path", CadFile("draw", "plan.dxf", CadPlan()) }, { "position", "origin" } })["id"].get<Id>();
+            const auto [one, two] = TwoLevels(s);
+            Render::Drawing d = Render::Plan(s.GetModel(), G(s, one), 600, 600);
+            Check(Drawn(d, id, Reddish) >= 4, "CAD：红色的墙：" + std::to_string(Drawn(d, id, Reddish)));
+            Check(Drawn(d, id, Greenish) == 0, "CAD：FURN 在文件里关闭");
+            Check(d.Pick(d.view.ToPx(P2(5000, 0)), 3.0f) == id && !d.Pick(d.view.ToPx(P2(5000, 3000)), 3.0f), "CAD：在线上拾取，中间拾取不到");
+            bool lettered = false;
+            for (size_t i = 0; i < d.parts.size(); ++i)
+                lettered = lettered || (d.owners[i] == id && d.parts[i] == Render::Part::Text);
+            Check(lettered, "CAD：写出字");
+            Check(!Owns(Render::Plan(s.GetModel(), G(s, two), 600, 600), id), "CAD：第二层的平面不画");
+            Run(s, "cad_layers", Json{ { "id", id }, { "show", { "FURN" } } });
+            Check(Drawn(Render::Plan(s.GetModel(), G(s, one), 600, 600), id, Greenish) > 0, "CAD：显示 FURN");
+            Run(s, "modify", Json{ { "id", id }, { "colors", "black" } });
+            d = Render::Plan(s.GetModel(), G(s, one), 600, 600);
+            Check(Drawn(d, id, Reddish) == 0 && Drawn(d, id, Greenish) == 0, "CAD：黑白，没有颜色");
+            Run(s, "modify", Json{ { "id", id }, { "colors", "invert" } });
+            const auto cyan = [](Render::Rgb c) { return c.b > 200 && c.g > 200 && int(c.b) - int(c.r) > 40; };
+            Check(Drawn(Render::Plan(s.GetModel(), G(s, one), 600, 600), id, cyan) >= 4, "CAD：反转，红色成青色");
+        }
+        // 视图隐藏它的图层或整个类别；仅当前视图就是那个视图
+        {
+            Session s;
+            const std::string path = CadFile("hide", "plan.dxf", CadPlan());
+            const Id id = Run(s, "import_cad", Json{ { "path", path }, { "position", "origin" } })["id"].get<Id>();
+            const Id one = TwoLevels(s).first;
+            const Id other = Run(s, "duplicate_view", Json{ { "view", one } })["id"].get<Id>();
+            Run(s, "cad_layers", Json{ { "id", id }, { "view", one }, { "hide", { "WALLS" } } });
+            Check(Drawn(Render::Plan(s.GetModel(), G(s, one), 600, 600), id, Reddish) == 0, "CAD：标高的平面隐藏 WALLS");
+            Check(Drawn(Render::Plan(s.GetModel(), G(s, other), 600, 600), id, Reddish) >= 4, "CAD：同标高的平面视图照样画");
+            Run(s, "graphics", Json{ { "view", other }, { "hide", { "cadimport" } } });
+            Check(!Owns(Render::Plan(s.GetModel(), G(s, other), 600, 600), id), "CAD：视图隐藏导入的类别");
+            Session t;
+            const Id tone = TwoLevels(t).first;
+            const Id tother = Run(t, "duplicate_view", Json{ { "view", tone } })["id"].get<Id>();
+            const Id tid = Run(t, "import_cad", Json{ { "path", path }, { "view", tother } })["id"].get<Id>();
+            Check(Owns(Render::Plan(t.GetModel(), G(t, tother), 600, 600), tid) && !Owns(Render::Plan(t.GetModel(), G(t, tone), 600, 600), tid),
+                  "CAD：仅当前视图");
+            Run(t, "delete", Json{ { "ids", { tother } } });
+            Check(!t.GetModel().elements.Get(tid) && t.GetModel().cads.empty(), "CAD：随视图去掉，图纸也去掉");
+        }
+        // 填充、对齐的字与虚线
+        {
+            const std::string solid = Pairs({ { 0, "SOLID" }, { 8, "FILL" }, { 62, "5" }, { 10, "0" }, { 20, "0" }, { 11, "1000" }, { 21, "0" },
+                                              { 12, "0" }, { 22, "1000" }, { 13, "1000" }, { 23, "1000" } });
+            const std::string note = Pairs({ { 0, "TEXT" }, { 8, "0" }, { 10, "0" }, { 20, "0" }, { 11, "3000" }, { 21, "500" }, { 40, "200" },
+                                             { 72, "1" }, { 73, "2" }, { 1, "MID" } });
+            const std::string dashed = Pairs({ { 0, "LINE" }, { 8, "0" }, { 6, "DASHED" }, { 10, "0" }, { 20, "-2000" }, { 11, "4000" }, { 21, "-2000" } });
+            const std::string ltype = Pairs({ { 0, "TABLE" }, { 2, "LTYPE" }, { 0, "LTYPE" }, { 2, "DASHED" }, { 49, "200" }, { 49, "-100" }, { 0, "ENDTAB" } });
+            std::string text = DxfOf("4", {}, solid + note + dashed);
+            const std::string tables = "0\nSECTION\n2\nTABLES\n";
+            text.replace(text.find(tables), tables.size(), tables + ltype);
+            Session s;
+            const Id id = Run(s, "import_cad", Json{ { "path", CadFile("hatch", "detail.dxf", text) }, { "position", "origin" } })["id"].get<Id>();
+            const Render::Drawing d = Render::Plan(s.GetModel(), G(s, TwoLevels(s).first), 800, 800);
+            bool filled = false;
+            for (size_t i = 0; i < d.prims.size(); ++i)
+                filled = filled || (d.owners[i] == id && d.prims[i].kind == Render::Prim::Kind::Fill && d.prims[i].color.b > 200 && d.prims[i].color.r < 60);
+            Check(filled, "CAD：填充成蓝色的一块");
+            const Render::Px at = d.view.ToPx(P2(3000, 500));
+            float lo = 1e30f, hi = -1e30f, top = 1e30f, bottom = -1e30f;
+            for (size_t i = 0; i < d.prims.size(); ++i)
+                if (d.owners[i] == id && d.parts[i] == Render::Part::Text)
+                {
+                    auto take = [&](const Render::Px& p) { lo = std::min(lo, p.first); hi = std::max(hi, p.first); top = std::min(top, p.second); bottom = std::max(bottom, p.second); };
+                    for (const Render::Px& p : d.prims[i].pts)
+                        take(p);
+                    for (const auto& ring : d.prims[i].rings)
+                        for (const Render::Px& p : ring)
+                            take(p);
+                }
+            Check(lo < at.first && hi > at.first && std::abs((lo + hi) / 2 - at.first) < 3.0f && std::abs((top + bottom) / 2 - at.second) < 3.0f,
+                  "CAD：字的中间在它的点上");
+            const float k = float(d.view.scale);
+            bool dashedOk = false;
+            for (const Render::Prim& p : d.prims)
+                if (p.kind == Render::Prim::Kind::Line && p.dash && p.pts.size() == 2)
+                    dashedOk = p.dash->size() == 2 && std::abs((*p.dash)[0] - 200 * k) < 0.01f && std::abs((*p.dash)[1] - 100 * k) < 0.01f;
+            Check(dashedOk, "CAD：虚线的图层画成虚线，按视图缩放");
+        }
+        // 捕捉导入的端点、中点、交点与圆心，沿着描墙
+        {
+            Session s;
+            const std::string circle = Pairs({ { 0, "CIRCLE" }, { 8, "WALLS" }, { 10, "20" }, { 20, "3" }, { 40, "0.5" } });
+            const std::string text = CadPlanWith(circle + CadLine("WALLS", P2(2, -1), P2(2, 7)));
+            Run(s, "import_cad", Json{ { "path", CadFile("snap", "plan.dxf", text) }, { "position", "origin" }, { "at", Pt(1000, 1000) } });
+            const auto [one, two] = TwoLevels(s);
+            const auto at = [&](Id level, P2 p) { return Snap::At(s.GetModel(), G(s, level), p, Snap::Reach{ 100.0, 100.0 }, {}, false, Snap::Snaps{}); };
+            Snap::Found f = at(one, P2(1030, 1020));
+            Check(f.kind == Snap::Kind::Endpoint && f.at == P2(1000, 1000), "CAD：捕捉角点");
+            f = at(one, P2(6020, 990));
+            Check(f.kind == Snap::Kind::Midpoint && f.at == P2(6000, 1000), "CAD：捕捉中点");
+            f = at(one, P2(3020, 7010));
+            Check(f.kind == Snap::Kind::Intersection && f.at == P2(3000, 7000), "CAD：捕捉交点");
+            f = at(one, P2(21020, 4030));
+            Check(f.kind == Snap::Kind::Centre && f.at == P2(21000, 4000), "CAD：捕捉圆心");
+            Check(at(two, P2(1030, 1020)).kind == Snap::Kind::Free, "CAD：第二层没有导入");
+            Check(at(one, P2(2030, 2010)).kind == Snap::Kind::Free, "CAD：关闭的图层不捕捉");
+            const Json id = Run(s, "elements", R"({"category": "cadimport"})")["elements"][0]["id"];
+            Run(s, "cad_layers", Json{ { "id", id }, { "hide", { "WALLS" } } });
+            Check(at(one, P2(1030, 1020)).kind == Snap::Kind::Free, "CAD：隐藏的图层不捕捉");
+            Run(s, "cad_layers", Json{ { "id", id }, { "show", { "WALLS" } } });
+            const P2 a = at(one, P2(1020, 1010)).at, b = at(one, P2(10990, 1020)).at;
+            Run(s, "wall", Json{ { "points", { Pt(a.x, a.y), Pt(b.x, b.y) } } });
+            const Json w = Run(s, "elements", R"({"category": "wall"})")["elements"][0];
+            Check(w["start"] == Pt(1000, 1000) && w["end"] == Pt(11000, 1000), "CAD：描的墙在它的线上：" + w.dump());
+        }
+        // 平面缩放到它显示的导入
+        {
+            Session s;
+            const Id id = Run(s, "import_cad", Json{ { "path", CadFile("fit", "plan.dxf", CadPlan()) }, { "at", Pt(80000, -40000) } })["id"].get<Id>();
+            const auto [one, two] = TwoLevels(s);
+            const Render::Drawing d = Render::Plan(s.GetModel(), G(s, one), 600, 600);
+            Check(Drawn(d, id, Reddish) >= 4 && d.Pick(d.view.ToPx(P2(80000, -43000)), 3.0f) == id, "CAD：平面缩放到远处的图纸");
+            Check(Render::PlanShows(s.GetModel(), G(s, two)).empty(), "CAD：别的标高的平面不缩放到它");
+            const Id other = Run(s, "duplicate_view", Json{ { "view", one } })["id"].get<Id>();
+            Session t;
+            const Id tone = TwoLevels(t).first;
+            const Id tother = Run(t, "duplicate_view", Json{ { "view", tone } })["id"].get<Id>();
+            Run(t, "import_cad", Json{ { "path", CadFile("fit", "plan.dxf", CadPlan()) }, { "view", tother }, { "at", Pt(80000, 0) } });
+            Check(Render::PlanShows(t.GetModel(), G(t, tone)).empty() && !Render::PlanShows(t.GetModel(), G(t, tother)).empty() &&
+                      !Render::PlanShows(s.GetModel(), G(s, other)).empty(),
+                  "CAD：只在一个视图的，只有那个视图缩放到它");
+        }
+        for (const char* test : { "in", "say", "dwg", "view", "move", "delete", "save", "read", "layers", "link", "query", "far", "draw", "hide", "hatch",
+                                  "snap", "fit" })
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(FsPath(Temp(std::string("cad-") + test)), ec);
+        }
+    }
 }
 
 int main()
@@ -4403,6 +4961,8 @@ int main()
     TestManage();
     TestLinks();
     TestInsert();
+    TestZlib();
+    TestCad();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

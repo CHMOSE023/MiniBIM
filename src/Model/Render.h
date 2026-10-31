@@ -93,6 +93,8 @@ namespace MiniBIM::Bim::Render
         static constexpr uint8_t ByCategory = 255;
         // 纸上多宽，毫米
         double Mm() const;
+        // 纸上最接近 mm 宽的笔，1 到 16（不会是发丝线）
+        static uint8_t Nearest(double mm);
     };
 
     // 一个视图里各支笔画多宽：模型的（按视图比例取最近的一列）和注释的，纸上毫米
@@ -134,6 +136,8 @@ namespace MiniBIM::Bim::Render
         void Dashed(const std::vector<P2>& pts, uint8_t pen, Rgb color, bool closed);
         // text 以 at 为中心，大写字母 height 像素高（单线字）
         void Text(std::string_view text, Px at, float height, Rgb color);
+        // 同 Text，绕 at 转 angle 弧度（像素里顺时针为正）
+        void TextTurned(std::string_view text, Px at, float height, float angle, Rgb color);
         // from 起推进来的各项以 about 为中心放大 k 倍：注释按一像素一像素排好，再按视图比例放大
         void Grow(size_t from, Px about);
         float Width(uint8_t pen) const;

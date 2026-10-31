@@ -235,6 +235,25 @@ namespace MiniBIM::Bim
         for (const auto& [id, o] : elements)
             if (!o.Check("element " + id.ToString(), error))
                 return false;
+        if (layers.size() > Cads::MaxCads || std::any_of(layers.begin(), layers.end(), [](const auto& l) { return l.second.size() > Cads::MaxHidden; }))
+        {
+            error = "it hides layers of more than " + std::to_string(Cads::MaxCads) + " CAD drawings, or more than " + std::to_string(Cads::MaxHidden) +
+                    " of one";
+            return false;
+        }
+        for (const auto& [cad, names] : layers)
+        {
+            const auto tooLong = [](const std::string& n) { return Text::CharCount(n) > MaxText; };
+            const std::string* bad = tooLong(cad) ? &cad : nullptr;
+            for (const std::string& n : names)
+                if (!bad && tooLong(n))
+                    bad = &n;
+            if (bad)
+            {
+                error = "the layer or drawing `" + *bad + "` is longer than " + std::to_string(MaxText) + " characters";
+                return false;
+            }
+        }
         const auto patternsOk = [&](const Override& o)
         {
             for (const Style* s : { &o.projection, &o.cut })
@@ -314,7 +333,8 @@ namespace MiniBIM::Bim
         bool Drawn(std::string_view category)
         {
             return std::find(Model.begin(), Model.end(), category) != Model.end() ||
-                   std::find(Annotation.begin(), Annotation.end(), category) != Annotation.end();
+                   std::find(Annotation.begin(), Annotation.end(), category) != Annotation.end() ||
+                   std::find(Imported.begin(), Imported.end(), category) != Imported.end();
         }
 
         std::string Names()
@@ -323,6 +343,8 @@ namespace MiniBIM::Bim
             for (const char* c : Model)
                 out += (out.empty() ? "" : ", ") + std::string(c);
             for (const char* c : Annotation)
+                out += ", " + std::string(c);
+            for (const char* c : Imported)
                 out += ", " + std::string(c);
             return out;
         }

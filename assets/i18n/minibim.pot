@@ -38,6 +38,22 @@ msgstr ""
 msgid "Reload Links"
 msgstr ""
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Import CAD"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "CAD Layers"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Reload CAD"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Query"
+msgstr ""
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Save"
 msgstr ""
@@ -470,7 +486,7 @@ msgstr ""
 msgid "Operation"
 msgstr ""
 
-#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Name"
 msgstr ""
 
@@ -606,7 +622,7 @@ msgstr ""
 msgid "Unknown command:"
 msgstr ""
 
-#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp apps/Web/src/Host/WebApp.cpp
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Linux/src/Host/LinuxApp.cpp apps/Web/src/Host/WebApp.cpp
 msgid "OK"
 msgstr ""
 
@@ -902,7 +918,7 @@ msgstr ""
 msgid "Could not change the type"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "Cancel"
 msgstr ""
 
@@ -966,12 +982,76 @@ msgstr ""
 msgid "Filters"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp
 msgid "Visible"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Reset"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Preserve"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Invert"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Black and White"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Link CAD"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Colors"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Layers/Levels"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "All"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Import units"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Auto-Detect"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Positioning"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Auto - Center to Center"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Its middle on the project's origin"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Auto - Origin to Origin"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Its origin on the project's origin, where its file's coordinates put it"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Current view only"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "In this plan only, not in every plan of its level"
 msgstr ""
 
 #: apps/Common/src/GUI/InsertDialogs.cpp
@@ -1010,6 +1090,18 @@ msgstr ""
 
 #: apps/Common/src/GUI/InsertDialogs.cpp
 msgid "This project links no models. Link one with Link Model."
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Linked CAD drawings"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "{0} was read again."
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "{0} hasn't changed."
 msgstr ""
 
 #: apps/Common/src/GUI/InsertDialogs.cpp
@@ -1210,6 +1302,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Bring the elements of another project into this one"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Import CAD: a DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Link CAD: a DXF drawing shown in the plans of a level, read again from its file on Reload and when the project opens"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -1959,7 +2059,7 @@ msgstr ""
 msgid "What each pen draws on paper, in mm. The model's pens draw at the scale nearest a view's own; annotations' pens at any scale."
 msgstr ""
 
-#: apps/Common/src/GUI/ManageDialogs.cpp
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Scale"
 msgstr ""
 
@@ -2390,6 +2490,26 @@ msgid "Origin"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Drawing"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Linked File"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Units"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Entities"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Position"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr ""
 
@@ -2575,6 +2695,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Linked Model"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "CAD Import"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "CAD Imports"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -3800,6 +3928,10 @@ msgstr ""
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "Fill pattern file"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "DXF drawings"
 msgstr ""
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp

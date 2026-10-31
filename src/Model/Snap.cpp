@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <set>
 
 namespace MiniBIM::Bim::Snap
 {
@@ -54,6 +55,8 @@ namespace MiniBIM::Bim::Snap
                 Scene s;
                 const std::optional<Guid> above = m.LevelAbove(level);
                 const double cut = m.GetPlanRange(level).cut;
+                // 视图隐藏的 CAD 图层：第一次遇到导入时才算
+                std::optional<Look> look;
                 // pts 外框是否在 p 的 window 以内
                 auto near = [&](std::span<const P2> pts)
                 {
@@ -155,8 +158,77 @@ namespace MiniBIM::Bim::Snap
                     // 剖切面穿过的体量：那里的轮廓
                     else if (const Mass* ms = e.As<Mass>(); ms && m.MassCutBy(*ms, cut))
                         ring(m.MassOutline(*ms, cut));
+                    else if (const CadImport* ci = e.As<CadImport>(); ci && m.Same(ci->level, level))
+                    {
+                        if (!look)
+                            look = m.LookOf(level);
+                        CadScene(s, m, *ci, p, window, *look);
+                    }
                 }
                 return s;
+            }
+
+            // CAD 导入在 p 的 window 毫米以内、导入与视图显示的图层上的东西：线的两端与中点、圆弧与圆的圆心，以及直的线段，
+            // 这样能照着它描墙
+            static void CadScene(Scene& s, const Model& m, const CadImport& ci, P2 p, double window, const Look& look)
+            {
+                const auto c = m.cads.find(ci.cad);
+                if (c == m.cads.end())
+                    return;
+                const Cad& cad = c->second;
+                // 窗口在图纸自己的单位里：它的四角转回去的外框
+                std::vector<std::array<P2, 2>> corners;
+                for (const P2& k : { P2(-1.0, -1.0), P2(1.0, -1.0), P2(1.0, 1.0), P2(-1.0, 1.0) })
+                {
+                    const P2 q = ci.Unplace(p + k * window);
+                    corners.push_back({ q, q });
+                }
+                const auto [lo, hi] = *Dxf::Union(corners);
+                const std::set<std::string>* inView = look.HiddenLayers(ci.cad);
+                const auto near = [&](const std::array<P2, 2>& b) { return b[0].x <= hi.x && b[1].x >= lo.x && b[0].y <= hi.y && b[1].y >= lo.y; };
+                for (const Dxf::Entity& e : cad.Drawing().entities)
+                {
+                    if (!cad.Shows(e, ci.hidden) || (inView && inView->count(e.layer)) || !near(Dxf::Bounds(e.shape)))
+                        continue;
+                    if (const Dxf::Circle* cc = std::get_if<Dxf::Circle>(&e.shape))
+                        s.points.emplace_back(ci.Place(cc->c), Kind::Centre);
+                    else if (const Dxf::Arc* a = std::get_if<Dxf::Arc>(&e.shape))
+                        s.points.emplace_back(ci.Place(a->c), Kind::Centre);
+                    else if (const Dxf::Point* q = std::get_if<Dxf::Point>(&e.shape))
+                        s.points.emplace_back(ci.Place(q->p), Kind::Endpoint);
+                    else if (std::holds_alternative<Dxf::Text>(e.shape))
+                        continue;
+                    const bool straight = std::holds_alternative<Dxf::Line>(e.shape) || std::holds_alternative<Dxf::Polyline>(e.shape) ||
+                                          std::holds_alternative<Dxf::Fill>(e.shape);
+                    for (const auto& [pts, closed] : Cads::Paths(e.shape))
+                    {
+                        if (pts.empty())
+                            continue;
+                        if (!straight)
+                        {
+                            // 曲线：两端与中间的点
+                            if (!closed)
+                            {
+                                s.points.emplace_back(ci.Place(pts.front()), Kind::Endpoint);
+                                s.points.emplace_back(ci.Place(pts.back()), Kind::Endpoint);
+                                s.points.emplace_back(ci.Place(pts[pts.size() / 2]), Kind::Midpoint);
+                            }
+                            continue;
+                        }
+                        const size_t n = closed ? pts.size() : pts.size() - 1;
+                        for (size_t i = 0; i < n; ++i)
+                        {
+                            const P2 a0 = pts[i], b0 = pts[(i + 1) % pts.size()];
+                            if (!near({ P2(std::min(a0.x, b0.x), std::min(a0.y, b0.y)), P2(std::max(a0.x, b0.x), std::max(a0.y, b0.y)) }))
+                                continue;
+                            const P2 a = ci.Place(a0), b = ci.Place(b0);
+                            s.points.emplace_back(a, Kind::Endpoint);
+                            s.points.emplace_back(b, Kind::Endpoint);
+                            s.points.emplace_back((a + b) * 0.5, Kind::Midpoint);
+                            s.lines.emplace_back(a, b);
+                        }
+                    }
+                }
             }
         };
 

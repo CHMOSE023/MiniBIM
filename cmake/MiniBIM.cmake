@@ -9,8 +9,10 @@ add_library(MiniBIM STATIC
     # 模型（移植自 BIMCraft crates/core）：几何、单位、ID、元素与类型、库、墙、项目文件
     src/Model/Align.cpp
     src/Model/Annotate.cpp
+    src/Model/Cad.cpp
     src/Model/Csg.cpp
     src/Model/Curve.cpp
+    src/Model/Dxf.cpp
     src/Model/Family.cpp
     src/Model/FamilyLibrary.cpp
     src/Model/Font.cpp
@@ -38,6 +40,7 @@ add_library(MiniBIM STATIC
     src/Model/Text.cpp
     src/Model/Units.cpp
     src/Model/Walls.cpp
+    src/Model/Zlib.cpp
     # IFC 交换（移植自 BIMCraft step.rs、ifc.rs、import.rs）
     src/Ifc/Export.cpp
     src/Ifc/Import.cpp

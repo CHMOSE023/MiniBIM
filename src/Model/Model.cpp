@@ -453,6 +453,7 @@ namespace MiniBIM::Bim
             const char* operator()(const Sheet&) const { return "sheet"; }
             const char* operator()(const Viewport&) const { return "viewport"; }
             const char* operator()(const Link&) const { return "link"; }
+            const char* operator()(const CadImport&) const { return "cadimport"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -470,6 +471,11 @@ namespace MiniBIM::Bim
             void operator()(Elevation&) const {}
             void operator()(Sheet&) const {}
             void operator()(Link&) const {}
+            void operator()(CadImport& ci) const
+            {
+                f(ci.level);
+                if (ci.view) f(*ci.view);
+            }
             void operator()(Viewport& v) const
             {
                 f(v.sheet);
@@ -585,6 +591,8 @@ namespace MiniBIM::Bim
             f(Kind::Type(category), r->typeName);
         else if (Note* n = As<Note>())
             f(Kind::Of(Kind::Tag::TextType), n->typeName);
+        else if (CadImport* ci = As<CadImport>())
+            f(Kind::Of(Kind::Tag::Cad), ci->cad);
         else if (DetailLine* l = As<DetailLine>())
             f(Kind::Of(Kind::Tag::LineStyle), l->style);
         else if (FilledRegion* r = As<FilledRegion>())
@@ -595,6 +603,27 @@ namespace MiniBIM::Bim
             for (SketchLine& l : r->sketch)
                 if (l.style)
                     f(Kind::Of(Kind::Tag::LineStyle), *l.style);
+        }
+        // 视图按图纸记的隐藏图层：文件里按图纸的 GUID
+        Graphics* g = nullptr;
+        if (Level* l = As<Level>())
+            g = &l->graphics;
+        else if (PlanView* v = As<PlanView>())
+            g = &v->graphics;
+        else if (View3D* v = As<View3D>())
+            g = &v->graphics;
+        else if (Section* s = As<Section>())
+            g = &s->graphics;
+        if (g && !g->layers.empty())
+        {
+            std::map<std::string, std::set<std::string>> keyed;
+            for (auto& [cad, layers] : g->layers)
+            {
+                std::string key = cad;
+                f(Kind::Of(Kind::Tag::Cad), key);
+                keyed[key] = layers;
+            }
+            g->layers = std::move(keyed);
         }
     }
 
@@ -1014,6 +1043,68 @@ namespace MiniBIM::Bim
         return std::nullopt;
     }
 
+    // ── CAD 图纸 ─────────────────────────────────────────────────
+    P2 CadImport::Place(P2 p) const
+    {
+        const double a = angle * kPi / 180.0, s = std::sin(a), c = std::cos(a);
+        const double x = (p.x - origin.x) * scale, y = (p.y - origin.y) * scale;
+        return P2(at.x + x * c - y * s, at.y + x * s + y * c);
+    }
+
+    P2 CadImport::Unplace(P2 q) const
+    {
+        const double a = angle * kPi / 180.0, s = std::sin(a), c = std::cos(a);
+        const double x = q.x - at.x, y = q.y - at.y;
+        return P2(origin.x + (x * c + y * s) / scale, origin.y + (-x * s + y * c) / scale);
+    }
+
+    std::vector<std::string> Model::UnplacedCads() const
+    {
+        if (cads.empty())
+            return {};
+        std::set<std::string> placed;
+        for (const auto& [_, e] : elements.Items())
+            if (const CadImport* ci = e->As<CadImport>())
+                placed.insert(ci->cad);
+        std::vector<std::string> out;
+        for (const auto& [n, _] : cads)
+            if (!placed.count(n))
+                out.push_back(n);
+        return out;
+    }
+
+    std::optional<std::array<P2, 2>> Model::CadBox(Id id) const
+    {
+        const Element* e = elements.Get(id);
+        const CadImport* ci = e ? e->As<CadImport>() : nullptr;
+        if (!ci)
+            return std::nullopt;
+        const auto c = cads.find(ci->cad);
+        if (c == cads.end() || !c->second.Bulk())
+            return std::nullopt;
+        const auto [lo, hi] = *c->second.Bulk();
+        std::vector<std::array<P2, 2>> corners;
+        for (const P2& p : { lo, P2(hi.x, lo.y), hi, P2(lo.x, hi.y) })
+        {
+            const P2 q = ci->Place(p);
+            corners.push_back({ q, q });
+        }
+        return Dxf::Union(corners);
+    }
+
+    void Model::ForgetCadLayers(const std::vector<std::string>& names)
+    {
+        std::vector<Id> views;
+        for (const auto& [id, e] : elements.Items())
+            if (const Graphics* g = ViewGraphics(GuidOf(id)))
+                if (std::any_of(names.begin(), names.end(), [&](const std::string& n) { return g->layers.count(n) > 0; }))
+                    views.push_back(id);
+        for (const Id id : views)
+            if (Graphics* g = ViewGraphicsMut(GuidOf(id)))
+                for (const std::string& n : names)
+                    g->layers.erase(n);
+    }
+
     // ── 墙 ───────────────────────────────────────────────────────
     double Model::Thickness(const Wall& w) const
     {
@@ -1300,6 +1391,8 @@ namespace MiniBIM::Bim
         }
         if (const PlanView* v = e.As<PlanView>())
             return v->level;
+        if (const CadImport* ci = e.As<CadImport>())
+            return ci->level;
         // 文字、高程点、详图线、填充区域在标高的平面或平面视图里
         if (const auto plan = AnnotationPlan(e))
             return PlanLevel(*plan);
@@ -1990,6 +2083,23 @@ namespace MiniBIM::Bim
                 }
             }
         }
+        if (cads.size() > Cads::MaxCads)
+        {
+            error = "the project has " + std::to_string(cads.size()) + " CAD drawings; it holds up to " + std::to_string(Cads::MaxCads);
+            return false;
+        }
+        size_t held = 0;
+        for (const auto& [n, c] : cads)
+        {
+            held += c.Size();
+            if (!TextOk("CAD drawing `" + n + "`", "name", n, error))
+                return false;
+        }
+        if (held > Cads::MaxHeld)
+        {
+            error = "the project's CAD drawings hold " + std::to_string(held) + " bytes; it holds up to " + std::to_string(Cads::MaxHeld);
+            return false;
+        }
         for (const auto& [n, x] : materials)
         {
             if (!TextOk("material `" + n + "`", "name", n, error))
@@ -2382,6 +2492,53 @@ namespace MiniBIM::Bim
                     error = who + ": another link is already named `" + lk->name + "`";
                     return false;
                 }
+            }
+            else if (const CadImport* ci = e.As<CadImport>())
+            {
+                if (!cads.count(ci->cad))
+                {
+                    error = who + ": the project holds no CAD drawing named `" + ci->cad + "`";
+                    return false;
+                }
+                if (!levelOk(ci->level) || !Point(who + " at", ci->at, error) || !Coord(who + " angle", ci->angle, error))
+                    return false;
+                if (!(std::isfinite(ci->origin.x) && std::isfinite(ci->origin.y) && std::abs(ci->origin.x) <= Dxf::MaxFileCoord &&
+                      std::abs(ci->origin.y) <= Dxf::MaxFileCoord))
+                {
+                    error = who + ": origin [" + Num(ci->origin.x) + ", " + Num(ci->origin.y) + "] is past what a drawing holds";
+                    return false;
+                }
+                if (!(ci->scale >= Cads::MinScale && ci->scale <= Cads::MaxScale))
+                {
+                    error = who + ": a scale of " + Num(ci->scale) + " mm to the drawing's unit isn't one; give one from " + Num(Cads::MinScale) + " to " +
+                            Num(Cads::MaxScale);
+                    return false;
+                }
+                if (ci->view)
+                {
+                    const Element* v = elements.Get(*ci->view);
+                    const auto lv = PlanLevel(*ci->view);
+                    if (!(v && (v->As<Level>() || v->As<PlanView>()) && lv && Same(*lv, ci->level)))
+                    {
+                        error = who + ": view " + Shown(*ci->view) + " isn't a plan of its level; an import shows in one of its level's plans";
+                        return false;
+                    }
+                }
+                if (ci->hidden.size() > Cads::MaxHidden)
+                {
+                    error = who + ": it hides " + std::to_string(ci->hidden.size()) + " layers; up to " + std::to_string(Cads::MaxHidden);
+                    return false;
+                }
+                for (const std::string& layer : ci->hidden)
+                    if (!TextOk(who + " hidden layer", "name", layer, error))
+                        return false;
+                if (const auto b = CadBox(id))
+                    for (const P2& p : *b)
+                        if (!Point(who + ": the drawing, placed,", p, error))
+                        {
+                            error += "; place it nearer the origin (`position`: center), or at another `scale`";
+                            return false;
+                        }
             }
             else if (const Viewport* vp = e.As<Viewport>())
             {

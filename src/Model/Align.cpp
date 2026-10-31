@@ -136,6 +136,24 @@ namespace MiniBIM::Bim::Align
         }
         else if (const Link* l = e->As<Link>())
             Axes(out, l->at, l->angle, 100.0);
+        // CAD 导入：显示的直线、多段线与填充的边
+        else if (const CadImport* ci = e->As<CadImport>())
+        {
+            if (const auto c = m.cads.find(ci->cad); c != m.cads.end())
+                for (const Dxf::Entity& x : c->second.Drawing().entities)
+                {
+                    if (!c->second.Shows(x, ci->hidden) ||
+                        !(std::holds_alternative<Dxf::Line>(x.shape) || std::holds_alternative<Dxf::Polyline>(x.shape) || std::holds_alternative<Dxf::Fill>(x.shape)))
+                        continue;
+                    for (const auto& [pts, closed] : Cads::Paths(x.shape))
+                    {
+                        std::vector<P2> placed;
+                        for (const P2& p : pts)
+                            placed.push_back(ci->Place(p));
+                        Path(out, placed, closed);
+                    }
+                }
+        }
         std::erase_if(out, [](const Line& l) { return !(l.first.Dist(l.second) > Tol); });
         return out;
     }

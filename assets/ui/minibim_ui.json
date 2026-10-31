@@ -41,6 +41,8 @@
     "insert.link":           { "icon": "LinkModel.png" },
     "insert.manageLinks":    { "icon": "ManageLinks.png" },
     "insert.fromFile":       { "icon": "InsertFromFile.png" },
+    "insert.importCad":      { "icon": "ImportCad.png" },
+    "insert.linkCad":        { "icon": "LinkCad.png" },
     "modify.align":      { "icon": "Align.png" },
     "modify.offset":     { "icon": "Offset.png" },
     "modify.mirrorPick": { "icon": "MirrorPick.png" },
@@ -202,8 +204,8 @@
           "title": "Insert",
           "panels": [
             { "title": "Select", "items": [ "modify.select" ] },
-            { "title": "Link", "items": [ "insert.link", "insert.manageLinks" ] },
-            { "title": "Import", "items": [ "insert.fromFile" ] }
+            { "title": "Link", "items": [ "insert.link", "insert.linkCad", "insert.manageLinks" ] },
+            { "title": "Import", "items": [ "insert.importCad", "insert.fromFile" ] }
           ]
         },
         // 注释：标高平面里的尺寸、详图线、区域、文字、测量与标记

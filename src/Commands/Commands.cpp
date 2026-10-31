@@ -676,12 +676,18 @@ namespace MiniBIM::Bim
             return failed;
         }
 
-        // 打开的结果，加上项目读完后读不到的链接
+        Json RelinkCads(Session& s);
+
+        // 打开的结果，加上项目读完后读不到的链接与链接的图纸
+
         void WithLinks(Session& s, Json& result)
         {
             Json failed = Relink(s);
             if (!failed.empty())
                 result["links_not_loaded"] = std::move(failed);
+            Json cads = RelinkCads(s);
+            if (!cads.empty())
+                result["cads_not_reloaded"] = std::move(cads);
         }
 
         bool Open(Session& s, const Json& p, Json& result, std::string& error)
@@ -805,6 +811,488 @@ namespace MiniBIM::Bim
                     failed.push_back(Json{ { "name", name }, { "error", why } });
             }
             result = Json{ { "reloaded", std::move(reloaded) }, { "failed", std::move(failed) } };
+            return true;
+        }
+
+        // ── CAD 图纸（第 5g2 步，移植自 BIMCraft commands.rs 的 import_cad 等）──────────────
+        bool        Only(const char* c, const Json& p, std::initializer_list<const char*> keys, std::string& error);
+        std::string ViewTitle(const Model& m, Guid id);
+        bool        NotDependent(const char* c, const Model& m, Guid view, const char* what, std::string& error);
+        bool        AnyViewParam(const char* c, const Model& m, const Json& p, Guid& out, std::string& error);
+
+        // DXF 文件 path（相对于项目文件）的字节，或为什么带不进来
+        bool ReadDxfFile(const Session& s, const std::string& path, std::string& out, std::string& error)
+        {
+            const std::string full = Beside(s, path);
+            const std::u8string e = ToPath(full).extension().u8string();
+            const std::string ext = Text::AsciiLower(std::string(e.begin(), e.end()));
+            if (ext == ".dwg")
+            {
+                error = full + ": MiniBIM doesn't read DWG yet; save it as DXF (any version, ASCII) from the program that made it, "
+                               "or convert it with a DWG to DXF converter, and bring that in";
+                return false;
+            }
+            if (ext != ".dxf")
+            {
+                error = full + ": a " + (ext.empty() ? std::string("file with no extension") : ext + " file") + " isn't a CAD drawing MiniBIM reads; it reads DXF";
+                return false;
+            }
+            std::error_code ec;
+            const uintmax_t size = std::filesystem::file_size(ToPath(full), ec);
+            if (ec)
+            {
+                error = full + ": " + ec.message();
+                return false;
+            }
+            if (size > Dxf::MaxBytes)
+            {
+                error = full + " is too large (" + std::to_string(size) + " bytes; up to " + std::to_string(Dxf::MaxBytes) + ")";
+                return false;
+            }
+            std::ifstream in(ToPath(full), std::ios::binary);
+            if (!in)
+            {
+                error = full + ": can't be read";
+                return false;
+            }
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            out = ss.str();
+            return true;
+        }
+
+        // id 说的 CAD 导入，按 ID 或 GUID
+        bool CadImportParam(const char* c, const Model& m, const Json& p, Id& id, const CadImport*& out, std::string& error)
+        {
+            const Json* v = Get(p, "id");
+            if (!v || v->is_null())
+                return Fail(error, c, "`id`, a CAD import's id or GUID, is required");
+            if (!ElementId(c, m, *v, id, error))
+                return false;
+            const Element* e = m.elements.Get(id);
+            out = e->As<CadImport>();
+            if (!out)
+                return Fail(error, c, std::string(e->Category()) + " " + std::to_string(id) + " isn't a CAD import");
+            return true;
+        }
+
+        // key，图纸的图层名称的列表，每个都是它有的
+        bool LayerList(const char* c, const Json& p, const char* key, const Cad& cad, std::vector<std::string>& out, std::string& error)
+        {
+            out.clear();
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            if (!v->is_array() || v->size() > Cads::MaxHidden)
+                return Fail(error, c, std::string("`") + key + "` is a list of layer names, of up to " + std::to_string(Cads::MaxHidden) + ", not " + Show(*v));
+            const Dxf::Drawing& d = cad.Drawing();
+            for (const Json& n : *v)
+            {
+                if (!n.is_string())
+                    return Fail(error, c, std::string("`") + key + "` lists layers by name, not " + Show(n));
+                const std::string name = n.get<std::string>();
+                if (!d.LayerOf(name))
+                {
+                    std::string names;
+                    for (size_t i = 0; i < d.layers.size() && i < 20; ++i)
+                        names += (i ? ", " : "") + d.layers[i].name;
+                    return Fail(error, c, "the drawing has no layer `" + name + "` (it has: " + names + (d.layers.size() > 20 ? "…" : "") + ")");
+                }
+                out.push_back(name);
+            }
+            return true;
+        }
+
+        Json RgbJson(const std::optional<Dxf::Rgb>& c) { return c ? Json::array({ c->r, c->g, c->b }) : Json(nullptr); }
+
+        // 回复列出的图纸的图层：各带颜色、线型，以及显示不显示
+        Json LayersJson(const Cad& cad, const std::set<std::string>& hidden, const std::set<std::string>* inView)
+        {
+            Json rows = Json::array();
+            for (const Dxf::Layer& l : cad.Drawing().layers)
+            {
+                Json row = Json{ { "name", l.name }, { "color", RgbJson(l.color.ToRgb()) }, { "linetype", l.linetype }, { "shown", !hidden.count(l.name) } };
+                if (inView)
+                    row["shown_in_view"] = !hidden.count(l.name) && !inView->count(l.name);
+                rows.push_back(std::move(row));
+            }
+            return rows;
+        }
+
+        // 文件里关闭或冻结的图层：只导入可见图层时隐藏的
+        std::set<std::string> OffLayers(const Cad& cad)
+        {
+            std::set<std::string> out;
+            for (const Dxf::Layer& l : cad.Drawing().layers)
+                if (l.off || l.frozen)
+                    out.insert(l.name);
+            return out;
+        }
+
+        // 长度单位的名称到毫米
+        std::optional<double> UnitMm(std::string_view name)
+        {
+            const std::string n = Text::AsciiLower(Text::Trim(name));
+            if (n == "mm") return 1.0;
+            if (n == "cm") return 10.0;
+            if (n == "m") return 1000.0;
+            if (n == "in") return 25.4;
+            if (n == "ft") return 304.8;
+            return std::nullopt;
+        }
+
+        // 带进一张 DXF 图纸，或再放一张项目存的，作为元素：Revit 的导入 CAD（与链接 CAD）
+        bool ImportCad(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "import_cad";
+            if (!Only(c, p, { "path", "cad", "name", "level", "view", "at", "position", "units", "scale", "angle", "layers", "colors", "link" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            std::optional<Guid> view;
+            if (P.Absent("view"))
+            {
+                if (!LevelParam(c, m, p, "level", level, error))
+                    return false;
+            }
+            else
+            {
+                std::optional<Guid> plan;
+                if (!PlanParam(c, m, p, "view", level, plan, error))
+                    return false;
+                if (!P.Absent("level"))
+                {
+                    Guid given;
+                    if (!LevelParam(c, m, p, "level", given, error))
+                        return false;
+                    if (!m.Same(given, level))
+                        return P.Fail("`view` is a plan of another level than `level`; give the one, or a plan of the other");
+                }
+                view = plan.value_or(level);
+            }
+            bool link = false;
+            std::optional<std::string> path, held, given;
+            if (!P.Flag("link", link) || !P.String("path", path) || !P.String("cad", held) || !P.String("name", given))
+                return false;
+            if (path && held)
+                return P.Fail("give `path`, a DXF file to bring in, or `cad`, a drawing the project holds; not both");
+            if (!path && !held)
+                return P.Fail("give `path`, a DXF file to bring in, or `cad`, the name of a drawing the project holds");
+            std::string name;
+            Cad cad;
+            bool fresh = false;
+            if (held)
+            {
+                const auto it = m.cads.find(*held);
+                if (it == m.cads.end())
+                {
+                    std::string names;
+                    for (const auto& [n, _] : m.cads)
+                        names += (names.empty() ? "" : ", ") + n;
+                    return P.Fail("the project holds no CAD drawing named `" + *held + "` (it holds: " + (names.empty() ? std::string("none") : names) + ")");
+                }
+                name = *held;
+                cad  = it->second;
+            }
+            else
+            {
+                const std::filesystem::path fp = ToPath(*path);
+                const std::u8string file = fp.filename().u8string(), stem = fp.stem().u8string();
+                const std::string source = file.empty() ? *path : std::string(file.begin(), file.end());
+                name = given ? *given : stem.empty() ? std::string("Drawing") : Text::TakeChars(std::string(stem.begin(), stem.end()), MaxText);
+                if (Text::Trim(name).empty())
+                    return P.Fail("a CAD drawing needs a `name`");
+                if (m.cads.count(name))
+                    return P.Fail("the project already holds a CAD drawing named `" + name +
+                                  "`: place it again with `cad`, or bring this file in under another `name`");
+                if (m.cads.size() >= Cads::MaxCads)
+                    return P.Fail("the project holds " + std::to_string(Cads::MaxCads) + " CAD drawings already; delete the imports of one first");
+                std::string bytes, why;
+                if (!ReadDxfFile(s, *path, bytes, why))
+                    return P.Fail(why);
+                size_t all = bytes.size();
+                for (const auto& [_, x] : m.cads)
+                    all += x.Size();
+                if (all > Cads::MaxHeld)
+                    return P.Fail("the project's CAD drawings would hold " + std::to_string(all) + " bytes; it holds up to " + std::to_string(Cads::MaxHeld));
+                if (!Cad::Make(source, link ? std::optional<std::string>(*path) : std::nullopt, std::move(bytes), cad, why))
+                    return P.Fail(*path + ": " + why);
+                fresh = true;
+            }
+            if (link && !fresh)
+                return P.Fail("`link` is for a file brought in by `path`; a drawing the project holds stays as it's held");
+            const Dxf::Drawing& dxf = cad.Drawing();
+            std::optional<std::string> units;
+            std::optional<double> k;
+            if (!P.String("units", units) || !P.Num("scale", k))
+                return false;
+            if (units && k)
+                return P.Fail("give `units` or `scale`, not both");
+            double scale = 1.0;
+            if (k)
+            {
+                if (!(*k >= Cads::MinScale && *k <= Cads::MaxScale))
+                    return P.Fail("`scale` is mm to each of the drawing's units, from " + Num(Cads::MinScale) + " to " + Num(Cads::MaxScale) + ", not " + Num(*k));
+                scale = *k;
+            }
+            else if (!units || *units == "auto")
+                scale = dxf.scale.value_or(1.0);
+            else if (const auto u = UnitMm(*units))
+                scale = *u;
+            else
+                return P.Fail("`units` is auto, mm, cm, m, in or ft, not " + *units);
+            const std::array<P2, 2> bulk = cad.Bulk().value_or(std::array<P2, 2>{});
+            std::optional<std::string> position;
+            if (!P.String("position", position))
+                return false;
+            P2 origin = (bulk[0] + bulk[1]) * 0.5;
+            if (position && *position == "origin")
+                origin = P2(0.0, 0.0);
+            else if (position && *position != "center" && *position != "centre")
+                return P.Fail("`position` is center (the middle of the drawing on `at`) or origin (its origin on `at`), not " + *position);
+            std::optional<P2> at;
+            std::optional<double> angle;
+            if (!P.PointOpt("at", at) || !P.Num("angle", angle))
+                return false;
+            std::set<std::string> hidden;
+            const Json* layers = Get(p, "layers");
+            if (!layers || layers->is_null() || (layers->is_string() && layers->get<std::string>() == "visible"))
+                hidden = OffLayers(cad);
+            else if (layers->is_string() && layers->get<std::string>() == "all")
+                ;
+            else if (layers->is_array())
+            {
+                std::vector<std::string> keep;
+                if (!LayerList(c, p, "layers", cad, keep, error))
+                    return false;
+                for (const Dxf::Layer& l : dxf.layers)
+                    if (std::find(keep.begin(), keep.end(), l.name) == keep.end())
+                        hidden.insert(l.name);
+            }
+            else
+                return P.Fail("`layers` is visible (those the file has on and thawed), all, or a list of the layers to show, not " + Show(*layers));
+            std::optional<std::string> colorName;
+            if (!P.String("colors", colorName))
+                return false;
+            CadColors colors = CadColors::Preserve;
+            if (colorName)
+            {
+                const auto cc = CadColorsFrom(*colorName);
+                if (!cc)
+                    return P.Fail("`colors` is preserve, invert or black, not " + *colorName);
+                colors = *cc;
+            }
+            // 读它用的单位：给的，否则文件的
+            std::string unit;
+            if (units && *units != "auto")
+                unit = *units + " (its file says " + dxf.unit + ")";
+            else if (k)
+                unit = "a scale of its own (its file says " + dxf.unit + ")";
+            else if (dxf.scale)
+                unit = dxf.unit;
+            else
+                unit = dxf.unit + " (read as mm unless `units` says)";
+            const size_t entities = dxf.entities.size(), layerCount = dxf.layers.size(), far = cad.Far();
+            Json leftOut = Json::object();
+            for (const auto& [what, n] : dxf.leftOut)
+                leftOut[what] = n;
+            const std::string source = cad.Source();
+            Model& mm = s.ModelMut();
+            if (fresh)
+                mm.cads.emplace(name, std::move(cad));
+            CadImport ci;
+            ci.cad    = name;
+            ci.level  = level;
+            ci.at     = at.value_or(P2(0.0, 0.0));
+            ci.origin = origin;
+            ci.scale  = scale;
+            ci.angle  = angle.value_or(0.0);
+            ci.view   = view;
+            ci.hidden = std::move(hidden);
+            ci.colors = colors;
+            const Id id = mm.Insert(Element(std::move(ci)));
+            const auto extents = mm.CadBox(id);
+            result = Json{ { "id", id },           { "cad", name },          { "source", source },     { "unit", unit },  { "scale", scale },
+                           { "entities", entities }, { "layers", layerCount }, { "far", far },          { "left_out", std::move(leftOut) } };
+            result["extents"] = extents ? Json::array({ ToJson((*extents)[0]), ToJson((*extents)[1]) }) : Json(nullptr);
+            if (far > 0)
+                result["warning"] = std::to_string(far) +
+                                    " of its entities lie far from the rest of the drawing: they're drawn where they are, and left out of its extents. "
+                                    "Delete them in the program that made the drawing, or hide their layers";
+            return true;
+        }
+
+        // 导入的图层，以及它显示哪些：在每个视图，或在一个视图（它的可见性/图形的"导入的类别"）
+        bool CadLayers(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "cad_layers";
+            if (!Only(c, p, { "id", "hide", "show", "view" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Id id = 0;
+            const CadImport* ci = nullptr;
+            if (!CadImportParam(c, m, p, id, ci, error))
+                return false;
+            const auto it = m.cads.find(ci->cad);
+            if (it == m.cads.end())
+                return Fail(error, c, "the project holds no CAD drawing named `" + ci->cad + "`");
+            const Cad cad = it->second;
+            std::vector<std::string> hide, show;
+            if (!LayerList(c, p, "hide", cad, hide, error) || !LayerList(c, p, "show", cad, show, error))
+                return false;
+            for (const std::string& h : hide)
+                if (std::find(show.begin(), show.end(), h) != show.end())
+                    return Fail(error, c, "layer `" + h + "` is in `hide` and in `show`; give it in one");
+            const std::string name = ci->cad;
+            std::set<std::string> hidden = ci->hidden;
+            std::optional<std::set<std::string>> inView;
+            if (Bim::Absent(p, "view"))
+            {
+                hidden.insert(hide.begin(), hide.end());
+                for (const std::string& l : show)
+                    hidden.erase(l);
+                if (hidden != ci->hidden)
+                    s.ModelMut().elements.GetMut(id)->As<CadImport>()->hidden = hidden;
+            }
+            else
+            {
+                Guid v;
+                if (!AnyViewParam(c, m, p, v, error))
+                    return false;
+                const Graphics* og = m.ViewGraphics(v);
+                if (!og)
+                    return Fail(error, c, ViewTitle(m, v) + " isn't a plan, a section, an elevation or a 3D view");
+                Graphics g = *og;
+                const auto had = g.layers.find(name);
+                const std::set<std::string> was = had == g.layers.end() ? std::set<std::string>{} : had->second;
+                std::set<std::string> now = was;
+                now.insert(hide.begin(), hide.end());
+                for (const std::string& l : show)
+                    now.erase(l);
+                if (now != was)
+                {
+                    if (!NotDependent(c, m, v, "graphics", error))
+                        return false;
+                    if (now.empty())
+                        g.layers.erase(name);
+                    else
+                        g.layers[name] = now;
+                    std::string why;
+                    if (!g.Check(m, why))
+                        return Fail(error, c, why);
+                    *s.ModelMut().ViewGraphicsMut(v) = std::move(g);
+                }
+                inView = std::move(now);
+            }
+            result = Json{ { "id", id }, { "cad", name }, { "layers", LayersJson(cad, hidden, inView ? &*inView : nullptr) } };
+            return true;
+        }
+
+        // 从文件再读一张链接的图纸
+        bool ReloadCad(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "reload_cad";
+            if (!Only(c, p, { "cad" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> name;
+            if (!P.String("cad", name))
+                return false;
+            if (!name)
+                return P.Fail("`cad`, the name of a linked CAD drawing, is required");
+            const auto it = s.GetModel().cads.find(*name);
+            if (it == s.GetModel().cads.end())
+                return P.Fail("the project holds no CAD drawing named `" + *name + "`");
+            const Cad cad = it->second;
+            if (!cad.Path())
+                return P.Fail("CAD drawing `" + *name + "` isn't linked; bring it in again with `import_cad` and `link`");
+            const std::string path = *cad.Path();
+            std::string bytes, why;
+            if (!ReadDxfFile(s, path, bytes, why))
+                return P.Fail(why);
+            if (cad.SameBytes(bytes))
+            {
+                result = Json{ { "cad", *name }, { "changed", false } };
+                return true;
+            }
+            Cad fresh;
+            if (!Cad::Make(cad.Source(), path, std::move(bytes), fresh, why))
+                return P.Fail(path + ": " + why);
+            const size_t entities = fresh.Drawing().entities.size();
+            s.ModelMut().cads[*name] = std::move(fresh);
+            result = Json{ { "cad", *name }, { "changed", true }, { "entities", entities } };
+            return true;
+        }
+
+        // 再读每张链接的图纸，同打开项目；读不了的，{cad, error}。文件不见了的图纸留着项目存的
+        Json RelinkCads(Session& s)
+        {
+            std::vector<std::pair<std::string, std::string>> linked;
+            for (const auto& [n, cad] : s.GetModel().cads)
+                if (cad.Path())
+                    linked.emplace_back(n, *cad.Path());
+            Json failed = Json::array();
+            for (const auto& [name, path] : linked)
+            {
+                std::string bytes, why;
+                bool ok = ReadDxfFile(s, path, bytes, why);
+                if (ok)
+                {
+                    const Cad& held = s.GetModel().cads.at(name);
+                    if (held.SameBytes(bytes))
+                        continue;
+                    Cad fresh;
+                    ok = Cad::Make(held.Source(), path, std::move(bytes), fresh, why);
+                    if (ok)
+                        s.ModelMut().cads[name] = std::move(fresh);
+                }
+                if (!ok)
+                    failed.push_back(Json{ { "cad", name }, { "error", why } });
+            }
+            return failed;
+        }
+
+        // 导入里离一点最近的东西：Revit 的查询
+        bool CadQuery(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "cad_query";
+            if (!Only(c, p, { "id", "at", "reach" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            Id id = 0;
+            const CadImport* ci = nullptr;
+            P2 at;
+            std::optional<double> reachOpt;
+            if (!CadImportParam(c, m, p, id, ci, error) || !P.PointReq("at", at) || !P.Num("reach", reachOpt))
+                return false;
+            const double reach = reachOpt.value_or(100.0);
+            if (!(reach > 0.0))
+                return P.Fail("`reach` is how far from `at` to look, mm, above 0, not " + Num(reach));
+            const auto it = m.cads.find(ci->cad);
+            if (it == m.cads.end())
+                return P.Fail("the project holds no CAD drawing named `" + ci->cad + "`");
+            const Cad& cad = it->second;
+            const auto hit = Cads::Nearest(cad, *ci, at, reach);
+            if (!hit)
+            {
+                result = Json{ { "id", id }, { "found", false } };
+                return true;
+            }
+            const Dxf::Entity& e = *hit->first;
+            std::optional<std::string> linetype = e.linetype;
+            if (!linetype)
+                if (const Dxf::Layer* l = cad.Drawing().LayerOf(e.layer))
+                    linetype = l->linetype;
+            result = Json{ { "id", id },
+                           { "found", true },
+                           { "kind", Cads::Kind(e.shape) },
+                           { "layer", e.layer },
+                           { "color", RgbJson(cad.ColorOf(e, CadColors::Preserve)) },
+                           { "linetype", linetype ? Json(*linetype) : Json(nullptr) },
+                           { "weight", e.weight ? Json(*e.weight) : Json(nullptr) },
+                           { "distance", Hundredth(hit->second) } };
             return true;
         }
 
@@ -3121,6 +3609,12 @@ namespace MiniBIM::Bim
             }
             else if (Link* lk = out.As<Link>())
                 std::tie(lk->at, lk->angle) = Turned(f, lk->at, lk->angle);
+            else if (CadImport* ci = out.As<CadImport>())
+            {
+                if (mo.mirror)
+                    return Fail(error, c, "CAD import " + std::to_string(id) + " can't be mirrored; mirror it in the program that made the drawing, or turn it");
+                std::tie(ci->at, ci->angle) = Turned(f, ci->at, ci->angle);
+            }
             else if (Roof* r = out.As<Roof>())
             {
                 // 边保持编号，山墙随之
@@ -3901,6 +4395,9 @@ namespace MiniBIM::Bim
                     // 视口跟着它的图纸与它放的视图
                     else if (const Viewport* vp = e->As<Viewport>())
                         hangs = in(vp->sheet) || in(vp->view);
+                    // 仅当前视图的导入跟着它的视图
+                    else if (const CadImport* ci = e->As<CadImport>())
+                        hangs = in(ci->view);
                     else if (e->IsAnnotation())
                         hangs = in(m.AnnotationPlan(*e));
                     if (hangs)
@@ -4112,6 +4609,15 @@ namespace MiniBIM::Bim
         }
 
         // 视图的设置，graphics 命令回答的：隐藏与覆盖的类别、比例、详细程度、视觉样式
+        // 视图隐藏的各 CAD 图纸的图层
+        Json LayersOf(const Graphics& g)
+        {
+            Json out = Json::object();
+            for (const auto& [cad, names] : g.layers)
+                out[cad] = Json(std::vector<std::string>(names.begin(), names.end()));
+            return out;
+        }
+
         Json GraphicsReply(const Model& m, const Graphics& g)
         {
             Json hidden = Json::array(), cats = Json::object(), hiddenEls = Json::array(), els = Json::object();
@@ -4139,18 +4645,19 @@ namespace MiniBIM::Bim
                          { "elements", std::move(els) },
                          { "scale", g.scale ? Json(*g.scale) : Json(nullptr) },
                          { "detail", Text::AsciiLower(DetailOf::Name(g.detail)) },
-                         { "visual_style", VisualStyleOf::Key(g.style) } };
+                         { "visual_style", VisualStyleOf::Key(g.style) },
+                         { "layers", LayersOf(g) } };
         }
 
         // p 要对图形 g 做的改动：隐藏与显示类别和元素、覆盖、套用的过滤器、跟随的样板。样板（ofTemplate）只有类别与过滤器
         bool EditGraphics(const char* c, const Model& m, const Json& p, Graphics& g, bool ofTemplate, std::string& error)
         {
             const auto given = [&](const char* k) { return !Absent(p, k); };
-            for (const char* k : { "phase", "phase_filter", "options", "layers" })
+            for (const char* k : { "phase", "phase_filter", "options" })
                 if (given(k))
-                    return Fail(error, c, std::string("`") + k + "`: phases, design options and CAD layers aren't in MiniBIM yet");
+                    return Fail(error, c, std::string("`") + k + "`: phases and design options aren't in MiniBIM yet");
             if (ofTemplate)
-                for (const char* k : { "hide_elements", "show_elements", "elements", "template" })
+                for (const char* k : { "hide_elements", "show_elements", "elements", "template", "layers" })
                     if (given(k) || (std::string_view(k) == "template" && p.contains("template")))
                         return Fail(error, c, std::string("`") + k + "` is a view's own; a template holds categories, filters, a phase and design options");
             // 这次改完之后跟随的样板：给了的（null 为不再跟随），否则原来的
@@ -4257,6 +4764,36 @@ namespace MiniBIM::Bim
                     list.push_back(std::move(a));
                 }
                 g.filters = std::move(list);
+            }
+            if (const Json* ls = Get(p, "layers"); ls && !ls->is_null())
+            {
+                if (!ls->is_object() || ls->size() > Cads::MaxCads)
+                    return Fail(error, c, "`layers` is {drawing: [layer, …] | null}, not " + Show(*ls));
+                for (auto it = ls->begin(); it != ls->end(); ++it)
+                {
+                    const auto cad = m.cads.find(it.key());
+                    if (cad == m.cads.end())
+                        return Fail(error, c, "`layers`: the project has no CAD drawing `" + it.key() + "` (see `elements` of category cadimport)");
+                    std::set<std::string> names;
+                    if (it->is_array() && it->size() <= Cads::MaxHidden)
+                    {
+                        for (const Json& n : *it)
+                        {
+                            if (!n.is_string())
+                                return Fail(error, c, "`layers`: `" + it.key() + "` lists layers by name, not " + Show(n));
+                            names.insert(n.get<std::string>());
+                        }
+                    }
+                    else if (!it->is_null())
+                        return Fail(error, c, "`layers`: `" + it.key() + "` is a list of the layers to hide, or null, not " + Show(*it));
+                    for (const std::string& n : names)
+                        if (!cad->second.Drawing().LayerOf(n))
+                            return Fail(error, c, "`layers`: `" + it.key() + "` has no layer `" + n + "` (see `cad_layers`)");
+                    if (names.empty())
+                        g.layers.erase(it.key());
+                    else
+                        g.layers[it.key()] = std::move(names);
+                }
             }
             if (p.contains("template"))
                 g.templateName = templateThen;
@@ -6840,6 +7377,10 @@ namespace MiniBIM::Bim
             { "insert", N_("Insert from File"), {}, "{path, ids?: [id, …]} elements of another project (.minibim, .bimcraft or .ifc) brought into this one: those `ids` names (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is this project's of the same name, where it has one). Each keeps its id unless this project has that id, and its GUID unless this project has that GUID: then it's a copy, with a GUID of its own (the same file inserted into itself is copied whole). What they point at among themselves follows them. A name or a number taken here gets ` 2`, ` 3`…; types, families, materials and parameters this project hasn't come by name, and so do the line styles, fill patterns and filled region types a detail line or a filled region uses. Returns `ids` {there: here}, `copies`, `library`, `left_out`", InsertFrom, true },
             { "link", N_("Link Model"), { "LK" }, "{path, name?, at?: [x, y], angle?: degrees} another project (.minibim, .bimcraft or .ifc) shown in this one as a reference that can't be edited: its walls, floors, roofs, columns, stairs and the rest of what it builds are drawn in the plans, sections and 3D views, halftone; nothing of it is selected, scheduled, checked or exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`", LinkModel, true },
             { "reload", N_("Reload Links"), {}, "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` (the names) and `failed` ({name, error})", Reload, false },
+            { "import_cad", N_("Import CAD"), {}, "{path | cad, name?, level?, view?, at?: [x, y], position?, units?, scale?, angle?, layers?, colors?, link?} brings in a DXF drawing (`path`: an ASCII DXF of any version; save a DWG as DXF first) or places one the project holds again (`cad`, its name), as an element in every plan of `level`, or with `view` (a plan) in that view only. `units` of the drawing: auto (the default: what its file says, else mm), mm, cm, m, in or ft; or `scale`, mm to each of its units. `position`: center (the default: the middle of the drawing on `at`, the origin unless given) or origin (its origin on `at`); `angle` turns it about `at`, degrees. `layers`: visible (the default: those its file has on and thawed), all, or a list of those to show. `colors`: preserve (the default), invert or black. `link: true` remembers the file, so `reload_cad` and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents in the model, how many entities lie far from the rest (they're left out of its extents) and what was left out", ImportCad, true },
+            { "cad_layers", N_("CAD Layers"), {}, "{id, hide?: [layer, …], show?: [layer, …], view?} a CAD import's layers, each with its colour and linetype and whether it's shown; `hide` and `show` change which it shows in every view, or with `view` in that view only (its Visibility/Graphics, by the drawing's name)", CadLayers, true },
+            { "reload_cad", N_("Reload CAD"), {}, "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project does too). Returns whether it changed", ReloadCad, true },
+            { "cad_query", N_("Query"), {}, "{id, at: [x, y], reach?} what of a CAD import lies nearest `at`, within `reach` mm (100 unless given): its kind, layer, colour, linetype and weight, as Revit's Query", CadQuery, false },
             { "save", N_("Save"), {}, "{path?} saves the project (Save As with a path) as .minibim; the format is BIMCraft's, which opens it too. A path ending .ifc exports IFC4 and leaves the project's own path as it was", Save, false },
             { "undo", N_("Undo"), {}, "{count?} takes back the last `count` steps (1 by default)", Undo, false },
             { "redo", N_("Redo"), {}, "{count?} does again the last `count` steps undone (1 by default)", Redo, false },
@@ -7310,6 +7851,21 @@ namespace MiniBIM::Bim
             const auto it = m.loaded.find(l->path);
             v["loaded"]   = it != m.loaded.end();
             v["elements"] = it != m.loaded.end() ? Json(it->second->elements.Items().size()) : Json();
+        }
+        else if (const CadImport* ci = e->As<CadImport>())
+        {
+            if (const auto it = m.cads.find(ci->cad); it != m.cads.end())
+            {
+                const Dxf::Drawing& d = it->second.Drawing();
+                v["source"]   = it->second.Source();
+                v["entities"] = d.entities.size();
+                v["layers"]   = d.layers.size();
+                v["unit"]     = d.unit;
+                if (it->second.Path())
+                    v["linked"] = *it->second.Path();
+            }
+            if (const auto b = m.CadBox(id))
+                v["extents"] = Json::array({ ToJson((*b)[0]), ToJson((*b)[1]) });
         }
         else if (const Wall* w = e->As<Wall>())
         {

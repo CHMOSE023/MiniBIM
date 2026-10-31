@@ -227,6 +227,8 @@ namespace MiniBIM::Bim
                 out.emplace_back(Kind::Type(cat), n);
         for (const auto& [n, _] : materials)
             out.emplace_back(Kind::Of(Kind::Tag::Material), n);
+        for (const auto& [n, _] : cads)
+            out.emplace_back(Kind::Of(Kind::Tag::Cad), n);
         for (const auto& [n, _] : families)
             out.emplace_back(Kind::Of(Kind::Tag::Family), n);
         for (const auto& [f, fam] : families)

@@ -85,6 +85,19 @@ namespace MiniBIM::Bim::Text
         return n;
     }
 
+    std::string TakeChars(std::string_view utf8, size_t n)
+    {
+        size_t i = 0, count = 0;
+        while (i < utf8.size() && count < n)
+        {
+            ++i;
+            while (i < utf8.size() && (static_cast<unsigned char>(utf8[i]) & 0xC0) == 0x80)
+                ++i;
+            ++count;
+        }
+        return std::string(utf8.substr(0, i));
+    }
+
     std::u32string Utf32(std::string_view bytes)
     {
         std::u32string out;

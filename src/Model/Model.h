@@ -1,5 +1,6 @@
 // 移植自 BIMCraft crates/core/src/model.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #pragma once
+#include "Model/Cad.h"
 #include "Model/Family.h"
 #include "Model/Geom.h"
 #include "Model/Graphics.h"
@@ -206,6 +207,28 @@ namespace MiniBIM::Bim
         P2          at;
         double      angle = 0.0;
         bool operator==(const Link&) const = default;
+    };
+
+    // 放好的 CAD 图纸（第 5g2 步，移植自 BIMCraft model.rs 的 CadImport），即导入 CAD：项目的图纸 cad，它的点 origin（它自己的单位）
+    // 放在 level 上的 at，每个单位 scale 毫米，绕 at 逆时针转 angle 度。有 view 时只那个平面显示（仅当前视图），否则它标高的每个平面都显示。
+    // hidden 是它在每个视图都不显示的图层，colors 说怎样画它的颜色。它没有 params：阶段与涂色不碰它
+    struct CadImport
+    {
+        std::string           cad;
+        Guid                  level;
+        P2                    at;
+        P2                    origin;
+        double                scale = 1.0;
+        double                angle = 0.0;
+        std::optional<Guid>   view;
+        std::set<std::string> hidden;
+        CadColors             colors = CadColors::Preserve;
+
+        // 图纸的点 p（它自己的单位）在平面上的哪里，毫米
+        P2 Place(P2 p) const;
+        // 平面上 q 处是图纸的哪一点：Place 的反向
+        P2 Unplace(P2 q) const;
+        bool operator==(const CadImport&) const = default;
     };
 
     struct Grid
@@ -750,7 +773,7 @@ namespace MiniBIM::Bim
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
                                      Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass,
                                      Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D, Schedule, Section, Elevation,
-                                     Sheet, Viewport, Link>;
+                                     Sheet, Viewport, Link, CadImport>;
         Variant v;
 
         Element() = default;
@@ -963,6 +986,8 @@ namespace MiniBIM::Bim
         Library     library;
         // 读进来的链接的项目，按链接的 path（不存进文件：打开项目与 reload 时读）；没读到的链接什么都不画
         std::map<std::string, std::shared_ptr<const Model>> loaded;
+        // 带进来的 CAD 图纸，按名称（第 5g2 步）：每张存一份，CadImport 放它；没有导入放的随最后一个导入删掉
+        std::map<std::string, Cad> cads;
 
         // 空项目：两个标高，几种起步用的类型与材质
         static Model New(std::string_view name, Language language = Language::English);
@@ -995,6 +1020,15 @@ namespace MiniBIM::Bim
         double Elevation(Guid level) const;
         // level 之上的第一个标高
         std::optional<Guid> LevelAbove(Guid level) const;
+
+        // ── CAD 图纸 ────────────────────────────────────────────
+        // 没有导入放的图纸
+        std::vector<std::string> UnplacedCads() const;
+        // 放好的图纸主体在平面上外面的框，毫米，西南角在前（离其余的远的不算）；id 放的不是图纸时为空
+        std::optional<std::array<P2, 2>> CadBox(Id id) const;
+        // 各视图的图形不再隐藏这几张图纸的图层（图纸删掉了）
+        void ForgetCadLayers(const std::vector<std::string>& names);
+
 
         // ── 墙 ──────────────────────────────────────────────────
         double Thickness(const Wall& w) const;

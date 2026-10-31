@@ -16,6 +16,8 @@ namespace MiniBIM::Bim::Text
     std::vector<std::string_view> SplitWhitespace(std::string_view s);
     // 字符数（UTF-8 码点数），名称长度的上限按它算
     size_t           CharCount(std::string_view utf8);
+    // 前 n 个字符（UTF-8 码点）
+    std::string      TakeChars(std::string_view utf8, size_t n);
     // 字节串按 UTF-8 解成码点：非法的序列（截断、过长编码、代理区、超出 U+10FFFF）各成一个 U+FFFD（照 Rust 的 from_utf8_lossy）
     std::u32string   Utf32(std::string_view bytes);
     // 码点 c 的 UTF-8 接在 out 后面；不是码点的（代理区、超出 U+10FFFF）写 U+FFFD

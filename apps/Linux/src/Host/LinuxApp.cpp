@@ -63,6 +63,8 @@ namespace MiniBIM
                 f.Add(Tr("Shortcuts file") + " (*.json;*.xml;*.txt;*.md)", "json;xml;txt;md");
             else if (kind == FileKind::FillPatterns)
                 f.Add(Tr("Fill pattern file") + " (*.pat)", "pat");
+            else if (kind == FileKind::Dxf)
+                f.Add(Tr("DXF drawings") + " (*.dxf;*.dwg)", "dxf;dwg");
             else if (kind == FileKind::ProjectOrRevit)
             {
                 f.Add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", "minibim;bimcraft;ifc;rvt");

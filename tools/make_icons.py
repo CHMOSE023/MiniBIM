@@ -902,6 +902,24 @@ def _(i):
     i.arrow(30, 22, 44, 50, A, w=4, head=9)
 
 
+@icon("ImportCad")         # insert.importCad：导入 CAD（一张图纸上的几条墙线与一个圆，强调色的箭头把它带进来）
+def _(i):
+    i.rect(6, 6, 46, 46, G, GF, w=3)
+    i.line([(12, 14), (40, 14), (40, 38)], G, 3)
+    i.line([(12, 14), (12, 38), (28, 38)], G, 3)
+    i.circle(26, 26, 5, G, w=2.5)
+    i.arrow(36, 36, 58, 58, A, w=4, head=10)
+
+
+@icon("LinkCad")           # insert.linkCad：链接 CAD（同一张图纸，前面强调色的两个链环）
+def _(i):
+    i.rect(6, 6, 46, 46, G, GF, w=3)
+    i.line([(12, 14), (40, 14), (40, 38)], G, 3)
+    i.line([(12, 14), (12, 38), (28, 38)], G, 3)
+    i.ellipse(36, 50, 12, 7, A, w=4)
+    i.ellipse(50, 50, 12, 7, A, w=4)
+
+
 @icon("ManageLinks")       # insert.manageLinks：管理链接（几行列表，前面强调色的链环与再读的箭头）
 def _(i):
     for y in (12, 24):
