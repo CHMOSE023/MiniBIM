@@ -44,7 +44,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   `UIContext::SetUnhandledTextHandler` 到 `MainFrame::OnShortcutText`：没有节点要、没有弹层、不在输入法组合中、不在开始页上时才算；
   画了起点之后先打数字的是长度（`MainFrame::OnPlanText`）。默认的表（`MainFrame::RegisterShortcuts`）是桌面自己的几个加上模型命令的快捷名
   （`Bim::Command` 的 `aliases`）中有界面命令的；改过的存在 settings.json 的 `shortcuts`（键 → 界面命令 ID，空 = 关掉默认的）。
-  文件 > 键盘快捷键（`file.shortcuts`，KS）：搜索、删除、指定、恢复默认，从文件读入（`AppPlatform::PickShortcutsFile`；JSON、Revit 导出的 XML、
+  文件 > 键盘快捷键（`file.shortcuts`，KS）：搜索、删除、指定、恢复默认，从文件读入（`AppPlatform::PickFile` 的 `FileKind::Shortcuts`；JSON、Revit 导出的 XML、
   "WA - Wall" 这样的行，说明按命令名称或 ID 找，`MainFrame::ShortcutCommand`）
 - 最近打开（`Recent.h` 的 `RecentFiles`，移植自 `recent.rs`）：文件菜单"最近打开"（动态子菜单 `recent`，`MainFrame::BuildRecentMenu`）列最后打开或保存的
   10 个项目与 IFC 文件，新的在前，同名的后面加文件夹；"清除最近打开的文件"。打开成功（`MainFrame::OpenPath`）、保存成功时 `MainFrame::NoteRecent`；
@@ -96,8 +96,11 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   项目浏览器里双击类型（右键还有删除，经 `delete_type`）。材质（`MainFrame::OpenMaterials`，"管理 > 材质"）：每个改动是一条 `material` 命令
 - 两块面板在模型、选择集、视图、语言变了时重建（`MainFrame::RefreshPanels` 经 `AppPlatform::Post` 推到当前消息之后，合并成一次；不在控件自己的回调里拆掉它）。
   控件回调里要改模型的，也经 `AppPlatform::Post` 再执行命令
-- 文件对话框经 `AppPlatform::PickProjectFile`、`AppPlatform::ChooseProjectSavePath`、`AppPlatform::ChooseIfcSavePath`
-  （Win32 用 `GetOpenFileNameW` / `GetSaveFileNameW`，筛选器文字经 `Tr`）。打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径）；
+- 文件对话框经 `AppPlatform::PickFile`（异步：选好时回调，取消时不回调）与 `AppPlatform::ChooseSavePath`
+  （Win32 用 `GetOpenFileNameW` / `GetSaveFileNameW`，筛选器文字经 `Tr`）。所以 `MainFrame::SaveProject` 不返回结果，保存成功后做传进来的 `then`
+  （`MainFrame::Guard` 的"保存"之后接着新建 / 打开 / 退出）；`MainFrame::AskSavePath` 在平台没有系统另存为对话框（`AppPlatform::HasSaveDialog`，网页版）时
+  自己问文件名。每写完一个文件（保存、导出 IFC）调用 `AppPlatform::OnDocumentSaved`（网页版下载到本机）。
+  `AppPlatform::HasBackgroundThread` 为 false 的平台不开自动保存（恢复副本在工作线程上写）。打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径）；
   保存只直接写回 `.minibim`：打开的是 BIMCraft 的 `.bimcraft` 或 IFC 时"保存"也走另存为，免得把略去了内容的项目写回原文件；
   打开时有略去的内容（项目文件的 `left_out`、IFC 的 `skipped`）会弹窗说几个。"导出 IFC…"（`file.exportIfc`）是 `save` 到 `.ifc`，不改项目的路径
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）

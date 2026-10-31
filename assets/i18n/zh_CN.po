@@ -924,6 +924,26 @@ msgid "Could not save the project"
 msgstr "无法保存项目"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export IFC"
+msgstr "导出 IFC"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save As"
+msgstr "另存为"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "File name"
+msgstr "文件名"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Your browser downloads the file when it is written."
+msgstr "写好后由浏览器下载到本机。"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export"
+msgstr "导出"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Clear Recent Files"
 msgstr "清除最近打开的文件"
 

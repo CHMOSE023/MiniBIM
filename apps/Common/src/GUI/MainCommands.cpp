@@ -6,7 +6,10 @@
 #include "Core/Log.h"
 #include "Core/UIContext.h"
 #include "I18n/Translator.h"
+#include "Widgets/Button.h"
 #include "Widgets/Dialog.h"
+#include "Widgets/Label.h"
+#include "Widgets/TextBox.h"
 #include "Widgets/ViewportHost.h"
 #include <algorithm>
 #include <filesystem>
@@ -38,8 +41,8 @@ namespace MiniBIM
         add("file.new", N_("New"), N_("Start an empty project with two levels"), [this] { Guard([this] { NewProject(); }); });
         add("file.open", N_("Open..."), N_("Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"),
             [this] { Guard([this] { OpenProject(); }); });
-        add("file.save", N_("Save"), N_("Save the project"), [this] { SaveProject(false); });
-        add("file.saveAs", N_("Save As..."), N_("Save the project under another name"), [this] { SaveProject(true); });
+        add("file.save", N_("Save"), N_("Save the project"), [this] { SaveProject(false, {}); });
+        add("file.saveAs", N_("Save As..."), N_("Save the project under another name"), [this] { SaveProject(true, {}); });
         add("file.exportIfc", N_("Export IFC..."), N_("Export the model as an IFC4 file for other BIM software"), [this] { ExportIfc(); });
         add("file.sample", N_("Sample House"), N_("Open the sample house, built by commands"), [this] { Guard([this] { OpenSample(); }); });
         add("file.start", N_("Start Page"), N_("The start page: new, open and the recent files; again to go back to the project"),
@@ -187,7 +190,7 @@ namespace MiniBIM
             {
                 // 对话框关掉以后再做（可能还要弹出文件对话框）
                 if (button == 0)
-                    m_platform->Post([this, then] { if (SaveProject(false)) then(); });
+                    m_platform->Post([this, then] { SaveProject(false, then); });
                 else if (button == 1)
                     m_platform->Post(then);
             });
@@ -200,9 +203,11 @@ namespace MiniBIM
 
     void MainFrame::OpenProject()
     {
-        const std::string path = m_platform->PickProjectFile();
-        if (!path.empty())
-            OpenPath(path);
+        m_platform->PickFile(FileKind::Project, [this](const std::string& path)
+        {
+            if (!path.empty())
+                OpenPath(path);
+        });
     }
 
     bool MainFrame::OpenPath(const std::string& path)
@@ -242,28 +247,101 @@ namespace MiniBIM
         return true;
     }
 
-    bool MainFrame::SaveProject(bool saveAs)
+    void MainFrame::SaveProject(bool saveAs, std::function<void()> then)
     {
         // 只往 .minibim 里直接保存：打开的是 BIMCraft 的文件时也另存，免得把略去了内容的项目写回原文件
         const auto& current = m_session.Path();
         const bool own = current && ToPath(*current).extension() == ".minibim";
-        std::string path;
-        if (saveAs || !own)
+        auto save = [this, then = std::move(then)](const std::string& path)
         {
-            const std::string stem = current ? ToUtf8(ToPath(*current).stem()) : m_session.GetModel().name;
-            path = m_platform->ChooseProjectSavePath((stem.empty() ? std::string("Project") : stem) + ".minibim");
-            if (path.empty())
-                return false;
+            const Bim::Json params = path.empty() ? Bim::Json::object() : Bim::Json{ { "path", path } };
+            if (!RunCommand("save", params, N_("Could not save the project")))
+                return;
+            m_savedModel = m_session.Snapshot();
+            if (const auto& saved = m_session.Path())
+            {
+                NoteRecent(*saved);
+                m_platform->OnDocumentSaved(*saved);
+            }
+            AutosaveSaved();
+            UpdateTitle();
+            if (then)
+                then();
+        };
+        if (!saveAs && own)
+        {
+            save({});
+            return;
         }
-        const Bim::Json params = path.empty() ? Bim::Json::object() : Bim::Json{ { "path", path } };
-        if (!RunCommand("save", params, N_("Could not save the project")))
-            return false;
-        m_savedModel = m_session.Snapshot();
-        if (const auto& saved = m_session.Path())
-            NoteRecent(*saved);
-        AutosaveSaved();
-        UpdateTitle();
-        return true;
+        AskSavePath(SaveKind::Project, ProjectStem() + ".minibim", std::move(save));
+    }
+
+    std::string MainFrame::ProjectStem() const
+    {
+        const auto& current = m_session.Path();
+        const std::string stem = current ? ToUtf8(ToPath(*current).stem()) : m_session.GetModel().name;
+        return stem.empty() ? std::string("Project") : stem;
+    }
+
+    void MainFrame::AskSavePath(SaveKind kind, const std::string& suggestedName, std::function<void(const std::string&)> done)
+    {
+        if (m_platform->HasSaveDialog())
+        {
+            if (const std::string path = m_platform->ChooseSavePath(kind, suggestedName); !path.empty())
+                done(path);
+            return;
+        }
+
+        // 平台没有系统的另存为对话框（网页版）：自己问文件名，扩展名固定
+        using namespace MiniGUI;
+        const std::string ext = ToUtf8(ToPath(suggestedName).extension());
+        const std::string base = ToUtf8(ToPath(suggestedName).stem());
+        auto dialog = std::make_unique<Dialog>(kind == SaveKind::Ifc ? Tr("Export IFC") : Tr("Save As"));
+        Dialog* dlg = dialog.get();
+        Node* body = dlg->GetBody();
+        LayoutStyle& bs = body->EditLayoutStyle();     // 留着对话框给内容区的边距
+        bs.gap = 6.0f;
+        body->AddChild<Label>(Tr("File name"), 13.0f, Theme::Text);
+        auto* row = body->AddChild<Node>();
+        LayoutStyle rs;
+        rs.direction  = FlexDirection::Row;
+        rs.alignItems = Align::Center;
+        rs.gap        = 6.0f;
+        row->SetLayoutStyle(rs);
+        auto* name = row->AddChild<TextBox>(base);
+        name->EditLayoutStyle().width = 280.0f;
+        row->AddChild<Label>(ext, 13.0f, Theme::TextDim);
+        body->AddChild<Label>(Tr("Your browser downloads the file when it is written."), 12.0f, Theme::TextDim);
+
+        auto trimmed = [](std::string t)
+        {
+            const auto first = t.find_first_not_of(" \t");
+            if (first == std::string::npos)
+                return std::string();
+            t.erase(t.find_last_not_of(" \t") + 1);
+            return t.substr(first);
+        };
+        Button* ok = dlg->AddButton(kind == SaveKind::Ifc ? Tr("Export") : Tr("Save"), [this, dlg, name, kind, ext, trimmed, done = std::move(done)]
+        {
+            std::string n = trimmed(name->GetText());
+            dlg->Close();
+            if (n.empty())
+                return;
+            if (!(n.size() > ext.size() && ToUtf8(ToPath(n).extension()) == ext))
+                n += ext;
+            // 对话框关掉以后再写（写文件时可能还要弹出报错）
+            m_platform->Post([this, kind, n, done]
+            {
+                if (const std::string path = m_platform->ChooseSavePath(kind, n); !path.empty())
+                    done(path);
+            });
+        }, DialogButtonRole::Default);
+        dlg->AddButton(Tr("Cancel"), [dlg] { dlg->Close(); }, DialogButtonRole::Cancel);
+        name->SetOnChanged([ok, trimmed](const std::string& t) { ok->SetEnabled(!trimmed(t).empty()); });
+        ok->SetEnabled(!trimmed(base).empty());
+        dlg->SetInitialFocus(name);
+        m_ui->OpenPopup(std::move(dialog));
+        name->SelectAll();
     }
 
     // =========================================================
@@ -305,13 +383,12 @@ namespace MiniBIM
 
     void MainFrame::ExportIfc()
     {
-        const auto& current = m_session.Path();
-        const std::string stem = current ? ToUtf8(ToPath(*current).stem()) : m_session.GetModel().name;
-        const std::string path = m_platform->ChooseIfcSavePath((stem.empty() ? std::string("Project") : stem) + ".ifc");
-        if (path.empty())
-            return;
-        // save 写 .ifc 时只导出，不改项目自己的路径；项目仍然算没保存
-        RunCommand("save", Bim::Json{ { "path", path } }, N_("Could not export IFC"));
+        AskSavePath(SaveKind::Ifc, ProjectStem() + ".ifc", [this](const std::string& path)
+        {
+            // save 写 .ifc 时只导出，不改项目自己的路径；项目仍然算没保存
+            if (RunCommand("save", Bim::Json{ { "path", path } }, N_("Could not export IFC")))
+                m_platform->OnDocumentSaved(path);
+        });
     }
 
     void MainFrame::StepHistory(bool redo)

@@ -111,7 +111,12 @@ namespace MiniBIM
         void OpenProject();
         // 打开一个文件（打开对话框选的、最近打开里的）：成功时记进最近打开，文件已经不在时从里面去掉
         bool OpenPath(const std::string& path);
-        bool SaveProject(bool saveAs);
+        // 保存（另存为时、项目不是 .minibim 时先问存到哪里）；保存成功后做 then。问路径可能是异步的，所以不返回结果
+        void SaveProject(bool saveAs, std::function<void()> then);
+        // 默认文件名（不带扩展名）：项目文件的名字，没保存过时用项目名称
+        std::string ProjectStem() const;
+        // 问存到哪里（suggestedName 带扩展名），选好时调用 done；平台没有系统对话框时先用自己的对话框问文件名
+        void AskSavePath(SaveKind kind, const std::string& suggestedName, std::function<void(const std::string&)> done);
         void StepHistory(bool redo);
         void DeleteSelection();
         void FlipSelection();

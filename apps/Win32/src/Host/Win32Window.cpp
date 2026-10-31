@@ -370,25 +370,17 @@ namespace MiniBIM
         return std::string(u8.begin(), u8.end());
     }
 
-    // 项目文件的打开 / 保存对话框（返回 UTF-8 路径，空串 = 取消）。筛选器的文字随界面语言
-    std::string Win32Window::PickProjectFile()
+    // 打开 / 保存的文件对话框（系统对话框是模态的：选完才返回）。筛选器的文字随界面语言
+    void Win32Window::PickFile(FileKind kind, std::function<void(const std::string&)> done)
     {
-        return ShowProjectDialog(FileDialog::Open, {});
+        const std::string path = ShowProjectDialog(kind == FileKind::Shortcuts ? FileDialog::Shortcuts : FileDialog::Open, {});
+        if (!path.empty() && done)
+            done(path);
     }
 
-    std::string Win32Window::PickShortcutsFile()
+    std::string Win32Window::ChooseSavePath(SaveKind kind, const std::string& suggestedName)
     {
-        return ShowProjectDialog(FileDialog::Shortcuts, {});
-    }
-
-    std::string Win32Window::ChooseProjectSavePath(const std::string& suggestedName)
-    {
-        return ShowProjectDialog(FileDialog::SaveProject, suggestedName);
-    }
-
-    std::string Win32Window::ChooseIfcSavePath(const std::string& suggestedName)
-    {
-        return ShowProjectDialog(FileDialog::SaveIfc, suggestedName);
+        return ShowProjectDialog(kind == SaveKind::Ifc ? FileDialog::SaveIfc : FileDialog::SaveProject, suggestedName);
     }
 
     std::string Win32Window::ShowProjectDialog(FileDialog kind, const std::string& suggestedName)

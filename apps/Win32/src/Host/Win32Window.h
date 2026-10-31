@@ -60,14 +60,13 @@ namespace MiniBIM
 
         std::string GetResourceDir() const override;
         std::string GetUserDataDir() const override;
-        std::string PickProjectFile() override;
-        std::string PickShortcutsFile() override;
-        std::string ChooseProjectSavePath(const std::string& suggestedName) override;
-        std::string ChooseIfcSavePath(const std::string& suggestedName) override;
+        void PickFile(FileKind kind, std::function<void(const std::string&)> done) override;
+        std::string ChooseSavePath(SaveKind kind, const std::string& suggestedName) override;
         std::string GetSystemLanguage() const override;
         bool OpenUrl(const std::string& url) override;
         void Post(std::function<void()> fn) override;
         void PostDelayed(unsigned ms, std::function<void()> fn) override;
+        bool HasBackgroundThread() const override { return true; }
 
     private:
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

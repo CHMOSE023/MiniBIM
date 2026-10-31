@@ -927,6 +927,26 @@ msgid "Could not save the project"
 msgstr "Não foi possível salvar o projeto"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export IFC"
+msgstr "Exportar IFC"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save As"
+msgstr "Salvar como"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "File name"
+msgstr "Nome do arquivo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Your browser downloads the file when it is written."
+msgstr "Seu navegador baixa o arquivo quando ele estiver pronto."
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export"
+msgstr "Exportar"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Clear Recent Files"
 msgstr "Limpar arquivos recentes"
 

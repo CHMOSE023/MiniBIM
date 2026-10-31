@@ -26,6 +26,9 @@ namespace MiniBIM
 
     void MainFrame::EnableAutosave()
     {
+        // 写恢复副本的是工作线程：没有线程的平台（网页版）不自动保存
+        if (!m_platform->HasBackgroundThread())
+            return;
         std::error_code ec;
         const std::filesystem::path temp = std::filesystem::temp_directory_path(ec);
         if (ec)

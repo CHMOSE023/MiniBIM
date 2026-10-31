@@ -75,7 +75,8 @@ namespace MiniBIM
         {
             std::string filter;
             std::string message;
-            bool        error = false;
+            bool        error  = false;
+            bool        closed = false;     // 对话框关了（选文件可能是异步的，选好时对话框已经不在）
         };
     }
 
@@ -252,33 +253,35 @@ namespace MiniBIM
 
         dlg->AddButton(Tr("Load from File..."), [this, state, fill]
         {
-            const std::string path = m_platform->PickShortcutsFile();
-            if (path.empty())
-                return;
-            std::error_code ec;
-            const auto size = std::filesystem::file_size(ToPath(path), ec);
-            state->error = true;
-            if (ec)
-                state->message = Format(Tr("Could not read the file: {0}"), { ec.message() });
-            else if (size > Shortcuts::MaxFileBytes)
-                state->message = Tr("That is too big to be a shortcuts file.");
-            else
+            m_platform->PickFile(FileKind::Shortcuts, [this, state, fill](const std::string& path)
             {
-                std::ifstream in(ToPath(path), std::ios::binary);
-                std::ostringstream ss;
-                ss << in.rdbuf();
-                const auto [added, skipped] = m_shortcuts.Add(Shortcuts::ParseFile(ss.str()),
-                                                              [this](const std::string& d) { return ShortcutCommand(d); });
-                SaveSettings();
-                state->error   = false;
-                state->message = Format(TrN("Loaded {0} shortcut from the file.", "Loaded {0} shortcuts from the file.", static_cast<long long>(added)),
-                                        { std::to_string(added) });
-                if (skipped > 0)
-                    state->message += " " + Format(TrN("Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use).",
-                                                       "Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use).",
-                                                       static_cast<long long>(skipped)), { std::to_string(skipped) });
-            }
-            m_platform->Post([fill] { (*fill)(); });
+                if (path.empty() || state->closed)
+                    return;
+                std::error_code ec;
+                const auto size = std::filesystem::file_size(ToPath(path), ec);
+                state->error = true;
+                if (ec)
+                    state->message = Format(Tr("Could not read the file: {0}"), { ec.message() });
+                else if (size > Shortcuts::MaxFileBytes)
+                    state->message = Tr("That is too big to be a shortcuts file.");
+                else
+                {
+                    std::ifstream in(ToPath(path), std::ios::binary);
+                    std::ostringstream ss;
+                    ss << in.rdbuf();
+                    const auto [added, skipped] = m_shortcuts.Add(Shortcuts::ParseFile(ss.str()),
+                                                                  [this](const std::string& d) { return ShortcutCommand(d); });
+                    SaveSettings();
+                    state->error   = false;
+                    state->message = Format(TrN("Loaded {0} shortcut from the file.", "Loaded {0} shortcuts from the file.", static_cast<long long>(added)),
+                                            { std::to_string(added) });
+                    if (skipped > 0)
+                        state->message += " " + Format(TrN("Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use).",
+                                                           "Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use).",
+                                                           static_cast<long long>(skipped)), { std::to_string(skipped) });
+                }
+                m_platform->Post([fill] { (*fill)(); });
+            });
         });
         dlg->AddButton(Tr("Restore Defaults"), [this, state, fill]
         {
@@ -290,6 +293,7 @@ namespace MiniBIM
         });
         dlg->AddButton(Tr("Close"), [dlg] { dlg->Close(); }, DialogButtonRole::Cancel);
         dlg->SetInitialFocus(search);
+        dlg->SetOnClosed([state] { state->closed = true; });
         m_ui->OpenPopup(std::move(dialog));
     }
 }
