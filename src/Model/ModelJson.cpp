@@ -499,13 +499,27 @@ namespace MiniBIM::Bim
                 out = Element(std::move(c));
                 return true;
             }
+            if (category == "column" || category == "structuralcolumn")
+            {
+                Column c;
+                if (!f.Allow({ "type", "level", "at", "angle", "top_level", "height", "base_offset" }) || !f.String("type", c.typeName, true) ||
+                    !f.Id("level", c.level, true) || !f.Point("at", c.at, true) || !f.Number("angle", c.angle, false) ||
+                    !f.OptId("top_level", c.topLevel) || !f.Number("height", c.height, false) || !f.Number("base_offset", c.baseOffset, false) ||
+                    !f.Finish())
+                    return false;
+                if (category == "column")
+                    out = Element(std::move(c));
+                else
+                    out = Element(StructuralColumn{ std::move(c) });
+                return true;
+            }
             if (leftOut)
             {
                 skip = true;
                 return true;
             }
             error = who + ": unknown variant `" + category +
-                    "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof, component";
+                    "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof, component, column, structuralcolumn";
             return false;
         }
 
@@ -615,6 +629,19 @@ namespace MiniBIM::Bim
                        t.operation = o;
                        return true;
                    }();
+        }
+
+        bool ReadColumnType(Fields& f, ColumnType& t)
+        {
+            return f.Number("width", t.width, true) && f.Number("depth", t.depth, true) && f.Bool("round", t.round);
+        }
+
+        Json ColumnTypesJson(const std::map<std::string, ColumnType>& map)
+        {
+            Json out = Json::object();
+            for (const auto& [n, t] : map)
+                out[n] = Json{ { "width", t.width }, { "depth", t.depth }, { "round", t.round } };
+            return out;
         }
 
         Json OpeningTypesJson(const std::map<std::string, OpeningType>& map)
@@ -1246,6 +1273,16 @@ namespace MiniBIM::Bim
             if (!o->params.empty())
                 j["params"] = ParamsJson(o->params);
         }
+        else if (const Column* col = e.AsColumn())
+        {
+            j["type"]        = col->typeName;
+            j["level"]       = ToJson(col->level);
+            j["at"]          = ToJson(col->at);
+            j["angle"]       = col->angle;
+            j["top_level"]   = col->topLevel ? ToJson(*col->topLevel) : Json(nullptr);
+            j["height"]      = col->height;
+            j["base_offset"] = col->baseOffset;
+        }
         else if (const Component* c = e.As<Component>())
         {
             j["family"] = c->family;
@@ -1288,6 +1325,7 @@ namespace MiniBIM::Bim
         t["floor"]  = layered(types.floor);
         t["door"]   = OpeningTypesJson(types.door);
         t["window"] = OpeningTypesJson(types.window);
+        t["column"] = ColumnTypesJson(types.column);
         t["roof"]   = layered(types.roof);
         Json ceilings = Json::object();
         for (const auto& [n, x] : types.ceiling)
@@ -1300,6 +1338,8 @@ namespace MiniBIM::Bim
             ceilings[n] = std::move(y);
         }
         t["ceiling"] = std::move(ceilings);
+        if (!types.structuralColumn.empty())
+            t["structural_column"] = ColumnTypesJson(types.structuralColumn);
         return t;
     }
 
@@ -1485,11 +1525,12 @@ namespace MiniBIM::Bim
                 !ReadNamed(t, "floor", m.types.floor, true, [&](Fields& g, FloorType& x) { return layered(g, x); }) ||
                 !ReadNamed(t, "door", m.types.door, true, ReadOpeningType) ||
                 !ReadNamed(t, "window", m.types.window, true, ReadOpeningType) ||
+                !ReadNamed(t, "column", m.types.column, false, ReadColumnType) ||
                 !ReadNamed(t, "roof", m.types.roof, false, [&](Fields& g, RoofType& x) { return layered(g, x); }) ||
                 !ReadNamed(t, "ceiling", m.types.ceiling, false, [&](Fields& g, CeilingType& x)
                 {
                     return layered(g, x) && g.Number("grid", x.grid, false);
-                }) || !t.Finish())
+                }) || !ReadNamed(t, "structural_column", m.types.structuralColumn, false, ReadColumnType) || !t.Finish())
                 return false;
         }
 

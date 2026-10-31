@@ -45,6 +45,7 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 | `Arc<Model>` + `make_mut` | `shared_ptr<const Model>` + `Session::ModelMut` | 元素同样是共享的不可变对象，`Elements::GetMut` 写时复制 |
 | 带数据的 `enum`（如 `Element`） | `std::variant` + `std::visit` | 新增一种元素时编译器能列出所有要补的分支，和 Rust 的 `match` 一样 |
 | `trait` | 抽象基类或模板 | |
+| 字段相同、只差类别的几种元素（`Door` / `Window`，`Column` / `StructuralColumn`） | 派生自同一个结构体（`Door : Opening`、`StructuralColumn : Column`），各占 `Element::Variant` 的一种 | 共用的代码经 `Element::AsOpening`、`Element::AsColumn` 取基类 |
 | `Arc<T>`（共享、不可变） | `std::shared_ptr<const T>` | |
 | `u64` 元素 ID、`u128` GUID | `uint64_t`、两个 `uint64_t` 的结构体 | 引用别的元素一律存 GUID，不存 ID（BIMCraft 的规则） |
 | `msg!` / `ui_msg!` 标记的原文 | `N_("…")` / `Tr("…")` | 英文原文照抄，译文以后从 BIMCraft 的 `.po` 合并（见 `docs/i18n.md`）。命令的报错不标记：照 BIMCraft 写英文 |

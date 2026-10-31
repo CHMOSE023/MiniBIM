@@ -301,6 +301,25 @@ namespace MiniBIM::Bim
         bool operator==(const Component&) const = default;
     };
 
+    // 柱：立在 level 上 at 处，宽度沿 angle 度（从东逆时针）：到 topLevel，或 height 毫米高；底部高出标高 baseOffset。
+    // 建筑柱（Column）与结构柱（StructuralColumn）同样的数据，类别与类型各自分开
+    struct Column
+    {
+        std::string         typeName;
+        Guid                level;
+        P2                  at;
+        double              angle  = 0.0;
+        std::optional<Guid> topLevel;
+        double              height = 0.0;
+        double              baseOffset = 0.0;
+        bool operator==(const Column&) const = default;
+    };
+
+    struct StructuralColumn : Column
+    {
+        bool operator==(const StructuralColumn&) const = default;
+    };
+
     // 拉伸屋顶的形状：底面在过 line 的竖直平面里的轮廓，各点为 [沿线距起点, 高于屋顶底部]，从线左边 from 到 to 毫米处垂直于线扫过
     struct Extrusion
     {
@@ -347,7 +366,7 @@ namespace MiniBIM::Bim
     // 一个元素。文件里写作带 "category" 的对象：{"category": "wall", …}
     struct Element
     {
-        using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component>;
+        using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn>;
         Variant v;
 
         Element() = default;
@@ -359,13 +378,16 @@ namespace MiniBIM::Bim
         // 门或窗
         const Opening* AsOpening() const;
         Opening*       AsOpening();
+        // 建筑柱或结构柱
+        const Column* AsColumn() const;
+        Column*       AsColumn();
         // 楼板、天花板、屋顶记着的草图；别的元素没有
         const std::vector<SketchLine>* SketchOf() const;
         std::vector<SketchLine>*       SketchOf();
         bool IsDoor() const   { return std::holds_alternative<Door>(v); }
         bool IsWindow() const { return std::holds_alternative<Window>(v); }
 
-        // 类别：level、grid、roomseparator、wall、floor、ceiling、door、window、room、roof、component
+        // 类别：level、grid、roomseparator、wall、floor、ceiling、door、window、room、roof、component、column、structuralcolumn
         const char* Category() const;
         // 它的族与类型：构件的，或带族的门窗的
         std::optional<std::pair<std::string, std::string>> FamilyOf() const;
@@ -456,15 +478,26 @@ namespace MiniBIM::Bim
         bool operator==(const CeilingType&) const = default;
     };
 
-    // 项目的类型，按类别、名称。BIMCraft 还有柱、栏杆、结构柱、基础与各种管线的类型，移植到时再加
+    // 柱类型：width 乘 depth 的矩形，或 round 时直径 width 的圆
+    struct ColumnType
+    {
+        double width = 0.0;
+        double depth = 0.0;
+        bool   round = false;
+        bool operator==(const ColumnType&) const = default;
+    };
+
+    // 项目的类型，按类别、名称。BIMCraft 还有栏杆、基础与各种管线的类型，移植到时再加
     struct Types
     {
         std::map<std::string, WallType>    wall;
         std::map<std::string, FloorType>   floor;
         std::map<std::string, OpeningType> door;
         std::map<std::string, OpeningType> window;
+        std::map<std::string, ColumnType>  column;
         std::map<std::string, RoofType>    roof;
         std::map<std::string, CeilingType> ceiling;
+        std::map<std::string, ColumnType>  structuralColumn;
         bool operator==(const Types&) const = default;
     };
 
@@ -582,6 +615,15 @@ namespace MiniBIM::Bim
 
         // 元素所在的标高
         std::optional<Guid> LevelOf(const Element& e) const;
+
+        // ── 柱 ──────────────────────────────────────────────────
+        // 从底到顶的高度：标高加 baseOffset，到 topLevel 或高出 height
+        std::pair<double, double> Span(Guid level, double baseOffset, const std::optional<Guid>& topLevel, double height) const;
+        std::pair<double, double> ColumnSpan(const Column& c) const;
+        // 柱的类型（建筑柱、结构柱各自的类型表里）；不是柱或没有这个类型时为空
+        const ColumnType* ColumnTypeOf(const Element& e) const;
+        // 柱的平面轮廓，逆时针：矩形的四角，或圆柱的 24 边形；不是柱或没有类型时为空
+        Ring ColumnOutline(const Element& e) const;
         // 类型的层用到、库里还没有的材质放进库：旧项目或别处来的文件打开时
         void AdoptMaterials();
 

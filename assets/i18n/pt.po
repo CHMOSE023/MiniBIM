@@ -74,6 +74,14 @@ msgstr "Ambiente"
 msgid "Room Separator"
 msgstr "Separador de ambiente"
 
+#: src/Commands/Commands.cpp
+msgid "Column"
+msgstr "Pilar"
+
+#: src/Commands/Commands.cpp
+msgid "Structural Column"
+msgstr "Pilar estrutural"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "Telhado"

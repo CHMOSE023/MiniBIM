@@ -126,7 +126,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - **风险**：Revit 格式没有公开规范，读法来自 rvt-rs 与对样例文件的观察。BIMCraft 的 `docs/rvt-provenance.md` 写明没核实 rvt-rs 是否净室实现、
   不对合法性下结论；这个风险由项目所有者承担。只移植那份文档已列来源的读法，不自己逆向，Autodesk 的文件不进仓库（测试用合成的文件）
 - **分段**：
-  - R1 柱（核心）：`Column`、`StructuralColumn` 与它们的类型、命令 `column`、`structural_column`、检查、项目文件
+  - R1 ✅ 柱（核心）：`Column`、`StructuralColumn` 与它们的类型、命令 `column`、`structural_column`、检查、项目文件、对齐与捕捉（BIMCraft 的柱测试已移植进 `CommandTests`）
   - R2 柱的三维、平面与 IFC 导出导入
   - R3 rvt 底层：复合文档（MS-CFB）、gzip 与有界的 inflate、`BasicFileInfo`、`ProjectInformation` / `PartAtom`、预览图
   - R4 rvt 记录：`Formats/Latest` 的类表、`ElemTable`、分区里的元素记录与类型记录、标高、元素数据、名称、类型与层、曲线、放置、草图

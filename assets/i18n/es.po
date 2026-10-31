@@ -74,6 +74,14 @@ msgstr "Habitación"
 msgid "Room Separator"
 msgstr "Separador de habitación"
 
+#: src/Commands/Commands.cpp
+msgid "Column"
+msgstr "Columna"
+
+#: src/Commands/Commands.cpp
+msgid "Structural Column"
+msgstr "Columna estructural"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "Cubierta"

@@ -1697,6 +1697,57 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // 命令要的柱（category 为 column 或 structuralcolumn），还没放进模型：工具预览一次单击会放下的
+        bool StoodOf(const Model& m, const Json& p, const std::string& category, Element& out, std::string& error)
+        {
+            const char* c = category == "column" ? "column" : "structural_column";
+            Params P(c, p, error);
+            Column col;
+            std::optional<double> angle, height, baseOffset;
+            if (!P.PointReq("at", col.at) || !LevelParam(c, m, p, "level", col.level, error) || !TypeParam(P, m, category.c_str(), col.typeName) ||
+                !P.Num("angle", angle) || !P.Num("height", height) || !P.Num("base_offset", baseOffset))
+                return false;
+            // 到上一个标高，或给了 height 时那么高，或到 top_level
+            if (P.Absent("top_level"))
+            {
+                if (!height)
+                    col.topLevel = m.LevelAbove(col.level);
+            }
+            else
+            {
+                Guid t;
+                if (!LevelParam(c, m, p, "top_level", t, error))
+                    return false;
+                col.topLevel = t;
+            }
+            col.angle      = angle.value_or(0.0);
+            col.height     = height.value_or(DefaultHeight);
+            col.baseOffset = baseOffset.value_or(0.0);
+            if (category == "column")
+                out = Element(std::move(col));
+            else
+                out = Element(StructuralColumn{ std::move(col) });
+            return true;
+        }
+
+        bool ColumnCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Element e;
+            if (!StoodOf(s.GetModel(), p, "column", e, error))
+                return false;
+            result = Json{ { "id", s.ModelMut().Insert(std::move(e)) } };
+            return true;
+        }
+
+        bool StructuralColumnCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Element e;
+            if (!StoodOf(s.GetModel(), p, "structuralcolumn", e, error))
+                return false;
+            result = Json{ { "id", s.ModelMut().Insert(std::move(e)) } };
+            return true;
+        }
+
         // ── 类型与材质 ───────────────────────────────────────────
         // 一层，严格地读（拼错的键报错）
         bool LayerParam(const char* c, const Json& v, Layer& l, std::string& error)
@@ -1936,8 +1987,32 @@ namespace MiniBIM::Bim
                 one.door[*name] = ty;
                 t = Bim::ToJson(one)["door"][*name];
             }
+            else if (category == "column" || category == "structuralcolumn")
+            {
+                auto& map = category == "column" ? m.types.column : m.types.structuralColumn;
+                std::optional<ColumnType> old;
+                if (const auto it = map.find(*name); it != map.end())
+                    old = it->second;
+                if (!width && !old)
+                    return need("width");
+                bool round = old && old->round;
+                if (!P.Absent("round") && !P.Flag("round", round))
+                    return false;
+                std::optional<double> depth;
+                if (!P.Num("depth", depth))
+                    return false;
+                ColumnType ty;
+                ty.width = width ? *width : old->width;
+                ty.round = round;
+                // 圆柱的进深即直径
+                ty.depth = round ? ty.width : depth ? *depth : old ? old->depth : ty.width;
+                map[*name] = ty;
+                Types one;
+                one.column[*name] = ty;
+                t = Bim::ToJson(one)["column"][*name];
+            }
             else
-                return P.Fail("`" + category + "` has no types here; use wall, floor, ceiling, door, window or roof (the other categories come with docs/PLAN.md, phase 2)");
+                return P.Fail("`" + category + "` has no types here; use wall, floor, ceiling, door, window, column, structural column or roof (the other categories come with docs/PLAN.md, phase 2)");
             result = Json{ { "category", category }, { "name", *name }, { "type", t } };
             return true;
         }
@@ -2263,6 +2338,8 @@ namespace MiniBIM::Bim
             }
             else if (Room* r = out.As<Room>())
                 r->point = f(r->point);
+            else if (Column* col = out.AsColumn())
+                std::tie(col->at, col->angle) = Turned(f, col->at, col->angle);
             // 镜像是族翻过来
             else if (Component* cp = out.As<Component>())
             {
@@ -2800,8 +2877,10 @@ namespace MiniBIM::Bim
             if (category == "floor") return f(m.types.floor);
             if (category == "door") return f(m.types.door);
             if (category == "window") return f(m.types.window);
+            if (category == "column") return f(m.types.column);
             if (category == "roof") return f(m.types.roof);
             if (category == "ceiling") return f(m.types.ceiling);
+            if (category == "structuralcolumn") return f(m.types.structuralColumn);
             return false;
         }
 
@@ -3139,6 +3218,13 @@ namespace MiniBIM::Bim
               "{points: [[x,y],…], level?, closed?} room separation lines along `points`, one per segment (`closed` joins the last to the "
               "first): they bound rooms as walls do, to split an open space (a living room and its corridor) into rooms, and are nothing "
               "else, with no solid, no cut and no area. Returns their ids", RoomSeparatorCmd, true },
+            { "column", N_("Column"), { "CL" },
+              "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column, its width along `angle` degrees; up to "
+              "the next level, or `height` mm tall, or up to `top_level`", ColumnCmd, true },
+            { "structural_column", N_("Structural Column"), { "CL" },
+              "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column of the structure, as `column` makes one but "
+              "in its own category with its own types (`type` with category structural column): up to the next level, or `height` mm "
+              "tall, or up to `top_level`. CL is `column`'s too; on the desktop's Structure tab it is this one", StructuralColumnCmd, true },
             { "roof", N_("Roof"), {},
               "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, extrusion?, "
               "openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its base `offset` mm above it. "
@@ -3152,11 +3238,11 @@ namespace MiniBIM::Bim
               "to its left. `openings` are holes through it in plan; with `join`, a roof it runs into, it ends where it meets that one's top",
               RoofCmd, true },
             { "type", N_("Edit Type"), {},
-              "{category: wall|floor|ceiling|door|window|roof, name, thickness? | width?, height?, sill?, operation?, grid?} creates the type, or changes it "
+              "{category: wall|floor|ceiling|door|window|column|structuralcolumn|roof, name, thickness? | width?, height?, sill?, operation?, grid? | width?, depth?, round?} creates the type, or changes it "
               "everywhere it's used. A wall or floor type may have `layers` [{function?: structure|substrate|thermal|membrane|finish, material?, "
               "thickness}, …], a wall's from its exterior side in, a floor's from the top down: it's as thick as they are, and a new `thickness` "
               "goes to its structure. A roof's or a ceiling's layers too, from the top down; a ceiling type may have `grid`: its square tiles' "
-              "width, mm, which reflected ceiling plans draw (0, none)", TypeCmd, true },
+              "width, mm, which reflected ceiling plans draw (0, none). A column's or a structural column's: `width` by `depth`, or `round`, `width` across", TypeCmd, true },
             { "material", N_("Materials"), {},
               "{name, color?: \"#rrggbb\" | [r, g, b], cut?, surface?, rename?, delete?: true} a material of the project's library, created or "
               "changed: its colour in shaded 3D views, the pattern its cut shows and the one its surfaces show", MaterialCmd, true },
@@ -3194,11 +3280,11 @@ namespace MiniBIM::Bim
             { "copy", N_("Copy"), { "CO" }, "{ids: [id,…], by: [dx, dy]} copies elements, with the doors and windows of copied walls; returns the copies' ids",
               CopyCmd, true },
             { "delete_type", N_("Delete Type"), {},
-              "{category?: wall|floor|door|window|roof|ceiling, family?, type?} deletes a type of a category (`category` and `type`), a "
+              "{category?: wall|floor|door|window|column|roof|ceiling|structuralcolumn, family?, type?} deletes a type of a category (`category` and `type`), a "
               "family (`family`) or one of a family's types (`family` and `type`), as Revit's Delete on one in the Project Browser does; "
               "refused while an element uses it (it says how many), and for the last type of a category or of a family", DeleteTypeCmd, true },
             { "rename_type", N_("Rename Type"), {},
-              "{category?: wall|floor|door|window|roof|ceiling, family?, type, name} renames a type of a category (`category` and `type`) "
+              "{category?: wall|floor|door|window|column|roof|ceiling|structuralcolumn, family?, type, name} renames a type of a category (`category` and `type`) "
               "or one of a family's types (`family` and `type`) to `name`, as Rename in Type Properties does: the elements of it follow, "
               "and it keeps its GUID; refused for a name another type of it has", RenameTypeCmd, true },
             { "edit_boundary", N_("Edit Boundary"), {},
@@ -3311,6 +3397,17 @@ namespace MiniBIM::Bim
             for (const Fam::Piece& pc : m.ComponentPieces(*cp))
                 top = std::max(top, pc.top);
             v["height"] = Hundredth(top - base);
+        }
+        else if (const Column* col = e->AsColumn())
+        {
+            const auto [bottom, top] = m.ColumnSpan(*col);
+            v["height"] = top - bottom;
+            if (const ColumnType* t = m.ColumnTypeOf(*e))
+            {
+                v["width"] = t->width;
+                v["depth"] = t->depth;
+                v["round"] = t->round;
+            }
         }
         else if (const Floor* f = e->As<Floor>())
         {

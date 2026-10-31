@@ -73,6 +73,14 @@ msgstr "房间"
 msgid "Room Separator"
 msgstr "房间分隔线"
 
+#: src/Commands/Commands.cpp
+msgid "Column"
+msgstr "柱"
+
+#: src/Commands/Commands.cpp
+msgid "Structural Column"
+msgstr "结构柱"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "屋顶"

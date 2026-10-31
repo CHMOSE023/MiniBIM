@@ -2,6 +2,7 @@
 #include "Model/Align.h"
 #include "Model/Geom.h"
 #include "Model/Walls.h"
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -102,6 +103,16 @@ namespace MiniBIM::Bim::Align
                 Path(out, q, true);
             for (const Ring& q : r->openings)
                 Path(out, q, true);
+        }
+        else if (const Column* col = e->AsColumn())
+        {
+            // 圆柱只有十字轴线：圆弧对不齐直线
+            if (const ColumnType* t = m.ColumnTypeOf(*e))
+            {
+                if (!t->round)
+                    Path(out, m.ColumnOutline(*e), true);
+                Axes(out, col->at, col->angle, std::max(t->width, t->depth) / 2.0);
+            }
         }
         else if (const Component* c = e->As<Component>())
         {

@@ -336,6 +336,20 @@ namespace MiniBIM::Bim
         return nullptr;
     }
 
+    const Column* Element::AsColumn() const
+    {
+        if (const Column* c = As<Column>())
+            return c;
+        if (const StructuralColumn* c = As<StructuralColumn>())
+            return c;
+        return nullptr;
+    }
+
+    Column* Element::AsColumn()
+    {
+        return const_cast<Column*>(static_cast<const Element*>(this)->AsColumn());
+    }
+
     const char* Element::Category() const
     {
         struct Visitor
@@ -351,6 +365,8 @@ namespace MiniBIM::Bim
             const char* operator()(const Room&) const   { return "room"; }
             const char* operator()(const Roof&) const   { return "roof"; }
             const char* operator()(const Component&) const { return "component"; }
+            const char* operator()(const Column&) const { return "column"; }
+            const char* operator()(const StructuralColumn&) const { return "structuralcolumn"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -381,6 +397,13 @@ namespace MiniBIM::Bim
                 if (r.join) f(*r.join);
             }
             void operator()(Component& c) const { f(c.level); }
+            void operator()(Column& c) const { Stood(c); }
+            void operator()(StructuralColumn& c) const { Stood(c); }
+            void Stood(Column& c) const
+            {
+                f(c.level);
+                if (c.topLevel) f(*c.topLevel);
+            }
         };
         std::visit(Visitor{ f }, v);
     }
@@ -413,6 +436,8 @@ namespace MiniBIM::Bim
         }
         else if (Component* c = As<Component>())
             FamilyAndType(c->family, c->typeName, f);
+        else if (Column* col = AsColumn())
+            f(Kind::Type(category), col->typeName);
     }
 
     const std::vector<SketchLine>* Element::SketchOf() const
@@ -533,6 +558,12 @@ namespace MiniBIM::Bim
             m.types.door[n] = OpeningType{ w, 2100.0, 0.0, std::nullopt };
         m.types.window["Fixed 1200 x 1500"] = OpeningType{ 1200.0, 1500.0, 900.0, std::nullopt };
         m.types.window["Fixed 600 x 900"]   = OpeningType{ 600.0, 900.0, 1100.0, std::nullopt };
+        m.types.column["Rectangular 400 x 400"] = ColumnType{ 400.0, 400.0, false };
+        m.types.column["Round 300"]             = ColumnType{ 300.0, 300.0, true };
+        // 结构的：混凝土柱（BIMCraft 还有基础与梁的类型，移植到时再加）
+        for (const auto& [n, w, d, round] : { std::tuple{ "Concrete 300 x 300", 300.0, 300.0, false }, std::tuple{ "Concrete 200 x 500", 200.0, 500.0, false },
+                                              std::tuple{ "Concrete Round 400", 400.0, 400.0, true } })
+            m.types.structuralColumn[n] = ColumnType{ w, d, round };
         m.types.roof["Generic - 300mm"]    = RoofType{ 300.0, {} };
         m.types.ceiling["Generic - 20mm"]  = CeilingType{ 20.0, 0.0, {} };
         m.types.ceiling["Tile 600 x 600"]  = CeilingType{ 20.0, 600.0, {} };
@@ -765,8 +796,10 @@ namespace MiniBIM::Bim
         if (c == "floor")  return Keys(types.floor);
         if (c == "door")   return Keys(types.door);
         if (c == "window") return Keys(types.window);
+        if (c == "column") return Keys(types.column);
         if (c == "roof")   return Keys(types.roof);
         if (c == "ceiling") return Keys(types.ceiling);
+        if (c == "structuralcolumn") return Keys(types.structuralColumn);
         return {};
     }
 
@@ -782,6 +815,10 @@ namespace MiniBIM::Bim
             preferred = "Generic - 300mm";
         else if (c == "ceiling")
             preferred = "Generic - 20mm";
+        else if (c == "column")
+            preferred = "Rectangular 400 x 400";
+        else if (c == "structuralcolumn")
+            preferred = "Concrete 300 x 300";
         const std::vector<std::string> names = TypeNames(category);
         for (const std::string& n : names)
             if (n == preferred)
@@ -942,6 +979,8 @@ namespace MiniBIM::Bim
             return r->level;
         if (const Component* c = e.As<Component>())
             return c->level;
+        if (const Column* c = e.AsColumn())
+            return c->level;
         if (const Opening* o = e.AsOpening())
         {
             const Wall* w = GetWall(o->host);
@@ -950,6 +989,49 @@ namespace MiniBIM::Bim
             return w->level;
         }
         return std::nullopt;
+    }
+
+    // ── 柱 ───────────────────────────────────────────────────────
+    std::pair<double, double> Model::Span(Guid level, double baseOffset, const std::optional<Guid>& topLevel, double height) const
+    {
+        const double base = Elevation(level) + baseOffset;
+        return { base, topLevel ? Elevation(*topLevel) : base + height };
+    }
+
+    std::pair<double, double> Model::ColumnSpan(const Column& c) const
+    {
+        return Span(c.level, c.baseOffset, c.topLevel, c.height);
+    }
+
+    const ColumnType* Model::ColumnTypeOf(const Element& e) const
+    {
+        const Column* col = e.AsColumn();
+        if (!col)
+            return nullptr;
+        const auto& map = e.As<StructuralColumn>() ? types.structuralColumn : types.column;
+        const auto it = map.find(col->typeName);
+        return it == map.end() ? nullptr : &it->second;
+    }
+
+    Ring Model::ColumnOutline(const Element& e) const
+    {
+        const Column*     col = e.AsColumn();
+        const ColumnType* t   = ColumnTypeOf(e);
+        if (!col || !t)
+            return {};
+        auto heading = [](double deg) { const double a = deg * kPi / 180.0; return P2{ std::cos(a), std::sin(a) }; };
+        Ring out;
+        if (t->round)
+        {
+            for (int i = 0; i < 24; ++i)
+                out.push_back(col->at + heading(i * 15.0) * (t->width / 2.0));
+            return out;
+        }
+        const P2 u = heading(col->angle);
+        const double w = t->width / 2.0, d = t->depth / 2.0;
+        for (const auto& [a, b] : { std::pair{ -w, -d }, std::pair{ w, -d }, std::pair{ w, d }, std::pair{ -w, d } })
+            out.push_back(col->at + u * a + u.Perp() * b);
+        return out;
     }
 
     // ── 楼板 ─────────────────────────────────────────────────────
@@ -1534,6 +1616,13 @@ namespace MiniBIM::Bim
                     return false;
             }
         }
+        for (const auto& [cat, map] : { std::pair{ "column", &types.column }, std::pair{ "structural column", &types.structuralColumn } })
+            for (const auto& [n, t] : *map)
+            {
+                const std::string who = std::string(cat) + " type `" + n + "`";
+                if (!Size(who + " width", t.width, error) || !Size(who + " depth", t.depth, error))
+                    return false;
+            }
         for (const auto& [n, x] : materials)
         {
             if (!TextOk("material `" + n + "`", "name", n, error))
@@ -1734,6 +1823,20 @@ namespace MiniBIM::Bim
                 if (!f.Values(c->typeName, c->params, values, why) || !f.Pieces(values, pieces, why))
                 {
                     error = who + ": " + why;
+                    return false;
+                }
+            }
+            else if (const Column* col = e.AsColumn())
+            {
+                if (!Known(who, col->typeName, e.As<StructuralColumn>() ? types.structuralColumn : types.column, error) || !levelOk(col->level) ||
+                    !Point(who, col->at, error) || !Coord(who + " angle", col->angle, error) || !Coord(who + " base_offset", col->baseOffset, error))
+                    return false;
+                if (col->topLevel ? !levelOk(*col->topLevel) : !Size(who + " height", col->height, error))
+                    return false;
+                const auto [bottom, top] = ColumnSpan(*col);
+                if (top <= bottom + Tol)
+                {
+                    error = who + ": its top must be above its base";
                     return false;
                 }
             }

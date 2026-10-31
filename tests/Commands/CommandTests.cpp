@@ -509,7 +509,7 @@ namespace
             Check(saved && same && refused, "命令：项目保存后原样打开；打不开时保留已打开的项目");
         }
         {
-            // BIMCraft 的项目文件：还没移植的东西（阶段、柱类型、楼梯、墙的项目参数）略去并列出，其余照常打开，
+            // BIMCraft 的项目文件：还没移植的东西（阶段、栏杆类型、楼梯、墙的项目参数）略去并列出，柱类型读进来，其余照常打开，
             // 贴着屋顶的墙仍贴着，带族的门照常
             Session s;
             House(s);
@@ -518,7 +518,8 @@ namespace
             s.GetModel().ToFile(text, error);
             Json file = Json::parse(text);
             file["phases"] = Json::array({ "Existing", "New Construction" });
-            file["types"]["column"] = Json::parse(R"({"Rectangular 400 x 400": {"width": 400, "depth": 400}})");
+            file["types"]["column"] = Json::parse(R"({"Square 500": {"width": 500, "depth": 500}})");
+            file["types"]["railing"] = Json::parse(R"({"Handrail 900": {"height": 900}})");
             file["materials"]["Brick"]["texture"] = Json::parse(R"({"kind": "brick"})");
             Json roof = Json::parse(R"({"guid": "3f2a9c1e-1111-4000-8000-000000000001", "category": "roof", "type": "Generic - 300mm",
                 "boundary": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "slope": 30, "overhang": 0, "offset": 0})");
@@ -542,11 +543,12 @@ namespace
                 for (const Json& v : r["left_out"])
                     left.push_back(v.get<std::string>());
             auto has = [&](const char* p) { return std::find(left.begin(), left.end(), p) != left.end(); };
-            const bool listed = !has("/families") && has("/phases") && has("/types/column") && has("/materials/Brick/texture") && !has("/elements/100100") &&
+            const bool listed = !has("/families") && has("/phases") && !has("/types/column") && has("/types/railing") && has("/materials/Brick/texture") && !has("/elements/100100") &&
                                 !has("/elements/100101") && has("/elements/100102") && !has("/elements/100003/attach_top") && has("/elements/100003/params");
             std::string why;
             const bool opened = !r.is_null() && t.GetModel().Check(why) && Count(t, "wall") == 4 && Count(t, "door") == 2 && Count(t, "roof") == 1 &&
-                                t.GetModel().GetWall(Id(100003))->attachTop && !t.GetModel().library.IdOf(Kind::Of(Kind::Tag::Phase), "Existing");
+                                t.GetModel().GetWall(Id(100003))->attachTop && !t.GetModel().library.IdOf(Kind::Of(Kind::Tag::Phase), "Existing") &&
+                                t.GetModel().types.column.count("Square 500") == 1;
             std::error_code ec;
             std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
             Check(listed && opened, "命令：打开 BIMCraft 的文件时略去还没移植的内容并列出，其余照常");
@@ -1939,6 +1941,80 @@ namespace
             Check(ok, "材质：透明度 0 到 100，新项目的玻璃是 70");
         }
     }
+    // 移植自 BIMCraft tests.rs 的 columns_stand_from_their_level_to_the_next_and_turn_with_rotate 与 structure_tests.rs 的柱
+    void TestColumns()
+    {
+        {
+            Session s;
+            House(s);
+            const Id c = Run(s, "CL", R"({"at": [4000, 3000]})")["id"].get<Id>();
+            Json e = ElementOf(s, c);
+            Check(e["type"] == "Rectangular 400 x 400" && e["height"] == 3000.0 && e["width"] == 400.0 && IdOf(s, e["top_level"]).has_value(),
+                  "柱：默认从所在标高立到上一个标高");
+            const Id round = Run(s, "column", R"({"at": [2000, 3000], "type": "Round 300", "height": 2500})")["id"].get<Id>();
+            e = ElementOf(s, round);
+            Check(e["height"] == 2500.0 && e["top_level"].is_null() && e["round"] == true && e["depth"] == 300.0, "柱：给了 height 时不到上一个标高");
+            Run(s, "rotate", Json{ { "ids", { c } }, { "about", Pt(4000, 3000) }, { "angle", 45 } });
+            Check(NearNum(ElementOf(s, c)["angle"], 45.0, 1e-6), "柱：随旋转转过去");
+            Run(s, "type", R"({"category": "column", "name": "Steel 200 x 300", "width": 200, "depth": 300})");
+            Run(s, "modify", Json{ { "id", c }, { "type", "Steel 200 x 300" } });
+            Check(ElementOf(s, c)["depth"] == 300.0, "柱：新建的类型、换类型");
+            Check(Contains(Refused(s, "column", R"({"at": [0, 0], "type": "Marble"})"), "Marble"), "柱：没有的类型报出名称");
+            Check(Contains(Refused(s, "column", R"({"at": [0, 0], "base_offset": 3000, "height": -1})"), "height"), "柱：高度要大于 0");
+            Run(s, "type", R"({"category": "column", "name": "Drum 500", "width": 500, "depth": 200, "round": true})");
+            Check(s.GetModel().types.column.at("Drum 500").depth == 500.0, "柱：圆柱的进深即直径");
+        }
+        {
+            Session s;
+            const Id c = Run(s, "structural_column", R"({"at": [1000, 2000]})")["id"].get<Id>();
+            const Json e = ElementOf(s, c);
+            Check(e["category"] == "structuralcolumn" && e["type"] == "Concrete 300 x 300" && e["height"] == 3000.0 && e["width"] == 300.0 &&
+                      e["depth"] == 300.0,
+                  "结构柱：自己的类别与类型");
+            const std::string wrong = Refused(s, "structural_column", R"({"at": [0, 0], "type": "Rectangular 400 x 400"})");
+            Check(Contains(wrong, "Concrete 300 x 300"), "结构柱：建筑柱的类型不是它的，报错列出它自己的：" + wrong);
+            Check(Contains(Refused(s, "column", R"({"at": [0, 0], "type": "Concrete 300 x 300"})"), "Rectangular 400 x 400"), "柱：结构柱的类型也不是它的");
+            Check(Count(s, "structural columns") == 1 && Count(s, "structural_column") == 1 && Count(s, "columns") == 0, "结构柱：按自己的类别数，怎么写都行");
+            const Json r = Run(s, "CL", R"({"at": [9000, 0]})");
+            Check(!r.is_null() && ElementOf(s, r["id"].get<Id>())["category"] == "column", "柱：CL 是建筑柱的（同 Revit）");
+        }
+        {
+            Session s;
+            const Id c = Run(s, "structural_column", R"({"at": [0, 0], "angle": 0})")["id"].get<Id>();
+            Run(s, "move", Json{ { "ids", { c } }, { "by", Pt(1000, 500) } });
+            Check(ElementOf(s, c)["at"] == Pt(1000, 500), "结构柱：移动");
+            Run(s, "rotate", Json{ { "ids", { c } }, { "about", Pt(1000, 500) }, { "angle", 90 } });
+            Check(ElementOf(s, c)["angle"] == 90.0, "结构柱：旋转");
+            const Json m = Run(s, "mirror", Json{ { "ids", { c } }, { "axis", { Pt(0, 0), Pt(0, 1000) } }, { "copy", true } });
+            const Json mirrored = m.is_null() ? Json() : ElementOf(s, m["ids"][0].get<Id>());
+            Check(!mirrored.is_null() && NearNum(mirrored["at"][0], -1000.0, 1e-6) && NearNum(mirrored["at"][1], 500.0, 1e-6), "结构柱：镜像复制");
+            Run(s, "copy", Json{ { "ids", { c } }, { "by", Pt(0, -2000) } });
+            Check(Count(s, "structuralcolumn") == 3, "结构柱：复制");
+            Run(s, "delete", Json{ { "ids", { c } } });
+            Check(Count(s, "structuralcolumn") == 2, "结构柱：删除");
+            Run(s, "undo", Json::object());
+            Check(Count(s, "structuralcolumn") == 3, "结构柱：撤销删除");
+        }
+        {
+            // 存了再打开一模一样；没有结构柱类型的旧文件也能打开
+            Session s;
+            Run(s, "column", R"({"at": [0, 0], "type": "Round 300"})");
+            Run(s, "structural_column", R"({"at": [1000, 0], "height": 2000, "base_offset": -500})");
+            const std::string path = Temp("columns.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            std::error_code ec;
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+            Check(t.GetModel().ToJson() == s.GetModel().ToJson(), "柱：存了再打开一模一样");
+            Json old = Session().GetModel().ToJson();
+            old["types"].erase("structural_column");
+            Model m;
+            std::vector<std::string> left;
+            std::string error;
+            Check(Model::Read(old.dump(), m, left, error) && m.types.structuralColumn.empty() && m.Check(error), "柱：没有结构柱类型的旧文件能打开");
+        }
+    }
 }
 
 int main()
@@ -1960,6 +2036,7 @@ int main()
     TestAutosave();
     TestHostileParams();
     TestBimcraft0733();
+    TestColumns();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

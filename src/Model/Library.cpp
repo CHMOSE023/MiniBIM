@@ -212,10 +212,14 @@ namespace MiniBIM::Bim
             out.emplace_back(Kind::Type("door"), n);
         for (const auto& [n, _] : types.window)
             out.emplace_back(Kind::Type("window"), n);
+        for (const auto& [n, _] : types.column)
+            out.emplace_back(Kind::Type("column"), n);
         for (const auto& [n, _] : types.roof)
             out.emplace_back(Kind::Type("roof"), n);
         for (const auto& [n, _] : types.ceiling)
             out.emplace_back(Kind::Type("ceiling"), n);
+        for (const auto& [n, _] : types.structuralColumn)
+            out.emplace_back(Kind::Type("structuralcolumn"), n);
         for (const auto& [n, _] : materials)
             out.emplace_back(Kind::Of(Kind::Tag::Material), n);
         for (const auto& [n, _] : families)

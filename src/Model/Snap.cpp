@@ -103,6 +103,12 @@ namespace MiniBIM::Bim::Snap
                         s.points.emplace_back(g->end, Kind::Endpoint);
                         s.lines.emplace_back(g->start, g->end);
                     }
+                    else if (const Column* col = e.AsColumn())
+                    {
+                        const P2 at[] = { col->at };
+                        if (m.Same(col->level, level) && near(at))
+                            s.points.emplace_back(col->at, Kind::Centre);
+                    }
                     else if (const Component* c = e.As<Component>())
                     {
                         const P2 at[] = { c->at };
