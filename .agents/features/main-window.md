@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -104,7 +104,11 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 - 宿主：Windows 为 `Win32Window`（`apps/Win32`，无边框窗口、自绘标题栏）；Linux 为 `LinuxApp`（`apps/Linux`，SDL3，复制自 MiniCAD）：
   系统的标题栏和边框（`AppPlatform::HasWindowControls` 为 false，不注册 `window.*` 命令，标题栏不显示那三个按钮），
   文件对话框经 SDL3（xdg-desktop-portal / zenity，打开是异步的），`PostDelayed` 用 SDL 定时器，界面字体用自带的 `assets/fonts/NotoSansSC-UI.ttf`。
-  新加平台服务时两个宿主都要实现（Linux 版没有显示器时在 Xvfb 里运行、截图，见 `.agents/docs/troubleshooting.md`）打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径）；
+  网页版为 `WebApp`（`apps/Web`，Emscripten，复制自 MiniCAD）：没有窗口按钮，打开时浏览器的文件选择框把文件读进内存文件系统 `/upload`，
+  `AppPlatform::HasSaveDialog` 为 false（`MainFrame::AskSavePath` 问文件名），写到 `/download` 后 `AppPlatform::OnDocumentSaved` 下载；
+  没有线程（不自动保存），`AppPlatform::GetUserDataDir` 为空（不记住设置与最近打开）；有未保存的改动时关闭标签页前浏览器询问（`MainFrame::HasUnsavedChanges`）。
+  本机看效果：`build_wasm.bat serve`，或在内置浏览器里打开构建目录的 `index.html` 所在的本地服务器。
+  新加平台服务时三个宿主都要实现（Linux 版没有显示器时在 Xvfb 里运行、截图，见 `.agents/docs/troubleshooting.md`）打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径）；
   保存只直接写回 `.minibim`：打开的是 BIMCraft 的 `.bimcraft` 或 IFC 时"保存"也走另存为，免得把略去了内容的项目写回原文件；
   打开时有略去的内容（项目文件的 `left_out`、IFC 的 `skipped`）会弹窗说几个。"导出 IFC…"（`file.exportIfc`）是 `save` 到 `.ifc`，不改项目的路径
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）

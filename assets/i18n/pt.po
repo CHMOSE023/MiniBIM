@@ -270,7 +270,7 @@ msgstr "Mais comandos"
 msgid "Unknown command:"
 msgstr "Comando desconhecido:"
 
-#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp apps/Web/src/Host/WebApp.cpp
 msgid "OK"
 msgstr "OK"
 
@@ -2083,6 +2083,10 @@ msgstr "Não foi possível mostrar a caixa de diálogo de arquivos"
 #: apps/Linux/src/Host/LinuxApp.cpp
 msgid "{0}\n\nThe file dialog needs xdg-desktop-portal or zenity. You can also give a project file on the command line."
 msgstr "{0}\n\nA caixa de diálogo de arquivos precisa do xdg-desktop-portal ou do zenity. Você também pode informar um arquivo de projeto na linha de comando."
+
+#: apps/Web/src/Host/WebApp.cpp
+msgid "Could not read the file"
+msgstr "Não foi possível ler o arquivo"
 
 #: assets/ui/minibim_ui.json
 msgid "File"

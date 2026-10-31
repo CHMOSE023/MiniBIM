@@ -2,7 +2,7 @@
 # 复制自 MiniCAD 提交 0bd1687 的 apps/Render 与 cmake/Render.cmake。每个平台只编译自己的图形接口：
 #   Windows → D3D12 + D3D11（WARP 软件设备作最后的回退）
 #   Linux → Vulkan（默认）+ GLES3（EGL，回退；两者的窗口与上下文都由宿主经 SDL3 创建）
-# 网页（WebGPU / WebGL2）的后端在 MiniCAD 的 apps/Render 里，做网页版时再复制过来（GraphicsDevice.cpp 已按 MINIBIM_RENDER_* 宏分派）。
+#   网页（Emscripten）→ WebGPU（浏览器支持时）+ GLES3（WebGL2，回退）
 # 界面后端（MiniGUI::IRenderBackend）各是一个小静态库；MiniBIMRender = 三维视口渲染器 + 宿主用的图形设备（IGraphicsDevice）。
 
 set(MINIBIM_RENDER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/apps/Render")
@@ -87,13 +87,30 @@ if(WIN32 AND NOT EMSCRIPTEN)
     endif()
 endif()
 
-if(MINIBIM_LINUX_GLES3)
+if(EMSCRIPTEN OR MINIBIM_LINUX_GLES3)
     add_library(MiniGUI_GLES3 STATIC
         "${MINIBIM_RENDER_SRC}/GLES3/GLES3Backend.cpp"
     )
     target_include_directories(MiniGUI_GLES3 PUBLIC ${MINIBIM_RENDER_SRC})
-    target_include_directories(MiniGUI_GLES3 PRIVATE ${MINIBIM_GLES3_INCLUDE_DIR})
-    target_link_libraries(MiniGUI_GLES3 PUBLIC MiniGUI ${MINIBIM_GLESV2_LIBRARY})
+    target_link_libraries(MiniGUI_GLES3 PUBLIC MiniGUI)
+    if(MINIBIM_LINUX_GLES3)
+        target_include_directories(MiniGUI_GLES3 PRIVATE ${MINIBIM_GLES3_INCLUDE_DIR})
+        target_link_libraries(MiniGUI_GLES3 PUBLIC ${MINIBIM_GLESV2_LIBRARY})
+    endif()
+endif()
+
+if(EMSCRIPTEN)
+    # WebGPU：浏览器自带的接口，经 Emscripten 自带的 emdawnwebgpu 绑定（标准 webgpu.h，不引入 Dawn 库）。
+    # --use-port 编译和链接都要加：编译时提供头文件，链接时加入 JS 实现与 webgpu.cpp；
+    # 第一次使用时 Emscripten 从 GitHub 下载固定版本的端口包到 emsdk 的缓存目录
+    set(MINIBIM_EMDAWNWEBGPU "--use-port=emdawnwebgpu:cpp_bindings=false")
+    add_library(MiniGUI_WebGPU STATIC
+        "${MINIBIM_RENDER_SRC}/WebGPU/WebGPUBackend.cpp"
+    )
+    target_include_directories(MiniGUI_WebGPU PUBLIC ${MINIBIM_RENDER_SRC})
+    target_link_libraries(MiniGUI_WebGPU PUBLIC MiniGUI)
+    target_compile_options(MiniGUI_WebGPU PUBLIC ${MINIBIM_EMDAWNWEBGPU})
+    target_link_options(MiniGUI_WebGPU PUBLIC ${MINIBIM_EMDAWNWEBGPU})
 endif()
 
 # Vulkan 界面后端；VulkanContext（设备、命令缓冲、上传缓冲、描述符、动态渲染）也在这里，视口渲染器共用它
@@ -150,15 +167,29 @@ if(WIN32 AND NOT EMSCRIPTEN)
     target_link_libraries(MiniBIMRender PRIVATE MiniGUI_D3D12 d3d12)
 endif()
 
-if(MINIBIM_LINUX_GLES3)
+if(EMSCRIPTEN OR MINIBIM_LINUX_GLES3)
     target_sources(MiniBIMRender PRIVATE
         "${MINIBIM_RENDER_SRC}/GLES3/GLES3GraphicsDevice.cpp"
         "${MINIBIM_RENDER_SRC}/GLES3/GLES3Renderer.cpp"
         "${MINIBIM_RENDER_SRC}/GLES3/GLRenderTarget.cpp"
     )
     target_compile_definitions(MiniBIMRender PRIVATE MINIBIM_RENDER_GLES3)
-    target_include_directories(MiniBIMRender PRIVATE ${MINIBIM_GLES3_INCLUDE_DIR})
-    target_link_libraries(MiniBIMRender PRIVATE MiniGUI_GLES3 ${MINIBIM_GLESV2_LIBRARY})
+    target_link_libraries(MiniBIMRender PRIVATE MiniGUI_GLES3)
+    if(MINIBIM_LINUX_GLES3)
+        target_include_directories(MiniBIMRender PRIVATE ${MINIBIM_GLES3_INCLUDE_DIR})
+        target_link_libraries(MiniBIMRender PRIVATE ${MINIBIM_GLESV2_LIBRARY})
+    endif()
+endif()
+
+if(EMSCRIPTEN)
+    # 网页两个都编：先异步试 WebGPU，不支持或网址带 ?webgl 时用 WebGL2（宿主 WebApp 决定）
+    target_sources(MiniBIMRender PRIVATE
+        "${MINIBIM_RENDER_SRC}/WebGPU/WebGPUGraphicsDevice.cpp"
+        "${MINIBIM_RENDER_SRC}/WebGPU/WebGPURenderer.cpp"
+        "${MINIBIM_RENDER_SRC}/WebGPU/WebGPURenderTarget.cpp"
+    )
+    target_compile_definitions(MiniBIMRender PRIVATE MINIBIM_RENDER_WEBGPU)
+    target_link_libraries(MiniBIMRender PRIVATE MiniGUI_WebGPU)
 endif()
 
 if(MINIBIM_LINUX_VULKAN)

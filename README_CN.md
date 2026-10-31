@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>开源 BIM 软件，使用 C++20 开发。</strong><br />
-  在 Windows 和 Linux 上运行，几何内核使用 SMLib，建模功能移植自 BIMCraft，界面支持多语言。
+  在 Windows、Linux 和浏览器里运行，几何内核使用 SMLib，建模功能移植自 BIMCraft，界面支持多语言。
 </p>
 
 <p align="center">
@@ -87,6 +87,18 @@ out/linux/MiniBIMLinux/MiniBIMLinux [项目文件]
 找不到 SDL3 或 OpenGL ES 3 时只编译核心库与测试（`ctest --test-dir out/linux`）；找不到 Vulkan 开发文件时只用 OpenGL ES 3。
 启动参数同 Windows 版，`--gpu vulkan|gl`。打开、保存的文件对话框需要 xdg-desktop-portal 或 zenity。
 
+### 网页版编译
+
+需要 [Emscripten SDK](https://emscripten.org)（`build_wasm.bat` 默认在 `D:\dev\emsdk`，在脚本开头的 `EMSDK_ENV` 改）。
+
+```bat
+build_wasm.bat serve
+```
+
+输出到 `out/build/wasm/MiniBIMWeb/`，并在 http://localhost:8080/MiniBIMWeb/ 启动本地服务器。网页版默认用浏览器的 WebGPU，不支持时改用 WebGL2
+（网址加 `?webgl` 强制用 WebGL2）。打开时把选中的文件读进页面；保存、导出 IFC 先问文件名，再由浏览器下载。不自动保存，也不记住设置。
+第一次构建时 Emscripten 从 GitHub 下载 WebGPU 绑定（emdawnwebgpu 端口包），需要联网。
+
 ### 测试
 
 ```bat
@@ -110,11 +122,11 @@ GitHub Actions 在每个到 `main` 的 PR 上编译 Windows 版并运行测试�
 | `src/Model/`、`src/Commands/` | 建筑模型、命令与撤销（移植自 BIMCraft） |
 | `src/UI/` | 界面库 MiniGUI（复制自 MiniCAD） |
 | `apps/Common/` | 主窗口的界面与逻辑（与平台无关） |
-| `apps/Render/` | 渲染后端（Windows 为 D3D12、D3D11，Linux 为 Vulkan、OpenGL ES 3） |
-| `apps/Win32/`、`apps/Linux/` | Windows 桌面版宿主；Linux 版宿主（SDL3） |
-| `assets/` | 界面描述文件 `ui/minibim_ui.json`、词典 `i18n/`、图标 `icons/`、Linux 版的界面字体 `fonts/` |
+| `apps/Render/` | 渲染后端（Windows 为 D3D12、D3D11，Linux 为 Vulkan、OpenGL ES 3，网页为 WebGPU、WebGL2） |
+| `apps/Win32/`、`apps/Linux/`、`apps/Web/` | Windows 桌面版宿主；Linux 版宿主（SDL3）；网页版宿主（Emscripten） |
+| `assets/` | 界面描述文件 `ui/minibim_ui.json`、词典 `i18n/`、图标 `icons/`、Linux 版与网页版的界面字体 `fonts/` |
 | `3rd/` | SMLib（NURBS BRep 实体内核，Apache-2.0）、stb、nlohmann/json（MIT） |
-| `tools/` | `extract_messages.py`：收集界面原文、更新词典；`make_icons.py`：生成 MiniBIM 用到的全部图标；`make_web_font.py`：生成 Linux 版的界面字体 |
+| `tools/` | `extract_messages.py`：收集界面原文、更新词典；`make_icons.py`：生成 MiniBIM 用到的全部图标；`make_web_font.py`：生成 Linux 版与网页版的界面字体 |
 | `tests/` | 测试 |
 | `.agents/` | AI 编程助手的说明、功能指南与 skill（入口是 [AGENTS.md](AGENTS.md)） |
 

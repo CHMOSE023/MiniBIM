@@ -270,7 +270,7 @@ msgstr ""
 msgid "Unknown command:"
 msgstr ""
 
-#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp apps/Web/src/Host/WebApp.cpp
 msgid "OK"
 msgstr ""
 
@@ -2082,6 +2082,10 @@ msgstr ""
 
 #: apps/Linux/src/Host/LinuxApp.cpp
 msgid "{0}\n\nThe file dialog needs xdg-desktop-portal or zenity. You can also give a project file on the command line."
+msgstr ""
+
+#: apps/Web/src/Host/WebApp.cpp
+msgid "Could not read the file"
 msgstr ""
 
 #: assets/ui/minibim_ui.json

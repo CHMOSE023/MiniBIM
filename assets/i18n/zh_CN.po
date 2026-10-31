@@ -269,7 +269,7 @@ msgstr "更多命令"
 msgid "Unknown command:"
 msgstr "没有这个命令："
 
-#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Linux/src/Host/LinuxApp.cpp apps/Web/src/Host/WebApp.cpp
 msgid "OK"
 msgstr "确定"
 
@@ -2068,6 +2068,10 @@ msgstr "无法打开文件对话框"
 #: apps/Linux/src/Host/LinuxApp.cpp
 msgid "{0}\n\nThe file dialog needs xdg-desktop-portal or zenity. You can also give a project file on the command line."
 msgstr "{0}\n\n文件对话框需要 xdg-desktop-portal 或 zenity。也可以在命令行上给出项目文件。"
+
+#: apps/Web/src/Host/WebApp.cpp
+msgid "Could not read the file"
+msgstr "无法读取文件"
 
 #: assets/ui/minibim_ui.json
 msgid "File"

@@ -7,7 +7,7 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 ## 概述
 
 主窗口的视口（面板 `viewport`）显示三维模型：`OrbitCamera`（`src/View/OrbitCamera.h`）给出视图投影矩阵，`MainFrame::RenderViewport` 用
-`IRenderer`（`src/Render/IRenderer.h`，D3D12 / D3D11、Linux 的 Vulkan / GLES3 实现在 `apps/Render`，都复制自 MiniCAD）画进离屏渲染目标，再作为纹理交给 `MiniGUI::ViewportHost` 显示。
+`IRenderer`（`src/Render/IRenderer.h`，D3D12 / D3D11、Linux 的 Vulkan / GLES3、网页的 WebGPU / WebGL2 实现在 `apps/Render`，都复制自 MiniCAD）画进离屏渲染目标，再作为纹理交给 `MiniGUI::ViewportHost` 显示。
 几何只经 `Solid::ISolidKernel`（SMLib）得到：模型（`MainFrame` 的 `Bim::Session`，`.agents/features/model.md`）由 `ModelScene`（`src/View/ModelScene.h`）
 建成实体，再离散成三角形与边线。
 

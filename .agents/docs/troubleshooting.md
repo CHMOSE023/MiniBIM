@@ -101,6 +101,14 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
   没有显示器的机器上看界面：`xvfb-run -a -s '-screen 0 1400x900x24'` 里运行，用 ImageMagick 的 `import -window root` 截屏；
   llvmpipe 的 Vulkan 与 OpenGL ES 3 都能画，`--gpu gl` 换后端
 
+### PowerShell 里 `cmd /c "build_wasm.bat"` 报 "is not recognized"
+- 原因：这台机器的 cmd 不在当前目录里找批处理（`NoDefaultCurrentDirectoryInExePath`）
+- 做法：写成 `cmd /c ".\build_wasm.bat"`（`build.bat`、`run_tests.bat` 同理）
+
+### 网页版保存、导出时想验证写出的文件，又不想真的下载
+- 做法：在浏览器的控制台里先替换 `HTMLAnchorElement.prototype.click`（记下 `download` 文件名）和 `URL.createObjectURL`（记下 `Blob` 大小），
+  再点保存；`WebApp` 的下载就是建一个 `<a download>` 再点它
+
 ## 改文件
 
 ### 经 Bash 写进文件的内容里，`\n` 变成了真换行、`\v` 变成了控制字符

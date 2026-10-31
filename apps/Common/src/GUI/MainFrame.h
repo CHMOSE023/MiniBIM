@@ -83,6 +83,8 @@ namespace MiniBIM
         const std::string&  GetUiPath() const { return m_uiPath; }
         MiniGUI::UIContext& GetUI() const { return *m_ui; }
         MiniGUI::TitleBar*  GetTitleBar() const;
+        // 有没有没保存的改动（网页版关闭标签页前据此让浏览器询问）
+        bool HasUnsavedChanges() const { return m_ui && Dirty(); }
 
         // 语言：code 为空 = 跟随系统。save 时写进用户设置
         void               SetLanguage(const std::string& code, bool save);

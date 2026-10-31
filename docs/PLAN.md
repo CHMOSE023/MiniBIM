@@ -9,7 +9,7 @@ MiniBIM 把 [BIMCraft](https://github.com/IPedrax/BIMCraft)（Rust，约 13.7 �
 
 - 构建：CMake + Ninja + MSVC，预设 `debug` / `release`，`build.bat`、`run_tests.bat`；静态运行库，复制自 MiniCAD 的 `cmake/`
 - 界面：MiniGUI（`src/UI`），界面描述文件 `assets/ui/minibim_ui.json`，自绘标题栏 + 菜单栏 + 三维视口 + 状态栏
-- 渲染：Windows 的 D3D12 / D3D11（WARP 回退），`apps/Render`（第 4 阶段加上 Linux 的 Vulkan / GLES3）
+- 渲染：Windows 的 D3D12 / D3D11（WARP 回退），`apps/Render`（第 4 阶段加上 Linux 的 Vulkan / GLES3、网页的 WebGPU / WebGL2）
 - 几何：SMLib（`3rd/SMLib`）经 `Solid::ISolidKernel`；临时的演示场景检验内核与视口（第 2a 步换成了模型的三维场景 `ModelScene`）
 - 多语言：PO 词典 + `Tr` / `TrN` / `TrC`，MiniGUI 与界面描述文件同样翻译，运行时切换（[i18n.md](i18n.md)）；简体中文、英文、西班牙语、葡萄牙语
 - 图标：`tools/make_icons.py` 生成全部图标（照 MiniCAD 的同名脚本）：程序图标 `app.ico` / `app.png`，现有命令的图标
@@ -118,7 +118,8 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   `HasBackgroundThread` 为 false 时不开自动保存，`HasWindowControls` 为 false 时标题栏不显示窗口按钮
 - 4b ✅ Linux 版（`apps/Linux`，SDL3，Vulkan / GLES3）：从 MiniCAD 复制宿主 `LinuxApp`、`apps/Render` 的 `Vulkan/`、`GLES3/` 与 `cmake/Render.cmake` 的 Linux 段落；
   界面字体是自带的 Noto Sans SC 子集（`tools/make_web_font.py` 生成 `assets/fonts/NotoSansSC-UI.ttf`），自动保存的定时用 SDL 定时器
-- 网页版（Emscripten，WebGPU / WebGL2）：从 MiniCAD 复制 `apps/Web`、`apps/Render/WebGPU` 与 `cmake/Render.cmake` 的段落
+- 4c ✅ 网页版（`apps/Web`，Emscripten，WebGPU / WebGL2，`build_wasm.bat`）：从 MiniCAD 复制宿主 `WebApp`、`apps/Render/WebGPU` 与 `cmake/Render.cmake` 的段落；
+  打开读进内存文件系统，保存与导出 IFC 先问文件名再下载；核心库在网页上不链接 pthread，不自动保存，不记住设置与最近打开；SMLib 编入（8 MB 栈）
 - CI：照 MiniCAD 的 `build.yml` 加上网页版（Emscripten）与 Linux 版（SDL3）的编译、打包与发布，网页版部署
 
 ## 与 MiniCAD 的差异
@@ -130,6 +131,6 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   提示、面板标题；`Binding`、`NumberBox`、`ColorPicker`、`CommandConsole`、`CommandUI`、`Dialog`、`Ribbon`、`TabView`、`TextBox`、
   `TitleBar` 里写死的中文改成英文原文 + `Tr`（菜单文字去掉了助记符 `&`，不显示下划线和 `(X)`）；`Win32Fonts` 加了韩文回退字体
 - MiniGUI：`UIContext::SetUnhandledTextHandler`（没有节点要的文字交给宿主，两个字母的快捷键用）
-- `cmake/Render.cmake` 只有 Windows 与 Linux 的段落（网页版做到第 4 阶段时再加）；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`、`PostDelayed`，
+- `cmake/Render.cmake` 照 MiniCAD 分 Windows、Linux、网页三段；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`、`PostDelayed`，
   文件对话框同 MiniCAD 是异步的 `PickFile` 与 `ChooseSavePath`，但 `FileKind` / `SaveKind` 换成项目、IFC、快捷键文件（没有 DWG 的格式与版本）
 - 没有复制：MiniDWG、节点图、天正、CAD 实体 / 场景 / 编辑器（`src/Core/Entity`、`src/Scene`、`src/Document`、`src/Editor`、`src/Viewport`）

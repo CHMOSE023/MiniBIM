@@ -40,9 +40,11 @@ add_library(MiniBIM STATIC
 )
 
 target_include_directories(MiniBIM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-# 自动保存的工作线程（Commands/Autosave.cpp）
-find_package(Threads REQUIRED)
-target_link_libraries(MiniBIM PUBLIC Threads::Threads)
+# 自动保存的工作线程（Commands/Autosave.cpp）。网页版不开 pthread（AppPlatform::HasBackgroundThread 为 false，不自动保存）
+if(NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+    target_link_libraries(MiniBIM PUBLIC Threads::Threads)
+endif()
 # nlohmann/json（3rd/nlohmann，MIT）：命令的参数与结果、项目文件
 target_include_directories(MiniBIM SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/3rd/nlohmann/include)
 

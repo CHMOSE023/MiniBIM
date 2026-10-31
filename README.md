@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>An open-source BIM application written in C++20.</strong><br />
-  Runs on Windows and Linux, models with the SMLib solid kernel, ports its BIM features from BIMCraft, and speaks several languages.
+  Runs on Windows, Linux and in the browser, models with the SMLib solid kernel, ports its BIM features from BIMCraft, and speaks several languages.
 </p>
 
 <p align="center">
@@ -91,6 +91,19 @@ Without SDL3 or OpenGL ES 3 only the core library and the tests are built (`ctes
 packages only OpenGL ES 3 is used. The command-line options are the Windows ones, with `--gpu vulkan|gl`. The open and save
 dialogs need xdg-desktop-portal or zenity.
 
+### Building for the web
+
+You need the [Emscripten SDK](https://emscripten.org) (`build_wasm.bat` expects it in `D:\dev\emsdk`; change `EMSDK_ENV` at its top).
+
+```bat
+build_wasm.bat serve
+```
+
+This builds `out/build/wasm/MiniBIMWeb/` and serves it at http://localhost:8080/MiniBIMWeb/. The web version uses the browser's
+WebGPU and falls back to WebGL2 (add `?webgl` to the address to force it). Opening reads the chosen file into the page; saving and
+exporting IFC ask for a file name and download the file. It doesn't autosave or keep settings. The first build downloads the WebGPU
+bindings (the emdawnwebgpu port) from GitHub.
+
 ### Tests
 
 ```bat
@@ -116,11 +129,11 @@ works.
 | `src/Model/`, `src/Commands/` | The building model, its commands and undo, ported from BIMCraft |
 | `src/UI/` | The MiniGUI interface library (copied from MiniCAD) |
 | `apps/Common/` | The main window's interface and logic (platform-independent) |
-| `apps/Render/` | Renderers (D3D12 and D3D11 on Windows, Vulkan and OpenGL ES 3 on Linux) |
-| `apps/Win32/`, `apps/Linux/` | The Windows desktop host; the Linux host (SDL3) |
-| `assets/` | The interface description `ui/minibim_ui.json`, the catalogs in `i18n/`, the icons in `icons/` and the Linux interface font in `fonts/` |
+| `apps/Render/` | Renderers (D3D12 and D3D11 on Windows, Vulkan and OpenGL ES 3 on Linux, WebGPU and WebGL2 in the browser) |
+| `apps/Win32/`, `apps/Linux/`, `apps/Web/` | The Windows desktop host; the Linux host (SDL3); the web host (Emscripten) |
+| `assets/` | The interface description `ui/minibim_ui.json`, the catalogs in `i18n/`, the icons in `icons/` and the interface font for Linux and the web in `fonts/` |
 | `3rd/` | SMLib (NURBS B-rep solid kernel, Apache-2.0), stb and nlohmann/json (MIT) |
-| `tools/` | `extract_messages.py`: collects interface text and updates the catalogs; `make_icons.py`: draws every icon MiniBIM uses; `make_web_font.py`: makes the interface font for Linux |
+| `tools/` | `extract_messages.py`: collects interface text and updates the catalogs; `make_icons.py`: draws every icon MiniBIM uses; `make_web_font.py`: makes the interface font for Linux and the web |
 | `tests/` | Tests |
 | `.agents/` | Notes, feature guides and skills for AI coding assistants (start at [AGENTS.md](AGENTS.md)) |
 
