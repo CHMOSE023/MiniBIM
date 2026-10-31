@@ -2,6 +2,7 @@
 #pragma once
 #include "Model/Family.h"
 #include "Model/Geom.h"
+#include "Model/Graphics.h"
 #include "Model/Ids.h"
 #include "Model/Json.h"
 #include "Model/Language.h"
@@ -15,6 +16,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -73,7 +75,44 @@ namespace MiniBIM::Bim
         std::optional<std::array<P2, 2>> extent;
         // 平面视图是否显示默认三维视图剖面框保留的部分
         bool        sectionBox = false;
+        // 它的平面隐藏什么、别的怎么画（可见性 / 图形），比例与详细程度
+        Graphics    graphics;
         bool operator==(const Level&) const = default;
+    };
+
+    // 标高的另一个平面（Revit 的复制视图）：自己的名称、视图范围、裁剪与图形，画的、标注的在它里面。
+    // 相关视图（parent 给出）跟着父视图的视图范围与图形（比例、详细程度），有自己的裁剪，也显示父视图的注释
+    struct PlanView
+    {
+        Guid        level;
+        std::string name;
+        ViewRange   viewRange;
+        std::optional<std::array<P2, 2>> crop;
+        Graphics    graphics;
+        std::optional<Guid> parent;
+        bool        sectionBox = false;
+        bool operator==(const PlanView&) const = default;
+    };
+
+    // 三维视图的剖面框：最小、最大角，关掉时留着它的范围
+    struct SectionBox
+    {
+        P3   min{};
+        P3   max{};
+        bool on = true;
+        bool operator==(const SectionBox&) const = default;
+    };
+
+    // 三维视图：从正东逆时针 azimuth 度、向上 elevation 度看过去。默认三维视图 {3D} 在它的图形第一次改动时建出来
+    struct View3D
+    {
+        static constexpr const char* DefaultName = "{3D}";
+        std::string name;
+        double      azimuth   = -45.0;
+        double      elevation = 30.0;
+        Graphics    graphics;
+        std::optional<SectionBox> sectionBox;
+        bool operator==(const View3D&) const = default;
     };
 
     struct Grid
@@ -577,7 +616,7 @@ namespace MiniBIM::Bim
     {
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
                                      Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass,
-                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion>;
+                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D>;
         Variant v;
 
         Element() = default;
@@ -826,8 +865,8 @@ namespace MiniBIM::Bim
         // 墙围合 level 上的房间：跨过标高以上 CutHeight（房间在这个高度找墙）
         bool   Bounding(const Wall& w, Guid level) const;
         bool   Spans(const Wall& w, double z) const;
-        // level 平面视图的视图范围（高度）
-        PlanRange GetPlanRange(Guid level) const;
+        // 平面 plan（标高的平面或平面视图）的视图范围（高度）
+        PlanRange GetPlanRange(Guid plan) const;
 
         // ── 类型 ────────────────────────────────────────────────
         std::vector<std::string> TypeNames(std::string_view category) const;
@@ -948,11 +987,39 @@ namespace MiniBIM::Bim
         // 在中心线量时没有东西围住墙体，没什么要拒绝的
         std::optional<Id> WallHolding(const Room& r, RoomArea at) const;
 
+        // ── 视图（Views.cpp）──────────────────────────────────
+        // 平面 key 所在的标高：标高自己（它的平面），或平面视图的标高；别的元素为空
+        std::optional<Guid> PlanLevel(Guid key) const;
+        const PlanView* GetPlanView(Guid k) const;
+        // level 的平面视图，按元素顺序
+        std::vector<std::pair<Id, const PlanView*>> PlanViews(Guid level) const;
+        // 平面 key 跟着谁的视图范围与图形：它自己，或相关视图的父视图
+        Guid PlanSource(Guid key) const;
+        // 平面 key 自己的裁剪范围
+        std::optional<std::array<P2, 2>> CropOf(Guid key) const;
+        // 平面 key 的视图范围：相关视图的是父视图的
+        ViewRange ViewRangeOf(Guid key) const;
+        // 视图的图形：标高的平面、平面视图（相关视图的是父视图的）、三维视图；别的元素为空
+        const Graphics* ViewGraphics(Guid view) const;
+        Graphics*       ViewGraphicsMut(Guid view);
+        // 视图的比例 n（1 : n）：它的，没有时为项目单位的默认
+        double ScaleOf(Guid view) const;
+        // 视图的名称：标高的平面、平面视图、三维视图；别的元素为空
+        const std::string* ViewName(Guid id) const;
+        // base、base 2、base 3……（numbered 时 base 1、base 2……）里第一个没有视图用的
+        std::string FreeViewName(const std::string& base, bool numbered) const;
+        // 默认三维视图 {3D}：已经建出来时
+        std::optional<Id> Default3D() const;
+        // 视图 view 的图形落到各元素上的样子：不是视图时什么也不改
+        Look LookOf(Guid view) const;
+        // 默认三维视图的样子（还没有它时什么也不改）
+        Look LookOf3D() const;
+
         // ── 注释（Annotate.cpp）────────────────────────────────
-        // 注释在的平面（标高）；不是注释时为空
+        // 注释在的平面（标高或平面视图）；不是注释时为空
         std::optional<Guid> AnnotationPlan(const Element& e) const;
-        // level 的平面画注释 e
-        bool AnnotationIn(const Element& e, Guid level) const;
+        // 平面 plan 画注释 e：它在这个平面里，或在相关视图的父视图里
+        bool AnnotationIn(const Element& e, Guid plan) const;
         // 元素在平面上的点（标记指着它）：门窗在墙中线上的中心、墙的中点、柱与构件的插入点、房间的点、run 的中点、楼板等轮廓的平均点
         std::optional<P2> Anchor(Guid id) const;
         // 门窗 host 的新标记离它中心多远：墙外 400 毫米，在门不开向的一侧（窗朝外的一侧）；别的东西右上 400、400

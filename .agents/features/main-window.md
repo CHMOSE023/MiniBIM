@@ -110,6 +110,10 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   高程点、文字（选项栏输入文字、选文字类型）、按类别标记（单击有点可指的元素，选项栏可加引线，"全部标记"即 `MainFrame::TagAll`）；
   详图线同墙链（选项栏选线样式），测量两下一把尺子、读数在光标旁。填充区域与遮罩区域是草图模式（`SketchOf::Region`、`SketchOf::Masking`），
   完成时执行 `filled_region`（几个环用 `Sketch::Solve`），遮罩的用有 `masking` 的类型、不画边界线。注释的特性面板只读出它的平面与值，文字与标记的引线可改
+  "视图"选项卡（命令 `view.*`）："图形"面板的可见性 / 图形（`MainFrame::OpenVisibilityGraphics`，`Dialogs.cpp`：类别的勾选、平面的比例与详细程度，改了立即执行命令）
+  与裁剪视图（`MainFrame::ToggleCrop`）；"创建"面板的复制视图、带细节复制、复制为相关视图（`MainFrame::DuplicatePlan`，之后显示新的平面视图）。
+  显示的平面是 `MainFrame::PlanKey`：标高的平面，或 `m_planOf` 指的平面视图（`MainFrame::ShowPlanView`）；绘制、注释工具与填充区域都用它。
+  项目浏览器的楼层平面下列出各标高的平面视图，相关视图挂在父视图下；平面视图的特性面板是 `Props::PlanViewRows`
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。
   没选东西时特性面板显示工具要放的"新建 …"，类型选择器选的是工具接下来放的类型（`ToolOptions::types`、门窗的族、构件的族与类型）
 - 草图模式（`SketchMode.cpp`，移植自界面的 `sketch.rs`）：`MainFrame::m_sketch` 有值时在草图里。入口是"修改 > 编辑边界"（`modify.editBoundary`，

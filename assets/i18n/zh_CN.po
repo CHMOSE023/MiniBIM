@@ -177,6 +177,30 @@ msgstr "填充区域"
 msgid "Measure"
 msgstr "测量"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Visibility/Graphics"
+msgstr "可见性/图形"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "View Scale"
+msgstr "视图比例"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Detail Level"
+msgstr "详细程度"
+
+#: src/Commands/Commands.cpp
+msgid "Visual Style"
+msgstr "视觉样式"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Crop View"
+msgstr "裁剪视图"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate View"
+msgstr "复制视图"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "屋顶"
@@ -717,6 +741,38 @@ msgstr "截面填充图案"
 msgid "Surface Pattern"
 msgstr "表面填充图案"
 
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Visibility/Graphics: {0}"
+msgstr "可见性/图形：{0}"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "A dependent view follows its parent's graphics: change them there."
+msgstr "相关视图跟着父视图的图形：请在父视图里改。"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Coarse"
+msgstr "粗略"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Medium"
+msgstr "中等"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Fine"
+msgstr "精细"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Model Categories"
+msgstr "模型类别"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Annotation Categories"
+msgstr "注释类别"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Reset"
+msgstr "重置"
+
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Start an empty project with two levels"
 msgstr "新建一个只有两个标高的空项目"
@@ -876,6 +932,34 @@ msgstr "编辑选中元素的类型，或工具要放的类型"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "The project's materials: their colours and patterns"
 msgstr "项目的材质：颜色与填充图案"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "What the view shows: hide or show categories; a plan's scale and detail level"
+msgstr "视图显示什么：隐藏或显示类别；平面的比例与详细程度"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new plan view of this level, with this plan's view range, crop and graphics"
+msgstr "这个标高的新平面视图，带这个平面的视图范围、裁剪与图形"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate with Detailing"
+msgstr "带细节复制"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new plan view of this level, with copies of this plan's dimensions, tags and notes"
+msgstr "这个标高的新平面视图，带这个平面的尺寸、标记与文字的副本"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate as Dependent"
+msgstr "复制为相关"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A dependent view: it follows this plan's view range and graphics, has a crop of its own and shows its annotation"
+msgstr "相关视图：跟着这个平面的视图范围与图形，有自己的裁剪，也显示它的注释"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Crop the plan to what it shows now, or uncrop it"
+msgstr "把平面裁到它现在显示的范围，或取消裁剪"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Flip Wall"
@@ -1692,7 +1776,7 @@ msgstr "坡度（°）"
 msgid "Structural"
 msgstr "结构"
 
-#: apps/Common/src/GUI/Parameters.cpp
+#: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
 msgid "Graphics"
 msgstr "图形"
 
@@ -1967,6 +2051,14 @@ msgstr "详图线"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Filled Regions"
 msgstr "填充区域"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not duplicate the view"
+msgstr "无法复制视图"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not crop the view"
+msgstr "无法裁剪视图"
 
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"

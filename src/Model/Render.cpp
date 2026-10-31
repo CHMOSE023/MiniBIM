@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <tuple>
 
 namespace MiniBIM::Bim::Render
 {
@@ -996,6 +997,195 @@ namespace MiniBIM::Bim::Render
         return all.front();
     }
 
+    Rgb Halftone(Rgb c)
+    {
+        const auto half = [](uint8_t v) { return static_cast<uint8_t>(v + (255 - v) / 2); };
+        return Rgb{ half(c.r), half(c.g), half(c.b) };
+    }
+
+    namespace
+    {
+        // 线段 a–b 在框 lo–hi 里的部分（Liang–Barsky）
+        std::optional<std::pair<Px, Px>> ClipSegment(Px a, Px b, Px lo, Px hi)
+        {
+            double t0 = 0.0, t1 = 1.0;
+            const double dx = b.first - a.first, dy = b.second - a.second;
+            const double p[4] = { -dx, dx, -dy, dy };
+            const double q[4] = { a.first - lo.first, hi.first - a.first, a.second - lo.second, hi.second - a.second };
+            for (int i = 0; i < 4; ++i)
+            {
+                if (p[i] == 0.0)
+                {
+                    if (q[i] < 0.0)
+                        return std::nullopt;
+                    continue;
+                }
+                const double t = q[i] / p[i];
+                if (p[i] < 0.0)
+                    t0 = std::max(t0, t);
+                else
+                    t1 = std::min(t1, t);
+                if (t0 > t1)
+                    return std::nullopt;
+            }
+            const auto at = [&](double t) { return Px{ static_cast<float>(a.first + dx * t), static_cast<float>(a.second + dy * t) }; };
+            return std::pair{ at(t0), at(t1) };
+        }
+
+        // 环在框里的部分（Sutherland–Hodgman，逐条边裁）
+        std::vector<Px> ClipRing(const std::vector<Px>& ring, Px lo, Px hi)
+        {
+            std::vector<Px> out = ring;
+            for (int side = 0; side < 4 && !out.empty(); ++side)
+            {
+                const auto inside = [&](Px p)
+                {
+                    switch (side)
+                    {
+                    case 0: return p.first >= lo.first;
+                    case 1: return p.first <= hi.first;
+                    case 2: return p.second >= lo.second;
+                    default: return p.second <= hi.second;
+                    }
+                };
+                const auto cross = [&](Px a, Px b)
+                {
+                    const float edge = side == 0 ? lo.first : side == 1 ? hi.first : side == 2 ? lo.second : hi.second;
+                    const bool  xs   = side < 2;
+                    const float da = (xs ? a.first : a.second) - edge, db = (xs ? b.first : b.second) - edge;
+                    const float t  = da / (da - db);
+                    return Px{ a.first + (b.first - a.first) * t, a.second + (b.second - a.second) * t };
+                };
+                std::vector<Px> in = std::move(out);
+                out.clear();
+                for (size_t i = 0; i < in.size(); ++i)
+                {
+                    const Px a = in[i], b = in[(i + 1) % in.size()];
+                    if (inside(a))
+                    {
+                        out.push_back(a);
+                        if (!inside(b))
+                            out.push_back(cross(a, b));
+                    }
+                    else if (inside(b))
+                        out.push_back(cross(a, b));
+                }
+            }
+            return out;
+        }
+
+        std::vector<Prim> Cropped(Prim p, Px lo, Px hi)
+        {
+            if (p.kind == Prim::Kind::Fill)
+            {
+                std::vector<std::vector<Px>> rings;
+                for (const auto& r : p.rings)
+                    if (auto c = ClipRing(r, lo, hi); c.size() >= 3)
+                        rings.push_back(std::move(c));
+                if (rings.empty())
+                    return {};
+                p.rings = std::move(rings);
+                return { std::move(p) };
+            }
+            const auto inside = [&](Px q) { return q.first >= lo.first && q.first <= hi.first && q.second >= lo.second && q.second <= hi.second; };
+            if (std::all_of(p.pts.begin(), p.pts.end(), inside))
+                return { std::move(p) };
+            std::vector<std::vector<Px>> runs;
+            const size_t n = p.pts.size();
+            const size_t edges = p.closed && n > 2 ? n : (n > 0 ? n - 1 : 0);
+            for (size_t i = 0; i < edges; ++i)
+            {
+                const auto c = ClipSegment(p.pts[i], p.pts[(i + 1) % n], lo, hi);
+                if (!c)
+                    continue;
+                if (!runs.empty() && runs.back().back() == c->first)
+                    runs.back().push_back(c->second);
+                else
+                    runs.push_back({ c->first, c->second });
+            }
+            std::vector<Prim> out;
+            for (auto& run : runs)
+            {
+                Prim piece = p;
+                piece.pts    = std::move(run);
+                piece.closed = false;
+                out.push_back(std::move(piece));
+            }
+            return out;
+        }
+
+        std::optional<std::vector<float>> DashPattern(Dash d)
+        {
+            switch (d)
+            {
+            case Dash::Dashed: return std::vector<float>{ 10.0f, 5.0f };
+            case Dash::Dotted: return std::vector<float>{ 2.0f, 4.0f };
+            case Dash::Solid: break;
+            }
+            return std::nullopt;
+        }
+
+        Rgb Of(const Rgb3& c) { return Rgb{ c[0], c[1], c[2] }; }
+    }
+
+    void Drawing::Crop(Px lo, Px hi, const std::function<bool(std::optional<Id>)>& keep)
+    {
+        std::vector<Prim> ps = std::move(prims);
+        std::vector<std::optional<Id>> os = std::move(owners);
+        std::vector<Part> pa = std::move(parts);
+        std::vector<std::optional<uint8_t>> pe = std::move(pens);
+        prims.clear();
+        owners.clear();
+        parts.clear();
+        pens.clear();
+        for (size_t i = 0; i < ps.size(); ++i)
+        {
+            std::vector<Prim> pieces;
+            if (keep(os[i]))
+                pieces.push_back(std::move(ps[i]));
+            else
+                pieces = Cropped(std::move(ps[i]), lo, hi);
+            for (Prim& q : pieces)
+            {
+                prims.push_back(std::move(q));
+                owners.push_back(os[i]);
+                parts.push_back(pa[i]);
+                pens.push_back(pe[i]);
+            }
+        }
+    }
+
+    void Drawing::Dress(const Look& look)
+    {
+        if (look.paint.empty())
+            return;
+        for (size_t i = 0; i < prims.size(); ++i)
+        {
+            const Override* over = owners[i] ? look.Paint(*owners[i]) : nullptr;
+            if (!over)
+                continue;
+            const Part   part  = parts[i];
+            const Style& style = part == Part::Cut ? over->cut : over->projection;
+            Prim& p = prims[i];
+            if (p.kind == Prim::Kind::Line)
+            {
+                if (part != Part::Pattern && style.color)
+                    p.color = Of(*style.color);
+                if (part != Part::Text && part != Part::Pattern)
+                {
+                    if (style.weight)
+                        pens[i] = *style.weight;
+                    if (style.dash)
+                        p.dash = DashPattern(*style.dash);
+                }
+            }
+            else if (part != Part::Pattern && style.fill)
+                p.color = Of(*style.fill);
+            if (over->halftone)
+                p.color = Halftone(p.color);
+        }
+    }
+
     void Drawing::ByCategory(const Model& m)
     {
         for (size_t i = 0; i < pens.size(); ++i)
@@ -1047,13 +1237,19 @@ namespace MiniBIM::Bim::Render
         return View{ fitsAt, (lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, width, height };
     }
 
-    std::vector<P2> PlanShows(const Model& m, Guid level)
+    std::vector<P2> PlanShows(const Model& m, Guid plan)
     {
-        const PlanRange r = RangeOf(m, level);
+        if (const auto crop = m.CropOf(plan))
+            return { (*crop)[0], (*crop)[1] };
+        const Guid level = m.PlanLevel(plan).value_or(plan);
+        const PlanRange r = RangeOf(m, plan);
+        const Look look = m.LookOf(plan);
         const Walls::Index index(m);
         std::vector<P2> extent;
         for (const auto& [id, e] : m.elements.Items())
         {
+            if (!look.Shows(id))
+                continue;
             if (const Wall* w = e->As<Wall>())
             {
                 const double top = m.TopZ(*w);
@@ -1098,7 +1294,7 @@ namespace MiniBIM::Bim::Render
                         extent.push_back(q);
             }
             // 这个平面里的注释
-            else if (e->IsAnnotation() && m.AnnotationIn(*e, level))
+            else if (e->IsAnnotation() && m.AnnotationIn(*e, plan))
             {
                 if (const DetailLine* l = e->As<DetailLine>())
                     for (const P2& q : l->curve.Points())
@@ -1120,23 +1316,35 @@ namespace MiniBIM::Bim::Render
         return extent;
     }
 
-    Drawing Plan(const Model& m, Guid level, uint32_t width, uint32_t height)
+    Drawing Plan(const Model& m, Guid plan, uint32_t width, uint32_t height)
     {
-        const double n = UnitsOf::DefaultScale(m.units);
-        return Draw(m, level, Fit(PlanShows(m, level), width, height, n));
+        return Draw(m, plan, Fit(PlanShows(m, plan), width, height, m.ScaleOf(plan)));
     }
 
-    Drawing Draw(const Model& m, Guid level, View view)
+    Drawing Draw(const Model& m, Guid plan, View view)
     {
-        const double n = UnitsOf::DefaultScale(m.units);
+        const Guid   level = m.PlanLevel(plan).value_or(plan);
+        const double n     = m.ScaleOf(plan);
+        const Graphics* graphics = m.ViewGraphics(plan);
+        const Detail detail = graphics ? graphics->detail : Detail::Fine;
+        const Look   look   = m.LookOf(plan);
+        // 视图隐藏的元素不画（门窗、房间边界照旧按模型找墙）
+        const auto& all = m.elements.Items();
+        std::remove_cvref_t<decltype(all)> kept;
+        if (!look.hidden.empty())
+        {
+            kept = all;
+            std::erase_if(kept, [&](const auto& kv) { return look.hidden.count(kv.first) > 0; });
+        }
+        const auto& items = look.hidden.empty() ? all : kept;
         const Walls::Index index(m);
         Drawing d(view);
         d.k       = AnnotationOf(n, view.scale);
         d.paper   = PaperOf(n, view.scale);
         d.weights = Weights::At(m.units, n);
-        const PlanRange range = RangeOf(m, level);
+        const PlanRange range = RangeOf(m, plan);
         // 剖切面以下、视图深度以上看得到顶面的楼板：轮廓与洞口的轮廓，坡楼板的坡度箭头
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
             const Floor* f = e->As<Floor>();
             if (!f)
@@ -1158,7 +1366,7 @@ namespace MiniBIM::Bim::Render
                 SlopeArrow(d, (*f->arrow)[0], (*f->arrow)[1], f->slope);
         }
         // 看得到的构件，同 Revit 画家具：只要有一部分在剖切面以下、视图深度以上就整个画
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
             const Component* c = e->As<Component>();
             if (!c)
@@ -1177,7 +1385,7 @@ namespace MiniBIM::Bim::Render
             }
         }
         // 剖切面以下看到的墙与柱；低于视图范围底部的变淡
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
             const Wall* w = e->As<Wall>();
             const auto st = w ? std::nullopt : Stands(m, *e);
@@ -1191,7 +1399,7 @@ namespace MiniBIM::Bim::Render
             d.Line(w ? Walls::Outline(m, id, &index) : st->outline, Pen::ByCategory, top > range.bottom - Tol ? Ink : Faint, true);
         }
         // run 看得到而没剖到处的中心线，淡的虚线：Revit 画梁的记号，也是拾取它的地方
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
             const auto g = m.RunGeom(*e);
             if (!g || g->Vertical())
@@ -1209,18 +1417,31 @@ namespace MiniBIM::Bim::Render
         d.SetPart(Part::Cut);
         // 剖到的墙与柱
         std::vector<std::pair<Id, Ring>> outlines;
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
             if (const Wall* w = e->As<Wall>(); w && m.Spans(*w, range.cut))
                 outlines.emplace_back(id, Walls::Outline(m, id, &index));
             else if (const auto st = Stands(m, *e); st && st->bottom <= range.cut && range.cut < st->top)
                 outlines.emplace_back(id, st->outline);
         // 先填色再描轮廓；墙与柱相接处只描并集的边（CutEdges）。剖到的先一起填一次，两块填色相接处不见缝
+        // 剖到的填充色：视图覆盖的（半色调的变淡），否则灰色；同一颜色的一起填
+        const auto cutFill = [&](Id id)
+        {
+            const Override* o = look.Paint(id);
+            if (!o)
+                return Poche;
+            const Rgb c = o->cut.fill ? Rgb{ (*o->cut.fill)[0], (*o->cut.fill)[1], (*o->cut.fill)[2] } : Poche;
+            return o->halftone ? Halftone(c) : c;
+        };
         d.Own(std::nullopt);
         {
-            std::vector<Ring> rings;
-            for (const auto& [_, o] : outlines)
-                rings.push_back(o);
-            d.Fill(rings, Poche);
+            std::map<std::tuple<uint8_t, uint8_t, uint8_t>, std::vector<Ring>> byColour;
+            for (const auto& [id, o] : outlines)
+            {
+                const Rgb c = cutFill(id);
+                byColour[{ c.r, c.g, c.b }].push_back(o);
+            }
+            for (const auto& [c, rings] : byColour)
+                d.Fill(rings, Rgb{ std::get<0>(c), std::get<1>(c), std::get<2>(c) });
         }
         // 每面墙、每根柱一块填色：一次奇偶填充里重叠的墙会相互抵消
         for (const auto& [id, o] : outlines)
@@ -1235,13 +1456,13 @@ namespace MiniBIM::Bim::Render
                 InkCut(d, run);
         }
         // 复合墙的层：各层之间一条细线（BIMCraft 还按材质画剖切图案，填充图案移植后再加）
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
             const Wall* w = e->As<Wall>();
             if (!w || !m.Spans(*w, range.cut))
                 continue;
             const auto t = m.types.wall.find(w->typeName);
-            if (t == m.types.wall.end() || t->second.layers.empty())
+            if (t == m.types.wall.end() || t->second.layers.empty() || detail == Detail::Coarse)
                 continue;
             d.Own(id);
             const auto lines = Walls::LayerLines(m, id, &index);
@@ -1250,7 +1471,7 @@ namespace MiniBIM::Bim::Render
                 d.Line(lines[i], Pen::Projection, Ink, false);
             d.SetPart(Part::Cut);
         }
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
             const Opening* o = e->AsOpening();
             const Wall* w = o ? m.GetWall(o->host) : nullptr;
@@ -1264,7 +1485,7 @@ namespace MiniBIM::Bim::Render
         // 同一标高的房间在同一组线里找边界
         std::optional<std::vector<Segment>> bounding;
         const auto above = m.LevelAbove(level);
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
             d.Own(id);
             if (const Grid* g = e->As<Grid>())
@@ -1334,7 +1555,7 @@ namespace MiniBIM::Bim::Render
             }
         }
         // 也在上方：剖切面以上、视图范围顶部以下的 run，虚线
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
             const auto g = m.RunGeom(*e);
             if (!g)
@@ -1349,16 +1570,16 @@ namespace MiniBIM::Bim::Render
             d.Stroke(std::move(px), Pen::ByCategory, Ink, std::vector<float>{ 10.0f, 5.0f }, true);
         }
         // 填充区域盖在模型上，注释之下
-        for (const auto& [id, e] : m.elements.Items())
-            if (const FilledRegion* fr = e->As<FilledRegion>(); fr && m.AnnotationIn(*e, level))
+        for (const auto& [id, e] : items)
+            if (const FilledRegion* fr = e->As<FilledRegion>(); fr && m.AnnotationIn(*e, plan))
             {
                 d.Own(id);
                 FilledRegionOf(d, m, *fr);
             }
         // 注释最后画，在模型之上
-        for (const auto& [id, e] : m.elements.Items())
+        for (const auto& [id, e] : items)
         {
-            if (!e->IsAnnotation() || e->As<FilledRegion>() || !m.AnnotationIn(*e, level))
+            if (!e->IsAnnotation() || e->As<FilledRegion>() || !m.AnnotationIn(*e, plan))
                 continue;
             d.Own(id);
             d.SetPart(Part::Projection);
@@ -1380,17 +1601,29 @@ namespace MiniBIM::Bim::Render
             else if (const Spot* sp = e->As<Spot>())
                 SpotMark(d, d.view.ToPx(sp->at), m.SpotValue(*sp), m.units);
         }
+        // 裁剪：轴网、房间与注释整个留着或不在，别的裁到框里
+        if (const auto crop = m.CropOf(plan))
+        {
+            const Px a = d.view.ToPx((*crop)[0]), b = d.view.ToPx((*crop)[1]);
+            const Px lo{ std::min(a.first, b.first), std::min(a.second, b.second) }, hi{ std::max(a.first, b.first), std::max(a.second, b.second) };
+            d.Crop(lo, hi, [&](std::optional<Id> o)
+                   {
+                       const Element* e = o ? m.elements.Get(*o) : nullptr;
+                       return e && (e->As<Room>() || e->As<Dimension>() || e->As<Tag>() || e->As<Note>() || e->As<Spot>());
+                   });
+        }
         d.Own(std::nullopt);
         d.ByCategory(m);
+        d.Dress(look);
         d.Weigh(m);
         return d;
     }
 
-    Drawing Sketch(const Model& m, Guid level, View view, const Element& e)
+    Drawing Sketch(const Model& m, Guid plan, View view, const Element& e)
     {
         Model with = m;
         const Id id = with.Insert(e);
-        const Drawing all = Draw(with, level, view);
+        const Drawing all = Draw(with, plan, view);
         Drawing d(view);
         d.weights = all.weights;
         d.k       = all.k;

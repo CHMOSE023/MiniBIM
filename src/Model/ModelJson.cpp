@@ -507,6 +507,218 @@ namespace MiniBIM::Bim
 
         Json ColorJson(const Rgb3& c) { return Json::array({ c[0], c[1], c[2] }); }
 
+        // ── 视图的图形（graphics.rs）──────────────────────────────
+        // 颜色：[r, g, b]（各 0 到 255）或 "#rrggbb"
+        bool ReadAnyColor(Fields& f, const char* key, std::optional<Rgb3>& out)
+        {
+            const Json* c = f.Raw(key);
+            if (!c)
+                return out.reset(), true;
+            const std::string bad = c->dump() + " isn't a colour: [r, g, b], each 0 to 255, or \"#rrggbb\"";
+            Rgb3 rgb{};
+            if (c->is_string())
+            {
+                const std::string s = c->get<std::string>();
+                const auto hex = [](char ch) -> int
+                {
+                    if (ch >= '0' && ch <= '9') return ch - '0';
+                    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+                    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+                    return -1;
+                };
+                bool ok = s.size() == 7 && s[0] == '#';
+                for (size_t i = 0; ok && i < 3; ++i)
+                {
+                    const int hi = hex(s[1 + 2 * i]), lo = hex(s[2 + 2 * i]);
+                    ok = hi >= 0 && lo >= 0;
+                    rgb[i] = static_cast<uint8_t>(hi * 16 + lo);
+                }
+                if (!ok)
+                    return f.Fail(bad);
+            }
+            else if (!ReadColor(f, key, rgb))
+                return f.Fail(bad);
+            out = rgb;
+            return true;
+        }
+
+        bool ReadPatternFill(Fields& f, const char* key, std::optional<PatternFill>& out)
+        {
+            const Json* v = f.Raw(key);
+            if (!v)
+                return out.reset(), true;
+            Fields p(*v, f.Who() + " " + key, f.Path() + "/" + key, f.LeftOut(), f.Error());
+            PatternFill pf;
+            if (!p.IsObject() || !p.OptString("pattern", pf.pattern) || !ReadColor(p, "color", pf.color) || !p.Finish())
+                return false;
+            out = std::move(pf);
+            return true;
+        }
+
+        bool ReadStyle(Fields& f, const char* key, Style& out)
+        {
+            const Json* v = f.Raw(key);
+            out = Style{};
+            if (!v)
+                return true;
+            Fields s(*v, f.Who() + " " + key, f.Path() + "/" + key, f.LeftOut(), f.Error());
+            if (!s.IsObject() || !ReadAnyColor(s, "color", out.color) || !ReadAnyColor(s, "fill", out.fill) ||
+                !ReadPatternFill(s, "foreground", out.foreground) || !ReadPatternFill(s, "background", out.background))
+                return false;
+            if (s.Raw("weight"))
+            {
+                uint8_t pen = 0;
+                if (!ReadPen(s, "weight", pen))
+                    return false;
+                out.weight = pen;
+            }
+            std::optional<std::string> dash;
+            if (!s.OptString("dash", dash))
+                return false;
+            if (dash)
+            {
+                out.dash = DashOf::Parse(*dash);
+                if (!out.dash)
+                    return s.Fail("`dash`: unknown variant `" + *dash + "`, expected one of solid, dashed, dotted");
+            }
+            return s.Finish();
+        }
+
+        bool ReadOverride(const Json& v, const std::string& who, const std::string& path, std::vector<std::string>* leftOut, std::string& error,
+                          Override& out)
+        {
+            Fields f(v, who, path, leftOut, error);
+            out = Override{};
+            if (!f.IsObject() || !f.Bool("hidden", out.hidden) || !ReadStyle(f, "projection", out.projection) || !ReadStyle(f, "cut", out.cut) ||
+                !f.Bool("halftone", out.halftone))
+                return false;
+            if (const Json* t = f.Raw("transparency"))
+            {
+                const auto n = AsWhole(*t);
+                if (!n || *n > 255)
+                    return f.Fail("`transparency` must be a whole number, 0 to 100");
+                out.transparency = static_cast<uint8_t>(*n);
+            }
+            return f.Finish();
+        }
+
+        std::optional<VisualStyle> StyleKey(std::string_view s)
+        {
+            for (const VisualStyle v : { VisualStyle::Shaded, VisualStyle::HiddenLine, VisualStyle::Wireframe })
+                if (s == VisualStyleOf::Key(v))
+                    return v;
+            return std::nullopt;
+        }
+
+        std::optional<Detail> DetailKey(std::string_view s)
+        {
+            for (const Detail d : { Detail::Coarse, Detail::Medium, Detail::Fine })
+                if (s == Text::AsciiLower(DetailOf::Name(d)))
+                    return d;
+            return std::nullopt;
+        }
+
+        // 视图的图形：视图样板、过滤器、阶段、设计选项、Linework 与 CAD 图层还没移植，读文件时略去
+        bool ReadGraphics(Fields& f, Graphics& out)
+        {
+            const Json* v = f.Raw("graphics");
+            out = Graphics{};
+            if (!v)
+                return true;
+            const std::string path = f.Path() + "/graphics";
+            Fields g(*v, f.Who() + " graphics", path, f.LeftOut(), f.Error());
+            if (!g.IsObject())
+                return false;
+            if (const Json* cats = g.Raw("categories"))
+            {
+                if (!cats->is_object())
+                    return g.Fail("`categories` must be {category: override}");
+                for (auto it = cats->begin(); it != cats->end(); ++it)
+                {
+                    Override o;
+                    if (!ReadOverride(it.value(), f.Who() + " graphics category `" + it.key() + "`", path + "/categories/" + Escaped(it.key()),
+                                      f.LeftOut(), f.Error(), o))
+                        return false;
+                    out.categories[it.key()] = std::move(o);
+                }
+            }
+            if (const Json* els = g.Raw("elements"))
+            {
+                if (!els->is_object())
+                    return g.Fail("`elements` must be {GUID: override}");
+                for (auto it = els->begin(); it != els->end(); ++it)
+                {
+                    const auto id = Guid::Parse(it.key());
+                    if (!id)
+                        return g.Fail("`elements`: `" + it.key() + "` is not an element id or GUID");
+                    Override o;
+                    if (!ReadOverride(it.value(), f.Who() + " graphics element " + it.key(), path + "/elements/" + Escaped(it.key()), f.LeftOut(),
+                                      f.Error(), o))
+                        return false;
+                    out.elements[*id] = std::move(o);
+                }
+            }
+            if (!g.OptNumber("scale", out.scale) || !EnumName(g, "detail", out.detail, DetailKey, "coarse, medium, fine") ||
+                !EnumName(g, "style", out.style, StyleKey, "shaded, hidden_line, wireframe"))
+                return false;
+            return g.Finish();
+        }
+
+        Json PatternFillJson(const PatternFill& p)
+        {
+            return Json{ { "pattern", p.pattern ? Json(*p.pattern) : Json(nullptr) }, { "color", ColorJson(p.color) } };
+        }
+
+        Json StyleJson(const Style& s)
+        {
+            Json j = Json::object();
+            if (s.color)
+                j["color"] = ColorJson(*s.color);
+            if (s.weight)
+                j["weight"] = *s.weight;
+            if (s.dash)
+                j["dash"] = DashOf::Name(*s.dash);
+            if (s.fill)
+                j["fill"] = ColorJson(*s.fill);
+            if (s.foreground)
+                j["foreground"] = PatternFillJson(*s.foreground);
+            if (s.background)
+                j["background"] = PatternFillJson(*s.background);
+            return j;
+        }
+
+        Json ViewRangeJson(const ViewRange& v)
+        {
+            Json r = Json::object();
+            r["top"]    = v.top ? Json(*v.top) : Json(nullptr);
+            r["cut"]    = v.cut;
+            r["bottom"] = v.bottom;
+            r["depth"]  = v.depth;
+            return r;
+        }
+
+        bool ReadViewRange(Fields& f, ViewRange& out)
+        {
+            const Json* range = f.Raw("view_range");
+            if (!range)
+                return true;
+            Fields r(*range, f.Who() + " view_range", f.Path() + "/view_range", f.LeftOut(), f.Error());
+            return r.IsObject() && r.OptNumber("top", out.top) && r.Number("cut", out.cut, false) && r.Number("bottom", out.bottom, false) &&
+                   r.Number("depth", out.depth, false) && r.Finish();
+        }
+
+        bool ReadP3(Fields& f, const char* key, P3& out)
+        {
+            const Json* v = f.Raw(key);
+            if (!v)
+                return f.Missing(key);
+            if (!v->is_array() || v->size() != 3 || !std::all_of(v->begin(), v->end(), [](const Json& x) { return x.is_number(); }))
+                return f.Fail(std::string("`") + key + "` must be [x, y, z]");
+            for (size_t i = 0; i < 3; ++i)
+                out[i] = (*v)[i].get<double>();
+            return true;
+        }
+
         // 读一个元素。宽松模式下整个略去的（还没移植的类别、带族的门窗）返回 true 并设 skip
         bool ReadElement(const Json& v, Element& out, const std::string& who, const std::string& path, std::vector<std::string>* leftOut,
                          std::string& error, bool& skip)
@@ -521,19 +733,42 @@ namespace MiniBIM::Bim
             if (category == "level")
             {
                 Level l;
-                const Json* range = nullptr;
-                if (!f.Allow({ "name", "elevation", "view_range", "crop", "extent", "section_box" }) || !f.String("name", l.name, true) || !f.Number("elevation", l.elevation, true))
+                if (!f.Allow({ "name", "elevation", "view_range", "crop", "extent", "section_box", "graphics" }) || !f.String("name", l.name, true) ||
+                    !f.Number("elevation", l.elevation, true) || !ReadViewRange(f, l.viewRange))
                     return false;
-                if ((range = f.Raw("view_range")) != nullptr)
-                {
-                    Fields r(*range, who + " view_range", path + "/view_range", leftOut, error);
-                    if (!r.IsObject() || !r.OptNumber("top", l.viewRange.top) || !r.Number("cut", l.viewRange.cut, false) ||
-                        !r.Number("bottom", l.viewRange.bottom, false) || !r.Number("depth", l.viewRange.depth, false) || !r.Finish())
-                        return false;
-                }
-                if (!f.Corners("crop", l.crop) || !f.Corners("extent", l.extent) || !f.Bool("section_box", l.sectionBox) || !f.Finish())
+                if (!f.Corners("crop", l.crop) || !f.Corners("extent", l.extent) || !f.Bool("section_box", l.sectionBox) || !ReadGraphics(f, l.graphics) ||
+                    !f.Finish())
                     return false;
                 out = Element(std::move(l));
+                return true;
+            }
+            if (category == "planview")
+            {
+                PlanView v;
+                if (!f.Allow({ "level", "name", "view_range", "crop", "graphics", "parent", "section_box" }) || !f.Id("level", v.level, true) ||
+                    !f.String("name", v.name, true) || !ReadViewRange(f, v.viewRange) || !f.Corners("crop", v.crop) || !ReadGraphics(f, v.graphics) ||
+                    !f.OptId("parent", v.parent) || !f.Bool("section_box", v.sectionBox) || !f.Finish())
+                    return false;
+                out = Element(std::move(v));
+                return true;
+            }
+            if (category == "view3d")
+            {
+                View3D v;
+                if (!f.Allow({ "name", "azimuth", "elevation", "graphics", "section_box" }) || !f.String("name", v.name, true) ||
+                    !f.Number("azimuth", v.azimuth, true) || !f.Number("elevation", v.elevation, true) || !ReadGraphics(f, v.graphics))
+                    return false;
+                if (const Json* b = f.Raw("section_box"))
+                {
+                    Fields s(*b, who + " section_box", path + "/section_box", leftOut, error);
+                    SectionBox box;
+                    if (!s.IsObject() || !ReadP3(s, "min", box.min) || !ReadP3(s, "max", box.max) || !s.Bool("on", box.on) || !s.Finish())
+                        return false;
+                    v.sectionBox = box;
+                }
+                if (!f.Finish())
+                    return false;
+                out = Element(std::move(v));
                 return true;
             }
             if (category == "grid")
@@ -1671,18 +1906,44 @@ namespace MiniBIM::Bim
         {
             j["name"]      = l->name;
             j["elevation"] = l->elevation;
-            Json r = Json::object();
-            r["top"]    = l->viewRange.top ? Json(*l->viewRange.top) : Json(nullptr);
-            r["cut"]    = l->viewRange.cut;
-            r["bottom"] = l->viewRange.bottom;
-            r["depth"]  = l->viewRange.depth;
-            j["view_range"] = std::move(r);
+            j["view_range"] = ViewRangeJson(l->viewRange);
             if (l->crop)
                 j["crop"] = Json::array({ ToJson((*l->crop)[0]), ToJson((*l->crop)[1]) });
             if (l->extent)
                 j["extent"] = Json::array({ ToJson((*l->extent)[0]), ToJson((*l->extent)[1]) });
             if (l->sectionBox)
                 j["section_box"] = true;
+            if (!l->graphics.IsDefault())
+                j["graphics"] = ToJson(l->graphics);
+        }
+        else if (const PlanView* v = e.As<PlanView>())
+        {
+            j["level"]      = ToJson(v->level);
+            j["name"]       = v->name;
+            j["view_range"] = ViewRangeJson(v->viewRange);
+            if (v->crop)
+                j["crop"] = Json::array({ ToJson((*v->crop)[0]), ToJson((*v->crop)[1]) });
+            if (!v->graphics.IsDefault())
+                j["graphics"] = ToJson(v->graphics);
+            if (v->parent)
+                j["parent"] = ToJson(*v->parent);
+            if (v->sectionBox)
+                j["section_box"] = true;
+        }
+        else if (const View3D* v3 = e.As<View3D>())
+        {
+            j["name"]      = v3->name;
+            j["azimuth"]   = v3->azimuth;
+            j["elevation"] = v3->elevation;
+            if (!v3->graphics.IsDefault())
+                j["graphics"] = ToJson(v3->graphics);
+            if (v3->sectionBox)
+            {
+                const SectionBox& b = *v3->sectionBox;
+                j["section_box"] = Json{ { "min", Json::array({ b.min[0], b.min[1], b.min[2] }) },
+                                         { "max", Json::array({ b.max[0], b.max[1], b.max[2] }) },
+                                         { "on", b.on } };
+            }
         }
         else if (const Grid* g = e.As<Grid>())
         {
@@ -1957,6 +2218,53 @@ namespace MiniBIM::Bim
             if (r->patternAngle != 0.0)
                 j["pattern_angle"] = r->patternAngle;
         }
+        return j;
+    }
+
+    Json ToJson(const Override& o)
+    {
+        Json j = Json::object();
+        if (o.hidden)
+            j["hidden"] = true;
+        if (!o.projection.Empty())
+            j["projection"] = StyleJson(o.projection);
+        if (!o.cut.Empty())
+            j["cut"] = StyleJson(o.cut);
+        if (o.halftone)
+            j["halftone"] = true;
+        if (o.transparency)
+            j["transparency"] = o.transparency;
+        return j;
+    }
+
+    bool FromJson(const Json& v, Override& out, std::string& error)
+    {
+        return ReadOverride(v, "", "", nullptr, error, out);
+    }
+
+    Json ToJson(const Graphics& g)
+    {
+        Json j = Json::object();
+        if (!g.categories.empty())
+        {
+            Json c = Json::object();
+            for (const auto& [name, o] : g.categories)
+                c[name] = ToJson(o);
+            j["categories"] = std::move(c);
+        }
+        if (!g.elements.empty())
+        {
+            Json e = Json::object();
+            for (const auto& [id, o] : g.elements)
+                e[id.ToString()] = ToJson(o);
+            j["elements"] = std::move(e);
+        }
+        if (g.scale)
+            j["scale"] = *g.scale;
+        if (g.detail != Detail::Fine)
+            j["detail"] = Text::AsciiLower(DetailOf::Name(g.detail));
+        if (g.style != VisualStyle::Shaded)
+            j["style"] = VisualStyleOf::Key(g.style);
         return j;
     }
 
@@ -2476,7 +2784,7 @@ namespace MiniBIM::Bim
                 m.elements.Insert(id, std::move(w));
         }
 
-        // 注释：MiniBIM 还没有平面视图、剖面、立面、图纸，在那些视图里的注释（视图不是标高的）略去；宿主、参照的东西不在了的
+        // 注释：MiniBIM 还没有剖面、立面、图纸，在那些视图里的注释（视图不是标高的平面或平面视图）略去；宿主、参照的东西不在了的
         // 标记、高程点略去，尺寸去掉那些参照，剩下的不够量时也略去
         for (bool removed = true; removed;)
         {
@@ -2493,16 +2801,16 @@ namespace MiniBIM::Bim
                 {
                     Dimension t = *d;
                     std::erase_if(t.refs, [&](const Reference& r) { return !here(r.id); });
-                    keep = !d->view && m.GetLevel(d->level) && t.refs.size() >= (d->kind == DimKind::Radial ? 1u : 2u);
+                    keep = (!d->view || m.GetPlanView(*d->view)) && m.GetLevel(d->level) && t.refs.size() >= (d->kind == DimKind::Radial ? 1u : 2u);
                     if (keep && t.refs.size() != d->refs.size())
                         trimmed.emplace_back(id, std::move(t));
                 }
                 else if (const Tag* t = e->As<Tag>())
-                    keep = !t->view && here(t->host);
+                    keep = (!t->view || m.GetPlanView(*t->view)) && here(t->host);
                 else
                 {
                     const auto plan = m.AnnotationPlan(*e);
-                    keep = plan && m.GetLevel(*plan);
+                    keep = plan && m.PlanLevel(*plan);
                     if (const Spot* sp = e->As<Spot>(); keep && sp && sp->host)
                         keep = here(*sp->host);
                 }

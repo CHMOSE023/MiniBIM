@@ -3023,6 +3023,348 @@ namespace
     }
 }
 
+namespace
+{
+    // ── 视图（5e：可见性 / 图形、平面视图）──────────────────────────
+    // 平面 plan 按 Level 1 自己的平面的取景画出的
+    Render::Drawing Drawn(const Session& s, Id plan)
+    {
+        const Model& m = s.GetModel();
+        const Render::View v = Render::Plan(m, m.GuidOf(Id(100000)), 800, 600).view;
+        return Render::Draw(m, m.GuidOf(plan), v);
+    }
+
+    bool Has(const Render::Drawing& d, Id id) { return std::find(d.owners.begin(), d.owners.end(), std::optional<Id>(id)) != d.owners.end(); }
+
+    // 模型点 p 处最上面的填色（没有时为纸色）
+    Render::Rgb FillAt(const Render::Drawing& d, P2 p)
+    {
+        const Render::Px at = d.view.ToPx(p);
+        Render::Rgb out = Render::Paper;
+        for (const Render::Prim& pr : d.prims)
+        {
+            if (pr.kind != Render::Prim::Kind::Fill)
+                continue;
+            bool inside = false;
+            for (const auto& ring : pr.rings)
+                for (size_t i = 0, j = ring.size() - 1; i < ring.size(); j = i++)
+                    if ((ring[i].second > at.second) != (ring[j].second > at.second) &&
+                        at.first < (ring[j].first - ring[i].first) * (at.second - ring[i].second) / (ring[j].second - ring[i].second) + ring[i].first)
+                        inside = !inside;
+            if (inside)
+                out = pr.color;
+        }
+        return out;
+    }
+
+    // 元素 id 的线：笔、颜色、有没有虚线
+    struct LineLook
+    {
+        uint8_t     pen;
+        Render::Rgb color;
+        bool        dashed;
+        bool operator==(const LineLook&) const = default;
+    };
+    std::vector<LineLook> Lines(const Render::Drawing& d, Id id)
+    {
+        std::vector<LineLook> out;
+        for (size_t i = 0; i < d.prims.size(); ++i)
+            if (d.owners[i] == id && d.prims[i].kind == Render::Prim::Kind::Line && d.parts[i] != Render::Part::Text)
+                out.push_back(LineLook{ d.pens[i].value_or(255), d.prims[i].color, d.prims[i].dash.has_value() });
+        return out;
+    }
+    bool Any(const std::vector<LineLook>& v, const std::function<bool(const LineLook&)>& f) { return std::any_of(v.begin(), v.end(), f); }
+
+    void TestViews()
+    {
+        const Id level1 = 100000, level2 = 100001;
+        {
+            // 隐藏类别只在那个视图里：房间、轴网不画，墙照旧；Level 2 的平面还画轴网
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Id room = Run(s, "room", R"({"point": [4000, 3000], "name": "Living"})")["id"].get<Id>();
+            const Id grid = Run(s, "grid", R"({"start": [-1000, 3000], "end": [9000, 3000]})")["id"].get<Id>();
+            Check(Has(Drawn(s, level1), room) && Has(Drawn(s, level1), grid), "图形：起初都画");
+            Json r = Run(s, "graphics", R"({"view": "Level 1", "hide": ["rooms", "Grids"]})");
+            Check(r["hidden"] == Json::array({ "grid", "room" }), "图形：隐藏的类别：" + r.dump());
+            Render::Drawing d = Drawn(s, level1);
+            Check(!Has(d, room) && !Has(d, grid) && Has(d, walls[0]), "图形：房间与轴网不画，墙照旧");
+            Check(Has(Drawn(s, level2), grid), "图形：Level 2 的平面是它自己的视图");
+            r = Run(s, "graphics", Json{ { "view", level1 }, { "show", { "room" } } });
+            Check(r["hidden"] == Json::array({ "grid" }) && Has(Drawn(s, level1), room), "图形：再显示房间");
+            Check(FillAt(Drawn(s, level1), P2{ 4000, 0 }) == Render::Poche, "图形：剖到的墙灰色填充");
+            Run(s, "graphics", Json{ { "view", level1 }, { "hide", { "walls" } } });
+            Check(FillAt(Drawn(s, level1), P2{ 4000, 0 }) == Render::Paper, "图形：墙隐藏了不留填充");
+            // 什么也不改时不留撤销步：撤销一步就回到隐藏墙之前
+            Run(s, "graphics", Json{ { "view", level1 }, { "hide", { "walls" } } });
+            Run(s, "graphics", Json{ { "view", level1 } });
+            Run(s, "undo", Json::object());
+            Check(FillAt(Drawn(s, level1), P2{ 4000, 0 }) == Render::Poche, "图形：什么也不改时不留撤销步");
+        }
+        {
+            // 隐藏元素：只少它一个
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Json r = Run(s, "graphics", Json{ { "view", "Level 1" }, { "hide_elements", { walls[0] } } });
+            Check(r["hidden_elements"] == Json::array({ walls[0] }), "图形：隐藏的元素：" + r.dump());
+            const Render::Drawing d = Drawn(s, level1);
+            Check(!Has(d, walls[0]) && FillAt(d, P2{ 4000, 0 }) == Render::Paper && FillAt(d, P2{ 8000, 3000 }) == Render::Poche, "图形：只少这面墙");
+            Run(s, "graphics", Json{ { "view", "Level 1" }, { "show_elements", { walls[0] } } });
+            Check(FillAt(Drawn(s, level1), P2{ 4000, 0 }) == Render::Poche, "图形：再显示它");
+        }
+        {
+            // 剖到的与看到的线各按自己的覆盖画；覆盖合并进上一次的，null 去掉一项
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Id low = Run(s, "wall", R"({"points": [[1000, 1000], [3000, 1000]], "height": 1000})")["ids"][0].get<Id>();
+            Render::Drawing d = Drawn(s, level1);
+            const auto cutPen = Lines(d, walls[0]).empty() ? 0 : Lines(d, walls[0]).front().pen;
+            Check(Any(Lines(d, walls[0]), [](const LineLook& l) { return l.color == Render::Ink && !l.dashed; }), "图形：剖到的墙线起初黑色实线");
+            Run(s, "graphics", Json::parse(R"({"view": "Level 1", "categories": {"walls": {
+                "cut": {"color": [200, 0, 0], "weight": 6},
+                "projection": {"color": "#0000c8", "weight": 3, "dash": "dashed"}}}})"));
+            d = Drawn(s, level1);
+            const Render::Rgb red{ 200, 0, 0 }, blue{ 0, 0, 200 };
+            Check(Any(Lines(d, walls[0]), [&](const LineLook& l) { return l.pen == 6 && l.color == red; }), "图形：剖到的线按 cut 画");
+            Check(Any(Lines(d, low), [&](const LineLook& l) { return l.pen == 3 && l.color == blue && l.dashed; }), "图形：看到的线按 projection 画");
+            Run(s, "graphics", Json::parse(R"({"view": 100000, "categories": {"walls": {"cut": {"weight": 2}}}})"));
+            Check(Any(Lines(Drawn(s, level1), walls[0]), [&](const LineLook& l) { return l.pen == 2 && l.color == red; }), "图形：合并时留着颜色");
+            const Json r = Run(s, "graphics", Json::parse(R"({"view": 100000, "categories": {"walls": {"cut": {"color": null}}}})"));
+            Check(r["categories"]["wall"]["cut"] == Json{ { "weight", 2 } }, "图形：null 去掉颜色：" + r.dump());
+            Run(s, "graphics", Json::parse(R"({"view": 100000, "categories": {"walls": null}})"));
+            Check(Any(Lines(Drawn(s, level1), walls[0]), [&](const LineLook& l) { return l.pen == cutPen && l.color == Render::Ink; }), "图形：去掉覆盖回到原样");
+        }
+        {
+            // 元素的覆盖胜过类别的；剖到的填充按自己的颜色一起填；半色调向纸色走一半
+            Session s;
+            const std::vector<Id> walls = House(s);
+            Run(s, "graphics", Json::parse(R"({"view": 100000, "categories": {"walls": {"cut": {"fill": [220, 160, 40]}}}})"));
+            Render::Drawing d = Drawn(s, level1);
+            const Render::Rgb amber{ 220, 160, 40 }, blue{ 10, 120, 200 };
+            Check(FillAt(d, P2{ 4000, 0 }) == amber && FillAt(d, P2{ 8000, 3000 }) == amber, "图形：类别的填充色");
+            Run(s, "graphics", Json{ { "view", level1 }, { "elements", { { std::to_string(walls[0]), Json::parse(R"({"cut": {"fill": [10, 120, 200], "color": [0, 200, 0]}})") } } } });
+            d = Drawn(s, level1);
+            Check(FillAt(d, P2{ 4000, 0 }) == blue && FillAt(d, P2{ 8000, 3000 }) == amber, "图形：元素自己的胜过类别的");
+            Check(Any(Lines(d, walls[0]), [](const LineLook& l) { return l.color == Render::Rgb{ 0, 200, 0 }; }) &&
+                      !Any(Lines(d, walls[1]), [](const LineLook& l) { return l.color == Render::Rgb{ 0, 200, 0 }; }),
+                  "图形：元素的线色只改它自己");
+            size_t poche = 0;
+            for (size_t i = 0; i < d.prims.size(); ++i)
+                poche += !d.owners[i] && d.prims[i].kind == Render::Prim::Kind::Fill && d.prims[i].color == Render::Poche;
+            Check(poche == 0, "图形：合在一起的填充也是覆盖的颜色");
+            Session h;
+            const std::vector<Id> hw = House(h);
+            Run(h, "graphics", Json::parse(R"({"view": 100000, "categories": {"walls": {"halftone": true}}})"));
+            d = Drawn(h, level1);
+            Check(FillAt(d, P2{ 4000, 0 }) == Render::Halftone(Render::Poche) &&
+                      Any(Lines(d, hw[0]), [](const LineLook& l) { return l.color == Render::Halftone(Render::Ink); }),
+                  "图形：半色调");
+        }
+        {
+            // 默认三维视图：第一次改它的图形时建出来；它隐藏的三维里不画；平面是平面自己的
+            Session s;
+            const std::vector<Id> walls = House(s);
+            Json r = Run(s, "graphics", R"({"view": "{3D}"})");
+            Check(r["view"].is_null() && !s.GetModel().Default3D(), "三维：只问不建");
+            r = Run(s, "graphics", R"({"view": "{3D}", "hide": ["walls"]})");
+            Check(r["name"] == "{3D}" && s.GetModel().Default3D().has_value(), "三维：改了才建：" + r.dump());
+            Check(!s.GetModel().LookOf3D().Shows(walls[0]) && Has(Drawn(s, level1), walls[0]), "三维：隐藏墙，平面照旧");
+            r = Run(s, "visual_style", R"({"style": "Hidden Line"})");
+            Check(r["style"] == "hidden_line", "三维：视觉样式：" + r.dump());
+            Check(Contains(Refused(s, "visual_style", R"({"view": "Level 1", "style": "shaded"})"), "isn't a 3D view"), "三维：平面没有视觉样式");
+        }
+        {
+            // 比例与详细程度：每个平面都有比例，null 不行；问时只回答
+            Session s;
+            House(s);
+            Json r = Run(s, "scale", R"({"view": "Level 1"})");
+            Check(r["scale"] == 100.0, "比例：默认 1 : 100：" + r.dump());
+            r = Run(s, "scale", R"({"view": "Level 1", "scale": 50})");
+            Check(r["scale"] == 50.0 && s.GetModel().ScaleOf(s.GetModel().GuidOf(level1)) == 50.0, "比例：改成 1 : 50");
+            Check(Contains(Refused(s, "scale", R"({"view": "Level 1", "scale": null})"), "always has a scale"), "比例：null 不行");
+            Check(Contains(Refused(s, "scale", R"({"view": "Level 1", "scale": 0})"), "from 1 to 100000"), "比例：0 不行");
+            r = Run(s, "detail", R"({"view": "Level 1", "detail": "Coarse"})");
+            Check(r["detail"] == "coarse", "详细程度：粗略：" + r.dump());
+            Check(Contains(Refused(s, "detail", R"({"view": "Level 1", "detail": "rough"})"), "coarse, medium or fine"), "详细程度：拼错");
+        }
+        {
+            // 说不通的图形被拒，说明要改什么
+            Session s;
+            House(s);
+            Check(Contains(Refused(s, "graphics", R"({"hide": ["ducts"]})"), "isn't a category views draw"), "图形：不画的类别");
+            Check(Contains(Refused(s, "graphics", R"({"categories": {"wall": {"cut": {"weight": 17}}}})"), "a pen, 0 (a hairline) to 16"), "图形：笔号超出");
+            Check(Contains(Refused(s, "graphics", R"({"categories": {"wall": {"transparency": 101}}})"), "a percent"), "图形：透明度超出");
+            Check(Contains(Refused(s, "graphics", R"({"categories": {"wall": {"cut": {"color": "red"}}}})"), "isn't a colour"), "图形：颜色写错");
+            Check(Contains(Refused(s, "graphics", R"({"categories": {"wall": {"cut": {"foreground": {"pattern": "Nope"}}}}})"), "no fill pattern"), "图形：没有的图案");
+            Check(Contains(Refused(s, "graphics", R"({"filters": []})"), "aren't in MiniBIM yet"), "图形：过滤器还没有");
+            const Id pv = Run(s, "duplicate_view", R"({"view": "Level 1"})")["id"].get<Id>();
+            Check(Contains(Refused(s, "graphics", Json{ { "hide_elements", { pv } } }), "views don't draw those"), "图形：平面视图不是视图画的元素");
+        }
+        {
+            // 复制视图：同一标高的平面视图，按源视图起名并编号；名称不能与标高、别的视图重
+            Session s;
+            House(s);
+            const Json a = Run(s, "duplicate_view", R"({"view": "Level 1"})");
+            const Json b = Run(s, "DP", R"({"view": "Level 1"})");
+            Check(a["name"] == "Level 1 Copy 1" && b["name"] == "Level 1 Copy 2", "复制视图：名称：" + a.dump() + b.dump());
+            const Model& m = s.GetModel();
+            Check(m.PlanLevel(m.GuidOf(a["id"].get<Id>())) == m.GuidOf(level1) && m.PlanViews(m.GuidOf(level1)).size() == 2, "复制视图：同一标高");
+            Run(s, "duplicate_view", R"({"view": "Level 1", "name": "Plumbing"})");
+            for (const char* taken : { "Level 2", "Plumbing" })
+                Check(Contains(Refused(s, "duplicate_view", Json{ { "view", "Level 1" }, { "name", taken } }), "already"), std::string("复制视图：名称已有：") + taken);
+            const Json again = Run(s, "duplicate_view", R"({"view": "Plumbing"})");
+            Check(again["name"] == "Plumbing Copy 1", "复制视图：平面视图的复制");
+            Check(Contains(Refused(s, "duplicate_view", R"({"view": "Level 1", "mode": "twin"})"), "duplicate, detailing or dependent"), "复制视图：方式三选一");
+            Check(Contains(Refused(s, "duplicate_view", R"({"view": "No such view"})"), "no view named"), "复制视图：没有这个视图");
+        }
+        {
+            // 复制的视图起初有源视图的视图范围、裁剪与图形，之后各管各的
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Id door = Run(s, "door", Json{ { "wall", walls[0] }, { "offset", 2000 } })["id"].get<Id>();
+            Run(s, "graphics", R"({"view": "Level 1", "hide": ["door"]})");
+            Run(s, "crop", R"({"view": "Level 1", "region": [[-500, -500], [8500, 6500]]})");
+            Run(s, "modify", Json{ { "id", level1 }, { "view_range", { { "cut", 1500 } } } });
+            const Id copy = Run(s, "duplicate_view", R"({"view": "Level 1"})")["id"].get<Id>();
+            const Model* m = &s.GetModel();
+            const Guid cg = m->GuidOf(copy), lg = m->GuidOf(level1);
+            Check(m->ViewRangeOf(cg).cut == 1500.0 && m->CropOf(cg) == m->CropOf(lg) && !m->LookOf(cg).Shows(door), "复制视图：起初同源视图");
+            Run(s, "graphics", R"({"view": "Level 1 Copy 1", "hide": ["wall"]})");
+            Run(s, "modify", Json{ { "id", copy }, { "view_range", { { "cut", 900 } } } });
+            m = &s.GetModel();
+            Check(!m->LookOf(cg).Shows(walls[0]) && m->LookOf(lg).Shows(walls[0]) && m->ViewRangeOf(cg).cut == 900.0 && m->ViewRangeOf(lg).cut == 1500.0,
+                  "复制视图：之后各管各的");
+            Run(s, "crop", R"({"view": "Level 1 Copy 1", "region": null})");
+            m = &s.GetModel();
+            Check(!m->CropOf(cg) && m->CropOf(lg), "复制视图：裁剪也各自的");
+            // 裁剪了的平面：框外的墙线裁掉，房间、注释整个留着
+            const Render::Drawing cropped = Drawn(s, level1);
+            const Render::Px lo = cropped.view.ToPx(P2{ -500, 6500 }), hi = cropped.view.ToPx(P2{ 8500, -500 });
+            bool inside = true;
+            for (size_t i = 0; i < cropped.prims.size(); ++i)
+                for (const Render::Px& q : cropped.prims[i].pts)
+                    inside = inside && q.first >= lo.first - 0.5f && q.first <= hi.first + 0.5f && q.second >= lo.second - 0.5f && q.second <= hi.second + 0.5f;
+            Check(inside, "裁剪：画的都在框里");
+            Run(s, "crop", R"({"view": "Level 1", "region": null})");
+            const Json c = Run(s, "crop", R"({"view": "Level 1"})");
+            Check(c["crop"].is_array() && c["crop"][0][0].get<double>() < -1000.0, "裁剪：不给区域时裁到显示的四周留 1 米：" + c.dump());
+        }
+        {
+            // 注释在它画在的视图里，只在那里；全部标记按视图
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Id door = Run(s, "door", Json{ { "wall", walls[0] }, { "offset", 2000 } })["id"].get<Id>();
+            const Id copy = Run(s, "duplicate_view", R"({"view": "Level 1"})")["id"].get<Id>();
+            std::vector<std::pair<Id, std::vector<Id>>> made;
+            for (const auto& [view, y] : { std::pair{ "Level 1", -2000.0 }, std::pair{ "Level 1 Copy 1", -3000.0 } })
+            {
+                const Id dim = Run(s, "dimension", Json{ { "level", view }, { "refs", { Pt(4000, 0), Pt(4000, 6000) } }, { "at", Pt(9000, y) } })["id"].get<Id>();
+                const Id tag = Run(s, "tag", Json{ { "ids", { door } }, { "level", view } })["ids"][0].get<Id>();
+                const Id note = Run(s, "text", Json{ { "text", view }, { "at", Pt(1000, y) }, { "view", view } })["id"].get<Id>();
+                const Id spot = Run(s, "spot", Json{ { "at", Pt(2000, 2000) }, { "view", view }, { "host", walls[0] } })["id"].get<Id>();
+                made.push_back({ std::string(view) == "Level 1" ? level1 : copy, { dim, tag, note, spot } });
+            }
+            const Render::Drawing inLevel = Drawn(s, level1), inCopy = Drawn(s, copy);
+            bool right = true;
+            for (const auto& [view, ids] : made)
+                for (const Id i : ids)
+                    right = right && Has(inLevel, i) == (view == level1) && Has(inCopy, i) == (view == copy);
+            Check(right, "平面视图：注释只在它的视图里");
+            Check(ElementOf(s, made[0].second[1])["view"].is_null() && !ElementOf(s, made[1].second[1])["view"].is_null(), "平面视图：标记记着它的视图");
+            Session t;
+            const std::vector<Id> tw = House(t);
+            Run(t, "door", Json{ { "wall", tw[0] }, { "offset", 2000 } });
+            Run(t, "duplicate_view", R"({"view": "Level 1"})");
+            Run(t, "tag", R"({"level": "Level 1"})");
+            const Json r = Run(t, "tag", R"({"level": "Level 1 Copy 1"})");
+            Check(r["ids"].size() == 1 && Contains(Refused(t, "tag", R"({"level": "Level 1 Copy 1"})"), "nothing to tag"), "平面视图：全部标记按视图");
+        }
+        {
+            // 带细节复制的复制注释，普通的不复制
+            Session s;
+            const std::vector<Id> walls = House(s);
+            Run(s, "door", Json{ { "wall", walls[0] }, { "offset", 2000 } });
+            Run(s, "text", R"({"text": "note", "at": [1000, 1000], "view": "Level 1"})");
+            Run(s, "tag", R"({"level": "Level 1"})");
+            const auto notes = [&] { return Count(s, "text") + Count(s, "tag"); };
+            const uint64_t before = notes();
+            Check(Run(s, "duplicate_view", R"({"view": "Level 1"})")["annotations"] == 0 && notes() == before, "带细节复制：普通复制不复制注释");
+            const Json det = Run(s, "duplicate_view", R"({"view": "Level 1", "mode": "detailing"})");
+            Check(det["annotations"] == 2 && notes() == before + 2, "带细节复制：复制文字与标记：" + det.dump());
+        }
+        {
+            // 相关视图：跟着父视图的视图范围与图形，自己不能改；有自己的裁剪；显示父视图的注释
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Id door = Run(s, "door", Json{ { "wall", walls[0] }, { "offset", 2000 } })["id"].get<Id>();
+            const Id parentNote = Run(s, "text", R"({"text": "parent's", "at": [1000, 1000], "view": "Level 1"})")["id"].get<Id>();
+            const Json dep = Run(s, "duplicate_view", R"({"view": "Level 1", "mode": "dependent"})");
+            Check(dep["name"] == "Level 1 Dependent 1", "相关视图：名称：" + dep.dump());
+            const Id depId = dep["id"].get<Id>();
+            Run(s, "graphics", R"({"view": "Level 1", "hide": ["door"]})");
+            Run(s, "modify", Json{ { "id", level1 }, { "view_range", { { "cut", 1700 } } } });
+            const Model* m = &s.GetModel();
+            const Guid dg = m->GuidOf(depId);
+            Check(!m->LookOf(dg).Shows(door) && m->ViewRangeOf(dg).cut == 1700.0, "相关视图：跟着父视图");
+            for (const auto& [cmd, p] : { std::pair{ "graphics", R"({"view": "Level 1 Dependent 1", "hide": ["wall"]})" },
+                                          std::pair{ "scale", R"({"view": "Level 1 Dependent 1", "scale": 50})" },
+                                          std::pair{ "detail", R"({"view": "Level 1 Dependent 1", "detail": "coarse"})" } })
+            {
+                const std::string e = Refused(s, cmd, p);
+                Check(Contains(e, "dependent view") && Contains(e, "Level 1"), std::string("相关视图：不能自己改：") + cmd + "：" + e);
+            }
+            Run(s, "crop", R"({"view": "Level 1 Dependent 1", "region": [[0, 0], [4000, 3000]]})");
+            m = &s.GetModel();
+            Check(m->CropOf(dg) && !m->CropOf(m->GuidOf(level1)), "相关视图：自己的裁剪");
+            const Id mine = Run(s, "text", R"({"text": "dependent's", "at": [1500, 1500], "view": "Level 1 Dependent 1"})")["id"].get<Id>();
+            const Render::Drawing inDep = Drawn(s, depId), inParent = Drawn(s, level1);
+            Check(Has(inDep, parentNote) && Has(inDep, mine) && Has(inParent, parentNote) && !Has(inParent, mine), "相关视图：显示父视图的注释");
+            Check(Contains(Refused(s, "duplicate_view", R"({"view": "Level 1 Dependent 1", "mode": "dependent"})"), "dependent view"),
+                  "相关视图：没有相关视图的相关视图");
+        }
+        {
+            // 删除：视图带走它的注释与相关视图，标高带走它的平面视图
+            Session s;
+            const std::vector<Id> walls = House(s);
+            Run(s, "door", Json{ { "wall", walls[0] }, { "offset", 2000 } });
+            const Id copy = Run(s, "duplicate_view", R"({"view": "Level 1"})")["id"].get<Id>();
+            Run(s, "text", R"({"text": "in the copy", "at": [1000, 1000], "view": "Level 1 Copy 1"})");
+            Run(s, "tag", R"({"level": "Level 1 Copy 1"})");
+            const Id dep = Run(s, "duplicate_view", R"({"view": "Level 1 Copy 1", "mode": "dependent"})")["id"].get<Id>();
+            Run(s, "level", R"({"elevation": 9000})");
+            const Id upper = Run(s, "duplicate_view", R"({"view": "Level 3"})")["id"].get<Id>();
+            Run(s, "delete", Json{ { "ids", { copy } } });
+            Check(ElementOf(s, dep).is_null() && Count(s, "text") + Count(s, "tag") == 0 && !ElementOf(s, upper).is_null(), "删除：视图带走相关视图与注释");
+            const Id third = s.GetModel().Levels()[2].first;
+            Run(s, "delete", Json{ { "ids", { third } } });
+            Check(ElementOf(s, upper).is_null() && Count(s, "planview") == 0, "删除：标高带走它的平面视图");
+        }
+        {
+            // 存了再打开一模一样：视图的图形、平面视图、三维视图
+            Session s;
+            const std::vector<Id> walls = House(s);
+            Run(s, "graphics", Json::parse(R"({"view": "Level 1", "hide": ["room"], "categories": {"wall": {"cut": {"color": "#c80000", "weight": 6, "dash": "dotted"}, "halftone": true}}})"));
+            Run(s, "graphics", Json{ { "view", "Level 1" }, { "hide_elements", { walls[1] } } });
+            Run(s, "scale", R"({"view": "Level 1", "scale": 50})");
+            Run(s, "detail", R"({"view": "Level 1", "detail": "medium"})");
+            Run(s, "duplicate_view", R"({"view": "Level 1", "mode": "dependent"})");
+            Run(s, "crop", R"({"view": "Level 1 Dependent 1", "region": [[0, 0], [4000, 3000]]})");
+            Run(s, "graphics", R"({"view": "{3D}", "hide": ["walls"]})");
+            Run(s, "visual_style", R"({"style": "wireframe"})");
+            const std::string path = Temp("views.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            std::error_code ec;
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+            Check(t.GetModel().ToJson() == s.GetModel().ToJson(), "视图：存了再打开一模一样");
+            const Json lj = ElementOf(t, level1);
+            Check(lj["graphics"]["scale"] == 50.0 && lj["graphics"]["detail"] == "medium" && lj["graphics"]["categories"]["wall"]["cut"]["dash"] == "dotted",
+                  "视图：图形写进文件：" + lj["graphics"].dump());
+        }
+    }
+}
+
 int main()
 {
     // 不缓冲：崩溃时也看得到崩在哪一项之后
@@ -3047,6 +3389,7 @@ int main()
     TestMep();
     TestMassing();
     TestAnnotations();
+    TestViews();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

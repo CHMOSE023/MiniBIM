@@ -87,6 +87,24 @@ namespace MiniBIM
         add("modify.typeProperties", N_("Type Properties"), N_("Edit the type of the selected elements, or of what the tool places"),
             [this] { EditType(); }, [this] { return CurrentTypeSubject().has_value(); });
         add("manage.materials", N_("Materials"), N_("The project's materials: their colours and patterns"), [this] { OpenMaterials(); });
+        // ── 视图（移植自 BIMCraft 的视图选项卡）：可见性 / 图形、复制视图、裁剪 ─────────
+        add("view.visibility", N_("Visibility/Graphics"), N_("What the view shows: hide or show categories; a plan's scale and detail level"),
+            [this] { OpenVisibilityGraphics(); });
+        const auto planShown = [this] { return m_planLevel.has_value() && !m_sketch; };
+        add("view.duplicate", N_("Duplicate View"), N_("A new plan view of this level, with this plan's view range, crop and graphics"),
+            [this] { DuplicatePlan("duplicate"); }, planShown);
+        add("view.detailing", N_("Duplicate with Detailing"), N_("A new plan view of this level, with copies of this plan's dimensions, tags and notes"),
+            [this] { DuplicatePlan("detailing"); }, planShown);
+        add("view.dependent", N_("Duplicate as Dependent"),
+            N_("A dependent view: it follows this plan's view range and graphics, has a crop of its own and shows its annotation"),
+            [this] { DuplicatePlan("dependent"); },
+            [this]
+            {
+                const Bim::PlanView* v = m_planLevel ? m_session.GetModel().GetPlanView(PlanKey()) : nullptr;
+                return m_planLevel.has_value() && !m_sketch && !(v && v->parent);
+            });
+        add("view.crop", N_("Crop View"), N_("Crop the plan to what it shows now, or uncrop it"), [this] { ToggleCrop(); }, planShown,
+            [this] { return m_planLevel && m_session.GetModel().CropOf(PlanKey()).has_value(); });
         add("modify.flip", N_("Flip Wall"), N_("Turn the selected walls round: their exterior sides go to the other side"), [this] { FlipSelection(); },
             [this]
             {

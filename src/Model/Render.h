@@ -3,6 +3,7 @@
 #include "Model/Model.h"
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string_view>
 #include <optional>
 #include <utility>
@@ -140,6 +141,10 @@ namespace MiniBIM::Bim::Render
         // tol 以内的每个元素，按 Pick 的先后
         std::vector<Id> PickAll(Px at, float tol) const;
 
+        // 裁到像素 lo 到 hi 的框里：keep 认的元素的各项整个留着
+        void Crop(Px lo, Px hi, const std::function<bool(std::optional<Id>)>& keep);
+        // 照视图的图形改各元素的线与填充：颜色、线宽、虚实、填充色，半色调向纸色走一半
+        void Dress(const Look& look);
         // 画完后：类别的笔换成对象样式的，再按笔定线宽（注释的元素用注释的线宽）
         void ByCategory(const Model& m);
         void Weigh(const Model& m);
@@ -151,13 +156,15 @@ namespace MiniBIM::Bim::Render
 
     // 把 pts 放进 width × height 像素的视图（四周留边，注释随比例放大）
     View Fit(const std::vector<P2>& pts, uint32_t width, uint32_t height, double n);
-    // level 的平面显示的一切（不裁剪）：墙、楼板、房间、构件、轴网、屋顶……的点
-    std::vector<P2> PlanShows(const Model& m, Guid level);
-    // level 的平面，放进 width × height 像素
-    Drawing Plan(const Model& m, Guid level, uint32_t width, uint32_t height);
-    // level 的平面，按给定的视图画
-    Drawing Draw(const Model& m, Guid level, View view);
-    // 还不在模型里的元素 e，照 level 的平面会画它的样子（各项归它，ID 是放进模型后会有的那个）：工具预览用（门窗、构件、屋顶……）。
+    // c 向纸色走一半（半色调）
+    Rgb Halftone(Rgb c);
+    // 平面 plan（标高的平面或平面视图）显示的一切：墙、楼板、房间、构件、轴网、屋顶……的点；裁剪了的为裁剪框的两角
+    std::vector<P2> PlanShows(const Model& m, Guid plan);
+    // 平面 plan，放进 width × height 像素
+    Drawing Plan(const Model& m, Guid plan, uint32_t width, uint32_t height);
+    // 平面 plan，按给定的视图画：视图的比例、图形（隐藏、覆盖、详细程度）与裁剪
+    Drawing Draw(const Model& m, Guid plan, View view);
+    // 还不在模型里的元素 e，照平面 plan 会画它的样子（各项归它，ID 是放进模型后会有的那个）：工具预览用（门窗、构件、屋顶……）。
     // 移植自 BIMCraft 的 render::sketch，做法不同：放进模型的一份副本里画整个平面，只留它的几项
-    Drawing Sketch(const Model& m, Guid level, View view, const Element& e);
+    Drawing Sketch(const Model& m, Guid plan, View view, const Element& e);
 }

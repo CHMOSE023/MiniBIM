@@ -178,6 +178,30 @@ msgstr ""
 msgid "Measure"
 msgstr ""
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Visibility/Graphics"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "View Scale"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Detail Level"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Visual Style"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Crop View"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate View"
+msgstr ""
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr ""
@@ -718,6 +742,38 @@ msgstr ""
 msgid "Surface Pattern"
 msgstr ""
 
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Visibility/Graphics: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "A dependent view follows its parent's graphics: change them there."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Coarse"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Medium"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Fine"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Model Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Annotation Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Reset"
+msgstr ""
+
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Start an empty project with two levels"
 msgstr ""
@@ -876,6 +932,34 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "The project's materials: their colours and patterns"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "What the view shows: hide or show categories; a plan's scale and detail level"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new plan view of this level, with this plan's view range, crop and graphics"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate with Detailing"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new plan view of this level, with copies of this plan's dimensions, tags and notes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate as Dependent"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A dependent view: it follows this plan's view range and graphics, has a crop of its own and shows its annotation"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Crop the plan to what it shows now, or uncrop it"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -1699,7 +1783,7 @@ msgstr ""
 msgid "Structural"
 msgstr ""
 
-#: apps/Common/src/GUI/Parameters.cpp
+#: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
 msgid "Graphics"
 msgstr ""
 
@@ -1973,6 +2057,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Filled Regions"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not duplicate the view"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not crop the view"
 msgstr ""
 
 #: apps/Common/src/GUI/PlanView.cpp

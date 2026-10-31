@@ -2,6 +2,7 @@
 #include "Core/Math/Mat4.hpp"
 #include "I18n/Translator.h"
 #include "Model/Geom.h"
+#include "Model/ModelJson.h"
 #include "Render/IRenderer.h"
 #include "Widgets/ViewportHost.h"
 #include <algorithm>
@@ -105,6 +106,7 @@ namespace MiniBIM
         if (m_tool != Tool::Modify && m_tool != Tool::Level)
             SetTool(Tool::Modify);
         m_planLevel.reset();
+        m_planOf.reset();
         m_drag = Drag::None;
         UpdateTitle();
         UpdateStatus();
@@ -115,6 +117,12 @@ namespace MiniBIM
     void MainFrame::ShowPlan(std::optional<Bim::Guid> level)
     {
         const Bim::Model& m = m_session.GetModel();
+        // 给了标高时显示它自己的平面
+        if (level && m_planOf)
+        {
+            m_planOf.reset();
+            m_planView.reset();
+        }
         if (!level)
             level = m_planLevel;
         if (m_sketch && level && !m.Same(*level, m_sketch->level) && LeavingSketch())
@@ -138,6 +146,59 @@ namespace MiniBIM
         UpdateStatus();
         RefreshPanels();
         m_viewport->RequestRender();
+    }
+
+    void MainFrame::ShowPlanView(Bim::Guid view)
+    {
+        const Bim::Model& m = m_session.GetModel();
+        const auto level = m.PlanLevel(view);
+        if (!level || !m.GetPlanView(view))
+            return;
+        if (m_sketch && !m.Same(*level, m_sketch->level) && LeavingSketch())
+            return;
+        if (m_planOf != view || m_planLevel != level)
+        {
+            if (m_planLevel != level)
+                m_toolPts.clear();
+            m_planLevel = level;
+            m_planOf    = m.GuidOf(view);
+            m_planView.reset();
+        }
+        m_planDirty = true;
+        m_drag = Drag::None;
+        UpdateTitle();
+        UpdateStatus();
+        RefreshPanels();
+        m_viewport->RequestRender();
+    }
+
+    void MainFrame::DuplicatePlan(const char* mode)
+    {
+        if (!m_planLevel)
+            return;
+        Bim::Json made;
+        if (!RunCommand("duplicate_view", Bim::Json{ { "view", Bim::ToJson(PlanKey()) }, { "mode", mode } }, N_("Could not duplicate the view"), &made))
+            return;
+        const Bim::Model& m = m_session.GetModel();
+        if (made.contains("id"))
+            if (const Bim::Element* e = m.elements.Get(made["id"].get<Bim::Id>()); e && e->As<Bim::PlanView>())
+                ShowPlanView(m.GuidOf(made["id"].get<Bim::Id>()));
+    }
+
+    void MainFrame::ToggleCrop()
+    {
+        if (!m_planLevel)
+            return;
+        const bool cropped = m_session.GetModel().CropOf(PlanKey()).has_value();
+        Bim::Json p{ { "view", Bim::ToJson(PlanKey()) } };
+        if (cropped)
+            p["region"] = nullptr;
+        if (RunCommand("crop", p, N_("Could not crop the view")))
+        {
+            m_planView.reset();
+            m_planDirty = true;
+            m_viewport->RequestRender();
+        }
     }
 
     void MainFrame::StepLevel(int by)
@@ -166,8 +227,15 @@ namespace MiniBIM
         if (!m.GetLevel(*m_planLevel))
         {
             m_planLevel.reset();
+            m_planOf.reset();
             ShowPlan(std::nullopt);
             return;
+        }
+        // 显示的平面视图删掉了：回到它的标高的平面
+        if (m_planOf && !m.GetPlanView(*m_planOf))
+        {
+            m_planOf.reset();
+            m_planView.reset();
         }
         m_planDirty = true;
     }
@@ -180,8 +248,8 @@ namespace MiniBIM
     std::string MainFrame::PlanStatus() const
     {
         const Bim::Model& m = m_session.GetModel();
-        const Bim::Level* l = m_planLevel ? m.GetLevel(*m_planLevel) : nullptr;
-        std::string out = l ? Format(Tr("Plan: {0}"), { l->name }) : std::string();
+        const std::string* name = m_planLevel ? m.ViewName(PlanKey()) : nullptr;
+        std::string out = name ? Format(Tr("Plan: {0}"), { *name }) : std::string();
         if (m_selection.size() == 1)
         {
             if (const Bim::Element* e = m.elements.Get(m_selection.front()))
@@ -202,8 +270,8 @@ namespace MiniBIM
             // 框住整个平面：放进没被功能区、面板挡住的区域（m_fitInsets；留边过大时按视口的 20% 算），以它的中心为中心
             const double l = m_fitInsets[0], t = m_fitInsets[1];
             const double fw = std::max(w - l - m_fitInsets[2], w * 0.2), fh = std::max(h - t - m_fitInsets[3], h * 0.2);
-            Bim::Render::View v = Bim::Render::Fit(Bim::Render::PlanShows(m, *m_planLevel), static_cast<uint32_t>(fw), static_cast<uint32_t>(fh),
-                                                   Bim::UnitsOf::DefaultScale(m.units));
+            Bim::Render::View v = Bim::Render::Fit(Bim::Render::PlanShows(m, PlanKey()), static_cast<uint32_t>(fw), static_cast<uint32_t>(fh),
+                                                   m.ScaleOf(PlanKey()));
             // Fit 把范围的中心放在 (fw/2, fh/2)；整个视口以 (w/2, h/2) 为 (cx, cy)，挪到区域中心 (l + fw/2, t + fh/2)
             v.width  = w;
             v.height = h;
@@ -220,7 +288,7 @@ namespace MiniBIM
         }
         if (m_planDirty || !m_plan)
         {
-            m_plan = std::make_unique<Bim::Render::Drawing>(Bim::Render::Draw(m, *m_planLevel, *m_planView));
+            m_plan = std::make_unique<Bim::Render::Drawing>(Bim::Render::Draw(m, PlanKey(), *m_planView));
             m_planDirty = false;
         }
 

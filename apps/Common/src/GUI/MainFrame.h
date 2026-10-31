@@ -199,6 +199,10 @@ namespace MiniBIM
         void ShowModel3D();
         // 显示 level 的平面；没给时为正在显示的，或最低的标高
         void ShowPlan(std::optional<Bim::Guid> level);
+        // 显示平面视图 view（标高的另一个平面）
+        void ShowPlanView(Bim::Guid view);
+        // 正在显示的平面：平面视图，或标高自己的平面（m_planLevel 有值时才调）
+        Bim::Guid PlanKey() const { return m_planOf.value_or(*m_planLevel); }
         // 上一层（by = 1）、下一层（by = -1）的平面
         void StepLevel(int by);
         // 模型变了：显示的标高不在了就换到最低的，下次画时重画显示列表
@@ -304,6 +308,12 @@ namespace MiniBIM
         void OpenTypeDialog(const TypeSubject& t);
         void OpenFamilyDialog(const TypeSubject& t);
         void OpenMaterials();
+        // 可见性 / 图形（Dialogs.cpp）：正在显示的视图隐藏哪些类别，平面的比例与详细程度
+        void OpenVisibilityGraphics();
+        // 复制正在显示的平面（mode：duplicate、detailing、dependent），之后显示新的平面视图
+        void DuplicatePlan(const char* mode);
+        // 正在显示的平面裁剪了就取消，否则裁到它现在显示的
+        void ToggleCrop();
         // 执行模型命令，失败时不弹窗，原因放进 error（对话框里显示）
         bool RunQuiet(const char* id, const Bim::Json& params, std::string& error, Bim::Json* result = nullptr);
 
@@ -487,6 +497,7 @@ namespace MiniBIM
         MiniGUI::Vec2 m_lastPixel;
 
         std::optional<Bim::Guid>         m_planLevel;        // 显示哪个标高的平面；空 = 三维
+        std::optional<Bim::Guid>         m_planOf;           // 显示的是它的哪个平面视图；空 = 标高自己的平面
         std::optional<Bim::Render::View> m_planView;         // 平面的比例与中心；空 = 下次画时框住整个平面
         std::unique_ptr<Bim::Render::Drawing> m_plan;        // 显示列表，按 m_planView 画的
         bool                             m_planDirty = true; // 模型或视图变了，要重画显示列表

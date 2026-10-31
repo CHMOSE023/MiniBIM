@@ -113,6 +113,8 @@ namespace MiniBIM::Bim::LanguageOf
             { "Tile 300", "Ladrilho 300", "Baldosa 300" },
             { "Solid Black", "Preto sólido", "Negro sólido" },
             { "Masking", "Máscara", "Máscara" },
+            { "Copy", "Cópia", "Copia" },
+            { "Dependent", "Dependente", "Dependiente" },
         };
     }
 

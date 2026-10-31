@@ -130,10 +130,15 @@ namespace MiniBIM::Bim
         return std::nullopt;
     }
 
-    bool Model::AnnotationIn(const Element& e, Guid level) const
+    bool Model::AnnotationIn(const Element& e, Guid plan) const
     {
         const auto at = AnnotationPlan(e);
-        return at && Same(*at, level);
+        if (!at)
+            return false;
+        if (Same(*at, plan))
+            return true;
+        const PlanView* v = GetPlanView(plan);
+        return v && v->parent && Same(*v->parent, *at);
     }
 
     std::optional<P2> Model::Anchor(Guid id) const
@@ -720,12 +725,12 @@ namespace MiniBIM::Bim
 
     bool Model::CheckAnnotation(const std::string& who, const Element& e, std::string& error) const
     {
-        // 注释所在的视图：标高（它的平面）
+        // 注释所在的视图：标高的平面，或平面视图
         const auto viewOk = [&](Guid v)
         {
-            if (GetLevel(v))
+            if (PlanLevel(v))
                 return true;
-            error = who + ": view " + Shown(v) + " isn't a level's plan";
+            error = who + ": view " + Shown(v) + " isn't a plan";
             return false;
         };
         if (const Dimension* d = e.As<Dimension>())
@@ -735,7 +740,7 @@ namespace MiniBIM::Bim
                 error = who + ": level " + Shown(d->level) + " doesn't exist";
                 return false;
             }
-            if (d->view)
+            if (const PlanView* v = d->view ? GetPlanView(*d->view) : nullptr; d->view && !(v && Same(v->level, d->level)))
             {
                 error = who + ": view " + Shown(*d->view) + " isn't a plan view of its level";
                 return false;
@@ -818,8 +823,13 @@ namespace MiniBIM::Bim
             }
             if (t->view)
             {
-                error = who + ": view " + Shown(*t->view) + " isn't a plan view of its host's level";
-                return false;
+                const PlanView* v   = GetPlanView(*t->view);
+                const auto      own = LevelOf(*host);
+                if (!v || (own && !Same(v->level, *own)))
+                {
+                    error = who + ": view " + Shown(*t->view) + " isn't a plan view of its host's level";
+                    return false;
+                }
             }
             // 墙不在了的门窗由墙去报；别的东西要在平面上有个点
             if (!host->AsOpening() && !Anchor(t->host))

@@ -162,6 +162,16 @@ namespace MiniBIM::Props
             { "View Range", "view_range.depth", N_("View Depth"), Length },
         };
 
+        // 平面视图：名称、标高与视图范围（相关视图的视图范围是父视图的，在父视图里改）
+        constexpr Row PlanViewOf[] = {
+            { "Identity Data", "name", "View Name", Text },
+            { "Extents", "level", "Associated Level", LevelName },
+            { "View Range", "view_range.top", "Top", Limit, "Level Above" },
+            { "View Range", "view_range.cut", "Cut Plane", Length },
+            { "View Range", "view_range.bottom", "Bottom", Length },
+            { "View Range", "view_range.depth", "View Depth", Length },
+        };
+
         // 保留两位小数，去掉末尾的 0（同 Rust 的 {} 写 f64）
         std::string Number2(double x)
         {
@@ -235,6 +245,7 @@ namespace MiniBIM::Props
     }
 
     std::span<const Row> PlanRows() { return Plan; }
+    std::span<const Row> PlanViewRows() { return PlanViewOf; }
 
     Bim::Json FieldOf(const Bim::Json& e, std::string_view key, Kind kind)
     {

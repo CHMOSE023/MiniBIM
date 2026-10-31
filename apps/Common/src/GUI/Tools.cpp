@@ -1272,7 +1272,7 @@ namespace MiniBIM
         // 一个还不在模型里的元素：照平面会画的样子，用强调色
         auto sketched = [&](const Bim::Element& e)
         {
-            Bim::Render::Drawing s = Bim::Render::Sketch(m, *m_planLevel, v, e);
+            Bim::Render::Drawing s = Bim::Render::Sketch(m, PlanKey(), v, e);
             for (Bim::Render::Prim& p : s.prims)
             {
                 p.color = Accent;

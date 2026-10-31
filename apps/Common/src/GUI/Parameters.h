@@ -47,6 +47,7 @@ namespace MiniBIM::Props
     std::span<const Row> RowsOf(std::string_view category);
     // 楼层平面的参数：读写它的标高
     std::span<const Row> PlanRows();
+    std::span<const Row> PlanViewRows();
 
     // 元素 JSON（Bim::ElementJson）里 key 的值，穿过点号。JSON 里 0 的数可能略去（楼板的偏移），所以长度、数没有时是 0；
     // 写着 null 的就是没有

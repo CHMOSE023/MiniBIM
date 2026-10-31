@@ -19,7 +19,8 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
   并记下目标点在屏幕上的偏移（投影矩阵最后整体平移），所以环绕时模型仍绕自己的中心转；留边再变不挪动画面，下次框住时才用。
   MiniCAD 相机的 SetFitInsets 挪的是目标点
 - 交互（`MainFrame::OnViewportPointer`）：左键拖动环绕，中键或右键拖动平移，Shift + 任意键拖动环绕，滚轮缩放。以后有了选择，左键要让给选择（照 Revit：Shift + 中键环绕）
-- 几何：`ModelScene::Build` 照 BIMCraft 的 `view3d.rs` 决定画什么、用什么颜色，但用 `Solid::ISolidKernel` 建实体（BIMCraft 自己拼三角形、软件光栅化，不移植）：
+- 几何：`ModelScene::Build` 照 BIMCraft 的 `view3d.rs` 决定画什么、用什么颜色，但用 `Solid::ISolidKernel` 建实体（BIMCraft 自己拼三角形、软件光栅化，不移植）。
+  默认三维视图（`Bim::Model::Default3D`）的可见性 / 图形隐藏的元素不建（`Bim::Model::LookOf3D`）；覆盖的颜色、透明度与视觉样式还不画：
   - 墙：`Bim::Walls::Outline`（斜接好的平面轮廓）从底拉伸到顶，再 `Boolean` 减去每个门窗洞（沿墙从洞的一边到另一边、比墙面再出去 50 毫米的条带），
     门窗洞四周的边是整面墙的边。贴着屋顶或楼板的墙照 BIMCraft 用 `Bim::Walls::Prisms` 分成棱柱：底顶都平的拉伸，倾斜的围成封闭网格经 `FromMesh` 转成实体，
     没有高度的（窗台为 0 的门下面那块）跳过。这些棱柱的边线自己给出（底圈、顶圈、竖边），不取内核的边（`FromMesh` 的实体会带出三角剖分的对角线）

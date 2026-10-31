@@ -250,14 +250,14 @@ namespace MiniBIM
         // 填充区域：选项栏选的类型；遮罩区域：遮罩的类型，不画边界线
         case SketchOf::Region:
             id = "filled_region";
-            p  = Bim::Json{ { "level", level }, { "sketch", lines } };
+            p  = Bim::Json{ { "level", m_planLevel ? Bim::ToJson(PlanKey()) : level }, { "sketch", lines } };
             if (const auto t = m.regionTypes.find(m_toolOpt.regionType); t != m.regionTypes.end() && !t->second.masking)
                 p["type"] = m_toolOpt.regionType;
             break;
         case SketchOf::Masking:
         {
             id = "filled_region";
-            p  = Bim::Json{ { "level", level }, { "sketch", lines }, { "line_style", nullptr } };
+            p  = Bim::Json{ { "level", m_planLevel ? Bim::ToJson(PlanKey()) : level }, { "sketch", lines }, { "line_style", nullptr } };
             const auto t = std::find_if(m.regionTypes.begin(), m.regionTypes.end(), [](const auto& kv) { return kv.second.masking; });
             if (t == m.regionTypes.end())
             {

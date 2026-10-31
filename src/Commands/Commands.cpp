@@ -11,6 +11,7 @@
 #include "Model/Align.h"
 #include "Model/Sketch.h"
 #include "Model/ModelJson.h"
+#include "Model/Render.h"
 #include "Model/Snap.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
@@ -249,8 +250,9 @@ namespace MiniBIM::Bim
             return true;
         }
 
-        // key 指的标高（名称、ID 或 GUID），给它的 GUID；没给时为最低的标高
-        bool LevelParam(const char* c, const Model& m, const Json& p, const char* key, Guid& out, std::string& error)
+        // key 指的平面（名称、ID 或 GUID）：标高自己的平面（没给时为最低的标高），或标高的平面视图。给出标高的 GUID，
+        // 是平面视图时还有它的 GUID：注释在哪个视图里
+        bool PlanParam(const char* c, const Model& m, const Json& p, const char* key, Guid& level, std::optional<Guid>& view, std::string& error)
         {
             const auto levels = m.Levels();
             Id id = 0;
@@ -265,26 +267,39 @@ namespace MiniBIM::Bim
             {
                 const std::string n = v->get<std::string>();
                 const auto it = std::find_if(levels.begin(), levels.end(), [&](const auto& l) { return l.second->name == n; });
-                if (it == levels.end())
+                std::optional<Id> found = it == levels.end() ? std::nullopt : std::optional<Id>(it->first);
+                for (const auto& [eid, e] : m.elements.Items())
+                    if (const PlanView* pv = e->As<PlanView>(); !found && pv && pv->name == n)
+                        found = eid;
+                if (!found)
                 {
                     std::string names;
                     for (const auto& [_, l] : levels)
                         names += (names.empty() ? "" : ", ") + l->name;
                     return Fail(error, c, "no level or plan view named `" + n + "` (the levels are: " + names + ")");
                 }
-                id = it->first;
+                id = *found;
             }
             else
             {
                 Guid g;
                 std::string why;
                 const auto found = FromJson(*v, g, why) ? m.elements.IdOf(g) : std::nullopt;
-                if (!found || !m.GetLevel(*found))
+                if (!found || !m.PlanLevel(m.GuidOf(*found)))
                     return Fail(error, c, "`" + std::string(key) + "`: " + Show(*v) + " is not a level or a plan view");
                 id = *found;
             }
-            out = m.GuidOf(id);
+            const Guid g = m.GuidOf(id);
+            level = m.PlanLevel(g).value_or(g);
+            view  = m.GetPlanView(g) ? std::optional<Guid>(g) : std::nullopt;
             return true;
+        }
+
+        // key 指的标高（名称、ID 或 GUID），给它的 GUID；没给时为最低的标高。标高的平面视图也指它的标高
+        bool LevelParam(const char* c, const Model& m, const Json& p, const char* key, Guid& out, std::string& error)
+        {
+            std::optional<Guid> view;
+            return PlanParam(c, m, p, key, out, view, error);
         }
 
         // type，没给时为类别的默认类型（Model::DefaultType）。不存在的名称由 Model::Check 报出并列出已有的
@@ -3686,7 +3701,10 @@ namespace MiniBIM::Bim
                     bool hangs = false;
                     if (const Opening* o = e->AsOpening())
                         hangs = gone.count(m.GuidOf(o->host)) > 0;
-                    // 注释跟着它在的视图（标高的平面）走，标记跟着它的宿主，高程点跟着它读的东西
+                    // 平面视图跟着它的标高与父视图
+                    else if (const PlanView* v = e->As<PlanView>())
+                        hangs = in(v->level) || in(v->parent);
+                    // 注释跟着它在的视图（标高的平面或平面视图）走，标记跟着它的宿主，高程点跟着它读的东西
                     else if (const Tag* t = e->As<Tag>())
                         hangs = in(t->host) || in(t->view);
                     else if (const Dimension* d = e->As<Dimension>())
@@ -3755,7 +3773,6 @@ namespace MiniBIM::Bim
             return true;
         }
 
-        // ── 注释（移植自 BIMCraft 的注释选项卡，第 5d 步）─────────────
         // 只收 keys 里的参数
         bool Only(const char* c, const Json& p, std::initializer_list<const char*> keys, std::string& error)
         {
@@ -3767,11 +3784,553 @@ namespace MiniBIM::Bim
             return true;
         }
 
-        // 注释在的视图：view（标高的名称、ID 或 GUID：它的平面），没给时为 level 的平面（默认最低的标高）。
-        // MiniBIM 还没有平面视图、剖面、立面与图纸
+        // ── 视图（移植自 BIMCraft 的视图选项卡，第 5e 步）─────────────
+        // 报错里怎么称呼元素 id：视图的名称，否则类别与 ID
+        std::string ViewTitle(const Model& m, Guid id)
+        {
+            if (const std::string* n = m.ViewName(id))
+                return *n;
+            const Element* e = m.elements.Get(id);
+            return std::string(e ? e->Category() : "element") + " " + m.Shown(id);
+        }
+
+        // view 是默认三维视图：{3D} 或 3D
+        bool Is3D(const Json& p)
+        {
+            const Json* v = Get(p, "view");
+            if (!v || !v->is_string())
+                return false;
+            const std::string n = Text::AsciiLower(v->get<std::string>());
+            return n == "{3d}" || n == "3d";
+        }
+
+        // view：视图的名称、ID 或 GUID（标高的平面、平面视图、三维视图），没给时为 level 的平面（默认最低的标高）
+        bool AnyViewParam(const char* c, const Model& m, const Json& p, Guid& out, std::string& error)
+        {
+            const Json* v = Get(p, "view");
+            if (!v || v->is_null())
+            {
+                Guid level;
+                std::optional<Guid> view;
+                if (!PlanParam(c, m, p, "level", level, view, error))
+                    return false;
+                out = view.value_or(level);
+                return true;
+            }
+            if (v->is_string() && !Guid::Parse(v->get<std::string>()))
+            {
+                const std::string n = v->get<std::string>();
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const std::string* name = m.ViewName(m.GuidOf(id)); name && *name == n)
+                    {
+                        out = m.GuidOf(id);
+                        return true;
+                    }
+                return Fail(error, c, "no view named `" + n + "`");
+            }
+            Guid g;
+            std::string why;
+            const auto found = FromJson(*v, g, why) ? m.elements.IdOf(g) : std::nullopt;
+            if (!found)
+                return Fail(error, c, "`view`: " + Show(*v) + " is not a view");
+            out = m.GuidOf(*found);
+            return true;
+        }
+
+        // 相关视图跟着父视图的视图范围与图形：要改的 what 在父视图里改
+        bool NotDependent(const char* c, const Model& m, Guid view, const char* what, std::string& error)
+        {
+            const PlanView* v = m.GetPlanView(view);
+            if (!v || !v->parent)
+                return true;
+            return Fail(error, c, ViewTitle(m, view) + " is a dependent view: it follows its parent, `" + ViewTitle(m, *v->parent) + "`, in its " + what +
+                                      "; change them there");
+        }
+
+        // given：类别（不分大小写、单复数），要是视图画的
+        bool DrawnCategory(const char* c, const std::string& given, std::string& out, std::string& error)
+        {
+            out = NormalizeCategory(given);
+            if (GraphicsOf::Drawn(out))
+                return true;
+            return Fail(error, c, "`" + given + "` isn't a category views draw; there are: " + GraphicsOf::Names());
+        }
+
+        bool DrawnCategories(const char* c, const Json& p, const char* key, std::vector<std::string>& out, std::string& error)
+        {
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            if (!v->is_array() || v->size() > GraphicsOf::MaxEntries)
+                return Fail(error, c, "`" + std::string(key) + "` is a list of categories, [\"walls\", \"rooms\"…], not " + Show(*v));
+            for (const Json& x : *v)
+            {
+                if (!x.is_string())
+                    return Fail(error, c, "`" + std::string(key) + "`: " + Show(x) + " is not a category");
+                std::string name;
+                if (!DrawnCategory(c, x.get<std::string>(), name, error))
+                    return false;
+                out.push_back(std::move(name));
+            }
+            return true;
+        }
+
+        bool DrawnElement(const char* c, const Model& m, const Json& v, Guid& out, std::string& error)
+        {
+            Guid g;
+            std::string why;
+            const auto id = FromJson(v, g, why) ? m.elements.IdOf(g) : std::nullopt;
+            if (!FromJson(v, g, why))
+                return Fail(error, c, Show(v) + " is not an element id or GUID");
+            if (!id)
+                return Fail(error, c, "no element " + Show(v));
+            const Element* e = m.elements.Get(*id);
+            if (!GraphicsOf::Drawn(e->Category()))
+                return Fail(error, c, "element " + std::to_string(*id) + " is a " + e->Category() + ", and views don't draw those");
+            out = m.GuidOf(*id);
+            return true;
+        }
+
+        bool DrawnElements(const char* c, const Model& m, const Json& p, const char* key, std::vector<Guid>& out, std::string& error)
+        {
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            if (!v->is_array() || v->size() > GraphicsOf::MaxEntries)
+                return Fail(error, c, "`" + std::string(key) + "` is a list of element ids, not " + Show(*v));
+            for (const Json& x : *v)
+            {
+                Guid g;
+                if (!DrawnElement(c, m, x, g, error))
+                    return false;
+                out.push_back(g);
+            }
+            return true;
+        }
+
+        // 覆盖 from 合并上 patch（null 去掉一项）
+        bool MergedOverride(const char* c, const std::string& what, const Override* from, const Json& patch, Override& out, std::string& error)
+        {
+            Json now = ToJson(from ? *from : Override{});
+            Merge(now, patch);
+            std::string why;
+            if (!FromJson(now, out, why))
+                return Fail(error, c, what + ": " + why);
+            return true;
+        }
+
+        // 视图的设置，graphics 命令回答的：隐藏与覆盖的类别、比例、详细程度、视觉样式
+        Json GraphicsReply(const Model& m, const Graphics& g)
+        {
+            Json hidden = Json::array(), cats = Json::object(), hiddenEls = Json::array(), els = Json::object();
+            for (const auto& [name, o] : g.categories)
+            {
+                if (o.hidden)
+                    hidden.push_back(name);
+                cats[name] = ToJson(o);
+            }
+            for (const auto& [guid, o] : g.elements)
+                if (const auto id = m.elements.IdOf(guid))
+                {
+                    if (o.hidden)
+                        hiddenEls.push_back(*id);
+                    els[std::to_string(*id)] = ToJson(o);
+                }
+            return Json{ { "hidden", std::move(hidden) },
+                         { "categories", std::move(cats) },
+                         { "hidden_elements", std::move(hiddenEls) },
+                         { "elements", std::move(els) },
+                         { "scale", g.scale ? Json(*g.scale) : Json(nullptr) },
+                         { "detail", Text::AsciiLower(DetailOf::Name(g.detail)) },
+                         { "visual_style", VisualStyleOf::Key(g.style) } };
+        }
+
+        bool GraphicsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "graphics";
+            if (!Only(c, p, { "view", "level", "hide", "show", "hide_elements", "show_elements", "categories", "elements", "reset", "filters", "phase",
+                              "phase_filter", "options", "layers", "template" }, error))
+                return false;
+            for (const char* k : { "filters", "phase", "phase_filter", "options", "layers", "template" })
+                if (!Absent(p, k))
+                    return Fail(error, c, std::string("`") + k + "`: view filters, view templates, phases, design options and CAD layers aren't in MiniBIM yet");
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            // 默认三维视图在第一次改动它时建出来；只问它、什么也不改时不建
+            std::optional<Guid> view;
+            if (Is3D(p))
+            {
+                if (const auto id = m.Default3D())
+                    view = m.GuidOf(*id);
+            }
+            else
+            {
+                Guid g;
+                if (!AnyViewParam(c, m, p, g, error))
+                    return false;
+                view = g;
+            }
+            Graphics was;
+            if (view)
+            {
+                const Graphics* g = m.ViewGraphics(*view);
+                if (!g)
+                    return P.Fail(ViewTitle(m, *view) + " isn't a plan, a section, an elevation or a 3D view");
+                was = *g;
+            }
+            Graphics g = was;
+            bool reset = false;
+            if (!P.Flag("reset", reset))
+                return false;
+            if (reset)
+                g = Graphics{};
+            std::vector<std::string> hide, show;
+            std::vector<Guid> hideEls, showEls;
+            if (!DrawnCategories(c, p, "hide", hide, error) || !DrawnCategories(c, p, "show", show, error) ||
+                !DrawnElements(c, m, p, "hide_elements", hideEls, error) || !DrawnElements(c, m, p, "show_elements", showEls, error))
+                return false;
+            for (const std::string& n : hide)
+                g.categories[n].hidden = true;
+            for (const std::string& n : show)
+                if (const auto it = g.categories.find(n); it != g.categories.end())
+                {
+                    it->second.hidden = false;
+                    if (it->second.Empty())
+                        g.categories.erase(it);
+                }
+            for (const Guid id : hideEls)
+                g.elements[id].hidden = true;
+            for (const Guid id : showEls)
+                if (const auto it = g.elements.find(id); it != g.elements.end())
+                {
+                    it->second.hidden = false;
+                    if (it->second.Empty())
+                        g.elements.erase(it);
+                }
+            if (const Json* cats = Get(p, "categories"); cats && !cats->is_null())
+            {
+                if (!cats->is_object() || cats->size() > GraphicsOf::MaxEntries)
+                    return P.Fail("`categories` is {category: override}, not " + Show(*cats));
+                for (auto it = cats->begin(); it != cats->end(); ++it)
+                {
+                    std::string name;
+                    if (!DrawnCategory(c, it.key(), name, error))
+                        return false;
+                    Override over;
+                    const auto had = g.categories.find(name);
+                    if (!it->is_null() && !MergedOverride(c, "category `" + name + "`", had == g.categories.end() ? nullptr : &had->second, *it, over, error))
+                        return false;
+                    if (over.Empty())
+                        g.categories.erase(name);
+                    else
+                        g.categories[name] = std::move(over);
+                }
+            }
+            if (const Json* els = Get(p, "elements"); els && !els->is_null())
+            {
+                if (!els->is_object() || els->size() > GraphicsOf::MaxEntries)
+                    return P.Fail("`elements` is {id: override}, not " + Show(*els));
+                for (auto it = els->begin(); it != els->end(); ++it)
+                {
+                    const auto parsed = Guid::Parse(it.key());
+                    if (!parsed)
+                        return P.Fail("`elements`: `" + it.key() + "` is not an element id or GUID");
+                    Guid id;
+                    if (!DrawnElement(c, m, Json(it.key()), id, error))
+                        return false;
+                    Override over;
+                    const auto had = g.elements.find(id);
+                    if (!it->is_null() &&
+                        !MergedOverride(c, "element " + m.Shown(id), had == g.elements.end() ? nullptr : &had->second, *it, over, error))
+                        return false;
+                    if (over.Empty())
+                        g.elements.erase(id);
+                    else
+                        g.elements[id] = std::move(over);
+                }
+            }
+            if (g != was)
+            {
+                if (view && !NotDependent(c, m, *view, "graphics", error))
+                    return false;
+                std::string why;
+                if (!g.Check(m.fillPatterns, why))
+                    return P.Fail(why);
+                Model& mm = s.ModelMut();
+                if (!view)
+                {
+                    View3D v3;
+                    v3.name = View3D::DefaultName;
+                    view    = mm.GuidOf(mm.Insert(Element(std::move(v3))));
+                }
+                *mm.ViewGraphicsMut(*view) = g;
+            }
+            const Model& now = s.GetModel();
+            result = GraphicsReply(now, g);
+            result["view"] = view ? Json(*now.elements.IdOf(*view)) : Json(nullptr);
+            const std::string* name = view ? now.ViewName(*view) : nullptr;
+            result["name"] = name ? *name : std::string(View3D::DefaultName);
+            return true;
+        }
+
+        // 有比例与详细程度的视图：标高的平面、平面视图（MiniBIM 还没有剖面、立面）
+        bool ScaledView(const char* c, const Model& m, const Json& p, Guid& out, std::string& error)
+        {
+            if (!AnyViewParam(c, m, p, out, error))
+                return false;
+            if (m.PlanLevel(out))
+                return true;
+            return Fail(error, c, ViewTitle(m, out) + " isn't a plan, a section or an elevation; only those have one");
+        }
+
+        // 视图的图形改成 f 改过的；没有变化时模型不动（不留撤销步）
+        void ChangeGraphics(Session& s, Guid view, const std::function<void(Graphics&)>& f)
+        {
+            const Graphics* had = s.GetModel().ViewGraphics(view);
+            Graphics g = had ? *had : Graphics{};
+            const Graphics was = g;
+            f(g);
+            if (g != was)
+                if (Graphics* slot = s.ModelMut().ViewGraphicsMut(view))
+                    *slot = std::move(g);
+        }
+
+        bool ScaleCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "scale";
+            if (!Only(c, p, { "view", "level", "scale" }, error))
+                return false;
+            Guid view;
+            if (!ScaledView(c, s.GetModel(), p, view, error))
+                return false;
+            if (const Json* v = Get(p, "scale"))
+            {
+                if (!v->is_number() || !(v->get<double>() >= GraphicsOf::MinScale && v->get<double>() <= GraphicsOf::MaxScale))
+                    return Fail(error, c, "`scale` is the n of 1 : n, from 1 to 100000, not " + Show(*v) +
+                                              (v->is_null() ? ": a view always has a scale (1 : 100, or 1/8\" = 1'-0\" in feet and inches, until it is given one)" : ""));
+                if (!NotDependent(c, s.GetModel(), view, "scale", error))
+                    return false;
+                const double n = v->get<double>();
+                ChangeGraphics(s, view, [&](Graphics& g) { g.scale = n; });
+            }
+            const Model& m = s.GetModel();
+            result = Json{ { "view", *m.elements.IdOf(view) }, { "name", *m.ViewName(view) }, { "scale", m.ScaleOf(view) } };
+            return true;
+        }
+
+        bool DetailCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "detail";
+            if (!Only(c, p, { "view", "level", "detail" }, error))
+                return false;
+            Guid view;
+            if (!ScaledView(c, s.GetModel(), p, view, error))
+                return false;
+            if (const Json* v = Get(p, "detail"); v && !v->is_null())
+            {
+                const auto d = v->is_string() ? DetailOf::Parse(v->get<std::string>()) : std::nullopt;
+                if (!d)
+                    return Fail(error, c, "`detail` is coarse, medium or fine, not " + Show(*v));
+                if (!NotDependent(c, s.GetModel(), view, "detail level", error))
+                    return false;
+                ChangeGraphics(s, view, [&](Graphics& g) { g.detail = *d; });
+            }
+            const Model& m = s.GetModel();
+            const Graphics* g = m.ViewGraphics(view);
+            result = Json{ { "view", *m.elements.IdOf(view) },
+                           { "name", *m.ViewName(view) },
+                           { "detail", Text::AsciiLower(DetailOf::Name(g ? g->detail : Detail::Fine)) } };
+            return true;
+        }
+
+        bool VisualStyleCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "visual_style";
+            if (!Only(c, p, { "view", "style" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            // 默认三维视图，除非给了别的；第一次改动它时建出来
+            std::optional<Guid> view;
+            if (Absent(p, "view") || Is3D(p))
+            {
+                if (const auto id = m.Default3D())
+                    view = m.GuidOf(*id);
+            }
+            else
+            {
+                Guid g;
+                if (!AnyViewParam(c, m, p, g, error))
+                    return false;
+                const Element* e = m.elements.Get(g);
+                if (!e || !e->As<View3D>())
+                    return Fail(error, c, ViewTitle(m, g) + " isn't a 3D view; only those have a visual style");
+                view = g;
+            }
+            std::optional<VisualStyle> style;
+            if (const Json* v = Get(p, "style"); v && !v->is_null())
+            {
+                style = v->is_string() ? VisualStyleOf::Parse(v->get<std::string>()) : std::nullopt;
+                if (!style)
+                    return Fail(error, c, "`style` is shaded, hidden_line or wireframe, not " + Show(*v));
+            }
+            const auto has = [&](const Model& mm)
+            {
+                const Graphics* g = view ? mm.ViewGraphics(*view) : nullptr;
+                return g ? g->style : VisualStyle::Shaded;
+            };
+            if (style && *style != has(m))
+            {
+                if (!view)
+                {
+                    Model& mm = s.ModelMut();
+                    View3D v3;
+                    v3.name = View3D::DefaultName;
+                    view    = mm.GuidOf(mm.Insert(Element(std::move(v3))));
+                }
+                ChangeGraphics(s, *view, [&](Graphics& g) { g.style = *style; });
+            }
+            const Model& now = s.GetModel();
+            result = Json{ { "view", view ? Json(*now.elements.IdOf(*view)) : Json(nullptr) }, { "style", VisualStyleOf::Key(has(now)) } };
+            return true;
+        }
+
+        bool CropCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "crop";
+            if (!Only(c, p, { "view", "level", "region" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            Guid view;
+            if (!AnyViewParam(c, m, p, view, error))
+                return false;
+            if (!m.PlanLevel(view))
+                return P.Fail(ViewTitle(m, view) + " isn't a plan, a section or an elevation; only those crop");
+            std::optional<std::array<P2, 2>> crop;
+            const Json* region = p.is_object() && p.contains("region") ? &p["region"] : nullptr;
+            if (region && !region->is_null())
+            {
+                std::vector<P2> pts;
+                if (!P.Points("region", pts))
+                    return false;
+                if (pts.size() != 2)
+                    return P.Fail("`region` is two corners, [[x, y], [x, y]]");
+                crop = std::array<P2, 2>{ pts[0], pts[1] };
+            }
+            else if (!region)
+            {
+                // 没给区域：裁到视图现在显示的（四周各留 1 米）
+                const auto pts = Render::PlanShows(m, view);
+                if (pts.empty())
+                    return P.Fail(ViewTitle(m, view) + " shows nothing to crop to");
+                P2 lo = pts.front(), hi = pts.front();
+                for (const P2& q : pts)
+                {
+                    lo = P2{ std::min(lo.x, q.x), std::min(lo.y, q.y) };
+                    hi = P2{ std::max(hi.x, q.x), std::max(hi.y, q.y) };
+                }
+                crop = std::array<P2, 2>{ Micron(lo - P2{ 1000.0, 1000.0 }), Micron(hi + P2{ 1000.0, 1000.0 }) };
+            }
+            Model& mm = s.ModelMut();
+            Element* e = mm.elements.GetMut(view);
+            if (Level* l = e->As<Level>())
+                l->crop = crop;
+            else if (PlanView* v = e->As<PlanView>())
+                v->crop = crop;
+            result = Json{ { "view", *mm.elements.IdOf(view) },
+                           { "crop", crop ? Json::array({ ToJson((*crop)[0]), ToJson((*crop)[1]) }) : Json(nullptr) } };
+            return true;
+        }
+
+        // Revit 的复制视图，平面的：同一标高的一个新平面视图
+        bool DuplicateViewCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "duplicate_view";
+            if (!Only(c, p, { "view", "level", "mode", "name" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            Guid view;
+            if (!AnyViewParam(c, m, p, view, error))
+                return false;
+            const auto level = m.PlanLevel(view);
+            if (!level)
+                return P.Fail(ViewTitle(m, view) + " isn't a plan: plans are duplicated, sections, elevations, schedules, sheets and the 3D view not yet");
+            std::optional<std::string> modeName, name;
+            if (!P.String("mode", modeName) || !P.String("name", name))
+                return false;
+            const std::string mode = modeName.value_or("duplicate");
+            if (mode != "duplicate" && mode != "detailing" && mode != "dependent")
+                return P.Fail("`mode` is duplicate, detailing or dependent, not `" + mode + "`");
+            const PlanView* from = m.GetPlanView(view);
+            const bool dependent = mode == "dependent";
+            if (dependent && from && from->parent)
+                return P.Fail(ViewTitle(m, view) + " is a dependent view, which has none of its own: make it of its parent");
+            if (!name)
+                name = m.FreeViewName(ViewTitle(m, view) + " " + LanguageOf::Word(m.language, dependent ? "Dependent" : "Copy"), true);
+            // 起初的设置：源视图画时用的，相关视图的是它父视图的
+            PlanView nv;
+            nv.level = *level;
+            nv.name  = *name;
+            nv.crop  = m.CropOf(view);
+            if (const Element* held = m.elements.Get(m.PlanSource(view)); held && !dependent)
+            {
+                if (const Level* l = held->As<Level>())
+                {
+                    nv.viewRange  = l->viewRange;
+                    nv.graphics   = l->graphics;
+                    nv.sectionBox = l->sectionBox;
+                }
+                else if (const PlanView* v = held->As<PlanView>())
+                {
+                    nv.viewRange  = v->viewRange;
+                    nv.graphics   = v->graphics;
+                    nv.sectionBox = v->sectionBox;
+                }
+            }
+            if (dependent)
+                nv.parent = view;
+            // 带细节复制时，源视图自己（不是它父视图）里的尺寸、标记、文字……复制进新视图
+            std::vector<Element> notes;
+            if (mode == "detailing")
+                for (const auto& [_, e] : m.elements.Items())
+                    if (const auto at = m.AnnotationPlan(*e); at && m.Same(*at, view))
+                        notes.push_back(*e);
+            Model& mm = s.ModelMut();
+            const Id id = mm.Insert(Element(std::move(nv)));
+            const Guid g = mm.GuidOf(id);
+            for (Element& e : notes)
+            {
+                if (Dimension* d = e.As<Dimension>())
+                    d->view = g;
+                else if (Tag* t = e.As<Tag>())
+                    t->view = g;
+                else if (Note* n = e.As<Note>())
+                    n->view = g;
+                else if (Spot* sp = e.As<Spot>())
+                    sp->view = g;
+                else if (DetailLine* l = e.As<DetailLine>())
+                    l->view = g;
+                else if (FilledRegion* r = e.As<FilledRegion>())
+                    r->view = g;
+                mm.Insert(std::move(e));
+            }
+            result = Json{ { "id", id }, { "name", *name }, { "level", *mm.elements.IdOf(*level) }, { "annotations", notes.size() } };
+            return true;
+        }
+
+        // ── 注释（移植自 BIMCraft 的注释选项卡，第 5d 步）─────────────
+
+        // 注释在的视图：view（标高或平面视图的名称、ID 或 GUID），没给时为 level 的平面（默认最低的标高）。
+        // MiniBIM 还没有剖面、立面与图纸
         bool ViewParam(const char* c, const Model& m, const Json& p, Guid& out, std::string& error)
         {
-            return LevelParam(c, m, p, Absent(p, "view") ? "level" : "view", out, error);
+            Guid level;
+            std::optional<Guid> view;
+            if (!PlanParam(c, m, p, Absent(p, "view") ? "level" : "view", level, view, error))
+                return false;
+            out = view.value_or(level);
+            return true;
         }
 
         bool DimensionCmd(Session& s, const Json& p, Json& result, std::string& error)
@@ -3780,9 +4339,10 @@ namespace MiniBIM::Bim
             Params P(c, p, error);
             const Model& m = s.GetModel();
             Guid level;
+            std::optional<Guid> plan;
             P2 at;
             std::optional<std::string> kindName;
-            if (!LevelParam(c, m, p, "level", level, error) || !P.PointReq("at", at) || !P.String("kind", kindName))
+            if (!PlanParam(c, m, p, "level", level, plan, error) || !P.PointReq("at", at) || !P.String("kind", kindName))
                 return false;
             DimKind kind = DimKind::Aligned;
             if (kindName)
@@ -3851,7 +4411,7 @@ namespace MiniBIM::Bim
                 }
                 refs.push_back(r);
             }
-            Dimension d{ level, std::nullopt, kind, std::move(refs), at };
+            Dimension d{ level, plan, kind, std::move(refs), at };
             Json values = Json::array();
             for (const double x : m.DimensionValues(d))
                 values.push_back(Hundredth(x));
@@ -3869,8 +4429,9 @@ namespace MiniBIM::Bim
             bool leader = false;
             std::optional<std::string> label, category;
             Guid level;
+            std::optional<Guid> plan;
             if (!P.PointOpt("offset", offset) || !P.Flag("leader", leader) || !P.String("label", label) || !P.String("category", category) ||
-                !LevelParam(c, m, p, "level", level, error))
+                !PlanParam(c, m, p, "level", level, plan, error))
                 return false;
             if (label && Text::Trim(*label).empty())
                 label.reset();
@@ -3881,7 +4442,7 @@ namespace MiniBIM::Bim
                 const std::optional<std::string> of = category ? std::optional<std::string>(NormalizeCategory(*category)) : std::nullopt;
                 std::set<Guid> tagged;
                 for (const auto& [_, e] : m.elements.Items())
-                    if (const Tag* t = e->As<Tag>(); t && m.AnnotationIn(*e, level))
+                    if (const Tag* t = e->As<Tag>(); t && m.AnnotationIn(*e, plan.value_or(level)))
                         tagged.insert(m.GuidOf(t->host));
                 for (const auto& [id, e] : m.elements.Items())
                 {
@@ -3898,7 +4459,7 @@ namespace MiniBIM::Bim
             for (const Id h : hosts)
             {
                 const Guid g = m.GuidOf(h);
-                tags.push_back(Tag{ g, std::nullopt, offset.value_or(m.TagOffset(g)), leader, label });
+                tags.push_back(Tag{ g, plan, offset.value_or(m.TagOffset(g)), leader, label });
             }
             Model& mm = s.ModelMut();
             Json ids = Json::array();
@@ -4537,6 +5098,42 @@ namespace MiniBIM::Bim
               "{from: [x, y], to: [x, y]} what a ruler laid between two points reads (mm): its `length`, its parts `dx` and `dy`, and its `angle` in "
               "degrees from east, counter-clockwise; it changes nothing",
               MeasureCmd, false },
+            { "graphics", N_("Visibility/Graphics"), { "VV", "VG" },
+              "{view?: a level's or plan view's name or id, or {3D} (the lowest level's plan unless given), hide?: [category, …], show?: […], "
+              "hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: {id: override | null, …}, "
+              "reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with none of those, the view's "
+              "settings as they are. A category hidden (walls, floors, rooms, grids, dimensions…, in any case, singular or plural) leaves all its "
+              "elements out of that view, and `hide_elements` the elements given. An override is {hidden?, projection?: style, cut?: style, "
+              "halftone?, transparency?}, a style {color?, weight? (a pen, 0 to 16), dash? (solid, dashed, dotted), fill?, foreground?, "
+              "background?}, a colour [r, g, b] or \"#rrggbb\". Projection is what a plan sees below its cut plane and the annotation; cut is "
+              "what the view cuts; `fill` is the cut's poché. Halftone draws it halfway to the paper. Overrides merge into the last (null takes "
+              "a field or the override away); an element's own prevail over its category's. A dependent view follows its parent's. The default "
+              "3D view is made when its graphics first change",
+              GraphicsCmd, true },
+            { "scale", N_("View Scale"), {},
+              "{view, scale?: 1 | … | 100000} a plan's scale, 1 : `scale`: the paper the view stands for. Its annotation (lettering, grid "
+              "bubbles, tags, dimension ticks…) and its line weights are that paper's. Every view has one: 1 : 100 (1/8\" = 1'-0\" in feet and "
+              "inches) until it is given another, and null is refused. Without `scale` it only says what the view has",
+              ScaleCmd, true },
+            { "detail", N_("Detail Level"), {},
+              "{view, detail?: coarse | medium | fine} how much a plan draws of what it cuts: coarse, medium or fine (the default). Without "
+              "`detail` it only says what the view has",
+              DetailCmd, true },
+            { "visual_style", N_("Visual Style"), {},
+              "{view?: \"{3D}\" | a 3D view's name or id, style?: shaded | hidden_line | wireframe} how a 3D view draws its surfaces; "
+              "without `style` it only says what the view has",
+              VisualStyleCmd, true },
+            { "crop", N_("Crop View"), {},
+              "{view, region?: [[x, y], [x, y]] | null} crops a plan to the region's south-west and north-east corners (plan mm); null uncrops "
+              "it; without a region, it crops to what the view shows now",
+              CropCmd, true },
+            { "duplicate_view", N_("Duplicate View"), { "DP" },
+              "{view, mode?: duplicate|detailing|dependent, name?} a new plan view of a plan's level (a level's own plan, or a plan view): "
+              "`duplicate` (the default) has the same view range, crop and graphics and no annotation of its own; `detailing` copies the "
+              "dimensions, tags, notes and spot elevations in it too, as its own; `dependent` follows its parent's view range, graphics, scale "
+              "and detail, has a crop of its own and shows its parent's annotation as well as its own. Named `name`, else `<view> Copy 1` "
+              "(`<view> Dependent 1`). Commands that take a level take a plan view too, and what is dimensioned, tagged or noted there is in it",
+              DuplicateViewCmd, true },
             { "roof", N_("Roof"), {},
               "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, extrusion?, "
               "openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its base `offset` mm above it. "

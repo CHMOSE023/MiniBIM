@@ -108,6 +108,11 @@
     "view.zoomFit": { "icon": "ZoomFit.png" },
     "view.properties": { "icon": "Properties.png" },
     "view.browser":    { "icon": "ProjectBrowser.png" },
+    "view.visibility": { "icon": "VisibilityGraphics.png" },
+    "view.crop":       { "icon": "CropView.png" },
+    "view.duplicate":  { "icon": "DuplicateView.png" },
+    "view.detailing":  { "icon": "DuplicateDetailing.png" },
+    "view.dependent":  { "icon": "DependentView.png" },
     "help.about":   { "icon": "About.png" }
   },
   "menus": [
@@ -215,7 +220,8 @@
         {
           "title": "View",
           "panels": [
-            { "title": "Create", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown" ] },
+            { "title": "Graphics", "items": [ "view.visibility", "view.crop" ] },
+            { "title": "Create", "items": [ "view.3d", "view.plan", "view.duplicate", "view.detailing", "view.dependent", "view.levelUp", "view.levelDown" ] },
             { "title": "Navigate", "items": [ "view.home", "view.zoomFit" ] },
             { "title": "Palettes", "items": [ "view.properties", "view.browser" ] }
           ]

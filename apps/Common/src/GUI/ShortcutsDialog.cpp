@@ -48,7 +48,7 @@ namespace MiniBIM
             { "wall_by_face", "massing.wallByFace" }, { "floor_by_face", "massing.floorByFace" }, { "roof_by_face", "massing.roofByFace" },
             { "update_by_face", "massing.updateByFace" }, { "dimension", "annotate.aligned" }, { "spot", "annotate.spot" },
             { "detail_line", "annotate.detailLine" }, { "filled_region", "annotate.filledRegion" }, { "text", "annotate.text" },
-            { "measure", "annotate.measure" }, { "tag", "annotate.tag" },
+            { "measure", "annotate.measure" }, { "tag", "annotate.tag" }, { "graphics", "view.visibility" }, { "duplicate_view", "view.duplicate" },
         };
 
         const char* ToolOf(std::string_view bimCommand)

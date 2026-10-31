@@ -15,6 +15,7 @@
 #include "Widgets/PropertyGrid.h"
 #include "Widgets/TextBox.h"
 #include "Core/Log.h"
+#include "Model/ModelJson.h"
 #include "Model/Text.h"
 #include <algorithm>
 #include <cmath>
@@ -927,6 +928,123 @@ namespace MiniBIM
                 body->AddChild<Label>(d->error, 12.0f, Theme::Danger)->SetWrap(true);
         };
         Dialog* raw = d->dialog;
+        raw->AddButton(Tr("Close"), [d] { d->dialog->Close(); }, DialogButtonRole::Default);
+        raw->SetOnClosed([build] { *build = nullptr; });
+        (*build)();
+        m_ui->OpenPopup(std::move(dialog));
+    }
+
+    void MainFrame::OpenVisibilityGraphics()
+    {
+        struct State
+        {
+            Bim::Json   view;           // graphics 命令的 view：平面的 GUID，或 {3D}
+            std::string error;
+            Dialog*     dialog = nullptr;
+        };
+        auto d = std::make_shared<State>();
+        const Bim::Model& m0 = m_session.GetModel();
+        d->view = m_planLevel ? Bim::ToJson(PlanKey()) : Bim::Json(Bim::View3D::DefaultName);
+        const std::string* name = m_planLevel ? m0.ViewName(PlanKey()) : nullptr;
+        auto dialog = std::make_unique<Dialog>(Format(Tr("Visibility/Graphics: {0}"), { name ? *name : std::string(Bim::View3D::DefaultName) }));
+        d->dialog = dialog.get();
+        auto build = std::make_shared<std::function<void()>>();
+        auto rebuild = [this, build] { m_platform->Post([build] { if (*build) (*build)(); }); };
+        auto run = [this, d, rebuild](const char* id, Bim::Json p)
+        {
+            p["view"] = d->view;
+            if (RunQuiet(id, p, d->error))
+                d->error.clear();
+            rebuild();
+        };
+        const bool plan = m_planLevel.has_value();
+        *build = [this, d, run, plan]
+        {
+            const Bim::Model& m = m_session.GetModel();
+            Node* body = d->dialog->GetBody();
+            body->RemoveAllChildren();
+            LayoutStyle& bs = body->EditLayoutStyle();
+            bs.direction = FlexDirection::Column;
+            bs.gap       = 8.0f;
+            bs.width     = 620.0f;
+
+            // 视图的图形：平面视图的是它自己的（相关视图的是父视图的，在父视图里改），三维的是默认三维视图的
+            std::optional<Bim::Guid> key;
+            if (plan)
+                key = PlanKey();
+            else if (const auto id = m.Default3D())
+                key = m.GuidOf(*id);
+            const Bim::Graphics* g = key ? m.ViewGraphics(*key) : nullptr;
+            const Bim::Graphics none;
+            const Bim::Graphics& now = g ? *g : none;
+            const Bim::PlanView* pv = plan ? m.GetPlanView(PlanKey()) : nullptr;
+            const bool dependent = pv && pv->parent;
+            if (dependent)
+                body->AddChild<Label>(Tr("A dependent view follows its parent's graphics: change them there."), 12.0f, Theme::TextDim)->SetWrap(true);
+
+            if (plan)
+            {
+                Node* row = Row(body);
+                Caption(row, Tr("View Scale"), 110.0f);
+                row->AddChild<Label>("1 :", 13.0f);
+                auto* scale = Sized(row->AddChild<NumberBox>(m.ScaleOf(PlanKey()), 1.0, 100000.0, 10.0, 0), 100.0f);
+                scale->SetEnabled(!dependent);
+                scale->SetOnChanged([run](double v) { run("scale", Bim::Json{ { "scale", std::round(v) } }); });
+
+                row = Row(body);
+                Caption(row, Tr("Detail Level"), 110.0f);
+                const std::vector<std::string> levels{ Tr("Coarse"), Tr("Medium"), Tr("Fine") };
+                auto* detail = Sized(row->AddChild<ComboBox>(levels, static_cast<int>(now.detail)), 140.0f);
+                detail->SetEnabled(!dependent);
+                detail->SetOnChanged([run](int i)
+                {
+                    static const char* keys[] = { "coarse", "medium", "fine" };
+                    if (i >= 0 && i < 3)
+                        run("detail", Bim::Json{ { "detail", keys[i] } });
+                });
+            }
+
+            // 类别：勾上的画，去掉勾的隐藏。模型类别分两列，注释类别一列
+            auto column = [](Node* parent, const std::string& title)
+            {
+                auto* col = parent->AddChild<Node>();
+                LayoutStyle& cs = col->EditLayoutStyle();
+                cs.direction = FlexDirection::Column;
+                cs.gap       = 4.0f;
+                cs.width     = 195.0f;
+                col->AddChild<Label>(title, 13.0f, Theme::TextDim);
+                return col;
+            };
+            Node* cols = Row(body, 12.0f);
+            cols->EditLayoutStyle().alignItems = Align::Start;
+            std::vector<const char*> model, annotation;
+            for (const char* c : Bim::GraphicsOf::Model)
+                if (*Props::CategoryName(c, true))
+                    model.push_back(c);
+            for (const char* c : Bim::GraphicsOf::Annotation)
+                if (*Props::CategoryName(c, true))
+                    annotation.push_back(c);
+            const size_t half = (model.size() + 1) / 2;
+            Node* left  = column(cols, Tr("Model Categories"));
+            Node* right = column(cols, " ");
+            Node* notes = column(cols, Tr("Annotation Categories"));
+            auto box = [&](Node* parent, const char* c)
+            {
+                auto* cb = parent->AddChild<CheckBox>(Tr(Props::CategoryName(c, true)), !now.Hides(c));
+                cb->SetEnabled(!dependent);
+                const std::string cat = c;
+                cb->SetOnChanged([run, cat](bool on) { run("graphics", Bim::Json{ { on ? "show" : "hide", Bim::Json::array({ cat }) } }); });
+            };
+            for (size_t i = 0; i < model.size(); ++i)
+                box(i < half ? left : right, model[i]);
+            for (const char* c : annotation)
+                box(notes, c);
+
+            if (!d->error.empty())
+                body->AddChild<Label>(d->error, 12.0f, Theme::Danger)->SetWrap(true);
+        };
+        Dialog* raw = d->dialog;
+        raw->AddButton(Tr("Reset"), [run] { run("graphics", Bim::Json{ { "reset", true } }); });
         raw->AddButton(Tr("Close"), [d] { d->dialog->Close(); }, DialogButtonRole::Default);
         raw->SetOnClosed([build] { *build = nullptr; });
         (*build)();

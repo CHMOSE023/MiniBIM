@@ -162,12 +162,12 @@ namespace MiniBIM
         }
         else if (m_planLevel)
         {
-            if (const auto id = m.elements.IdOf(*m_planLevel))
+            if (const auto id = m.elements.IdOf(PlanKey()))
             {
                 ids  = { *id };
-                rows = Props::PlanRows();
-                if (const Bim::Level* l = m.GetLevel(*id))
-                    heading = Format(Tr("Floor Plan: {0}"), { l->name });
+                rows = m_planOf ? Props::PlanViewRows() : Props::PlanRows();
+                if (const std::string* name = m.ViewName(PlanKey()))
+                    heading = Format(Tr("Floor Plan: {0}"), { *name });
             }
         }
         else
@@ -547,8 +547,27 @@ namespace MiniBIM
         for (const auto& [id, l] : m.Levels())
         {
             const Bim::Guid g = m.GuidOf(id);
-            const bool on = m_planLevel && m.Same(*m_planLevel, g);
+            const bool on = m_planLevel && !m_planOf && m.Same(*m_planLevel, g);
             plans.push_back(Entry{ l->name, [this, g] { ShowPlan(g); }, on, false, {} });
+            // 它的平面视图跟在后面，相关视图挂在父视图下
+            for (const auto& [vid, v] : m.PlanViews(g))
+            {
+                if (v->parent && !m.Same(*v->parent, g))
+                    continue;
+                const Bim::Guid vg = m.GuidOf(vid);
+                Entry view{ v->name, [this, vg] { ShowPlanView(vg); }, m_planOf && m.Same(*m_planOf, vg), false, {} };
+                for (const auto& [did, dv] : m.PlanViews(g))
+                    if (dv->parent && m.Same(*dv->parent, vg))
+                    {
+                        const Bim::Guid dg = m.GuidOf(did);
+                        view.kids.push_back(Entry{ dv->name, [this, dg] { ShowPlanView(dg); }, m_planOf && m.Same(*m_planOf, dg), false, {} });
+                    }
+                view.open = !view.kids.empty();
+                if (v->parent)
+                    plans.back().kids.push_back(std::move(view));
+                else
+                    plans.push_back(std::move(view));
+            }
         }
         std::vector<Entry> views;
         views.push_back(group(Tr("Floor Plans"), true, std::move(plans)));

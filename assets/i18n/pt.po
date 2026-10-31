@@ -178,6 +178,30 @@ msgstr "Região preenchida"
 msgid "Measure"
 msgstr "Medir"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Visibility/Graphics"
+msgstr "Visibilidade/Gráficos"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "View Scale"
+msgstr "Escala da vista"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Detail Level"
+msgstr "Nível de detalhe"
+
+#: src/Commands/Commands.cpp
+msgid "Visual Style"
+msgstr "Estilo visual"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Crop View"
+msgstr "Recortar vista"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate View"
+msgstr "Duplicar vista"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "Telhado"
@@ -718,6 +742,38 @@ msgstr "Padrão de corte"
 msgid "Surface Pattern"
 msgstr "Padrão de superfície"
 
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Visibility/Graphics: {0}"
+msgstr "Visibilidade/Gráficos: {0}"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "A dependent view follows its parent's graphics: change them there."
+msgstr "Uma vista dependente segue os gráficos da vista principal: altere-os lá."
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Coarse"
+msgstr "Baixo"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Medium"
+msgstr "Médio"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Fine"
+msgstr "Alto"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Model Categories"
+msgstr "Categorias de modelo"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Annotation Categories"
+msgstr "Categorias de anotação"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Reset"
+msgstr "Redefinir"
+
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Start an empty project with two levels"
 msgstr "Iniciar um projeto vazio com dois níveis"
@@ -877,6 +933,34 @@ msgstr "Editar o tipo dos elementos selecionados ou do que a ferramenta posicion
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "The project's materials: their colours and patterns"
 msgstr "Os materiais do projeto: suas cores e padrões"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "What the view shows: hide or show categories; a plan's scale and detail level"
+msgstr "O que a vista mostra: oculte ou mostre categorias; a escala e o nível de detalhe de uma planta"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new plan view of this level, with this plan's view range, crop and graphics"
+msgstr "Uma nova vista de planta deste nível, com a faixa de vista, o recorte e os gráficos desta planta"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate with Detailing"
+msgstr "Duplicar detalhado"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new plan view of this level, with copies of this plan's dimensions, tags and notes"
+msgstr "Uma nova vista de planta deste nível, com cópias das cotas, identificadores e notas desta planta"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate as Dependent"
+msgstr "Dependente"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A dependent view: it follows this plan's view range and graphics, has a crop of its own and shows its annotation"
+msgstr "Uma vista dependente: segue a faixa de vista e os gráficos desta planta, tem seu próprio recorte e mostra suas anotações"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Crop the plan to what it shows now, or uncrop it"
+msgstr "Recorta a planta ao que ela mostra agora, ou remove o recorte"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Flip Wall"
@@ -1699,7 +1783,7 @@ msgstr "Inclinação (°)"
 msgid "Structural"
 msgstr "Estrutural"
 
-#: apps/Common/src/GUI/Parameters.cpp
+#: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
 msgid "Graphics"
 msgstr "Gráficos"
 
@@ -1974,6 +2058,14 @@ msgstr "Linhas de detalhe"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Filled Regions"
 msgstr "Regiões preenchidas"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not duplicate the view"
+msgstr "Não foi possível duplicar a vista"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not crop the view"
+msgstr "Não foi possível recortar a vista"
 
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"

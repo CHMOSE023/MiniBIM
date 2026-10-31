@@ -80,6 +80,7 @@ namespace MiniBIM
             return std::nullopt;
         Bim::Dimension d;
         d.level = *m_planLevel;
+        d.view  = m_planOf;
         d.kind  = m_tool == Tool::Angular ? Bim::DimKind::Angular : m_tool == Tool::Radial ? Bim::DimKind::Radial : Bim::DimKind::Aligned;
         d.refs  = m_toolRefs;
         d.at    = at;
@@ -91,7 +92,7 @@ namespace MiniBIM
         (void)modifiers;
         const Bim::Model& m = m_session.GetModel();
         const Bim::P2 mm = Bim::Micron(m_planView->ToMm({ pixel.x, pixel.y }));
-        const Bim::Json level = Bim::ToJson(*m_planLevel);
+        const Bim::Json level = Bim::ToJson(PlanKey());
         m_hoverPixel = pixel;
         switch (m_tool)
         {
@@ -154,7 +155,7 @@ namespace MiniBIM
             ShowPlan(std::nullopt);
         if (!m_planLevel)
             return;
-        RunCommand("tag", Bim::Json{ { "level", Bim::ToJson(*m_planLevel) }, { "leader", m_toolOpt.tagLeader } }, N_("Could not tag the doors and windows"));
+        RunCommand("tag", Bim::Json{ { "level", Bim::ToJson(PlanKey()) }, { "leader", m_toolOpt.tagLeader } }, N_("Could not tag the doors and windows"));
     }
 
     void MainFrame::BuildAnnotatePreview(Bim::Render::Drawing& d, std::string& tip)
@@ -167,7 +168,7 @@ namespace MiniBIM
         // 还不在模型里的注释：照平面会画的样子，用强调色
         auto sketched = [&](const Bim::Element& e)
         {
-            Bim::Render::Drawing s = Bim::Render::Sketch(m, *m_planLevel, v, e);
+            Bim::Render::Drawing s = Bim::Render::Sketch(m, PlanKey(), v, e);
             for (Bim::Render::Prim& p : s.prims)
             {
                 p.color = Accent;
@@ -228,7 +229,7 @@ namespace MiniBIM
         case Tool::Spot:
         {
             Bim::Spot sp;
-            sp.view = *m_planLevel;
+            sp.view = PlanKey();
             sp.at   = DrawSnap(d, SnapAt(*m_hoverPixel, {}, false), tip);
             if (const auto host = m.SpotHost(*m_planLevel, sp.at))
             {
@@ -245,7 +246,7 @@ namespace MiniBIM
             if (Props::Words(m_toolOpt.noteText).empty())
                 break;
             Bim::Note n;
-            n.view = *m_planLevel;
+            n.view = PlanKey();
             n.at   = at;
             n.text = m_toolOpt.noteText;
             if (m.textTypes.contains(m_toolOpt.textType))
@@ -274,7 +275,7 @@ namespace MiniBIM
             if (last.Dist(next) > Bim::Tol)
             {
                 Bim::DetailLine l;
-                l.view  = *m_planLevel;
+                l.view  = PlanKey();
                 l.curve = Bim::Curve::Line(last, next);
                 if (m.lineStyles.contains(m_toolOpt.lineStyle))
                     l.style = m_toolOpt.lineStyle;

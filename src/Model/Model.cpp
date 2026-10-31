@@ -445,6 +445,8 @@ namespace MiniBIM::Bim
             const char* operator()(const Tag&) const { return "tag"; }
             const char* operator()(const DetailLine&) const { return "line"; }
             const char* operator()(const FilledRegion&) const { return "region"; }
+            const char* operator()(const PlanView&) const { return "planview"; }
+            const char* operator()(const View3D&) const { return "view3d"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -456,6 +458,12 @@ namespace MiniBIM::Bim
             const std::function<void(Guid&)>& f;
             void operator()(Level&) const {}
             void operator()(Grid&) const {}
+            void operator()(View3D&) const {}
+            void operator()(PlanView& v) const
+            {
+                f(v.level);
+                if (v.parent) f(*v.parent);
+            }
             void operator()(RoomSeparator& x) const { f(x.level); }
             void operator()(Wall& w) const
             {
@@ -1024,12 +1032,12 @@ namespace MiniBIM::Bim
         return BaseZ(w) <= z && z < TopZ(w);
     }
 
-    PlanRange Model::GetPlanRange(Guid level) const
+    PlanRange Model::GetPlanRange(Guid plan) const
     {
         // 顶没有设时为上一个标高（上面没有时不限），且不低于剖切面
+        const Guid level = PlanLevel(plan).value_or(plan);
         const double z = Elevation(level);
-        const Level* l = GetLevel(level);
-        const ViewRange r = l ? l->viewRange : ViewRange{};
+        const ViewRange r = ViewRangeOf(plan);
         double top = INFINITY;
         if (r.top)
             top = z + *r.top;
@@ -1266,9 +1274,11 @@ namespace MiniBIM::Bim
             const Element* h = elements.Get(t->host);
             return h && !h->As<Tag>() ? LevelOf(*h) : std::nullopt;
         }
-        // 文字、高程点、详图线、填充区域在标高的平面里
-        if (const auto plan = AnnotationPlan(e); plan && GetLevel(*plan))
-            return GuidOf(*plan);
+        if (const PlanView* v = e.As<PlanView>())
+            return v->level;
+        // 文字、高程点、详图线、填充区域在标高的平面或平面视图里
+        if (const auto plan = AnnotationPlan(e))
+            return PlanLevel(*plan);
         return std::nullopt;
     }
 
@@ -2069,7 +2079,7 @@ namespace MiniBIM::Bim
             }
             return true;
         };
-        std::set<std::string> levelNames, gridNames;
+        std::set<std::string> levelNames, gridNames, viewNames;
         // 每面墙上的门窗，按沿墙的起点排序
         std::map<Guid, std::vector<HeldOpening>> spans;
         for (const auto& [id, ptr] : elements.Items())
@@ -2094,6 +2104,16 @@ namespace MiniBIM::Bim
                     error = who + ": another level is already named `" + l->name + "`";
                     return false;
                 }
+                if (!viewNames.insert(l->name).second)
+                {
+                    error = who + ": another view is already named `" + l->name + "`";
+                    return false;
+                }
+                if (!l->graphics.Check(fillPatterns, error))
+                {
+                    error = who + ": " + error;
+                    return false;
+                }
                 if (!RangeOk(who, l->viewRange, error))
                     return false;
                 if (l->crop && !Crop(who, (*l->crop)[0], (*l->crop)[1], error))
@@ -2108,6 +2128,83 @@ namespace MiniBIM::Bim
                         error = who + ": its extent runs from its south-west corner to its north-east one";
                         return false;
                     }
+                }
+            }
+            else if (const PlanView* v = e.As<PlanView>())
+            {
+                if (!TextOk(who, "name", v->name, error))
+                    return false;
+                if (Text::Trim(v->name).empty())
+                {
+                    error = who + ": a view needs a name";
+                    return false;
+                }
+                if (!levelOk(v->level) || !RangeOk(who, v->viewRange, error))
+                    return false;
+                if (v->crop && !Crop(who, (*v->crop)[0], (*v->crop)[1], error))
+                    return false;
+                if (!v->graphics.Check(fillPatterns, error))
+                {
+                    error = who + ": " + error;
+                    return false;
+                }
+                // 标高的名称是它自己的平面的；它的平面视图另起名称
+                for (const auto& [_, l] : Levels())
+                    if (l->name == v->name)
+                    {
+                        error = who + ": a level is already named `" + v->name + "`; a plan view of it needs another name";
+                        return false;
+                    }
+                if (v->parent)
+                {
+                    // 父视图是同一标高的平面：标高自己的，或不是相关视图的平面视图
+                    const Element* p = elements.Get(*v->parent);
+                    bool primary = false;
+                    if (p && p->As<Level>())
+                        primary = Same(*v->parent, v->level);
+                    else if (const PlanView* o = p ? p->As<PlanView>() : nullptr)
+                        primary = !o->parent && Same(o->level, v->level);
+                    if (!primary)
+                    {
+                        error = who + ": a dependent view hangs from a plan of its own level that is no dependent itself, not " + Shown(*v->parent);
+                        return false;
+                    }
+                }
+                if (!viewNames.insert(v->name).second)
+                {
+                    error = who + ": another view is already named `" + v->name + "`";
+                    return false;
+                }
+            }
+            else if (const View3D* v3 = e.As<View3D>())
+            {
+                if (!TextOk(who, "name", v3->name, error))
+                    return false;
+                if (Text::Trim(v3->name).empty())
+                {
+                    error = who + ": a view needs a name";
+                    return false;
+                }
+                if (!Coord(who + " azimuth", v3->azimuth, error))
+                    return false;
+                if (!(v3->elevation >= -89.0 && v3->elevation <= 89.0))
+                {
+                    error = who + ": elevation " + Num(v3->elevation) + "° isn't between -89° and 89°";
+                    return false;
+                }
+                if (!v3->graphics.Check(fillPatterns, error))
+                {
+                    error = who + ": " + error;
+                    return false;
+                }
+                if (const auto& b = v3->sectionBox)
+                    for (size_t i = 0; i < 3; ++i)
+                        if (!Coord(who + " section box", b->min[i], error) || !Coord(who + " section box", b->max[i], error))
+                            return false;
+                if (!viewNames.insert(v3->name).second)
+                {
+                    error = who + ": another view is already named `" + v3->name + "`";
+                    return false;
                 }
             }
             else if (const Grid* g = e.As<Grid>())

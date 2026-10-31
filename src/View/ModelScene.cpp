@@ -223,9 +223,13 @@ namespace MiniBIM
         };
 
         const Bim::Walls::Index index(m);
+        // 默认三维视图隐藏的不建
+        const Bim::Look look = m.LookOf3D();
         int failed = 0;
         for (const auto& [id, ptr] : m.elements.Items())
         {
+            if (!look.Shows(id))
+                continue;
             const Bim::Element& e = *ptr;
             m_owners.emplace_back(m_triangles.size(), id);
             bool ok = true;

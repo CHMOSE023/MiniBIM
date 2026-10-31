@@ -23,6 +23,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Snap.h` | `snap.rs` | 捕捉：平面上点下的点落在哪（端点、中点、交点、圆心、垂足、墙中心线、角度引导线、最近的 10 毫米），标尺的读数与刻度 |
 | `src/Model/Sketch.h` | `sketch.rs` | 草图：零散的直线与圆弧（`SketchLine`）解成闭合的环、嵌套成轮廓与洞（`Sketch::Solve`、`Sketch::SolveOne`），解不出时列出每个问题（相交、重叠、分叉、开口、没有面积、几个外轮廓）与涉及的线 |
 | `src/Model/Massing.h` | `massing.rs` | 体量做出的元素的记号（`Massing::FloorMark`、`Massing::Face`）、按面重建（`Massing::Follow`）、放样的轮廓与三角形、竖直的面、放样的检查 |
+| `src/Model/Graphics.h` | `graphics.rs` | 视图的可见性 / 图形：`Override`（隐藏、看到的与剖到的线和填充、半色调、透明度）、`Graphics`（按类别、按元素的覆盖，比例、详细程度、视觉样式）、`Look`（落到各元素上的样子）、视图画的类别 `GraphicsOf::Drawn` |
+| `src/Model/Views.cpp` | `model.rs`、`graphics.rs` 的视图部分 | 平面视图与三维视图：`Model::PlanLevel`、`PlanSource`（相关视图跟父视图）、`ViewRangeOf`、`CropOf`、`ViewGraphics`、`ScaleOf`、`ViewName`、`FreeViewName`、`Default3D`、`LookOf` |
 | `src/Model/Styles.h` | `lines.rs`、`fills.rs`、`model.rs` 的 `TextType` | 注释的库条目：线型图案、线样式、填充图案、填充区域类型、文字类型，各语言的默认条目与检查 |
 | `src/Model/Curve.h` | `curves.rs` | 详图线的曲线：多段线（每段直线或圆弧）与圆；长度、映射、检查（椭圆与样条没有移植，读文件时略去那条线） |
 | `src/Model/Annotate.cpp` | `model.rs`、`render.rs` 的注释部分 | 注释在哪个平面、标记写什么、尺寸量到的线与值、高程点读谁、元素在平面上的点（`Model::Anchor`） |
@@ -88,14 +90,24 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   平面：剖切面穿过时那里的轮廓画虚线（`Render::MassColor`），捕捉它的角点，对齐认底面轮廓的边
 - 注释（5d，移植自 `model.rs`、`lines.rs`、`fills.rs`、`render.rs`）：`Dimension`（对齐、角度、径向，`Reference` 为元素的 GUID 与 `Face`）、`Note`（文字）、
   `Spot`（高程点）、`Tag`（标记）、`DetailLine`（详图线）、`FilledRegion`（填充区域，草图可以是几个环，`Sketch::Solve`）；`Element::IsAnnotation`。
-  MiniBIM 还没有平面视图元素（随 5e），注释的视图是一个标高的 GUID（它自己的平面，`Model::AnnotationPlan`、`Model::AnnotationIn`）：`Dimension::view` 与 `Tag::view`
-  必须为空，读 BIMCraft 文件时在别的视图（平面视图、剖面、立面、图纸）里的注释、引用的东西已不在的标记与高程点略去，尺寸去掉不在的参照、不够时略去。
+  注释的视图是标高（它自己的平面）或平面视图的 GUID（`Model::AnnotationPlan`；`Model::AnnotationIn` 认相关视图里父视图的注释）：`Dimension::view` 与 `Tag::view`
+  为空时在标高的平面里，否则是同一标高的平面视图。读 BIMCraft 文件时在剖面、立面、图纸里的注释、引用的东西已不在的标记与高程点略去，尺寸去掉不在的参照、不够时略去。
   库条目 `Model::linePatterns`、`lineStyles`、`fillPatterns`、`regionTypes`、`textTypes` 写进项目文件；项目语言不是英语而文件里的正是英文默认条目时换成那种语言的。
   文字的大小是文字类型的（`TextTypes::ForSize`：BIMCraft 旧文件里文字自带的 `size` 读入时换成同样大小的类型，没有时建一个 "<大小>mm"）。
   文字用单线字（`Font.h`）画；样式的命令（线样式、填充图案、文字类型以外的库条目）随 5f。命令 `dimension`（DI）、`tag`（TG，不给 `id` 时标记全部）、`text`（TX）、
   `text_type`、`spot`（EL）、`detail_line`（DL）、`filled_region`（FR）、`measure`（ME，不改模型）；`edit_boundary` 也编辑填充区域。
   移动、复制、镜像、旋转、翻转跟着改注释（`Transformed`、`TagHeads`、`PlaceTag`）；删除连带：标记随宿主，尺寸随标高、参照少于两条时，别的随它的平面。
   `ReferenceNear`、`ArcNear`（`Commands.h`）是 `dimension` 把点认成参照的办法，界面的尺寸工具也用
+- 视图（5e1，移植自 `graphics.rs`、`model.rs` 的视图部分）：标高的平面、`PlanView`（平面视图：标高、名称、视图范围、裁剪、图形，相关视图有 `parent`）与 `View3D`
+  （三维视图；默认的 `{3D}` 在第一次改它的图形或视觉样式时建出来）各有 `Graphics`。视图名称在标高、平面视图、三维视图里不重，平面视图不能用标高的名称。
+  命令 `graphics`（VV：hide / show、hide_elements / show_elements、categories / elements 的覆盖合并、reset；视图样板、过滤器、阶段、设计选项与 CAD 图层还没有，给了就报错）、
+  `scale`、`detail`、`visual_style`、`crop`（不给区域时裁到显示的四周留 1 米）、`duplicate_view`（DP：duplicate、detailing 复制注释、dependent）。
+  要标高的命令也收平面视图（`PlanParam`：标高与平面视图），尺寸、标记、文字、高程点、详图线、填充区域画进那个平面视图；相关视图不能自己改图形、比例、详细程度。
+  删除连带：标高带走它的平面视图，父视图带走相关视图，视图带走它里面的注释。
+  平面（`Render::Draw` 收平面键）：视图隐藏的元素不画（门窗、房间边界照旧按模型），`Drawing::Dress` 照覆盖改线色、笔、虚实、填充、半色调，剖到的合并填充按覆盖颜色分组，
+  粗略详细程度不画复合墙的层线，比例取 `Model::ScaleOf`；有裁剪时 `Drawing::Crop` 裁掉框外的（房间、尺寸、标记、文字、高程点整个留着）。
+  三维视图 `ModelScene` 不建默认三维视图隐藏的元素；三维里的覆盖颜色、透明度与视觉样式记在文件里，还不画。
+  读文件时图形的视图样板、过滤器、阶段、设计选项、Linework、CAD 图层略去（随 5e2、5g）
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
@@ -136,7 +148,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 - `CommandTests`（`tests/Commands/CommandTests.cpp`）：像前端一样经命令驱动（移植自 BIMCraft 的 `tests.rs`、`render.rs` 的测试）：撤销、脚本、事务、建模、编辑、平面图与拾取、
   项目文件（含打开 BIMCraft 文件时略去的内容）、示例房屋、恶意参数扫描，结构（`TestStructure`）与 MEP（`TestMep`：七类 run 的命令、
   被拒、类型、编辑、平面与捕捉，起步设备族在各语言里都有、每个类型的形体高度对）与体量（`TestMassing`：体量、体量楼层再跑与 prune、按面建模、
-  `update_by_face`、放样）与注释（`TestAnnotations`：各注释命令、删除标高的连带、项目文件往返与平面、BIMCraft 旧文件的文字大小与别的视图里的注释、测量）
+  `update_by_face`、放样）与注释（`TestAnnotations`：各注释命令、删除标高的连带、项目文件往返与平面、BIMCraft 旧文件的文字大小与别的视图里的注释、测量）与视图（`TestViews`：隐藏类别与元素、线与填充的覆盖、半色调、三维视图、比例与详细程度、复制视图三种方式、
+  平面视图里的注释、相关视图、裁剪、删除的连带、项目文件往返）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）
