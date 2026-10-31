@@ -263,6 +263,14 @@ namespace MiniBIM::Bim
             for (size_t i = 0; i < f.symbols.size(); ++i)
                 out.emplace_back(f.symbols[i].id, Part{ "symbol", "family " + n, n, i, f.symbols[i].guid });
         }
+        // 元素的草图线：元素按它的 GUID 叫（不会变）
+        for (const auto& [id, e] : elements.Items())
+            if (const auto* lines = e->SketchOf(); lines && !lines->empty())
+            {
+                const std::string owner = GuidOf(id).ToString();
+                for (size_t i = 0; i < lines->size(); ++i)
+                    out.emplace_back((*lines)[i].id, Part{ "sketch line", std::string(e->Category()) + " " + owner, owner, i, (*lines)[i].guid });
+            }
         return out;
     }
 
@@ -390,6 +398,25 @@ namespace MiniBIM::Bim
             for (Fam::Symbol& x : f.symbols)
                 give(x);
         }
+        // 元素是共享的：草图线要换 ID、GUID 时才复制那个元素
+        std::vector<Id> sketched;
+        for (const auto& [id, e] : elements.Items())
+            if (const auto* lines = e->SketchOf(); lines && !lines->empty())
+                sketched.push_back(id);
+        for (const Id id : sketched)
+        {
+            const auto* lines = elements.Get(id)->SketchOf();
+            bool same = true;
+            for (size_t i = 0; i < lines->size() && same; ++i)
+                same = k + i < given.size() && (*lines)[i].id == given[k + i].first && (*lines)[i].guid == given[k + i].second;
+            if (same)
+            {
+                k += lines->size();
+                continue;
+            }
+            for (SketchLine& l : *elements.GetMut(id)->SketchOf())
+                give(l);
+        }
         library.m_parts.clear();
         for (auto& [id, p] : PartsNow())
             library.m_parts.emplace(id, std::move(p));
@@ -461,6 +488,13 @@ namespace MiniBIM::Bim
             for (Fam::Symbol& x : f.symbols)
                 forget(x);
         }
+        std::vector<Id> sketched;
+        for (const auto& [id, e] : elements.Items())
+            if (const auto* lines = e->SketchOf(); lines && !lines->empty())
+                sketched.push_back(id);
+        for (const Id id : sketched)
+            for (SketchLine& l : *elements.GetMut(id)->SketchOf())
+                forget(l);
         library.m_parts.clear();
     }
 

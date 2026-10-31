@@ -241,9 +241,19 @@ namespace MiniBIM::Bim::Snap
         return 180.0 - (turn > 180.0 ? 360.0 - turn : turn);
     }
 
-    Found At(const Model& m, Guid level, P2 p, Reach reach, std::span<const P2> from, bool square, const Snaps& o)
+    Found At(const Model& m, Guid level, P2 p, Reach reach, std::span<const P2> from, bool square, const Snaps& o,
+             std::span<const Segment> extraLines, std::span<const std::pair<P2, Kind>> extraPoints)
     {
-        const Scene scene = Scene::Of(m, level, p, std::max(reach.point, reach.line) + MaxHalfThickness);
+        Scene scene = Scene::Of(m, level, p, std::max(reach.point, reach.line) + MaxHalfThickness);
+        for (const auto& [a, b] : extraLines)
+        {
+            scene.points.emplace_back(a, Kind::Endpoint);
+            scene.points.emplace_back(b, Kind::Endpoint);
+            scene.points.emplace_back((a + b) * 0.5, Kind::Midpoint);
+            scene.lines.emplace_back(a, b);
+        }
+        for (const auto& pk : extraPoints)
+            scene.points.push_back(pk);
         const std::optional<P2> last = from.empty() ? std::nullopt : std::optional<P2>(from.back());
         // 保持方正时钉在最后一点上的那个坐标：沿 x 走时是 y
         std::optional<std::pair<bool, double>> pinned;

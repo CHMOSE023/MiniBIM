@@ -11,6 +11,8 @@ namespace MiniBIM::Bim
     Json ToJson(Guid g);
     Json ToJson(P2 p);
     Json ToJson(const Element& e);
+    // 草图线（文件与命令里的写法，同 BIMCraft：{id?, guid?, start, end, arc?}）
+    Json SketchJson(const std::vector<SketchLine>& lines);
     // 类型与材质（用名称，不是 GUID）：inspect 显示它们
     Json ToJson(const Types& t);
     Json ToJson(const std::map<std::string, Material>& materials);

@@ -1,5 +1,6 @@
 // 移植自 BIMCraft crates/core/src/model.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Model/Model.h"
+#include "Model/Sketch.h"
 #include "Model/Skeleton.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
@@ -412,6 +413,22 @@ namespace MiniBIM::Bim
         }
         else if (Component* c = As<Component>())
             FamilyAndType(c->family, c->typeName, f);
+    }
+
+    const std::vector<SketchLine>* Element::SketchOf() const
+    {
+        if (const Floor* f = As<Floor>())
+            return &f->sketch;
+        if (const Ceiling* c = As<Ceiling>())
+            return &c->sketch;
+        if (const Roof* r = As<Roof>())
+            return &r->sketch;
+        return nullptr;
+    }
+
+    std::vector<SketchLine>* Element::SketchOf()
+    {
+        return const_cast<std::vector<SketchLine>*>(static_cast<const Element*>(this)->SketchOf());
     }
 
     std::optional<std::pair<std::string, std::string>> Element::FamilyOf() const
@@ -1568,6 +1585,8 @@ namespace MiniBIM::Bim
         {
             const Element& e = *ptr;
             const std::string who = std::string(e.Category()) + " " + std::to_string(id);
+            if (const auto* lines = e.SketchOf(); lines && !Sketch::Check(who, *lines, error))
+                return false;
             auto levelOk = [&](Guid l)
             {
                 if (GetLevel(l))

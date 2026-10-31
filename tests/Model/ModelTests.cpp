@@ -13,12 +13,14 @@
 #include "Model/Render.h"
 #include "Model/Skeleton.h"
 #include "Model/Snap.h"
+#include "Model/Sketch.h"
 #include "Model/Units.h"
 #include "Model/Walls.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -1659,6 +1661,197 @@ wall {"points": [[7000,0],[7000,4000]]})");
     }
 }
 
+namespace
+{
+    // ── 草图（sketch.rs 的测试，直线与圆弧的部分）──────────────────
+    namespace SketchTest
+    {
+        using Sketch::Problem;
+        using K = Problem::Kind;
+
+        SketchLine L(P2 a, P2 b)
+        {
+            SketchLine l;
+            l.start = a;
+            l.end   = b;
+            return l;
+        }
+
+        std::vector<SketchLine> RingOf(std::vector<P2> pts)
+        {
+            std::vector<SketchLine> out;
+            for (size_t i = 0; i < pts.size(); ++i)
+                out.push_back(L(pts[i], pts[(i + 1) % pts.size()]));
+            return out;
+        }
+
+        std::vector<SketchLine> Square(double x, double y, double s) { return RingOf({ { x, y }, { x + s, y }, { x + s, y + s }, { x, y + s } }); }
+
+        std::vector<Problem> Fails(const std::vector<SketchLine>& ls)
+        {
+            Sketch::Profile p;
+            std::vector<Problem> e;
+            Sketch::Solve(ls, p, e);
+            return e;
+        }
+
+        bool Has(const std::vector<Problem>& e, const Problem& x) { return std::find(e.begin(), e.end(), x) != e.end(); }
+    }
+
+    void TestSketch()
+    {
+        using namespace SketchTest;
+        std::vector<Problem> e;
+        Geom::Region r;
+        Sketch::Profile p;
+        {
+            auto ls = Square(0, 0, 4000);
+            std::swap(ls[0], ls[2]);
+            ls[1] = L(ls[1].end, ls[1].start);
+            ls[3] = L(ls[3].end, ls[3].start);
+            ls[0] = L(ls[0].start + P2{ 0.4, 0 }, ls[0].end);
+            bool ok = Sketch::SolveOne(ls, r, e) && Geom::Area(r.outer) > 0.0 && r.holes.empty() && std::abs(r.Area() - 16e6) < 2000.0;
+            ok = ok && Sketch::SolveOne(RingOf({ { 0, 0 }, { 0, 3000 }, { 3000, 3000 }, { 3000, 0 } }), r, e) && Geom::Area(r.outer) > 0.0;
+            Check(ok, "草图：线随便先后、随便方向，接成一个逆时针的外轮廓");
+        }
+        {
+            auto ls = Square(0, 0, 10000);
+            for (const auto& more : { Square(2000, 2000, 6000), Square(4000, 4000, 2000), Square(20000, 0, 1000) })
+                ls.insert(ls.end(), more.begin(), more.end());
+            bool ok = Sketch::Solve(ls, p, e) && p.regions.size() == 3 && p.regions[0].holes.size() == 1 && Geom::Area(p.regions[0].holes[0]) < 0.0 &&
+                      p.regions[1].holes.empty() && std::abs(p.Area() - (100e6 - 36e6 + 4e6 + 1e6)) < 1.0;
+            ok = ok && !Sketch::SolveOne(ls, r, e) && e == std::vector<Problem>{ Problem{ K::Separate, {}, std::nullopt, 3 } };
+            Check(ok, "草图：环里的环是洞，洞里的是岛");
+        }
+        {
+            auto ls = Square(0, 0, 4000);
+            ls.pop_back();
+            e = Fails(ls);
+            bool ok = e == std::vector<Problem>{ Problem{ K::Open, { 0 }, P2{ 0, 0 } }, Problem{ K::Open, { 2 }, P2{ 0, 4000 } } } &&
+                      e[0].Said([](size_t i) { return "line " + std::to_string(i); }).find("open") != std::string::npos;
+            ls = Square(0, 0, 4000);
+            ls[3] = L(ls[3].start, ls[3].end + P2{ 0, 5 });
+            e = Fails(ls);
+            ok = ok && e.size() == 2 && e[0].kind == K::Open && e[0].lines[0] == 0 && e[1].lines[0] == 3;
+            Check(ok, "草图：没闭合的环说出开着的端点");
+        }
+        {
+            e = Fails(RingOf({ { 0, 0 }, { 4000, 4000 }, { 4000, 0 }, { 0, 4000 } }));
+            bool ok = e == std::vector<Problem>{ Problem{ K::Cross, { 0, 2 }, P2{ 2000, 2000 } } };
+            auto ls = Square(0, 0, 4000);
+            ls.push_back(L({ 2000, 0 }, { 2000, 2000 }));
+            e = Fails(ls);
+            ok = ok && Has(e, Problem{ K::Cross, { 0, 4 }, P2{ 2000, 0 } }) && Has(e, Problem{ K::Open, { 4 }, P2{ 2000, 2000 } });
+            ls = Square(0, 0, 4000);
+            const auto other = Square(2000, 2000, 4000);
+            ls.insert(ls.end(), other.begin(), other.end());
+            e = Fails(ls);
+            std::set<size_t> in;
+            for (const Problem& x : e)
+                in.insert(x.lines.begin(), x.lines.end());
+            ok = ok && in == std::set<size_t>{ 1, 2, 4, 7 } && std::all_of(e.begin(), e.end(), [](const Problem& x) { return x.kind == K::Cross; });
+            Check(ok, "草图：相交的线、一条端在另一条中间");
+        }
+        {
+            auto ls = Square(0, 0, 4000);
+            ls.push_back(L({ 1000, 0 }, { 3000, 0 }));
+            bool ok = Has(Fails(ls), Problem{ K::Overlap, { 0, 4 } });
+            ls = Square(0, 0, 4000);
+            ls.push_back(L(ls[2].end, ls[2].start));
+            ok = ok && Has(Fails(ls), Problem{ K::Overlap, { 2, 4 } });
+            ok = ok && Sketch::SolveOne(RingOf({ { 0, 0 }, { 2000, 0 }, { 4000, 0 }, { 4000, 4000 }, { 0, 4000 } }), r, e);
+            Check(ok, "草图：叠在一起的线、画了两遍的线；首尾相接的一条直边没问题");
+        }
+        {
+            auto ls = Square(0, 0, 4000);
+            const auto other = Square(4000, 4000, 4000);
+            ls.insert(ls.end(), other.begin(), other.end());
+            e = Fails(ls);
+            Check(e == std::vector<Problem>{ Problem{ K::Branch, { 1, 2, 4, 7 }, P2{ 4000, 4000 } } } &&
+                      e[0].Said([](size_t i) { return "line " + std::to_string(i); }).find("line 1, line 2, line 4 and line 7") != std::string::npos,
+                  "草图：两个环碰在一个角上，那里分叉");
+        }
+        {
+            auto ls = Square(0, 0, 4000);
+            ls.push_back(L({ 9000, 0 }, { 9000.5, 0 }));
+            ls.push_back(L({ std::nan(""), 0 }, { 1, 1 }));
+            ls.push_back(L({ 0, 0 }, { 2e9, 0 }));
+            bool ok = Fails(ls) == std::vector<Problem>{ Problem{ K::TooShort, { 4 } }, Problem{ K::OutOfRange, { 5 } }, Problem{ K::OutOfRange, { 6 } } };
+            ok = ok && Fails({}) == std::vector<Problem>{ Problem{ K::Empty } };
+            const std::vector<SketchLine> many(Sketch::MaxLines + 1, L({ 0, 0 }, { 10, 0 }));
+            e = Fails(many);
+            ok = ok && e.size() == 1 && e[0].kind == K::TooMany && e[0].count == Sketch::MaxLines + 1 && e[0].what == "lines";
+            Check(ok, "草图：太短、超出范围的线先说");
+        }
+        {
+            e = Fails(RingOf({ { 0, 0 }, { 4000, 0.5 }, { 8000, 0 } }));
+            bool ok = !e.empty() && std::all_of(e.begin(), e.end(), [](const Problem& x) { return x.kind == K::Overlap; });
+            const double h = 1.5 * std::sqrt(3.0) / 2.0;
+            ok = ok && Fails(RingOf({ { 0, 0 }, { 1.5, 0 }, { 0.75, h } })) == std::vector<Problem>{ Problem{ K::NoArea, { 0, 1, 2 } } };
+            Check(ok, "草图：扁的环自己叠着，太小的环围不出面积");
+        }
+        {
+            bool ok = true;
+            for (const auto& [gap, meets] : { std::pair{ 1.0, true }, std::pair{ 0.999, true }, std::pair{ 1.01, false } })
+            {
+                auto ls = Square(0, 0, 4000);
+                ls[3] = L(ls[3].start, { -gap, 0 });
+                ok = ok && Sketch::Solve(ls, p, e) == meets;
+            }
+            auto ls = Square(0, 0, 4000);
+            ls[0] = L({ 0.9, 0.9 }, ls[0].end);
+            ls[3] = L(ls[3].start, { 1.1, 1.1 });
+            ok = ok && Sketch::Solve(ls, p, e);
+            Check(ok, "草图：端点 1 毫米以内接上，再远就不接，落在哪个格子都一样");
+        }
+        {
+            const Ring outline{ { 0, 0 }, { 6000, 0 }, { 6000, 6000 }, { 0, 6000 } }, hole{ { 1000, 1000 }, { 1000, 2000 }, { 2000, 2000 }, { 2000, 1000 } };
+            const auto ls = Sketch::LinesOf(outline, { hole });
+            bool ok = ls.size() == 8 && Sketch::SolveOne(ls, r, e) && r.outer == outline && r.holes == std::vector<Ring>{ hole };
+            ok = ok && Sketch::Draws(Sketch::LinesOf(outline, {}), outline, {}) && Sketch::Draws(Sketch::LinesOf(outline, {}), Ring(outline.rbegin(), outline.rend()), {});
+            Ring moved;
+            for (const P2& q : outline)
+                moved.push_back(q + P2{ 10, 0 });
+            ok = ok && !Sketch::Draws(Sketch::LinesOf(outline, {}), moved, {}) && !Sketch::Draws(Sketch::LinesOf(outline, {}), outline, { outline });
+            Check(ok, "草图：轮廓与洞变回能解回它们的线；记着的草图从哪起、朝哪转都算画着轮廓");
+        }
+        {
+            std::vector<SketchLine> ls{ L({ 0, 0 }, { 1e6, 0 }) };
+            for (int i = 1; i < 500; ++i)
+                ls.push_back(L({ i * 1000.0, -500 }, { i * 1000.0, 500 }));
+            e = Fails(ls);
+            Check(e.size() == Sketch::MaxProblems && Sketch::Say(e, Sketch::Namer(ls)).find("more") != std::string::npos, "草图：问题多时只说前面的");
+        }
+        {
+            // 半圆：直径，再从顶上的圆弧回来
+            const std::vector<SketchLine> ls{ L({ 0, 0 }, { 4000, 0 }), Sketch::ArcThrough({ 4000, 0 }, { 0, 0 }, { 2000, 2000 }) };
+            const double half = 3.14159265358979323846 * 2000.0 * 2000.0 / 2.0;
+            bool ok = Sketch::SolveOne(ls, r, e) && std::abs(r.Area() - half) / half < 0.01 && r.outer.size() > 20 &&
+                      Sketch::Middle(ls[1]).Dist({ 2000, 2000 }) < 1.0;
+            auto crossed = ls;
+            crossed.push_back(L({ 1000, 1000 }, { 1000, 3000 }));
+            e = Fails(crossed);
+            ok = ok && !e.empty() && e[0].kind == K::Cross && e[0].lines == std::vector<size_t>{ 1, 2 } &&
+                 std::count_if(e.begin(), e.end(), [](const Problem& x) { return x.kind == K::Cross; }) == 1;
+            ok = ok && Sketch::Points(Sketch::ArcThrough({ 0, 0 }, { 4000, 0 }, { 2000, 0.5 })).size() == 2;
+            Check(ok, "草图：圆弧闭合一个环，切成多少段弦都算一条线");
+        }
+        {
+            auto ls = RingOf({ { 0, 0 }, { 4000, 0 }, { 4000, 4000 } });
+            ls.resize(2);
+            ls.push_back(L({ 4000, 4500 }, { -500, 4500 }));
+            ls.push_back(L({ 0, 5000 }, { 0, 0 }));
+            e = Fails(ls);
+            ls[3].id = 999812;
+            const std::string said = Sketch::Say(e, Sketch::Namer(ls));
+            Check(!e.empty() && e[0].kind == K::Cross && std::any_of(e.begin(), e.end(), [](const Problem& x) { return x.kind == K::Open; }) &&
+                      said.find("line 2 and line 999812 intersect at [0, 4500]") != std::string::npos,
+                  "草图：先说相交，再说它留下的开口；有 ID 的线按 ID 叫");
+        }
+    }
+}
+
+
 int main()
 {
     // 不缓冲：崩溃时也看得到崩在哪一项之后
@@ -1674,6 +1867,7 @@ int main()
     TestFamily();
     TestFont();
     TestSnap();
+    TestSketch();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

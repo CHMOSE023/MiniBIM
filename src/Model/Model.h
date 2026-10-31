@@ -185,6 +185,18 @@ namespace MiniBIM::Bim
         bool operator==(const Wall&) const = default;
     };
 
+    // 草图线（移植自 BIMCraft sketch.rs 的 SketchLine）：直线，或从 start 到 end 转过 arc 度的圆弧（同墙）。楼板、天花板、屋顶记着画它们
+    // 或最后编辑它们的草图，"编辑边界"从它开始；每条线是一个部件，有自己的 ID 与 GUID。BIMCraft 的其他曲线还没移植（Model/Sketch.h）
+    struct SketchLine
+    {
+        Id     id = 0;
+        Guid   guid;
+        P2     start;
+        P2     end;
+        double arc = 0.0;
+        bool operator==(const SketchLine&) const = default;
+    };
+
     // 楼板：顶面以下的一块板，沿 boundary（逆时针），openings 处开洞（在里面、互不相交）。顶面在标高上方 offset；
     // 有坡度箭头时（平面上从尾到头）尾部在 offset，向头部以 slope 度升高（负值下降）。厚度为类型的厚度，垂直于坡面量
     struct Floor
@@ -198,6 +210,8 @@ namespace MiniBIM::Bim
         std::optional<std::array<P2, 2>> arrow;
         // 承重：结构楼板，同 Revit 的"楼板：结构"
         bool              structural = false;
+        // 画它或最后编辑它的草图；别的方式建的（沿墙、文件里没有）为空
+        std::vector<SketchLine> sketch;
         // 顶面模型图案的起点与转角（度）：Revit 对齐、旋转图案
         P2                patternOrigin;
         double            patternAngle = 0.0;
@@ -252,6 +266,7 @@ namespace MiniBIM::Bim
         Ring              boundary;
         std::vector<Ring> openings;
         double            offset = 0.0;
+        std::vector<SketchLine> sketch;
         bool operator==(const Ceiling&) const = default;
     };
 
@@ -308,6 +323,7 @@ namespace MiniBIM::Bim
         std::vector<Ring>   openings;
         std::optional<Guid> join;
         std::optional<Extrusion> extrusion;
+        std::vector<SketchLine>  sketch;
 
         // 迹线的各条边，编号同 gables：外轮廓的，然后是每个天井的
         std::vector<Segment> Edges() const;
@@ -337,6 +353,9 @@ namespace MiniBIM::Bim
         // 门或窗
         const Opening* AsOpening() const;
         Opening*       AsOpening();
+        // 楼板、天花板、屋顶记着的草图；别的元素没有
+        const std::vector<SketchLine>* SketchOf() const;
+        std::vector<SketchLine>*       SketchOf();
         bool IsDoor() const   { return std::holds_alternative<Door>(v); }
         bool IsWindow() const { return std::holds_alternative<Window>(v); }
 

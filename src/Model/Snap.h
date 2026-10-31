@@ -70,7 +70,9 @@ namespace MiniBIM::Bim::Snap
 
     // 在 level 的平面上 p 处点下的点落在哪里：平面上那里有的东西，从 from 的最后一点（这一点跟着的前几点）作的垂足，
     // 过那一点的角度引导线，墙的中心线，否则最近的 10 毫米。square 让从最后一点起的这一步保持水平或竖直（Shift）
-    Found At(const Model& m, Guid level, P2 p, Reach reach, std::span<const P2> from, bool square, const Snaps& o);
+    // extraLines、extraPoints：草图模式里还没进模型的草图线（直线：端点、中点、可相交；圆弧只给端点与中点）
+    Found At(const Model& m, Guid level, P2 p, Reach reach, std::span<const P2> from, bool square, const Snaps& o,
+             std::span<const Segment> extraLines = {}, std::span<const std::pair<P2, Kind>> extraPoints = {});
 
     // last 处从回到 prev 的线到通往 next 的线的夹角，度：一直往前是 180°，直角转弯 90°；任一段没有长度时没有
     std::optional<double> Corner(P2 prev, P2 last, P2 next);

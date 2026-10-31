@@ -1,5 +1,6 @@
 // 移植自 BIMCraft crates/core/src/model.rs、ids.rs、library.rs、lenient.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Model/ModelJson.h"
+#include "Model/Sketch.h"
 #include "Model/Text.h"
 #include <cmath>
 #include <initializer_list>
@@ -178,6 +179,64 @@ namespace MiniBIM::Bim
             }
 
             // 严格时先查不认识的键：照 serde 的 deny_unknown_fields，拼错的键比缺的键先报出来
+            // 草图线：{id?, guid?, start, end, arc? | through?}。BIMCraft 别的曲线（多段线、圆、椭圆、样条）还没移植：
+            // 宽松时整个草图略去（元素的轮廓照旧，编辑边界从轮廓开始），严格时报错
+            bool SketchLines(const char* key, std::vector<SketchLine>& out)
+            {
+                const Json* v = Raw(key);
+                if (!v)
+                    return true;
+                if (!v->is_array())
+                    return Fail(std::string("`") + key + "` must be a list of lines");
+                for (size_t i = 0; i < v->size(); ++i)
+                {
+                    const Json& o = (*v)[i];
+                    const std::string at = std::string("`") + key + "` line " + std::to_string(i);
+                    if (!o.is_object())
+                        return Fail(at + " must be an object");
+                    for (auto it = o.begin(); it != o.end(); ++it)
+                        if (it.key() != "id" && it.key() != "guid" && it.key() != "start" && it.key() != "end" && it.key() != "arc" &&
+                            it.key() != "through")
+                        {
+                            if (!m_leftOut)
+                                return Fail(at + ": `" + it.key() + "` isn't ported yet; lines and arcs are");
+                            m_leftOut->push_back(m_path + "/" + key);
+                            out.clear();
+                            return true;
+                        }
+                    SketchLine l;
+                    std::string why;
+                    if (o.contains("id"))
+                    {
+                        const auto n = AsWhole(o["id"]);
+                        if (!n)
+                            return Fail(at + ": `id` must be a whole number");
+                        l.id = static_cast<Bim::Id>(*n);
+                    }
+                    if (o.contains("guid") && !FromJson(o["guid"], l.guid, why))
+                        return Fail(at + ": `guid`: " + why);
+                    if (!o.contains("start") || !o.contains("end") || !FromJson(o["start"], l.start, why) || !FromJson(o["end"], l.end, why))
+                        return Fail(at + " needs `start` and `end` [x, y]" + (why.empty() ? "" : ": " + why));
+                    if (o.contains("arc") && o.contains("through"))
+                        return Fail(at + ": give an arc's `through` point or its `arc` turn, not both");
+                    if (o.contains("arc"))
+                    {
+                        if (!o["arc"].is_number())
+                            return Fail(at + ": `arc` must be a number");
+                        l.arc = o["arc"].get<double>();
+                    }
+                    if (o.contains("through"))
+                    {
+                        P2 t;
+                        if (!FromJson(o["through"], t, why))
+                            return Fail(at + ": `through`: " + why);
+                        l.arc = Sketch::ArcThrough(l.start, l.end, t).arc;
+                    }
+                    out.push_back(l);
+                }
+                return true;
+            }
+
             bool Allow(std::initializer_list<const char*> keys)
             {
                 if (m_leftOut)
@@ -334,7 +393,8 @@ namespace MiniBIM::Bim
             if (category == "floor")
             {
                 Floor x;
-                if (!f.Allow({ "type", "level", "boundary", "openings", "offset", "slope", "arrow", "structural", "pattern_origin", "pattern_angle" }) ||
+                if (!f.Allow({ "type", "level", "boundary", "openings", "offset", "slope", "arrow", "structural", "pattern_origin", "pattern_angle", "sketch" }) ||
+                    !f.SketchLines("sketch", x.sketch) ||
                     !f.String("type", x.typeName, true) || !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, true) ||
                     !f.Rings("openings", x.openings) || !f.Number("offset", x.offset, false) || !f.Number("slope", x.slope, false) ||
                     !f.Corners("arrow", x.arrow) || !f.Bool("structural", x.structural) || !f.Point("pattern_origin", x.patternOrigin, false) ||
@@ -355,7 +415,8 @@ namespace MiniBIM::Bim
             if (category == "ceiling")
             {
                 Ceiling x;
-                if (!f.Allow({ "type", "level", "boundary", "openings", "offset" }) || !f.String("type", x.typeName, true) ||
+                if (!f.Allow({ "type", "level", "boundary", "openings", "offset", "sketch" }) || !f.SketchLines("sketch", x.sketch) ||
+                    !f.String("type", x.typeName, true) ||
                     !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, true) || !f.Rings("openings", x.openings) ||
                     !f.Number("offset", x.offset, true) || !f.Finish())
                     return false;
@@ -374,7 +435,8 @@ namespace MiniBIM::Bim
             if (category == "roof")
             {
                 Roof x;
-                if (!f.Allow({ "type", "level", "boundary", "courtyards", "slope", "overhang", "gable", "gables", "offset", "openings", "join", "extrusion" }) ||
+                if (!f.Allow({ "type", "level", "boundary", "courtyards", "slope", "overhang", "gable", "gables", "offset", "openings", "join", "extrusion", "sketch" }) ||
+                    !f.SketchLines("sketch", x.sketch) ||
                     !f.String("type", x.typeName, true) || !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, false) ||
                     !f.Rings("courtyards", x.courtyards) || !f.Number("slope", x.slope, false) || !f.Number("overhang", x.overhang, false) ||
                     !f.Bool("gable", x.gable))
@@ -1010,6 +1072,25 @@ namespace MiniBIM::Bim
     }
 
 
+    Json SketchJson(const std::vector<SketchLine>& lines)
+    {
+        Json out = Json::array();
+        for (const SketchLine& l : lines)
+        {
+            Json o = Json::object();
+            if (l.id != 0)
+                o["id"] = l.id;
+            if (!l.guid.IsNil())
+                o["guid"] = ToJson(l.guid);
+            o["start"] = ToJson(l.start);
+            o["end"]   = ToJson(l.end);
+            if (l.arc != 0.0)
+                o["arc"] = l.arc;
+            out.push_back(std::move(o));
+        }
+        return out;
+    }
+
     Json ToJson(const Element& e)
     {
         Json j = Json::object();
@@ -1087,6 +1168,8 @@ namespace MiniBIM::Bim
                 j["pattern_origin"] = ToJson(f->patternOrigin);
             if (f->patternAngle != 0.0)
                 j["pattern_angle"] = f->patternAngle;
+            if (!f->sketch.empty())
+                j["sketch"] = SketchJson(f->sketch);
         }
         else if (const RoomSeparator* rs = e.As<RoomSeparator>())
         {
@@ -1102,6 +1185,8 @@ namespace MiniBIM::Bim
             if (!c->openings.empty())
                 j["openings"] = RingsJson(c->openings);
             j["offset"] = c->offset;
+            if (!c->sketch.empty())
+                j["sketch"] = SketchJson(c->sketch);
         }
         else if (const Room* r = e.As<Room>())
         {
@@ -1144,6 +1229,8 @@ namespace MiniBIM::Bim
                 ex["to"]      = x.to;
                 j["extrusion"] = std::move(ex);
             }
+            if (!r->sketch.empty())
+                j["sketch"] = SketchJson(r->sketch);
         }
         else if (const Opening* o = e.AsOpening())
         {
