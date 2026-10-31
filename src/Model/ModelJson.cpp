@@ -900,6 +900,24 @@ namespace MiniBIM::Bim
                 out = Element(std::move(v));
                 return true;
             }
+            if (category == "sheet")
+            {
+                Sheet sh;
+                if (!f.Allow({ "number", "name", "size" }) || !f.String("number", sh.number, true) || !f.String("name", sh.name, true) ||
+                    !f.String("size", sh.size, true) || !f.Finish())
+                    return false;
+                out = Element(std::move(sh));
+                return true;
+            }
+            if (category == "viewport")
+            {
+                Viewport v;
+                if (!f.Allow({ "sheet", "view", "at", "scale" }) || !f.Id("sheet", v.sheet, true) || !f.Id("view", v.view, true) ||
+                    !f.Point("at", v.at, true) || !f.Number("scale", v.scale, true) || !f.Finish())
+                    return false;
+                out = Element(std::move(v));
+                return true;
+            }
             if (category == "section" || category == "elevation")
             {
                 Section v;
@@ -2088,6 +2106,19 @@ namespace MiniBIM::Bim
                 j["parent"] = ToJson(*v->parent);
             if (v->sectionBox)
                 j["section_box"] = true;
+        }
+        else if (const Sheet* sh = e.As<Sheet>())
+        {
+            j["number"] = sh->number;
+            j["name"]   = sh->name;
+            j["size"]   = sh->size;
+        }
+        else if (const Viewport* vp = e.As<Viewport>())
+        {
+            j["sheet"] = ToJson(vp->sheet);
+            j["view"]  = ToJson(vp->view);
+            j["at"]    = ToJson(vp->at);
+            j["scale"] = vp->scale;
         }
         else if (const Section* sv = e.As<Section>() ? e.As<Section>() : e.As<Elevation>())
         {

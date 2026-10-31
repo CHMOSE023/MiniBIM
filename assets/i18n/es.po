@@ -199,6 +199,14 @@ msgid "Crop View"
 msgstr "Recortar vista"
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Sheet"
+msgstr "Plano"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Place View"
+msgstr "Colocar vista"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Section"
 msgstr "Sección"
 
@@ -1115,6 +1123,14 @@ msgid "Elevations of the building's four sides, those it doesn't have yet"
 msgstr "Alzados de los cuatro lados del edificio, los que aún no tiene"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new sheet: paper with a title block, for views to go on"
+msgstr "Un plano nuevo: papel con cajetín, para colocar vistas"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Put a view not on a sheet yet on the sheet shown"
+msgstr "Coloca en el plano mostrado una vista que aún no está en ningún plano"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Schedule/Quantities"
 msgstr "Tablas"
 
@@ -1658,7 +1674,7 @@ msgstr "No se pudieron voltear los muros"
 msgid "Could not build the sample house"
 msgstr "No se pudo construir la casa de ejemplo"
 
-#: apps/Common/src/GUI/MainFrame.cpp assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Schedules.cpp assets/ui/minibim_ui.json
 msgid "View"
 msgstr "Vista"
 
@@ -1673,6 +1689,10 @@ msgstr "Archivo de descripción de la interfaz:"
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Drag to pan, scroll to zoom; click what it cuts to select it"
 msgstr "Arrastra para desplazar, usa la rueda para hacer zoom; haz clic en lo que corta para seleccionarlo"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to pan, scroll to zoom; click a view to select it, drag a selected one to move it"
+msgstr "Arrastra para desplazar, rueda para zoom; haz clic en una vista y arrástrala para moverla"
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
@@ -1811,6 +1831,10 @@ msgstr "Alzado: {0}"
 msgid "Section: {0}"
 msgstr "Sección: {0}"
 
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Sheet: {0} - {1}"
+msgstr "Plano: {0} - {1}"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Multiple Categories"
 msgstr "Varias categorías"
@@ -1862,6 +1886,10 @@ msgstr "Tablas/Cantidades"
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Views (all)"
 msgstr "Vistas (todas)"
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Sheets (all)"
+msgstr "Planos (todos)"
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Families"
@@ -2176,6 +2204,18 @@ msgid "Earthing Conductors"
 msgstr "Conductores de puesta a tierra"
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Sheets"
+msgstr "Planos"
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Viewport"
+msgstr "Ventana gráfica"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Viewports"
+msgstr "Ventanas gráficas"
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
 msgstr "Masas"
 
@@ -2240,6 +2280,14 @@ msgstr[1] "{0} elementos seleccionados"
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Could not make the elevations"
 msgstr "No se pudieron crear los alzados"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not make the sheet"
+msgstr "No se pudo crear el plano"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not move the viewport"
+msgstr "No se pudo mover la ventana gráfica"
 
 #: apps/Common/src/GUI/Recent.cpp
 msgid "Just now"
@@ -2446,6 +2494,18 @@ msgid "It picks out {0} element."
 msgid_plural "It picks out {0} elements."
 msgstr[0] "Selecciona {0} elemento."
 msgstr[1] "Selecciona {0} elementos."
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "A view not on a sheet yet goes on {0} - {1}, right of the views on it, at its own scale."
+msgstr "Una vista que aún no está en ningún plano va a {0} - {1}, a la derecha de las vistas que tiene, a su propia escala."
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Every view is on a sheet already."
+msgstr "Todas las vistas ya están en un plano."
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Place"
+msgstr "Colocar"
 
 #: apps/Common/src/GUI/Schedules.cpp
 msgid "View Template {0}"
@@ -3527,6 +3587,10 @@ msgstr "Modo"
 #: assets/ui/minibim_ui.json
 msgid "Draw"
 msgstr "Dibujar"
+
+#: assets/ui/minibim_ui.json
+msgid "Sheet Composition"
+msgstr "Composición de planos"
 
 #: assets/ui/minibim_ui.json
 msgid "Navigate"

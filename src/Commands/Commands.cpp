@@ -12,6 +12,7 @@
 #include "Model/Sketch.h"
 #include "Model/ModelJson.h"
 #include "Model/Render.h"
+#include "Model/Schedule.h"
 #include "Model/Snap.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
@@ -2858,6 +2859,16 @@ namespace MiniBIM::Bim
             const auto& f = mo.map;
             if (out.As<Level>())
                 return Fail(error, c, "level " + std::to_string(id) + " has no place in plan; change its elevation, or add a level");
+            if (out.As<Sheet>())
+                return Fail(error, c, "sheet " + std::to_string(id) + " has no place in plan; move the views on it");
+            if (out.As<Schedule>() || out.As<View3D>() || out.As<PlanView>())
+                return Fail(error, c, std::string(out.Category()) + " " + std::to_string(id) + " has no place in plan; move its viewport on its sheet");
+            // 视口在它的图纸上挪：图纸上的毫米
+            if (Viewport* vp = out.As<Viewport>())
+            {
+                vp->at = f(vp->at);
+                return true;
+            }
             // 草图随元素走，线保留 ID；镜像时圆弧反过来转
             if (std::vector<SketchLine>* lines = out.SketchOf())
                 for (SketchLine& l : *lines)
@@ -3721,6 +3732,9 @@ namespace MiniBIM::Bim
                         hangs = in(d->level) || in(d->view);
                     else if (const Spot* sp = e->As<Spot>())
                         hangs = in(sp->view) || in(sp->host);
+                    // 视口跟着它的图纸与它放的视图
+                    else if (const Viewport* vp = e->As<Viewport>())
+                        hangs = in(vp->sheet) || in(vp->view);
                     else if (e->IsAnnotation())
                         hangs = in(m.AnnotationPlan(*e));
                     if (hangs)
@@ -3800,6 +3814,8 @@ namespace MiniBIM::Bim
         {
             if (const std::string* n = m.ViewName(id))
                 return *n;
+            if (const Sheet* sh = m.GetSheet(id))
+                return "sheet " + sh->number;
             const Element* e = m.elements.Get(id);
             return std::string(e ? e->Category() : "element") + " " + m.Shown(id);
         }
@@ -4373,6 +4389,138 @@ namespace MiniBIM::Bim
                 v->crop = crop;
             result = Json{ { "view", *mm.elements.IdOf(view) },
                            { "crop", crop ? Json::array({ ToJson((*crop)[0]), ToJson((*crop)[1]) }) : Json(nullptr) } };
+            return true;
+        }
+
+        // ── 图纸与视口（第 5e4 步，移植自 BIMCraft 的 sheet、place）──
+        bool SheetCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "sheet";
+            if (!Only(c, p, { "number", "name", "size" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> number, name, size;
+            if (!P.String("number", number) || !P.String("name", name) || !P.String("size", size))
+                return false;
+            const Model& m = s.GetModel();
+            Sheet sh;
+            if (number)
+                sh.number = *number;
+            else
+            {
+                // 没给编号时取 A101、A102……里第一个没用的
+                std::set<std::string> taken;
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const Sheet* x = e->As<Sheet>())
+                        taken.insert(x->number);
+                for (int n = 101;; ++n)
+                    if (!taken.count("A" + std::to_string(n)))
+                    {
+                        sh.number = "A" + std::to_string(n);
+                        break;
+                    }
+            }
+            sh.name = name ? *name : LanguageOf::Word(m.language, "Unnamed");
+            sh.size = size ? Text::AsciiUpper(Text::Trim(*size)) : std::string("A3");
+            const std::string made = sh.number;
+            const Id id = s.ModelMut().Insert(Element(std::move(sh)));
+            result = Json{ { "id", id }, { "number", made } };
+            return true;
+        }
+
+        bool PlaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "place";
+            if (!Only(c, p, { "sheet", "view", "at", "scale" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            // 图纸：编号、名称或 ID
+            std::optional<Id> sheet;
+            const Json* sj = Get(p, "sheet");
+            if (!sj || sj->is_null())
+                return P.Fail("`sheet`, a sheet's number or id, is required");
+            if (sj->is_string())
+            {
+                const std::string n = sj->get<std::string>();
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const Sheet* sh = e->As<Sheet>(); sh && (sh->number == n || sh->name == n))
+                    {
+                        sheet = id;
+                        break;
+                    }
+                if (!sheet)
+                    return P.Fail("no sheet numbered `" + n + "`");
+            }
+            else if (sj->is_number_unsigned() && m.GetSheet(m.GuidOf(sj->get<Id>())))
+                sheet = sj->get<Id>();
+            else
+                return P.Fail("`sheet`: " + Show(*sj) + " is not a sheet");
+            std::optional<double> scale;
+            std::optional<P2> at;
+            if (!P.Num("scale", scale) || !P.PointOpt("at", at))
+                return false;
+            // 视图：名称或 ID；明细表与三维视图第一次放上图纸时才建出来：内置的明细表按任何一种语言的名称，用项目语言的名称
+            const Json* vj = Get(p, "view");
+            if (!vj || vj->is_null())
+                return P.Fail("`view`, a level's, section's, elevation's, schedule's or 3D view's name or id, is required");
+            std::optional<Guid> view;
+            std::optional<Element> made;
+            if (vj->is_string() && !Guid::Parse(vj->get<std::string>()))
+            {
+                const std::string n = vj->get<std::string>();
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const std::string* name = m.ViewName(m.GuidOf(id)); name && *name == n)
+                    {
+                        view = m.GuidOf(id);
+                        break;
+                    }
+                if (!view)
+                {
+                    if (const auto found = Schedules::Named(m, n))
+                        view = m.GuidOf(*found);
+                    else if (const auto b = Schedules::BuiltinOf(&n, nullptr))
+                    {
+                        Schedule sc;
+                        sc.name = LanguageOf::Word(m.language, b->name);
+                        sc.of   = b->category;
+                        made    = Element(std::move(sc));
+                    }
+                    else if (n == View3D::DefaultName || n == "3D")
+                    {
+                        View3D v3;
+                        v3.name = View3D::DefaultName;
+                        made    = Element(std::move(v3));
+                    }
+                    else
+                        return P.Fail("no level, section, elevation, schedule or 3D view named `" + n + "`");
+                }
+            }
+            else
+            {
+                Guid g;
+                std::string why;
+                const auto found = FromJson(*vj, g, why) ? m.elements.IdOf(g) : std::nullopt;
+                if (!found || !m.ViewName(m.GuidOf(*found)))
+                    return P.Fail("`view`: " + Show(*vj) + " is not a plan, a section, an elevation, a schedule or a 3D view");
+                view = m.GuidOf(*found);
+            }
+            if (view && m.elements.Get(*view)->As<PlanView>() && m.elements.Get(*view)->As<PlanView>()->parent)
+                return P.Fail(ViewTitle(m, *view) + " is a dependent view; place its parent");
+            Model& mm = s.ModelMut();
+            if (made)
+                view = mm.GuidOf(mm.Insert(std::move(*made)));
+            const Guid sg = mm.GuidOf(*sheet);
+            // 视图自己的比例，除非给了别的
+            const double n = scale ? *scale : mm.ScaleOf(*view);
+            Viewport vp;
+            vp.sheet = sg;
+            vp.view  = *view;
+            vp.scale = n;
+            vp.at    = at ? *at : Render::SpotOn(mm, sg, *view, n);
+            const P2 placed = vp.at;
+            const Id id = mm.Insert(Element(std::move(vp)));
+            result = Json{ { "id", id }, { "at", ToJson(placed) } };
             return true;
         }
 
@@ -5760,6 +5908,16 @@ namespace MiniBIM::Bim
               "an elevation to its bottom-left and top-right corners (mm along its line from its start, and up), its line shortened to the "
               "region's sides; null uncrops it; without a region, a plan crops to what it shows now, a section to the model's heights",
               CropCmd, true },
+            { "sheet", N_("Sheet"), {},
+              "{number?, name?, size?: A0|A1|A2|A3|A4} a sheet: paper of an ISO size, landscape (A3 unless given), with a title block. "
+              "Numbered A101, A102… unless given; named `Unnamed` in the project's language unless given",
+              SheetCmd, true },
+            { "place", N_("Place View"), {},
+              "{sheet: number, name or id, view: name or id, at?: [x, y], scale?} puts a level's plan, a plan view, a section, an elevation, "
+              "a schedule or the 3D view on a sheet, its middle `at` mm from the paper's bottom left corner (right of the views on it unless "
+              "given), at the view's own scale unless given (a schedule keeps its size). A view goes on one sheet; `move` moves a viewport "
+              "on its sheet, in paper mm. Built-in schedules and {3D} come to be as they're first placed",
+              PlaceCmd, true },
             { "section", N_("Section"), { "CR" },
               "{start: [x,y], end: [x,y], depth?, name?} a section view along the line, looking to its left (drawn west to east, it looks north): "
               "it cuts the model at the line and sees `depth` mm past it, or everything. Named `Section 1`, `Section 2`… in the project's language",
@@ -6157,6 +6315,23 @@ namespace MiniBIM::Bim
                 v["elevation"] = z ? Json(Hundredth(*z)) : Json();
                 v["level"]     = levelId ? Json(*levelId) : Json();
             }
+        }
+        else if (const Sheet* sh = e->As<Sheet>())
+        {
+            if (const auto paper = PaperOf(sh->size))
+                v["paper"] = Json::array({ paper->x, paper->y });
+            Json on = Json::array();
+            for (const auto& [vid, x] : m.elements.Items())
+                if (const Viewport* vp = x->As<Viewport>(); vp && m.Same(vp->sheet, m.GuidOf(id)))
+                    on.push_back(vid);
+            v["viewports"] = std::move(on);
+        }
+        else if (const Viewport* vp = e->As<Viewport>())
+        {
+            const std::string* name = m.ViewName(vp->view);
+            v["title"] = name ? Json(*name) : Json(nullptr);
+            const auto size = Render::ViewportSize(m, vp->view, vp->scale);
+            v["size"] = size ? Json::array({ size->x, size->y }) : Json(nullptr);
         }
         else if (const Section* sv = m.GetSection(m.GuidOf(id)))
         {

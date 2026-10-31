@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string_view>
 #include <optional>
 #include <utility>
@@ -186,4 +187,30 @@ namespace MiniBIM::Bim::Render
     // 剖面或立面 view 按 v 画的：剖到的灰色填充与轮廓（复合墙的层线、看到的形体由界面画）、标高（名称与高度写在线的末端外）、
     // 线穿过的轴网、视图名称；裁剪了的裁到框里
     Drawing DrawSection(const Model& m, Guid view, View v, const SectionCuts& cuts, const Seen& seen);
+
+    // ── 图纸（第 5e4 步，移植自 sheet.rs，Sheets.cpp）────────────
+    // 图纸都按界面的取景 page 画：纸上的毫米（从左下角起，y 向上）到屏幕像素
+    // 图纸上一个视口的框：视图按 inner 画（取景同 page 一样大，视图的中心落在框的中心）；三维视图的 inner 是相机平面上离 middle 的毫米
+    struct Frame
+    {
+        Id                viewport = 0;
+        Guid              view;
+        View              inner;
+        Px                lo, hi;
+        std::optional<P3> middle;
+        bool              table = false;
+    };
+    // 剖面、立面剖到的与看到的范围（界面由三维场景算出）：图纸上的剖面按它画
+    using SheetCuts = std::map<Guid, std::pair<SectionCuts, Seen>>;
+    // 视图 view 按 1 : scale 放到纸上要多大，毫米：它显示的四周再留 12 毫米；明细表为表格的大小；不是能放的视图时为空
+    std::optional<P2> ViewportSize(const Model& m, Guid view, double scale);
+    // 视图 view 按 1 : scale 默认放在图纸 sheet 的哪里（纸上毫米）：已放的视图的右边，没有时在标题栏以上的中间；右边放不下时放右上角
+    P2 SpotOn(const Model& m, Guid sheet, Guid view, double scale);
+    // 纸（宽与高，毫米）放进 width × height 像素，四周留 20 像素
+    View FitPaper(P2 paper, uint32_t width, uint32_t height);
+    // 图纸 sheet 上各视口的框
+    std::vector<Frame> Frames(const Model& m, Guid sheet, const View& page);
+    // 图纸 sheet：边框与标题栏（归图纸），各视口里平面、剖面（剖到的、标高、轴网）与明细表的表格，框下的视图标题（都归视口）。
+    // 纸的白底、三维视图的样子与剖面看到的形体不在里面，由界面画在下面
+    Drawing DrawSheet(const Model& m, Guid sheet, const View& page, const SheetCuts& cuts);
 }

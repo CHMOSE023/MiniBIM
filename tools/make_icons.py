@@ -910,6 +910,21 @@ def _(i):
     i.poly([(44, 46), (50, 36), (56, 46)], A, AF, w=2.5)
 
 
+@icon("Sheet")             # view.sheet：图纸（横放的纸：灰色的边框，右下角强调色的标题栏）
+def _(i):
+    i.rect(4, 12, 60, 52, G, w=3)
+    i.rect(10, 17, 55, 47, G, w=2)
+    i.rect(34, 37, 55, 47, A, AF, w=2.5)
+
+
+@icon("PlaceView")         # view.placeView：放视图（图纸上一个强调色的视图框，里面一个小平面）
+def _(i):
+    i.rect(4, 12, 60, 52, G, w=3)
+    i.rect(14, 20, 42, 44, A, AF, w=2.5)
+    i.rect(20, 26, 36, 38, A, w=2.5)
+    i.line([(46, 20), (46, 44)], G, 2.5)
+
+
 @icon("Schedule")          # view.schedule：明细表（一张表：强调的标题行，下面灰色的格子）
 def _(i):
     i.rect(6, 8, 58, 56, G, w=3)

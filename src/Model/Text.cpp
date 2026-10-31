@@ -31,6 +31,15 @@ namespace MiniBIM::Bim::Text
         return out;
     }
 
+    std::string AsciiUpper(std::string_view s)
+    {
+        std::string out(s);
+        for (char& c : out)
+            if (c >= 'a' && c <= 'z')
+                c = static_cast<char>(c - 'a' + 'A');
+        return out;
+    }
+
     bool StartsWith(std::string_view s, std::string_view prefix)
     {
         return s.substr(0, prefix.size()) == prefix;

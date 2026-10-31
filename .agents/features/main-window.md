@@ -120,7 +120,13 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   剖面与立面："创建"面板的剖面（`MainFrame::Tool::Section`，点两下执行 `section`，可输入长度）与建筑立面（`view.elevation`，`MainFrame::MakeElevations`）；
   项目浏览器的"立面""剖面"双击打开（`MainFrame::ShowSection`，`m_sectionOf`）。剖面视口 `MainFrame::RenderSection`：模型变了时重算 `ModelScene::Cut`，
   白色的面与往相机挪一点的边画成消隐线，上面盖 `Render::DrawSection` 的显示列表（剖到的、标高、轴网、名称）；`MainFrame::OnSectionPointer` 拖动平移、
-  滚轮缩放、单击剖到的选中它。可见性 / 图形对话框对剖面也有比例与详细程度
+  滚轮缩放、单击剖到的选中它。可见性 / 图形对话框对剖面也有比例与详细程度。看到的形体由 `MainFrame::SubmitSectionFaces` 画（图纸上的剖面也用它）
+  图纸："图纸组合"面板的图纸（`view.sheet`，`MainFrame::NewSheet` 执行 `sheet` 后显示它）与放置视图（`view.placeView`，显示图纸时才可用，
+  `MainFrame::OpenPlaceView` 列出还没放上图纸的视图，在 `Schedules.cpp`）；项目浏览器的"图纸（全部）"按编号列出图纸，下面是它上面的视图。
+  图纸视口（`PlanView.cpp` 末尾）：`MainFrame::ShowSheet`（`m_sheetOf`），`MainFrame::RenderSheet` 先画白纸，再按 `Render::Frames` 把剖面看到的形体
+  （`m_sheetCuts`，场景变了时重算）与三维视图（场景的三角形，按视图的方位角与仰角正交投影到框里）画进各框，最后盖 `Render::DrawSheet` 的显示列表；
+  `MainFrame::OnSheetPointer` 拖动平移、滚轮缩放、单击选中视口（`MainFrame::SheetPick`：显示列表里归它的或在它的框里），拖动选中的视口执行 `move`。
+  切换视图的 `Show*` 都调 `m_commands.NotifyStateChanged`，按视图可用的命令（裁剪视图、放置视图）跟着变
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。
   没选东西时特性面板显示工具要放的"新建 …"，类型选择器选的是工具接下来放的类型（`ToolOptions::types`、门窗的族、构件的族与类型）
 - 草图模式（`SketchMode.cpp`，移植自界面的 `sketch.rs`）：`MainFrame::m_sketch` 有值时在草图里。入口是"修改 > 编辑边界"（`modify.editBoundary`，

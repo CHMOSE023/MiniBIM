@@ -198,6 +198,14 @@ msgid "Crop View"
 msgstr "裁剪视图"
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Sheet"
+msgstr "图纸"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Place View"
+msgstr "放置视图"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Section"
 msgstr "剖面"
 
@@ -1114,6 +1122,14 @@ msgid "Elevations of the building's four sides, those it doesn't have yet"
 msgstr "建筑四个侧面的立面，还没有的那些"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new sheet: paper with a title block, for views to go on"
+msgstr "新图纸：带标题栏的纸，用来放视图"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Put a view not on a sheet yet on the sheet shown"
+msgstr "把还没放上图纸的视图放到显示的图纸上"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Schedule/Quantities"
 msgstr "明细表/数量"
 
@@ -1655,7 +1671,7 @@ msgstr "无法翻转墙"
 msgid "Could not build the sample house"
 msgstr "无法搭建示例房屋"
 
-#: apps/Common/src/GUI/MainFrame.cpp assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Schedules.cpp assets/ui/minibim_ui.json
 msgid "View"
 msgstr "视图"
 
@@ -1670,6 +1686,10 @@ msgstr "界面描述文件："
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Drag to pan, scroll to zoom; click what it cuts to select it"
 msgstr "拖动平移，滚轮缩放；点剖到的选中它"
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to pan, scroll to zoom; click a view to select it, drag a selected one to move it"
+msgstr "拖动平移，滚轮缩放；点视图选中它，拖动选中的视图挪动它"
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
@@ -1804,6 +1824,10 @@ msgstr "立面：{0}"
 msgid "Section: {0}"
 msgstr "剖面：{0}"
 
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Sheet: {0} - {1}"
+msgstr "图纸：{0} - {1}"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Multiple Categories"
 msgstr "多个类别"
@@ -1855,6 +1879,10 @@ msgstr "明细表/数量"
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Views (all)"
 msgstr "视图（全部）"
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Sheets (all)"
+msgstr "图纸（全部）"
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Families"
@@ -2169,6 +2197,18 @@ msgid "Earthing Conductors"
 msgstr "接地导体"
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Sheets"
+msgstr "图纸"
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Viewport"
+msgstr "视口"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Viewports"
+msgstr "视口"
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
 msgstr "体量"
 
@@ -2232,6 +2272,14 @@ msgstr[0] "选中了 {0} 个元素"
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Could not make the elevations"
 msgstr "无法创建立面"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not make the sheet"
+msgstr "无法创建图纸"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not move the viewport"
+msgstr "无法移动视口"
 
 #: apps/Common/src/GUI/Recent.cpp
 msgid "Just now"
@@ -2431,6 +2479,18 @@ msgstr "添加规则"
 msgid "It picks out {0} element."
 msgid_plural "It picks out {0} elements."
 msgstr[0] "这样挑出 {0} 个元素。"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "A view not on a sheet yet goes on {0} - {1}, right of the views on it, at its own scale."
+msgstr "还没放上图纸的视图放到 {0} - {1} 上，在已有视图的右边，用它自己的比例。"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Every view is on a sheet already."
+msgstr "所有视图都已放上图纸。"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Place"
+msgstr "放置"
 
 #: apps/Common/src/GUI/Schedules.cpp
 msgid "View Template {0}"
@@ -3510,6 +3570,10 @@ msgstr "模式"
 #: assets/ui/minibim_ui.json
 msgid "Draw"
 msgstr "绘制"
+
+#: assets/ui/minibim_ui.json
+msgid "Sheet Composition"
+msgstr "图纸组合"
 
 #: assets/ui/minibim_ui.json
 msgid "Navigate"

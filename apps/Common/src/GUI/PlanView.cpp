@@ -1,5 +1,6 @@
 #include "GUI/MainFrame.h"
 #include "Core/Math/Mat4.hpp"
+#include "Core/Math/MathUtils.hpp"
 #include "I18n/Translator.h"
 #include "Model/Geom.h"
 #include "Model/ModelJson.h"
@@ -7,6 +8,7 @@
 #include "Widgets/ViewportHost.h"
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 // 平面视图：视口里显示一个标高的平面。显示列表由核心库的 Bim::Render 按当前视图（比例、中心）画出，这里把填色的环剖成三角形、
 // 把有宽度的折线（含虚线）展开成四边形，一起按画的先后交给 IRenderer：后画的盖住先画的（门的缺口盖住墙的填色）
@@ -25,7 +27,7 @@ namespace MiniBIM
                 { "roof", N_("Roof") },     { "component", N_("Component") }, { "roomseparator", N_("Room Separator") },
                 { "mass", N_("Mass") },       { "dimension", N_("Dimension") }, { "text", N_("Text Note") },
                 { "spot", N_("Spot Elevation") }, { "tag", N_("Tag") }, { "line", N_("Detail Line") }, { "region", N_("Filled Region") },
-                { "section", N_("Section") }, { "elevation", N_("Elevation View") },
+                { "section", N_("Section") }, { "elevation", N_("Elevation View") }, { "sheet", N_("Sheet") }, { "viewport", N_("Viewport") },
             };
             for (const auto& [c, label] : labels)
                 if (category == c)
@@ -34,6 +36,9 @@ namespace MiniBIM
         }
 
         VertexColor ColorOf(Bim::Render::Rgb c) { return VertexColor(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, 1.0f); }
+
+        // 选中的元素的颜色
+        const VertexColor Picked(0.0f, 0.47f, 0.84f, 1.0f);
 
         void Triangle(std::vector<Vertex_P3_C4>& out, Px a, Px b, Px c, VertexColor color)
         {
@@ -97,6 +102,41 @@ namespace MiniBIM
             }
             return out;
         }
+
+        // 显示列表 d 展开成三角形：填色的环剖成三角形，折线（含虚线）展开成四边形；picked 认的元素用强调色（纸色的不算）
+        void Expand(std::vector<Vertex_P3_C4>& out, const Bim::Render::Drawing& d, const std::function<bool(std::optional<Bim::Id>)>& picked)
+        {
+            for (size_t i = 0; i < d.prims.size(); ++i)
+            {
+                const Bim::Render::Prim& p = d.prims[i];
+                const VertexColor color = p.color != Bim::Render::Paper && picked(d.owners[i]) ? Picked : ColorOf(p.color);
+                if (p.kind == Bim::Render::Prim::Kind::Fill)
+                {
+                    for (const auto& ring : p.rings)
+                    {
+                        Bim::Ring r;
+                        for (const auto& [x, y] : ring)
+                            r.emplace_back(x, -y);
+                        for (const auto& [a, b, c] : Bim::Geom::Triangulate(r))
+                            Triangle(out, ring[a], ring[b], ring[c], color);
+                    }
+                }
+                else
+                    for (const auto& [a, b] : Dashes(p.pts, p.closed, p.dash))
+                        Segment(out, a, b, std::max(p.width, 1.0f), color);
+            }
+        }
+
+        // 像素到裁剪空间（y 向下）
+        Math::Mat4 PixelMatrix(float fw, float fh)
+        {
+            Math::Mat4 px = Math::Mat4::Identity();
+            px.m[0]  = 2.0 / fw;
+            px.m[5]  = -2.0 / fh;
+            px.m[12] = -1.0;
+            px.m[13] = 1.0;
+            return px;
+        }
     }
 
     void MainFrame::ShowModel3D()
@@ -109,10 +149,13 @@ namespace MiniBIM
         m_planLevel.reset();
         m_planOf.reset();
         m_sectionOf.reset();
+        m_sheetOf.reset();
         m_drag = Drag::None;
         UpdateTitle();
         UpdateStatus();
         RefreshPanels();
+        // 按视图可用的命令（裁剪视图、放置视图……）跟着变
+        m_commands.NotifyStateChanged();
         m_viewport->RequestRender();
     }
 
@@ -143,11 +186,14 @@ namespace MiniBIM
             m_toolPts.clear();      // 画了一半的不跟到别的标高
         }
         m_sectionOf.reset();
+        m_sheetOf.reset();
         m_planDirty = true;
         m_drag = Drag::None;
         UpdateTitle();
         UpdateStatus();
         RefreshPanels();
+        // 按视图可用的命令（裁剪视图、放置视图……）跟着变
+        m_commands.NotifyStateChanged();
         m_viewport->RequestRender();
     }
 
@@ -168,11 +214,14 @@ namespace MiniBIM
             m_planView.reset();
         }
         m_sectionOf.reset();
+        m_sheetOf.reset();
         m_planDirty = true;
         m_drag = Drag::None;
         UpdateTitle();
         UpdateStatus();
         RefreshPanels();
+        // 按视图可用的命令（裁剪视图、放置视图……）跟着变
+        m_commands.NotifyStateChanged();
         m_viewport->RequestRender();
     }
 
@@ -226,6 +275,15 @@ namespace MiniBIM
         const Bim::Model& m = m_session.GetModel();
         // 删掉、撤销掉的元素离开选择集
         std::erase_if(m_selection, [&](Bim::Id id) { return !m.elements.Contains(id); });
+        if (m_sheetOf)
+        {
+            // 显示的图纸删掉了：回到三维视图；挪了、放了、删了视口都要重画
+            if (!m.GetSheet(*m_sheetOf))
+                ShowModel3D();
+            m_sheetDirty      = true;
+            m_sheetCutVersion = 0;
+            return;
+        }
         if (m_sectionOf)
         {
             // 显示的剖面删掉了：回到三维视图
@@ -261,9 +319,11 @@ namespace MiniBIM
     std::string MainFrame::PlanStatus() const
     {
         const Bim::Model& m = m_session.GetModel();
+        const Bim::Sheet* sheet = m_sheetOf ? m.GetSheet(*m_sheetOf) : nullptr;
         const std::string* name = m_planLevel ? m.ViewName(PlanKey()) : m_sectionOf ? m.ViewName(*m_sectionOf) : nullptr;
         const bool elevation = m_sectionOf && m.elements.Get(*m_sectionOf)->As<Bim::Elevation>();
-        std::string out = !name        ? std::string()
+        std::string out = sheet        ? Format(Tr("Sheet: {0} - {1}"), { sheet->number, sheet->name })
+                          : !name      ? std::string()
                           : elevation  ? Format(Tr("Elevation: {0}"), { *name })
                           : m_sectionOf ? Format(Tr("Section: {0}"), { *name })
                                         : Format(Tr("Plan: {0}"), { *name });
@@ -376,12 +436,15 @@ namespace MiniBIM
         }
         m_planLevel.reset();
         m_planOf.reset();
+        m_sheetOf.reset();
         m_sectionDirty      = true;
         m_sectionCutVersion = 0;
         m_drag = Drag::None;
         UpdateTitle();
         UpdateStatus();
         RefreshPanels();
+        // 按视图可用的命令（裁剪视图、放置视图……）跟着变
+        m_commands.NotifyStateChanged();
         m_viewport->RequestRender();
     }
 
@@ -456,54 +519,38 @@ namespace MiniBIM
         Triangle(m_planVerts, { 0.0f, 0.0f }, { fw, fh }, { 0.0f, fh }, ColorOf(Bim::Render::Paper));
         renderer.Submit(m_planVerts, px, PrimitiveType::Triangle, false);
 
+        SubmitSectionFaces(renderer, *sv, m_sectionCut, m_sectionFar, *m_sectionView, fw, fh);
+
+        // 剖到的、标高、轴网、名称：盖在上面
+        m_planVerts.clear();
+        Expand(m_planVerts, *m_section, [&](std::optional<Bim::Id> owner) { return owner && Selected(*owner); });
+        renderer.Submit(m_planVerts, px, PrimitiveType::Triangle, false);
+    }
+
+    void MainFrame::SubmitSectionFaces(IRenderer& renderer, const Bim::Section& sv, const ModelScene::SectionCut& cut, double far,
+                                       const Bim::Render::View& v, float fw, float fh)
+    {
         // 看到的形体：白色的面挡住后面的边（消隐）。世界坐标到裁剪空间：沿线、向上随视图平移缩放，深度是离线多远
-        const Bim::Render::View& v = *m_sectionView;
-        const Bim::P2 u = (sv->end - sv->start).Unit(), n = u.Perp();
-        const double kx = v.scale * 2.0 / fw, ky = v.scale * 2.0 / fh, kz = 1.0 / (m_sectionFar * 1.01 + 1.0);
+        const Bim::P2 u = (sv.end - sv.start).Unit(), n = u.Perp();
+        const double kx = v.scale * 2.0 / fw, ky = v.scale * 2.0 / fh, kz = 1.0 / (far * 1.01 + 1.0);
         Math::Mat4 world = Math::Mat4::Identity();
         world.m[0]  = kx * u.x;  world.m[1]  = 0.0; world.m[2]  = kz * n.x;
         world.m[4]  = kx * u.y;  world.m[5]  = 0.0; world.m[6]  = kz * n.y;
         world.m[8]  = 0.0;       world.m[9]  = ky;  world.m[10] = 0.0;
-        world.m[12] = -kx * (u.Dot(sv->start) + v.cx);
-        world.m[13] = -ky * v.cy;
-        world.m[14] = -kz * n.Dot(sv->start);
-        if (!m_sectionCut.faces.empty())
-            renderer.Submit(m_sectionCut.faces, world, PrimitiveType::Triangle, true);
+        world.m[12] = -kx * (u.Dot(sv.start) + v.cx - v.width / 2.0 / v.scale + fw / 2.0 / v.scale);
+        world.m[13] = -ky * (v.cy + v.height / 2.0 / v.scale - fh / 2.0 / v.scale);
+        world.m[14] = -kz * n.Dot(sv.start);
+        if (!cut.faces.empty())
+            renderer.Submit(cut.faces, world, PrimitiveType::Triangle, true);
         // 边往看的人那边挪一点，免得与所在的面争深度
-        const double toward = std::max(1.0, m_sectionFar * 1e-3);
+        const double toward = std::max(1.0, far * 1e-3);
         const VertexColor ink(0.18f, 0.18f, 0.20f, 1.0f);
         m_edgeVerts.clear();
-        m_edgeVerts.reserve(m_sectionCut.edges.size());
-        for (const Math::Point3& p : m_sectionCut.edges)
+        m_edgeVerts.reserve(cut.edges.size());
+        for (const Math::Point3& p : cut.edges)
             m_edgeVerts.push_back({ { static_cast<float>(p.x - n.x * toward), static_cast<float>(p.y - n.y * toward), static_cast<float>(p.z) }, ink });
         if (!m_edgeVerts.empty())
             renderer.Submit(m_edgeVerts, world, PrimitiveType::Line, true);
-
-        // 剖到的、标高、轴网、名称：盖在上面
-        const VertexColor picked(0.0f, 0.47f, 0.84f, 1.0f);
-        m_planVerts.clear();
-        const Bim::Render::Drawing& d = *m_section;
-        for (size_t i = 0; i < d.prims.size(); ++i)
-        {
-            const Bim::Render::Prim& p = d.prims[i];
-            const bool selected = d.owners[i] && Selected(*d.owners[i]) && p.color != Bim::Render::Paper;
-            const VertexColor color = selected ? picked : ColorOf(p.color);
-            if (p.kind == Bim::Render::Prim::Kind::Fill)
-            {
-                for (const auto& ring : p.rings)
-                {
-                    Bim::Ring r;
-                    for (const auto& [x, y] : ring)
-                        r.emplace_back(x, -y);
-                    for (const auto& [a, b, c] : Bim::Geom::Triangulate(r))
-                        Triangle(m_planVerts, ring[a], ring[b], ring[c], color);
-                }
-            }
-            else
-                for (const auto& [a, b] : Dashes(p.pts, p.closed, p.dash))
-                    Segment(m_planVerts, a, b, std::max(p.width, 1.0f), color);
-        }
-        renderer.Submit(m_planVerts, px, PrimitiveType::Triangle, false);
     }
 
     void MainFrame::OnSectionPointer(const MiniGUI::ViewportPointerEvent& e)
@@ -655,6 +702,274 @@ namespace MiniBIM
                 v.cx = at.x - (e.pixel.x - v.width / 2.0) / v.scale;
                 v.cy = at.y + (e.pixel.y - v.height / 2.0) / v.scale;
                 m_planDirty = true;
+                m_viewport->RequestRender();
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+// ── 图纸（第 5e4 步）────────────────────────────────────────────
+// 纸与各视口的框按 m_sheetView（纸的毫米到像素）画：先白纸，再三维视图与剖面看到的形体（各在它的框里，有深度），
+// 最后是 Render::DrawSheet 的显示列表（标题栏、平面、剖到的、明细表、视图标题）
+namespace MiniBIM
+{
+    void MainFrame::ShowSheet(Bim::Guid sheet)
+    {
+        const Bim::Model& m = m_session.GetModel();
+        if (!m.GetSheet(sheet) || LeavingSketch())
+            return;
+        if (m_tool != Tool::Modify)
+            SetTool(Tool::Modify);
+        if (!m_sheetOf || !m.Same(*m_sheetOf, sheet))
+        {
+            m_sheetOf = m.GuidOf(sheet);
+            m_sheetView.reset();
+        }
+        m_planLevel.reset();
+        m_planOf.reset();
+        m_sectionOf.reset();
+        m_sheetDirty      = true;
+        m_sheetCutVersion = 0;
+        m_drag = Drag::None;
+        UpdateTitle();
+        UpdateStatus();
+        RefreshPanels();
+        // 按视图可用的命令（裁剪视图、放置视图……）跟着变
+        m_commands.NotifyStateChanged();
+        m_viewport->RequestRender();
+    }
+
+    void MainFrame::NewSheet()
+    {
+        Bim::Json result;
+        if (!RunCommand("sheet", Bim::Json::object(), N_("Could not make the sheet"), &result) || !result.contains("id"))
+            return;
+        ShowSheet(m_session.GetModel().GuidOf(result["id"].get<Bim::Id>()));
+    }
+
+    std::optional<Bim::Id> MainFrame::SheetPick(MiniGUI::Vec2 at) const
+    {
+        const Bim::Model& m = m_session.GetModel();
+        if (m_sheet)
+            if (const auto hit = m_sheet->Pick({ at.x, at.y }, 6.0f * m_dpiScale); hit && m.elements.Get(*hit) && m.elements.Get(*hit)->As<Bim::Viewport>())
+                return hit;
+        // 三维视图的样子、空白处：在它的框里就是它
+        for (const Bim::Render::Frame& f : m_sheetFrames)
+            if (at.x >= f.lo.first && at.x <= f.hi.first && at.y >= f.lo.second && at.y <= f.hi.second)
+                return f.viewport;
+        return std::nullopt;
+    }
+
+    void MainFrame::RenderSheet(IRenderer& renderer, int pixelWidth, int pixelHeight)
+    {
+        const Bim::Model& m = m_session.GetModel();
+        const Bim::Sheet* sh = m_sheetOf ? m.GetSheet(*m_sheetOf) : nullptr;
+        const auto paper = sh ? Bim::PaperOf(sh->size) : std::nullopt;
+        if (!paper)
+            return;
+        const Bim::Guid key = *m_sheetOf;
+        const uint32_t w = static_cast<uint32_t>(std::max(pixelWidth, 1)), h = static_cast<uint32_t>(std::max(pixelHeight, 1));
+        if (!m_sheetView)
+        {
+            // 同平面：放进没被挡住的区域
+            const double l = m_fitInsets[0], t = m_fitInsets[1];
+            const double fw = std::max(w - l - m_fitInsets[2], w * 0.2), fh = std::max(h - t - m_fitInsets[3], h * 0.2);
+            Bim::Render::View v = Bim::Render::FitPaper(*paper, static_cast<uint32_t>(fw), static_cast<uint32_t>(fh));
+            v.width  = w;
+            v.height = h;
+            v.cx -= (l + fw / 2.0 - w / 2.0) / v.scale;
+            v.cy += (t + fh / 2.0 - h / 2.0) / v.scale;
+            m_sheetView  = v;
+            m_sheetDirty = true;
+        }
+        if (m_sheetView->width != w || m_sheetView->height != h)
+        {
+            m_sheetView->width  = w;
+            m_sheetView->height = h;
+            m_sheetDirty = true;
+        }
+        // 图纸上各剖面剖到的与看到的：场景变了时重算
+        if (m_sheetCutVersion != m_sceneVersion || m_sheetCutVersion == 0)
+        {
+            m_sheetCuts.clear();
+            for (const auto& [id, e] : m.elements.Items())
+                if (const Bim::Viewport* vp = e->As<Bim::Viewport>(); vp && m.Same(vp->sheet, key))
+                    if (const Bim::Section* sv = m.GetSection(vp->view))
+                    {
+                        const Bim::Look look = m.LookOf(vp->view);
+                        m_sheetCuts[m.GuidOf(vp->view)] = m_scene.Cut(sv->start, sv->end, sv->depth, sv->crop, [&](Bim::Id x) { return look.Shows(x); });
+                    }
+            m_sheetCutVersion = std::max<uint64_t>(m_sceneVersion, 1);
+            m_sheetDirty      = true;
+        }
+        if (m_sheetDirty || !m_sheet)
+        {
+            Bim::Render::SheetCuts cuts;
+            for (const auto& [view, c] : m_sheetCuts)
+            {
+                Bim::Render::SectionCuts rings;
+                for (const auto& [id, r] : c.cuts)
+                    rings.emplace_back(id, r);
+                cuts[view] = { std::move(rings), Bim::Render::Seen{ c.first, c.last, c.lo, c.hi, c.any } };
+            }
+            m_sheet       = std::make_unique<Bim::Render::Drawing>(Bim::Render::DrawSheet(m, key, *m_sheetView, cuts));
+            m_sheetFrames = Bim::Render::Frames(m, key, *m_sheetView);
+            m_sheetDirty  = false;
+        }
+        const float fw = static_cast<float>(w), fh = static_cast<float>(h);
+        const Math::Mat4 px = PixelMatrix(fw, fh);
+        const Bim::Render::View& page = *m_sheetView;
+        // 白纸
+        m_planVerts.clear();
+        const Px a = page.ToPx({ 0.0, paper->y }), b = page.ToPx({ paper->x, 0.0 });
+        Triangle(m_planVerts, a, { b.first, a.second }, b, ColorOf(Bim::Render::Paper));
+        Triangle(m_planVerts, a, b, { a.first, b.second }, ColorOf(Bim::Render::Paper));
+        renderer.Submit(m_planVerts, px, PrimitiveType::Triangle, false);
+
+        for (const Bim::Render::Frame& f : m_sheetFrames)
+        {
+            const Bim::Element* e = m.elements.Get(f.view);
+            if (const Bim::Section* sv = m.GetSection(f.view))
+            {
+                const auto c = m_sheetCuts.find(f.view);
+                if (c == m_sheetCuts.end())
+                    continue;
+                const Bim::P2 n = (sv->end - sv->start).Unit().Perp();
+                double far = 1.0;
+                for (const Vertex_P3_C4& p : c->second.faces)
+                    far = std::max(far, (Bim::P2{ p.pos.x, p.pos.y } - sv->start).Dot(n));
+                SubmitSectionFaces(renderer, *sv, c->second, far, f.inner, fw, fh);
+            }
+            else if (const Bim::View3D* v3 = e ? e->As<Bim::View3D>() : nullptr; v3 && f.middle && !m_scene.Empty())
+            {
+                // 三维视图：正交，相机平面上按 f.inner 平移缩放；深度是朝相机多远
+                constexpr double Deg = 3.14159265358979323846 / 180.0;
+                const double az = v3->azimuth * Deg, el = std::clamp(v3->elevation, -89.0, 89.0) * Deg;
+                const Math::Vec3 back{ std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el) };
+                const Math::Vec3 right{ -std::sin(az), std::cos(az), 0.0 };
+                const Math::Vec3 up = Math::Cross(back, right);
+                const Math::Vec3 mid{ (*f.middle)[0], (*f.middle)[1], (*f.middle)[2] };
+                const AABB& box = m_scene.GetBounds();
+                const double depth = (box.Max - box.Min).Length() * 2.0 + 1000.0;
+                const Bim::Render::View& v = f.inner;
+                const double kx = v.scale * 2.0 / fw, ky = v.scale * 2.0 / fh, kz = -1.0 / depth;
+                const double ox = v.width / 2.0 / v.scale - fw / 2.0 / v.scale, oy = v.height / 2.0 / v.scale - fh / 2.0 / v.scale;
+                Math::Mat4 world = Math::Mat4::Identity();
+                world.m[0]  = kx * right.x; world.m[1]  = ky * up.x; world.m[2]  = kz * back.x;
+                world.m[4]  = kx * right.y; world.m[5]  = ky * up.y; world.m[6]  = kz * back.y;
+                world.m[8]  = kx * right.z; world.m[9]  = ky * up.z; world.m[10] = kz * back.z;
+                world.m[12] = -kx * (Math::Dot(mid, right) + v.cx - ox);
+                world.m[13] = -ky * (Math::Dot(mid, up) + v.cy + oy);
+                world.m[14] = 0.5 - kz * Math::Dot(mid, back);
+                renderer.Submit(m_scene.GetTriangles(), world, PrimitiveType::Triangle, true);
+                // 边往相机挪一点
+                const double toward = std::max(1.0, depth * 1e-4);
+                const VertexColor ink(0.18f, 0.18f, 0.20f, 1.0f);
+                m_edgeVerts.clear();
+                for (const Math::Point3& p : m_scene.GetEdges())
+                    m_edgeVerts.push_back({ { static_cast<float>(p.x + back.x * toward), static_cast<float>(p.y + back.y * toward),
+                                              static_cast<float>(p.z + back.z * toward) }, ink });
+                if (!m_edgeVerts.empty())
+                    renderer.Submit(m_edgeVerts, world, PrimitiveType::Line, true);
+            }
+        }
+
+        // 标题栏、各视口画的、标题：盖在上面；选中的视口用强调色，拖动时框跟着光标
+        m_planVerts.clear();
+        Expand(m_planVerts, *m_sheet, [&](std::optional<Bim::Id> owner) { return owner && Selected(*owner); });
+        for (const Bim::Render::Frame& f : m_sheetFrames)
+            if (Selected(f.viewport))
+            {
+                const float dx = m_drag == Drag::Viewport ? m_viewportShift.x : 0.0f, dy = m_drag == Drag::Viewport ? m_viewportShift.y : 0.0f;
+                const Px lo{ f.lo.first + dx, f.lo.second + dy }, hi{ f.hi.first + dx, f.hi.second + dy };
+                const std::vector<Px> box{ lo, { hi.first, lo.second }, hi, { lo.first, hi.second } };
+                for (const auto& [p, q] : Dashes(box, true, std::vector<float>{ 6.0f * m_dpiScale, 4.0f * m_dpiScale }))
+                    Segment(m_planVerts, p, q, 1.5f * m_dpiScale, Picked);
+            }
+        renderer.Submit(m_planVerts, px, PrimitiveType::Triangle, false);
+    }
+
+    void MainFrame::OnSheetPointer(const MiniGUI::ViewportPointerEvent& e)
+    {
+        using namespace MiniGUI;
+        if (!m_sheetView)
+            return;
+        Bim::Render::View& v = *m_sheetView;
+        switch (e.type)
+        {
+        case PointerEventType::Down:
+            if (m_drag == Drag::None)
+            {
+                m_lastPixel = e.pixel;
+                m_downPixel = e.pixel;
+                // 按在选中的视口上：拖动挪它，否则平移
+                const auto hit = e.button == MouseButton::Left ? SheetPick(e.pixel) : std::nullopt;
+                m_drag = hit && Selected(*hit) ? Drag::Viewport : Drag::Pan;
+                m_viewportShift = {};
+            }
+            break;
+        case PointerEventType::Up:
+        {
+            const bool click = std::hypot(e.pixel.x - m_downPixel.x, e.pixel.y - m_downPixel.y) <= 4.0f * m_dpiScale;
+            if (m_drag == Drag::Viewport && !click)
+            {
+                // 挪选中的视口：图纸上的毫米
+                std::vector<Bim::Id> ids;
+                for (const Bim::Id id : m_selection)
+                    if (const Bim::Element* x = m_session.GetModel().elements.Get(id); x && x->As<Bim::Viewport>())
+                        ids.push_back(id);
+                const Bim::Json by = Bim::Json::array({ m_viewportShift.x / v.scale, -m_viewportShift.y / v.scale });
+                m_drag = Drag::None;
+                if (!ids.empty())
+                    RunCommand("move", Bim::Json{ { "ids", ids }, { "by", by } }, N_("Could not move the viewport"));
+                m_viewport->RequestRender();
+            }
+            else if (e.button == MouseButton::Left && click)
+            {
+                // 单击：选中光标下的视口（Ctrl 加进或拿出）
+                const std::optional<Bim::Id> hit = SheetPick(e.pixel);
+                const bool ctrl = (e.modifiers & static_cast<uint8_t>(ModifierKey::Ctrl)) != 0;
+                std::vector<Bim::Id> picked = ctrl ? m_selection : std::vector<Bim::Id>{};
+                if (hit)
+                {
+                    const auto at = std::find(picked.begin(), picked.end(), *hit);
+                    if (at == picked.end())
+                        picked.push_back(*hit);
+                    else
+                        picked.erase(at);
+                }
+                SetSelection(std::move(picked));
+            }
+            if (e.buttons == 0)
+                m_drag = Drag::None;
+            break;
+        }
+        case PointerEventType::Move:
+            if (m_drag == Drag::Pan)
+            {
+                v.cx -= (e.pixel.x - m_lastPixel.x) / v.scale;
+                v.cy += (e.pixel.y - m_lastPixel.y) / v.scale;
+                m_lastPixel  = e.pixel;
+                m_sheetDirty = true;
+                m_viewport->RequestRender();
+            }
+            else if (m_drag == Drag::Viewport)
+            {
+                m_viewportShift = { e.pixel.x - m_downPixel.x, e.pixel.y - m_downPixel.y };
+                m_viewport->RequestRender();
+            }
+            break;
+        case PointerEventType::Wheel:
+            if (e.wheelDelta.y != 0.0f)
+            {
+                const Bim::P2 at = v.ToMm({ e.pixel.x, e.pixel.y });
+                v.scale = std::clamp(v.scale / std::pow(0.85, static_cast<double>(e.wheelDelta.y)), 0.05, 500.0);
+                v.cx = at.x - (e.pixel.x - v.width / 2.0) / v.scale;
+                v.cy = at.y + (e.pixel.y - v.height / 2.0) / v.scale;
+                m_sheetDirty = true;
                 m_viewport->RequestRender();
             }
             break;

@@ -446,6 +446,81 @@ namespace MiniBIM
         m_ui->OpenPopup(std::move(dialog));
     }
 
+    void MainFrame::OpenPlaceView()
+    {
+        const Bim::Model& m = m_session.GetModel();
+        const Bim::Sheet* sheet = m_sheetOf ? m.GetSheet(*m_sheetOf) : nullptr;
+        if (!sheet)
+            return;
+        // 还没放上图纸的视图：标高的平面与平面视图（相关视图除外）、立面、剖面、明细表（每个项目都有的也算）、默认三维视图
+        std::vector<std::string> names;
+        const auto free = [&](Bim::Guid g) { return !m.ViewportOf(g); };
+        for (const auto& [id, l] : m.Levels())
+            if (free(m.GuidOf(id)))
+                names.push_back(l->name);
+        for (const auto& [id, e] : m.elements.Items())
+            if (const Bim::PlanView* v = e->As<Bim::PlanView>(); v && !v->parent && free(m.GuidOf(id)))
+                names.push_back(v->name);
+        for (const auto& [id, e] : m.elements.Items())
+            if (const Bim::Section* sv = m.GetSection(m.GuidOf(id)); sv && free(m.GuidOf(id)))
+                names.push_back(sv->name);
+        for (const Bim::Schedules::Builtin& b : Bim::Schedules::Views)
+        {
+            const auto [id, sc] = Bim::Schedules::Standard(m, b.category);
+            if (!id || free(m.GuidOf(*id)))
+                names.push_back(sc.name);
+        }
+        for (const auto& [id, e] : m.elements.Items())
+            if (const Bim::Schedule* sc = e->As<Bim::Schedule>(); sc && !Bim::Schedules::BuiltinOf(&sc->name, nullptr) && free(m.GuidOf(id)))
+                names.push_back(sc->name);
+        const auto d3 = m.Default3D();
+        if (!d3 || free(m.GuidOf(*d3)))
+            names.push_back(Bim::View3D::DefaultName);
+
+        struct State
+        {
+            int     chosen = 0;
+            Dialog* dialog = nullptr;
+        };
+        auto d = std::make_shared<State>();
+        auto dialog = std::make_unique<Dialog>(Tr("Place View"));
+        d->dialog = dialog.get();
+        Node* body = d->dialog->GetBody();
+        LayoutStyle& bs = body->EditLayoutStyle();
+        bs.direction = FlexDirection::Column;
+        bs.gap       = 8.0f;
+        bs.width     = 420.0f;
+        body->AddChild<Label>(Format(Tr("A view not on a sheet yet goes on {0} - {1}, right of the views on it, at its own scale."),
+                                     { sheet->number, sheet->name }),
+                              12.0f, Theme::TextDim)
+            ->SetWrap(true);
+        auto* message = body->AddChild<Label>(names.empty() ? Tr("Every view is on a sheet already.") : std::string(), 12.0f, Theme::Danger);
+        message->SetWrap(true);
+        if (!names.empty())
+        {
+            Node* row = Row(body);
+            Sized(row->AddChild<Label>(Tr("View"), 13.0f), 70.0f);
+            auto* views = Sized(row->AddChild<ComboBox>(names, 0), 300.0f);
+            views->SetMaxVisibleItems(14);
+            views->SetOnChanged([d](int i) { d->chosen = i; });
+        }
+        d->dialog->AddButton(Tr("Cancel"), [d] { d->dialog->Close(); });
+        if (!names.empty())
+            d->dialog->AddButton(Tr("Place"), [this, d, names, message, number = sheet->number]
+            {
+                if (d->chosen < 0 || d->chosen >= static_cast<int>(names.size()))
+                    return;
+                std::string error;
+                if (!RunQuiet("place", Bim::Json{ { "sheet", number }, { "view", names[static_cast<size_t>(d->chosen)] } }, error))
+                {
+                    message->SetText(error);
+                    return;
+                }
+                d->dialog->Close();
+            }, DialogButtonRole::Default);
+        m_ui->OpenPopup(std::move(dialog));
+    }
+
     void MainFrame::OpenCreateTemplate()
     {
         struct State

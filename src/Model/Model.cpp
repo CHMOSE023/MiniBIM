@@ -450,6 +450,8 @@ namespace MiniBIM::Bim
             const char* operator()(const Schedule&) const { return "schedule"; }
             const char* operator()(const Section&) const { return "section"; }
             const char* operator()(const Elevation&) const { return "elevation"; }
+            const char* operator()(const Sheet&) const { return "sheet"; }
+            const char* operator()(const Viewport&) const { return "viewport"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -465,6 +467,12 @@ namespace MiniBIM::Bim
             void operator()(Schedule&) const {}
             void operator()(Section&) const {}
             void operator()(Elevation&) const {}
+            void operator()(Sheet&) const {}
+            void operator()(Viewport& v) const
+            {
+                f(v.sheet);
+                f(v.view);
+            }
             void operator()(PlanView& v) const
             {
                 f(v.level);
@@ -2145,7 +2153,9 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
-        std::set<std::string> levelNames, gridNames, viewNames;
+        std::set<std::string> levelNames, gridNames, viewNames, sheetNumbers;
+        // 放到图纸上的视图：一个视图只放在一张图纸上
+        std::map<Guid, Guid> placed;
         // 每个项目都有的明细表的类别：一个类别只有一个
         std::set<std::string> twins;
         // 每面墙上的门窗，按沿墙的起点排序
@@ -2307,6 +2317,53 @@ namespace MiniBIM::Bim
                 if (!viewNames.insert(sv->name).second)
                 {
                     error = who + ": another view is already named `" + sv->name + "`";
+                    return false;
+                }
+            }
+            else if (const Sheet* sh = e.As<Sheet>())
+            {
+                if (!TextOk(who, "number", sh->number, error) || !TextOk(who, "name", sh->name, error))
+                    return false;
+                if (Text::Trim(sh->number).empty())
+                {
+                    error = who + ": a sheet needs a number";
+                    return false;
+                }
+                if (!sheetNumbers.insert(sh->number).second)
+                {
+                    error = who + ": another sheet is already numbered `" + sh->number + "`";
+                    return false;
+                }
+                if (!PaperOf(sh->size))
+                {
+                    error = who + ": size `" + sh->size + "` isn't A0, A1, A2, A3 or A4";
+                    return false;
+                }
+            }
+            else if (const Viewport* vp = e.As<Viewport>())
+            {
+                if (!GetSheet(vp->sheet))
+                {
+                    error = who + ": " + Shown(vp->sheet) + " isn't a sheet";
+                    return false;
+                }
+                const std::string* name = ViewName(vp->view);
+                if (!name)
+                {
+                    error = who + ": " + Shown(vp->view) + " isn't a plan, a section, an elevation, a schedule or a 3D view";
+                    return false;
+                }
+                if (!Point(who, vp->at, error))
+                    return false;
+                if (!(std::isfinite(vp->scale) && vp->scale >= 1.0 && vp->scale <= 100000.0))
+                {
+                    error = who + ": scale 1 : " + Num(vp->scale) + " isn't between 1 : 1 and 1 : 100000";
+                    return false;
+                }
+                if (const auto [at, fresh] = placed.emplace(vp->view, vp->sheet); !fresh)
+                {
+                    const Sheet* other = GetSheet(at->second);
+                    error = who + ": " + *name + " is on sheet " + (other ? other->number : std::string()) + " already; a view goes on one sheet";
                     return false;
                 }
             }

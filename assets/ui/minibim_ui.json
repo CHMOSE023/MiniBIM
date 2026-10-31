@@ -116,6 +116,8 @@
     "view.schedule":   { "icon": "Schedule.png" },
     "view.section":    { "icon": "Section.png" },
     "view.elevation":  { "icon": "Elevation.png" },
+    "view.sheet":      { "icon": "Sheet.png" },
+    "view.placeView":  { "icon": "PlaceView.png" },
     "view.filters":    { "icon": "ViewFilters.png" },
     "view.template":   { "icon": "ViewTemplate.png" },
     "help.about":   { "icon": "About.png" }
@@ -227,6 +229,7 @@
           "panels": [
             { "title": "Graphics", "items": [ "view.visibility", "view.filters", "view.template", "view.crop" ] },
             { "title": "Create", "items": [ "view.3d", "view.plan", "view.duplicate", "view.detailing", "view.dependent", "view.section", "view.elevation", "view.schedule", "view.levelUp", "view.levelDown" ] },
+            { "title": "Sheet Composition", "items": [ "view.sheet", "view.placeView" ] },
             { "title": "Navigate", "items": [ "view.home", "view.zoomFit" ] },
             { "title": "Palettes", "items": [ "view.properties", "view.browser" ] }
           ]

@@ -110,6 +110,10 @@ namespace MiniBIM
             [this] { return m_tool == Tool::Section; });
         add("view.elevation", N_("Elevations"), N_("Elevations of the building's four sides, those it doesn't have yet"), [this] { MakeElevations(); },
             [this] { return !m_sketch.has_value(); });
+        add("view.sheet", N_("Sheet"), N_("A new sheet: paper with a title block, for views to go on"), [this] { NewSheet(); },
+            [this] { return !m_sketch.has_value(); });
+        add("view.placeView", N_("Place View"), N_("Put a view not on a sheet yet on the sheet shown"), [this] { OpenPlaceView(); },
+            [this] { return m_sheetOf.has_value(); });
         add("view.schedule", N_("Schedule/Quantities"), N_("A new schedule: a table of the elements of a category, their fields as columns"),
             [this] { OpenNewSchedule(); });
         add("view.filters", N_("Filters"), N_("The project's view filters: the elements of some categories that meet rules, for views to hide or draw another way"),

@@ -137,6 +137,31 @@ namespace MiniBIM::Bim
         return e->As<Bim::Elevation>();
     }
 
+    const Sheet* Model::GetSheet(Guid key) const
+    {
+        const Element* e = elements.Get(key);
+        return e ? e->As<Sheet>() : nullptr;
+    }
+
+    std::optional<Id> Model::ViewportOf(Guid view) const
+    {
+        for (const auto& [id, e] : elements.Items())
+            if (const Viewport* v = e->As<Viewport>(); v && Same(v->view, view))
+                return id;
+        return std::nullopt;
+    }
+
+    std::optional<P2> PaperOf(std::string_view size)
+    {
+        const std::string s = Text::AsciiLower(Text::Trim(std::string(size)));
+        if (s == "a0") return P2{ 1189.0, 841.0 };
+        if (s == "a1") return P2{ 841.0, 594.0 };
+        if (s == "a2") return P2{ 594.0, 420.0 };
+        if (s == "a3") return P2{ 420.0, 297.0 };
+        if (s == "a4") return P2{ 297.0, 210.0 };
+        return std::nullopt;
+    }
+
     std::optional<std::array<P2, 2>> Model::BuildingBox() const
     {
         std::optional<std::array<P2, 2>> box;

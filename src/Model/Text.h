@@ -9,6 +9,7 @@ namespace MiniBIM::Bim::Text
 {
     std::string_view Trim(std::string_view s);
     std::string      AsciiLower(std::string_view s);
+    std::string      AsciiUpper(std::string_view s);
     bool             StartsWith(std::string_view s, std::string_view prefix);
     bool             EndsWith(std::string_view s, std::string_view suffix);
     std::string      ReplaceAll(std::string s, std::string_view from, std::string_view to);

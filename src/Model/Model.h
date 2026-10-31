@@ -174,6 +174,28 @@ namespace MiniBIM::Bim
         P2 Out(Facing f);
     }
 
+    // 图纸：ISO 纸张（A0 到 A4，横放），有标题栏，上面放视图（第 5e4 步，移植自 BIMCraft model.rs 的 Sheet）
+    struct Sheet
+    {
+        std::string number;
+        std::string name;
+        std::string size = "A3";
+        bool operator==(const Sheet&) const = default;
+    };
+
+    // 纸张 size（A0 到 A4，不分大小写）横放时的宽与高，毫米；别的为空
+    std::optional<P2> PaperOf(std::string_view size);
+
+    // 图纸上的视图：标高的平面、平面视图、剖面、立面、明细表或三维视图，中心在离纸左下角 at 毫米处，比例 1 : scale（明细表保持自己的大小）
+    struct Viewport
+    {
+        Guid   sheet;
+        Guid   view;
+        P2     at;
+        double scale = 100.0;
+        bool operator==(const Viewport&) const = default;
+    };
+
     struct Grid
     {
         std::string name;
@@ -675,7 +697,8 @@ namespace MiniBIM::Bim
     {
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
                                      Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass,
-                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D, Schedule, Section, Elevation>;
+                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D, Schedule, Section, Elevation,
+                                     Sheet, Viewport>;
         Variant v;
 
         Element() = default;
@@ -1074,6 +1097,10 @@ namespace MiniBIM::Bim
         std::optional<Id> Default3D() const;
         // 剖面或立面 key；别的元素为空
         const Section* GetSection(Guid key) const;
+        // 图纸 key；不是图纸时为空
+        const Sheet* GetSheet(Guid key) const;
+        // 视图 view 放在的视口；没放时为空（一个视图只放在一张图纸上）
+        std::optional<Id> ViewportOf(Guid view) const;
         // 墙（含墙面）与楼板在平面上的外框；没有墙也没有楼板时为空
         std::optional<std::array<P2, 2>> BuildingBox() const;
         // at 在建筑的哪一侧：离建筑中心更远的那个方向

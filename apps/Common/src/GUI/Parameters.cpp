@@ -398,6 +398,7 @@ namespace MiniBIM::Props
             { "downconductor", N_("Down Conductor"), N_("Down Conductors") },
             { "groundconductor", N_("Earthing Conductor"), N_("Earthing Conductors") },
             { "section", N_("Section"), N_("Sections") },   { "elevation", N_("Elevation View"), N_("Elevations") },
+            { "sheet", N_("Sheet"), N_("Sheets") },         { "viewport", N_("Viewport"), N_("Viewports") },
             { "mass", N_("Mass"), N_("Masses") },           { "massfloor", N_("Mass Floor"), N_("Mass Floors") },
             { "dimension", N_("Dimension"), N_("Dimensions") }, { "text", N_("Text Note"), N_("Text Notes") },
             { "spot", N_("Spot Elevation"), N_("Spot Elevations") }, { "tag", N_("Tag"), N_("Tags") },

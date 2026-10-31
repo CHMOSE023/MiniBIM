@@ -199,6 +199,14 @@ msgid "Crop View"
 msgstr ""
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Sheet"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Place View"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Section"
 msgstr ""
 
@@ -1115,6 +1123,14 @@ msgid "Elevations of the building's four sides, those it doesn't have yet"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new sheet: paper with a title block, for views to go on"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Put a view not on a sheet yet on the sheet shown"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Schedule/Quantities"
 msgstr ""
 
@@ -1658,7 +1674,7 @@ msgstr ""
 msgid "Could not build the sample house"
 msgstr ""
 
-#: apps/Common/src/GUI/MainFrame.cpp assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Schedules.cpp assets/ui/minibim_ui.json
 msgid "View"
 msgstr ""
 
@@ -1672,6 +1688,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Drag to pan, scroll to zoom; click what it cuts to select it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to pan, scroll to zoom; click a view to select it, drag a selected one to move it"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
@@ -1811,6 +1831,10 @@ msgstr ""
 msgid "Section: {0}"
 msgstr ""
 
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Sheet: {0} - {1}"
+msgstr ""
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Multiple Categories"
 msgstr ""
@@ -1861,6 +1885,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Views (all)"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Sheets (all)"
 msgstr ""
 
 #: apps/Common/src/GUI/Panels.cpp
@@ -2176,6 +2204,18 @@ msgid "Earthing Conductors"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Sheets"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Viewport"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Viewports"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
 msgstr ""
 
@@ -2239,6 +2279,14 @@ msgstr[1] ""
 
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Could not make the elevations"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not make the sheet"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not move the viewport"
 msgstr ""
 
 #: apps/Common/src/GUI/Recent.cpp
@@ -2446,6 +2494,18 @@ msgid "It picks out {0} element."
 msgid_plural "It picks out {0} elements."
 msgstr[0] ""
 msgstr[1] ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "A view not on a sheet yet goes on {0} - {1}, right of the views on it, at its own scale."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Every view is on a sheet already."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Place"
+msgstr ""
 
 #: apps/Common/src/GUI/Schedules.cpp
 msgid "View Template {0}"
@@ -3526,6 +3586,10 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Draw"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Sheet Composition"
 msgstr ""
 
 #: assets/ui/minibim_ui.json

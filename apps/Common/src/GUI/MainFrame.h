@@ -205,6 +205,10 @@ namespace MiniBIM
         void ShowSection(Bim::Guid view);
         // 建筑还没有的立面（elevation 命令，不给参数）
         void MakeElevations();
+        // 显示图纸 sheet（SheetView.cpp）；新建一张图纸并显示它；把一个还没放的视图放到显示的图纸上（对话框）
+        void ShowSheet(Bim::Guid sheet);
+        void NewSheet();
+        void OpenPlaceView();
         // 正在显示的平面：平面视图，或标高自己的平面（m_planLevel 有值时才调）
         Bim::Guid PlanKey() const { return m_planOf.value_or(*m_planLevel); }
         // 上一层（by = 1）、下一层（by = -1）的平面
@@ -368,6 +372,14 @@ namespace MiniBIM
         // 剖面与立面：剖到的与看到的由三维场景算（ModelScene::Cut），看到的形体按消隐画，上面是 Render::DrawSection 的显示列表
         void RenderSection(IRenderer& renderer, int pixelWidth, int pixelHeight);
         void OnSectionPointer(const MiniGUI::ViewportPointerEvent& e);
+        // 剖面 sv 看到的形体：白色的面与边，按 v（沿线、向上的毫米到 fw × fh 像素）画成消隐线；far 是看到的最远处离线多远
+        void SubmitSectionFaces(IRenderer& renderer, const Bim::Section& sv, const ModelScene::SectionCut& cut, double far, const Bim::Render::View& v,
+                                float fw, float fh);
+        // 图纸：纸、三维视图与剖面看到的形体画在各视口的框里，上面是 Render::DrawSheet 的显示列表；拖动选中的视口挪它
+        void RenderSheet(IRenderer& renderer, int pixelWidth, int pixelHeight);
+        void OnSheetPointer(const MiniGUI::ViewportPointerEvent& e);
+        // 图纸上像素 at 处的视口：显示列表里归它的，或在它的框里
+        std::optional<Bim::Id> SheetPick(MiniGUI::Vec2 at) const;
         // 平面的名称（标高名），以及选中的元素：状态栏用
         std::string PlanStatus() const;
 
@@ -505,7 +517,7 @@ namespace MiniBIM
         MiniGUI::TextureId m_viewTex = MiniGUI::InvalidTextureId;
         void*              m_viewSRV = nullptr;
 
-        enum class Drag { None, Orbit, Pan };
+        enum class Drag { None, Orbit, Pan, Viewport };
         Drag         m_drag = Drag::None;
         MiniGUI::Vec2 m_lastPixel;
 
@@ -521,6 +533,14 @@ namespace MiniBIM
         ModelScene::SectionCut           m_sectionCut;       // 剖到的与看到的
         uint64_t                         m_sectionCutVersion = 0;   // 算它时的场景版本；0 = 要重算
         double                           m_sectionFar = 1.0; // 看到的最远处离线多远（深度归一化用）
+        std::optional<Bim::Guid>         m_sheetOf;          // 显示的图纸；有它时 m_planLevel、m_sectionOf 为空
+        std::optional<Bim::Render::View> m_sheetView;        // 纸的毫米到像素；空 = 下次画时框住整张纸
+        std::unique_ptr<Bim::Render::Drawing> m_sheet;       // 图纸的显示列表
+        std::vector<Bim::Render::Frame>  m_sheetFrames;      // 各视口的框，同 m_sheet 一起算
+        bool                             m_sheetDirty = true;
+        std::map<Bim::Guid, ModelScene::SectionCut> m_sheetCuts;   // 图纸上各剖面剖到的与看到的
+        uint64_t                         m_sheetCutVersion = 0;    // 算它们时的场景版本；0 = 要重算
+        MiniGUI::Vec2                    m_viewportShift;    // 拖动视口时挪了多少像素
         std::vector<Bim::Id>             m_selection;        // 选中的元素（平面上单击、项目浏览器）
         bool                             m_planClick = false;// 左键按下后没拖动：松开时拾取
         MiniGUI::Vec2                    m_downPixel;

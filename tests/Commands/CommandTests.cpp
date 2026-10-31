@@ -3199,6 +3199,99 @@ namespace
         }
     }
 
+    // 图纸与视口（第 5e4 步，移植自 BIMCraft sheet.rs 的测试与 tests.rs 的 sheets_hold_views）
+    void TestSheets()
+    {
+        const Id level1 = 100000;
+        {
+            Session s;
+            House(s);
+            // 编号从 A101 起，名称随项目语言，A3 横放
+            const Id a101 = Run(s, "sheet", R"({"name": "Plans"})")["id"].get<Id>();
+            Json e = ElementOf(s, a101);
+            Check(e["number"] == "A101" && e["name"] == "Plans" && e["size"] == "A3" && e["paper"] == Json::array({ 420.0, 297.0 }), "图纸：A101、A3：" + e.dump());
+            Check(Run(s, "sheet", R"({"size": "a1"})")["number"] == "A102", "图纸：下一个编号");
+            Check(ElementOf(s, a101 + 1)["name"] == "Unnamed" && ElementOf(s, a101 + 1)["size"] == "A1", "图纸：没给名称时为 Unnamed，纸张大写");
+            Check(Contains(Refused(s, "sheet", R"({"size": "B2"})"), "A0, A1"), "图纸：没有的纸张");
+            Check(Contains(Refused(s, "sheet", R"({"number": "A101"})"), "numbered"), "图纸：编号不重");
+            // 放平面：默认在标题栏以上的中间，比例是视图的
+            Json r = Run(s, "place", R"({"sheet": "A101", "view": "Level 1"})");
+            const Id vp1 = r["id"].get<Id>();
+            Check(r["at"] == Json::array({ 215.0, 168.5 }), "放视图：标题栏以上的中间：" + r.dump());
+            e = ElementOf(s, vp1);
+            Check(e["scale"] == 100.0 && e["title"] == "Level 1" && e["size"][0].get<double>() > 80.0, "放视图：视图的比例与大小：" + e.dump());
+            Check(Contains(Refused(s, "place", R"({"sheet": "A102", "view": "Level 1"})"), "one sheet"), "放视图：一个视图只放一张图纸");
+            Check(Contains(Refused(s, "place", R"({"sheet": "B1", "view": "Level 2"})"), "no sheet"), "放视图：没有的图纸");
+            Check(Contains(Refused(s, "place", R"({"sheet": "A101", "view": "Nowhere"})"), "no level"), "放视图：没有的视图");
+            // 第二个放在第一个右边
+            const Id sec = Run(s, "section", R"({"start": [-1000, 3000], "end": [9000, 3000]})")["id"].get<Id>();
+            r = Run(s, "place", Json{ { "sheet", a101 }, { "view", sec }, { "scale", 200 } });
+            Check(r["at"][0].get<double>() > 215.0 && ElementOf(s, r["id"].get<Id>())["scale"] == 200.0, "放视图：第二个在第一个右边：" + r.dump());
+            // 明细表与三维视图第一次放上时建出来
+            const Id a102 = a101 + 1;
+            r = Run(s, "place", R"({"sheet": "A102", "view": "Room Schedule", "at": [100, 220]})");
+            Check(ElementOf(s, r["id"].get<Id>())["title"] == "Room Schedule", "放视图：内置明细表建出来");
+            r = Run(s, "place", Json{ { "sheet", a102 }, { "view", "{3D}" }, { "at", { 300, 150 } }, { "scale", 200 } });
+            Check(s.GetModel().Default3D().has_value() && ElementOf(s, r["id"].get<Id>())["title"] == "{3D}", "放视图：三维视图建出来");
+            const Id vp3d = r["id"].get<Id>();
+            Check(ElementOf(s, a102)["viewports"].size() == 2, "图纸：列出它的视口");
+            // 视口在图纸上挪，图纸挪不了
+            Run(s, "move", Json{ { "ids", { vp3d } }, { "by", { 10, -20 } } });
+            Check(ElementOf(s, vp3d)["at"] == Json::array({ 310.0, 130.0 }), "视口：在图纸上挪");
+            Check(Contains(Refused(s, "move", Json{ { "ids", { a102 } }, { "by", { 10, 0 } } }), "no place in plan"), "图纸：没有平面位置");
+            // 项目文件往返
+            const std::string path = Temp("sheets.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            Check(ElementOf(t, a101) == ElementOf(s, a101) && ElementOf(t, vp3d) == ElementOf(s, vp3d), "图纸：项目文件往返");
+            // 删除：图纸带走它的视口，视图带走放它的视口
+            Run(s, "delete", Json{ { "ids", { sec } } });
+            Check(ElementOf(s, a101)["viewports"] == Json::array({ vp1 }), "删除视图带走它的视口");
+            const Json gone = Run(s, "delete", Json{ { "ids", { a102 } } })["deleted"];
+            Check(gone.size() == 3 && ElementOf(s, vp3d).is_null() && s.GetModel().Default3D().has_value(), "删除图纸带走视口，视图留着");
+        }
+        {
+            // 图纸画出标题栏与视图：平面的墙在视口的框里，点它选中视口；标题栏归图纸
+            Session s;
+            House(s);
+            const Id sheet = Run(s, "sheet", R"({"name": "Plans"})")["id"].get<Id>();
+            const Id vp = Run(s, "place", R"({"sheet": "A101", "view": "Level 1"})")["id"].get<Id>();
+            const Model& m = s.GetModel();
+            const Guid g = m.GuidOf(sheet);
+            const Render::View page = Render::FitPaper(P2{ 420.0, 297.0 }, 1680, 1188);
+            const Render::Drawing d = Render::DrawSheet(m, g, page, {});
+            const std::vector<Render::Frame> frames = Render::Frames(m, g, page);
+            Check(frames.size() == 1 && frames[0].viewport == vp, "图纸：一个视口的框");
+            const Render::View& inner = frames[0].inner;
+            Check(std::abs(inner.scale - page.scale / 100.0) < 1e-9, "图纸：平面按 1 : 100");
+            // 南墙（y = 0）的中点在框里，灰色填充，归视口
+            const Render::Px wall = inner.ToPx(P2{ 4000.0, 0.0 });
+            Check(wall.first > frames[0].lo.first && wall.first < frames[0].hi.first && wall.second > frames[0].lo.second && wall.second < frames[0].hi.second,
+                  "图纸：墙在框里");
+            bool poche = false;
+            for (size_t i = 0; i < d.prims.size(); ++i)
+                poche |= d.prims[i].kind == Render::Prim::Kind::Fill && d.prims[i].color == Render::Poche && d.owners[i] == std::optional<Id>(vp);
+            Check(poche, "图纸：剖到的墙灰色填充，归视口");
+            Check(d.Pick(wall, 3.0f) == std::optional<Id>(vp), "图纸：点墙选中视口");
+            Check(d.Pick(page.ToPx(P2{ 20.0, 150.0 }), 3.0f) == std::optional<Id>(sheet), "图纸：边框归图纸");
+            // 明细表的框是表格的大小：标题、列标题、一行房间与合计
+            Run(s, "room", R"({"point": [4000, 3000], "name": "Living"})");
+            const Id table = Run(s, "place", R"({"sheet": "A101", "view": "Room Schedule", "at": [80, 250]})")["id"].get<Id>();
+            const Json size = ElementOf(s, table)["size"];
+            Check(size[0].get<double>() > 40.0 && size[1].get<double>() > 20.0, "图纸：明细表的大小：" + size.dump());
+            const Render::Drawing d2 = Render::DrawSheet(s.GetModel(), g, page, {});
+            Check(Has(d2, table) && Has(d2, vp), "图纸：画明细表的表格");
+        }
+        {
+            // 葡萄牙语的项目：图纸的名称与标题栏的词
+            Session s;
+            Run(s, "new", R"({"language": "pt"})");
+            const Id sheet = Run(s, "sheet", Json::object())["id"].get<Id>();
+            Check(ElementOf(s, sheet)["name"] == "Sem nome", "图纸：葡萄牙语的名称");
+        }
+    }
+
     void TestSchedules()
     {
         const Id level1 = 100000;
@@ -3699,6 +3792,7 @@ int main()
     TestViews();
     TestSchedules();
     TestSections();
+    TestSheets();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

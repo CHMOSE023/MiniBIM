@@ -25,6 +25,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Massing.h` | `massing.rs` | 体量做出的元素的记号（`Massing::FloorMark`、`Massing::Face`）、按面重建（`Massing::Follow`）、放样的轮廓与三角形、竖直的面、放样的检查 |
 | `src/Model/Graphics.h` | `graphics.rs` | 视图的可见性 / 图形：`Override`（隐藏、看到的与剖到的线和填充、半色调、透明度）、`Graphics`（按类别、按元素的覆盖，比例、详细程度、视觉样式）、`Look`（落到各元素上的样子）、视图画的类别 `GraphicsOf::Drawn`；套用的过滤器 `Applied`、跟随的样板（`Graphics::Resolved`、`Graphics::ControlledBy`，样板控制的组 `Group`） |
 | `src/Model/Schedule.h` | `schedule.rs` | 明细表：字段（各类别自己的、族参数、计算公式）、过滤条件、排序、分组与总计，表格 `Schedules::TableOf`、内置的六张 `Schedules::Views`、`Schedules::ToCsv`；视图过滤器的规则也用它（`Schedules::Picks`） |
+| `src/Model/Sheets.cpp` | `sheet.rs` | 图纸：标题栏、视口的框（`Render::Frames`）与默认位置（`Render::SpotOn`）、明细表的表格，`Render::DrawSheet`（声明在 `Render.h`） |
 | `src/Model/Views.cpp` | `model.rs`、`graphics.rs` 的视图部分 | 平面视图与三维视图：`Model::PlanLevel`、`PlanSource`（相关视图跟父视图）、`ViewRangeOf`、`CropOf`、`ViewGraphics`、`ScaleOf`、`ViewName`、`FreeViewName`、`Default3D`、`LookOf`（类别覆盖 → 过滤器 → 元素覆盖）、`CheckFollowed` |
 | `src/Model/Styles.h` | `lines.rs`、`fills.rs`、`model.rs` 的 `TextType` | 注释的库条目：线型图案、线样式、填充图案、填充区域类型、文字类型，各语言的默认条目与检查 |
 | `src/Model/Curve.h` | `curves.rs` | 详图线的曲线：多段线（每段直线或圆弧）与圆；长度、映射、检查（椭圆与样条没有移植，读文件时略去那条线） |
@@ -125,6 +126,14 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   由界面从三维场景算出，`ModelScene::Cut`）灰色填充与轮廓、标高（虚线，名称与高度写在右端外）、线穿过并在深度以内的轴网、视图名称；
   `Render::SectionShows` 是适配视口用的范围。没移植的：剖面里的注释（文字、高程点、详图线）、复合墙的层线、剖到体量的线、剖面导出 PNG、拖动裁剪框；
   三维场景不建默认三维视图隐藏的元素，剖面也就看不到它们
+- 图纸与视口（5e4，移植自 `sheet.rs` 与 `model.rs` 的 Sheet、Viewport）：元素 `Sheet`（编号、名称、纸张 A0 到 A4，横放，`PaperOf`）与 `Viewport`
+  （图纸、视图、离纸左下角的毫米 `at`、比例）；编号不重，一个视图只放在一张图纸上（`Model::ViewportOf`）。命令 `sheet`（编号默认 A101 起，名称默认项目语言的 Unnamed）
+  与 `place`（视图按名称或 ID；内置明细表与 `{3D}` 第一次放上时建出来；没给 `at` 时 `Render::SpotOn`：已放的右边，否则标题栏以上的中间）；`move` 在图纸上挪视口
+  （纸上毫米），图纸、明细表、三维视图、平面视图不能挪；删除连带：图纸或视图带走视口。`inspect` 报出图纸的 `paper`、`viewports`，视口的 `title`、`size`。
+  `Sheets.cpp`：`Render::DrawSheet` 按界面的取景（纸的毫米到像素）直接画边框与标题栏（归图纸）、各视口里的平面（`Render::Draw`）、剖面（`Render::DrawSection`，
+  剖到的由界面经 `Render::SheetCuts` 给）、明细表的表格（标题、列标题与合计用项目语言的词）与框下的视图标题（都归视口）；`Render::Frames` 是各视口的框与
+  视图的取景（三维视图为相机平面上离 `Frame::middle` 的毫米），三维视图的样子与剖面看到的形体由界面画进框里。与 BIMCraft 不同：不按每毫米 5 像素画成图片再缩放。
+  没移植的：图纸上的文字、详图线与填充区域，导出 PDF 与 PNG，标题栏族、修订、图纸的改名（要 `sheet` 命令的编辑）
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
@@ -168,7 +177,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   `update_by_face`、放样）与注释（`TestAnnotations`：各注释命令、删除标高的连带、项目文件往返与平面、BIMCraft 旧文件的文字大小与别的视图里的注释、测量）与视图（`TestViews`：隐藏类别与元素、线与填充的覆盖、半色调、三维视图、比例与详细程度、复制视图三种方式、
   平面视图里的注释、相关视图、裁剪、删除的连带、项目文件往返）与明细表（`TestSchedules`：字段、计算、过滤、排序、分组、总计、内置的名称、CSV，过滤器的隐藏与覆盖，
   样板的跟随、被控制的组被拒、样板改了跟着变、样板的视图范围、文件往返）与剖面（`TestSections`：剖面与四个立面的方向、名称（葡萄牙语、西班牙语）、
-  重名被拒、镜像、文件往返、比例与图形、裁剪缩线，平面上的记号，剖面图的填充、标高与轴网）
+  重名被拒、镜像、文件往返、比例与图形、裁剪缩线，平面上的记号，剖面图的填充、标高与轴网）与图纸（`TestSheets`：编号、纸张、放视图的默认位置与比例、
+  一个视图一张图纸、明细表与三维视图放上时建出来、挪视口、文件往返、删除的连带，图纸的标题栏与视口的框、拾取，明细表的大小，葡萄牙语的名称）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

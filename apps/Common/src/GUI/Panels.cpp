@@ -175,6 +175,11 @@ namespace MiniBIM
             if (const std::string* name = m.ViewName(*m_sectionOf))
                 heading = m.elements.Get(*m_sectionOf)->As<Bim::Elevation>() ? Format(Tr("Elevation: {0}"), { *name }) : Format(Tr("Section: {0}"), { *name });
         }
+        else if (m_sheetOf)
+        {
+            if (const Bim::Sheet* sh = m.GetSheet(*m_sheetOf))
+                heading = Format(Tr("Sheet: {0} - {1}"), { sh->number, sh->name });
+        }
         else
             heading = "{3D}";
 
@@ -222,7 +227,7 @@ namespace MiniBIM
                 current.insert(*d);
         }
         const std::string family = placing             ? Tr(Props::CategoryName(category, false))
-                                 : m_selection.empty() ? (m_planLevel ? Tr("Floor Plan") : m_sectionOf ? (m.elements.Get(*m_sectionOf)->As<Bim::Elevation>() ? Tr("Elevation View") : Tr("Section")) : Tr("3D View"))
+                                 : m_selection.empty() ? (m_planLevel ? Tr("Floor Plan") : m_sheetOf ? Tr("Sheet") : m_sectionOf ? (m.elements.Get(*m_sectionOf)->As<Bim::Elevation>() ? Tr("Elevation View") : Tr("Section")) : Tr("3D View"))
                                  : category.empty()    ? Tr("Multiple Categories")
                                                        : Tr(Props::CategoryName(category, false));
         m_propsBody->AddChild<Label>(family, 13.0f)->SetBold(true);
@@ -576,7 +581,7 @@ namespace MiniBIM
         }
         std::vector<Entry> views;
         views.push_back(group(Tr("Floor Plans"), true, std::move(plans)));
-        views.push_back(group(Tr("3D Views"), true, { Entry{ "{3D}", [this] { ShowModel3D(); }, !m_planLevel && !m_sectionOf, false, {} } }));
+        views.push_back(group(Tr("3D Views"), true, { Entry{ "{3D}", [this] { ShowModel3D(); }, !m_planLevel && !m_sectionOf && !m_sheetOf, false, {} } }));
         // 剖面与立面，按元素顺序
         std::vector<Entry> sections, elevations;
         for (const auto& [id, e] : m.elements.Items())
@@ -634,6 +639,42 @@ namespace MiniBIM
         }
         std::vector<Entry> top;
         top.push_back(group(Tr("Views (all)"), true, std::move(views)));
+        // 图纸：编号与名称，按编号；下面是放在它上面的视图（双击显示那个视图）
+        std::vector<std::pair<std::string, Entry>> sheets;
+        for (const auto& [id, e] : m.elements.Items())
+            if (const Bim::Sheet* sh = e->As<Bim::Sheet>())
+            {
+                const Bim::Guid g = m.GuidOf(id);
+                Entry sheet{ sh->number + " - " + sh->name, [this, g] { ShowSheet(g); }, m_sheetOf && m.Same(*m_sheetOf, g), false, {} };
+                for (const auto& [vid, x] : m.elements.Items())
+                    if (const Bim::Viewport* vp = x->As<Bim::Viewport>(); vp && m.Same(vp->sheet, g))
+                        if (const std::string* name = m.ViewName(vp->view))
+                        {
+                            const Bim::Guid view = m.GuidOf(vp->view);
+                            const bool plan = m.PlanLevel(view).has_value(), section = m.GetSection(view) != nullptr;
+                            const bool table = m.elements.Get(view)->As<Bim::Schedule>() != nullptr;
+                            const Bim::Json which{ { "name", *name } };
+                            sheet.kids.push_back(Entry{ *name, [this, view, plan, section, table, which]
+                            {
+                                if (plan && m_session.GetModel().GetPlanView(view))
+                                    ShowPlanView(view);
+                                else if (plan)
+                                    ShowPlan(view);
+                                else if (section)
+                                    ShowSection(view);
+                                else if (table)
+                                    OpenSchedule(which);
+                                else
+                                    ShowModel3D();
+                            }, false, false, {} });
+                        }
+                sheets.emplace_back(sh->number, std::move(sheet));
+            }
+        std::sort(sheets.begin(), sheets.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        std::vector<Entry> sheetEntries;
+        for (auto& [n, entry] : sheets)
+            sheetEntries.push_back(std::move(entry));
+        top.push_back(group(Tr("Sheets (all)"), true, std::move(sheetEntries)));
         top.push_back(group(Tr("Families"), false, std::move(families)));
 
         // 记下现在各分支展开着没有（按路径），重建后照旧
