@@ -164,7 +164,15 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   这一段加界面的四个选项卡（`mep.*`：七个 Run 工具按钮，十三个设备按钮是只放某几类族的构件工具）、二十个图标、两字母快捷键，
   并把 BIMCraft `mep_tests.rs` 里不要明细表、剖面的测试移植进 `CommandTests`、`IfcTests`、`ModelSceneTests`。
   留到后面的：剖面切到 run（随剖面）、明细表按系统（随明细表）、按类别隐藏与项目参数（随 5e、5f）
-- 5c 体量：体量、按面建墙 / 楼板 / 屋顶、显示体量
+- **5c 体量（已完成）**：核心移植 `massing.rs`（`src/Model/Massing.h`，剖面切体量的 `section_lines` 随剖面）与体量元素 `Mass`
+  （底面轮廓、可选的顶部轮廓放样、到顶部标高或高度），墙、楼板、屋顶带 `params`（体量的记号 `Mass Floor`、`Mass Face` 存在这里）；
+  命令 `mass`（MS）、`mass_floors`（MF）、`wall_by_face`（WB）、`floor_by_face`（FB）、`roof_by_face`（RB）、`update_by_face`（UF），
+  移动、复制、镜像、旋转、拆分、删除照 BIMCraft 处理记号；平面（剖切面穿过时的虚线轮廓）、捕捉、对齐、三维（拉伸体，放样的是三角形）、
+  IFC 导出导入（对象类型 `Mass` 的代理元素，放样的写三角面集与 `MiniBIM_Mass` 属性集，也认 `BIMCraft_Mass`）；界面的"体量"选项卡
+  （体量工具，按面建模的五个按钮对选中的体量）与六个图标。BIMCraft `tests.rs` 里不要明细表、剖面、视图图形的体量测试已移植。
+  功能区按钮的最大宽度放宽到 100（见"与 MiniCAD 的差异"）。
+  留到后面的：显示体量（`show_mass`，要视图的图形覆盖，随 5e）、体量楼层明细表与体量的明细表（随 5e）、剖面切体量（随 5e）、
+  体量的项目参数（随 5f）、顶部轮廓在特性面板里的编辑
 - 5d 注释：尺寸、高程点、详图线、填充区域、文字、标记、测量
 - 5e 视图：可见性 / 图形、过滤器、视图样板、裁剪、复制视图、剖面、立面、明细表、图纸
 - 5f 管理：项目参数、线宽、对象样式、线样式、清除未使用、填充图案
@@ -193,6 +201,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - MiniGUI：界面描述文件的节点属性 `card`（row / column / 宿主面板画成圆角带边框的卡片，功能区 false 时方角贴边）与 `variants`（`UiLayout::SetVariant` 选的变体覆盖节点属性），
   `Ribbon::SetCard`（MiniCAD 的功能区总是卡片）：设置里的布局浮动 / 紧凑用
 - MiniGUI：浮动停靠区不再隐含卡片样式（`DockSpace::IsCardStyle` 只看 gap > 0）：gap 为 0 的浮动停靠区是紧贴的方角面板，文档区照样是"洞"（紧凑布局用）
+- MiniGUI：`Ribbon::kButtonMaxW` 由 76 放宽到 100（按钮名称只画一行，长的会被截掉；名称短的按钮宽度不变）
 - MiniGUI：`UIContext::UpdateHover` 在关掉提示之后才取树的版本号（修复：提示显示着时指针直接跳到相邻控件，新控件收不到 Enter、点了不触发；MiniCAD 也有这个问题）
 - `cmake/Render.cmake` 照 MiniCAD 分 Windows、Linux、网页三段；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`、`PostDelayed`，
   文件对话框同 MiniCAD 是异步的 `PickFile` 与 `ChooseSavePath`，但 `FileKind` / `SaveKind` 换成项目、IFC、快捷键文件（没有 DWG 的格式与版本）

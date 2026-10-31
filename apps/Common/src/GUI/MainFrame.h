@@ -210,7 +210,7 @@ namespace MiniBIM
         // Stand 放结构柱或独立基础、Run 放梁、条形基础或别的 run，类别在 m_toolOf（照 BIMCraft 的 Tool::Stand、Tool::Run）
         enum class Tool { Modify, Wall, Door, Window, Column, Component, Roof, Floor, Ceiling, Room, Level, Grid, Stand, Run,
                           Move, Copy, Rotate, MirrorPick, MirrorDraw, Align, Trim, Split, Offset,
-                          SketchLine, SketchRect, SketchPick };
+                          SketchLine, SketchRect, SketchPick, Mass };
         // 改选择集的工具（移动、复制、旋转、镜像）要先选东西
         static bool NeedsSelection(Tool t) { return t == Tool::Move || t == Tool::Copy || t == Tool::Rotate || t == Tool::MirrorPick || t == Tool::MirrorDraw; }
         // 画草图线的工具（只在草图模式里）
@@ -248,6 +248,11 @@ namespace MiniBIM
         std::optional<std::pair<std::string, std::string>> Placing() const;
         // 构件工具能放这一类的族吗：卫浴、电气等设备的按钮（m_toolOf 为设备的键）只放它的几类
         bool PlacingFits(Bim::Fam::Category c) const;
+        // 体量工具：点过的角点围成底面轮廓，按选项栏的顶部做体量
+        void FinishMass();
+        // 选中的体量；体量选项卡"按面建模"的按钮对每个选中的体量执行 command（移植自 BIMCraft 的 by_mass）
+        std::vector<Bim::Id> SelectedMasses() const;
+        void ByMass(const char* command, const char* title);
 
         // ── 修改（Modify.cpp）：框选、Tab 切换、拖动、夹点、修改工具 ──────────
         // 光标下的元素：几个叠在一起时按 Tab 轮换
@@ -488,7 +493,7 @@ namespace MiniBIM
         bool               m_panelsPosted = false;
 
         Tool                 m_tool = Tool::Modify;
-        std::vector<Bim::P2> m_toolPts;                     // 墙链点过的点、轴网的起点
+        std::vector<Bim::P2> m_toolPts;                     // 墙链点过的点、轴网的起点、体量点过的角点
         std::optional<MiniGUI::Vec2> m_hoverPixel;          // 光标在平面上的位置（预览用）
         bool                 m_hoverShift = false;
         std::string          m_typedLength;                 // 在视图里输入的长度，Enter 时用
@@ -503,6 +508,8 @@ namespace MiniBIM
             bool          chain        = true;
             std::optional<std::optional<Bim::Guid>> columnTop;  // 柱的顶部，同 wallTop
             std::string   columnHeight = "3000";
+            std::optional<std::optional<Bim::Guid>> massTop;    // 体量的顶部，同 wallTop
+            std::string   massHeight   = "3000";
             std::string   roofSlope    = "30";
             std::string   roofOverhang = "500";
             bool          roofGable    = false;

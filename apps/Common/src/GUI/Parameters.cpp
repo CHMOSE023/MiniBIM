@@ -102,6 +102,16 @@ namespace MiniBIM::Props
             { "Other", "start", "Start", Point },
             { "Other", "end", "End", Point },
         };
+        constexpr Row Mass[] = {
+            { "Constraints", "level", "Base Constraint", Level },
+            { "Constraints", "base_offset", "Base Offset", Length },
+            { "Constraints", "top_level", "Top Constraint", TopLevel },
+            { "Constraints", "height", "Unconnected Height", Height },
+            { "Dimensions", "area_m2", "Area", AreaShown },
+            { "Dimensions", "volume_m3", N_("Volume (m³)"), Shown },
+            { "Dimensions", "gross_floor_area_m2", N_("Gross Floor Area"), AreaShown },
+            { "Identity Data", "name", "Name", Text },
+        };
         constexpr Row Roof[] = {
             { "Constraints", "level", N_("Base Level"), Level },
             { "Constraints", "offset", "Base Offset", Length },
@@ -185,6 +195,7 @@ namespace MiniBIM::Props
         if (category == "column" || category == "structuralcolumn" || category == "footing") return Column;
         if (Bim::IsRunCategory(category)) return Run;
         if (category == "roof") return Roof;
+        if (category == "mass") return Mass;
         return {};
     }
 
@@ -340,6 +351,7 @@ namespace MiniBIM::Props
             { "wire", N_("Wire"), N_("Wires") },           { "cable", N_("Cable"), N_("Cables") },
             { "downconductor", N_("Down Conductor"), N_("Down Conductors") },
             { "groundconductor", N_("Earthing Conductor"), N_("Earthing Conductors") },
+            { "mass", N_("Mass"), N_("Masses") },
         };
         for (const auto& n : names)
             if (category == n.category)

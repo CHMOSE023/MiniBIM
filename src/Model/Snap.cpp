@@ -53,6 +53,7 @@ namespace MiniBIM::Bim::Snap
             {
                 Scene s;
                 const std::optional<Guid> above = m.LevelAbove(level);
+                const double cut = m.GetPlanRange(level).cut;
                 // pts 外框是否在 p 的 window 以内
                 auto near = [&](std::span<const P2> pts)
                 {
@@ -151,6 +152,9 @@ namespace MiniBIM::Bim::Snap
                         for (const Ring& o : r->openings)
                             ring(o);
                     }
+                    // 剖切面穿过的体量：那里的轮廓
+                    else if (const Mass* ms = e.As<Mass>(); ms && m.MassCutBy(*ms, cut))
+                        ring(m.MassOutline(*ms, cut));
                 }
                 return s;
             }

@@ -57,6 +57,7 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 | `sort_by` / `sort_by_key`（稳定） | `std::stable_sort` | `std::sort` 不稳定，排好后取第一个的地方结果会变 |
 | `f64::total_cmp` | `Bytes::TotalLess`（`src/Rvt/Bytes.h`） | NaN 与 −0 也有位置，不能直接用 `<` |
 | 迭代器的 `max_by_key` / `max_by`、`min_by_key` / `min_by` | 手写的循环 | 一样大时 `max_*` 取**最后一个**、`min_*` 取第一个；`std::max_element` 取第一个，结果会变 |
+| serde_json 的 `as_u64`（JSON 里的非负整数） | `is_number_integer()` 且 `get<int64_t>() >= 0`（`Massing.cpp` 的 `Edge`） | nlohmann 由 C++ 的 `int` 构造的数是有符号的（`Json{ { "face", 7 } }`、`modify` 合并进来的值），只认 `is_number_unsigned()` 会把它们当错 |
 | `f64` 的 `{}`（`format!`、`to_string`） | `Bim::Text::Shortest` | 最短的、读回来不变的写法，`1.0` 写成 `1`；不要用 `std::to_string`（固定六位小数） |
 
 ## 已定的事（用户在第 2a 步定的）

@@ -123,6 +123,30 @@ msgid "Cabling"
 msgstr "Cabeamento"
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Mass"
+msgstr "Massa"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass Floors"
+msgstr "Pisos de massa"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall by Face"
+msgstr "Parede por face"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor by Face"
+msgstr "Piso por face"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Face"
+msgstr "Telhado por face"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Update to Face"
+msgstr "Atualizar face"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "Telhado"
 
@@ -1058,6 +1082,50 @@ msgstr "Patch panel (PN): um painel na parede, onde você clicar; Espaço gira"
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "Cabeamento (CB): clique no início e no fim; uma sequência de cliques cria um cabo por trecho"
 
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels"
+msgstr "Massa (MS): clique nos cantos da projeção; Enter, ou o primeiro canto de novo, termina; Esc cancela"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass Floors (MF): a floor at each level the selected masses cross"
+msgstr "Pisos de massa (MF): um piso em cada nível que as massas selecionadas atravessam"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the mass floors"
+msgstr "Não foi possível criar os pisos de massa"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall by Face (WB): a wall on each edge of the selected masses' footprints"
+msgstr "Parede por face (WB): uma parede em cada aresta da projeção das massas selecionadas"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not build the walls"
+msgstr "Não foi possível construir as paredes"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor by Face (FB): a floor on the selected masses' top faces"
+msgstr "Piso por face (FB): um piso na face superior das massas selecionadas"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the floor"
+msgstr "Não foi possível criar o piso"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Face (RB): a roof on the selected masses' top faces"
+msgstr "Telhado por face (RB): um telhado na face superior das massas selecionadas"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the roof"
+msgstr "Não foi possível criar o telhado"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"
+msgstr "Atualizar face (UF): as paredes, pisos e telhados feitos por face das massas selecionadas voltam a segui-las"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not update to the mass"
+msgstr "Não foi possível atualizar para a massa"
+
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
 msgstr "Vista 3D"
@@ -1556,6 +1624,14 @@ msgid "System"
 msgstr "Sistema"
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Volume (m³)"
+msgstr "Volume (m³)"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Gross Floor Area"
+msgstr "Área bruta de pavimentos"
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr "Nível da base"
 
@@ -1726,6 +1802,10 @@ msgstr "Condutores de descida"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Earthing Conductors"
 msgstr "Condutores de aterramento"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Masses"
+msgstr "Massas"
 
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"
@@ -2287,6 +2367,18 @@ msgid "Click where the component goes; Space turns it a quarter turn."
 msgstr "Clique onde vai o componente; Espaço o gira um quarto de volta."
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click the first corner of the mass's footprint."
+msgstr "Clique no primeiro canto da projeção da massa."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the footprint's next corner. Esc cancels."
+msgstr "Clique no próximo canto da projeção. Esc cancela."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."
+msgstr "Clique no próximo canto; Enter, ou o primeiro canto de novo, termina a massa. Esc cancela."
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click inside the walls to roof them, on the level above: the overhang runs past their faces."
 msgstr "Clique dentro das paredes para cobri-las, no nível acima: o beiral passa das faces."
 
@@ -2475,6 +2567,10 @@ msgid "Modify | Offset"
 msgstr "Modificar | Deslocamento"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Mass"
+msgstr "Modificar | Criar massa"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr "Altura:"
 
@@ -2618,6 +2714,10 @@ msgstr "Não foi possível criar o piso"
 msgid "Not a length"
 msgstr "Não é um comprimento"
 
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the mass"
+msgstr "Não foi possível criar a massa"
+
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "Shortcuts file"
 msgstr "Arquivo de atalhos"
@@ -2725,6 +2825,18 @@ msgstr "Aterramento"
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
 msgstr "Tomadas e equipamentos"
+
+#: assets/ui/minibim_ui.json
+msgid "Massing"
+msgstr "Massas"
+
+#: assets/ui/minibim_ui.json
+msgid "Conceptual Mass"
+msgstr "Massa conceitual"
+
+#: assets/ui/minibim_ui.json
+msgid "Model by Face"
+msgstr "Modelar por face"
 
 #: assets/ui/minibim_ui.json
 msgid "Mode"

@@ -2,6 +2,8 @@
 #include "Commands/Commands.h"
 #include "Ifc/Ifc.h"
 #include "Ifc/Step.h"
+#include "Model/Massing.h"
+#include "Model/ModelJson.h"
 #include "Model/Skeleton.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
@@ -2594,6 +2596,109 @@ namespace MiniBIM::Bim::Ifc
             ceiling.offset   = Round(z0 - elevation(level), 1000.0) + 0.0;
             const Id cid = m.Insert(std::move(ceiling));
             made(cid, id);
+            seen.insert(id);
+        }
+
+        // 体量：对象类型说是体量的代理元素，它的轮廓与立多高。只有一个轮廓：中间有洞的不是体量。
+        // 放样的写成三角面集，另有属性集说两个轮廓怎样点点对应
+        std::vector<std::pair<std::vector<uint64_t>, std::pair<Ring, Ring>>> lofts;
+        for (const uint64_t rid : named({ "IFCRELDEFINESBYPROPERTIES" }))
+        {
+            const Entity& rel = *e(rid);
+            const Entity* set = r.At(Arg(rel, 5));
+            if (!set || set->name != "IFCPROPERTYSET")
+                continue;
+            const auto setName = TextOf(Arg(*set, 2));
+            if (setName != MassProperties && setName != "BIMCraft_Mass")
+                continue;
+            for (const uint64_t pid : RefsOf(Arg(*set, 4)))
+            {
+                const Entity* p = e(pid);
+                const auto text = p && p->name == "IFCPROPERTYSINGLEVALUE" && TextOf(Arg(*p, 0)) == "Loft" ? TextOf(Arg(*p, 2)) : std::nullopt;
+                if (!text)
+                    continue;
+                const Json j = Json::parse(*text, nullptr, false);
+                std::pair<Ring, Ring> loft;
+                bool ok = j.is_object();
+                for (const auto& [key, ring] : { std::pair<const char*, Ring*>{ "bottom", &loft.first }, { "top", &loft.second } })
+                {
+                    if (!ok || !j.contains(key) || !j[key].is_array())
+                    {
+                        ok = false;
+                        break;
+                    }
+                    for (const Json& q : j[key])
+                    {
+                        P2 pt;
+                        std::string why;
+                        if (!(ok = FromJson(q, pt, why)))
+                            break;
+                        ring->push_back(pt);
+                    }
+                }
+                if (ok)
+                    lofts.emplace_back(RefsOf(Arg(rel, 4)), std::move(loft));
+            }
+        }
+        // 两个轮廓一样：点一样多，每一点都在另一个里（1 毫米以内）
+        const auto sameRing = [](const Ring& a, const Ring& b)
+        {
+            return a.size() == b.size() &&
+                   std::all_of(a.begin(), a.end(), [&](const P2& p) { return std::any_of(b.begin(), b.end(), [&](const P2& q) { return (p - q).Length() < 1.0; }); });
+        };
+        for (const uint64_t id : named({ "IFCBUILDINGELEMENTPROXY" }))
+        {
+            const Entity& x = *e(id);
+            if (TextOf(Arg(x, 4)) != "Mass")
+                continue;
+            const auto faces = r.Body(x);
+            const auto zs = SpanOf(faces, [](const P3& p) { return p[2]; });
+            if (!zs)
+            {
+                leave(id, "it has no body MiniBIM can read");
+                continue;
+            }
+            const auto [z0, z1] = *zs;
+            const auto flat = [&](const Ring& outer)
+            {
+                Ring out;
+                for (const P2& p : outer)
+                    out.push_back(Micron(r.Flat({ p.x, p.y, 0.0 })));
+                return out;
+            };
+            const auto region = Outline(faces, Plane::Flat(z1), true);
+            if (!region || !region->holes.empty())
+            {
+                leave(id, "its top isn't one level outline");
+                continue;
+            }
+            const Ring crown = flat(region->outer);
+            std::optional<Ring> base;
+            if (const auto g = Outline(faces, Plane::Flat(z0), false); g && g->holes.empty())
+                base = flat(g->outer);
+            const auto noted = std::find_if(lofts.begin(), lofts.end(), [&](const auto& l) { return std::find(l.first.begin(), l.first.end(), id) != l.first.end(); });
+            Mass mass;
+            if (noted != lofts.end() && base && sameRing(noted->second.first, *base) && sameRing(noted->second.second, crown) &&
+                !Massing::LoftProblem(noted->second.first, noted->second.second))
+            {
+                mass.boundary = noted->second.first;
+                mass.top      = noted->second.second;
+            }
+            else if (base && !sameRing(*base, crown))
+            {
+                leave(id, "its outline changes from its base to its top, and no MiniBIM_Mass property set says how its corners pair up");
+                continue;
+            }
+            else
+                mass.boundary = crown;
+            mass.level = levelFor(id, z0);
+            const auto [topLevel, height] = topped(mass.level, z0, z1);
+            mass.topLevel   = topLevel;
+            mass.height     = Round(height, 1000.0);
+            mass.baseOffset = Round(z0 - elevation(mass.level), 1000.0) + 0.0;
+            mass.name       = Clip(TextOf(Arg(x, 2)).value_or(""));
+            const Id mid = m.Insert(std::move(mass));
+            made(mid, id);
             seen.insert(id);
         }
 

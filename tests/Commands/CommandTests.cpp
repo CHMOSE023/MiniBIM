@@ -11,6 +11,7 @@
 #include "Model/Snap.h"
 #include "Model/Walls.h"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -545,7 +546,8 @@ namespace
                     left.push_back(v.get<std::string>());
             auto has = [&](const char* p) { return std::find(left.begin(), left.end(), p) != left.end(); };
             const bool listed = !has("/families") && has("/phases") && !has("/types/column") && has("/types/railing") && has("/materials/Brick/texture") && !has("/elements/100100") &&
-                                !has("/elements/100101") && has("/elements/100102") && !has("/elements/100003/attach_top") && has("/elements/100003/params");
+                                !has("/elements/100101") && has("/elements/100102") && !has("/elements/100003/attach_top") &&
+                                has("/elements/100003/params/Fire Rating");
             std::string why;
             const bool opened = !r.is_null() && t.GetModel().Check(why) && Count(t, "wall") == 4 && Count(t, "door") == 2 && Count(t, "roof") == 1 &&
                                 t.GetModel().GetWall(Id(100003))->attachTop && !t.GetModel().library.IdOf(Kind::Of(Kind::Tag::Phase), "Existing") &&
@@ -2498,6 +2500,363 @@ namespace
         }
     }
 
+    // 移植自 BIMCraft tests.rs（f3bbb33）的体量测试：体量、mass_floors、按面做墙楼板屋顶、update_by_face、放样
+    Json Block() { return Json::parse("[[0, 0], [10000, 0], [10000, 6000], [0, 6000]]"); }
+    Json BlockCcw() { return Json::parse("[[0.0, 0.0], [10000.0, 0.0], [10000.0, 6000.0], [0.0, 6000.0]]"); }
+
+    // 标高 0、3000、6000、9000（Level 1 到 4），Level 1 上 10 × 6 米、到 Level 4 的体量
+    std::pair<Id, std::array<Id, 4>> Tower(Session& s)
+    {
+        const Id l3 = Run(s, "level", R"({"elevation": 6000, "name": "Level 3"})")["id"].get<Id>();
+        const Id l4 = Run(s, "level", R"({"elevation": 9000, "name": "Level 4"})")["id"].get<Id>();
+        const Id id = Run(s, "mass", Json{ { "boundary", Block() }, { "top_level", l4 }, { "name", "Tower" } })["id"].get<Id>();
+        return { id, { 100000, 100001, l3, l4 } };
+    }
+
+    Json Mark(Session& s, Id mass, const Json& face) { return Json{ { "mass", ToJson(s.GetModel().GuidOf(mass)) }, { "face", face } }; }
+
+    void TestMassing()
+    {
+        {
+            // 顺时针画的变成逆时针；没给顶时到上一个标高
+            Session s;
+            const Json r = Run(s, "mass", R"({"boundary": [[0, 0], [0, 6000], [10000, 6000], [10000, 0]], "name": "Block"})");
+            const Id id  = r["id"].get<Id>();
+            Check(r["area_m2"] == 60.0 && r["volume_m3"] == 180.0 && r["height"] == 3000.0, "体量：面积、体积、高：" + r.dump());
+            Json e = ElementOf(s, id);
+            Check(IdOf(s, e["level"]) == Id(100000) && IdOf(s, e["top_level"]) == Id(100001) && e["name"] == "Block", "体量：标高到上一个标高");
+            Check(e["boundary"] == Json::parse("[[10000.0, 0.0], [10000.0, 6000.0], [0.0, 6000.0], [0.0, 0.0]]"), "体量：逆时针");
+            const Json tall = Run(s, "MS", Json{ { "boundary", Block() }, { "height", 9000 }, { "base_offset", 500 } });
+            Check(tall["volume_m3"] == 540.0 && ElementOf(s, tall["id"].get<Id>())["name"] == "Mass", "体量：MS、height、默认名称");
+            Check(Count(s, "masses") == 2, "体量：按复数的类别数");
+            Run(s, "modify", Json{ { "id", id }, { "top_level", nullptr }, { "height", 4500 } });
+            e = ElementOf(s, id);
+            Check(e["volume_m3"] == 270.0 && e["gross_floor_area_m2"] == 120.0 && e["levels"].size() == 2, "体量：跨两个标高的总楼面面积：" + e.dump());
+            const std::pair<Json, const char*> bad[] = {
+                { Json{ { "id", id }, { "height", -5 } }, "height" },
+                { Json{ { "id", id }, { "top_level", 100000 }, { "height", 0 } }, "above its base" },
+                { Json{ { "id", id }, { "boundary", Json::parse("[[0, 0], [1000, 0]]") } }, "points" },
+                { Json{ { "id", id }, { "level", 100098 } }, "level" },
+                { Json{ { "id", id }, { "base_offset", 1e12 } }, "base_offset" },
+            };
+            for (const auto& [p, says] : bad)
+            {
+                const std::string why = Refused(s, "modify", p);
+                Check(Contains(why, says), std::string("体量：modify 拒绝 ") + p.dump() + "：" + why);
+            }
+            Check(ElementOf(s, id)["volume_m3"] == 270.0, "体量：被拒后不变");
+            // 移动、复制、镜像、旋转带着轮廓走
+            Run(s, "move", Json{ { "ids", { id } }, { "by", Pt(1000, 500) } });
+            Check(ElementOf(s, id)["boundary"][0] == Pt(11000, 500), "体量：移动");
+            const Id made = FirstId(Run(s, "copy", Json{ { "ids", { id } }, { "by", Pt(0, 8000) } }));
+            Check(ElementOf(s, made)["boundary"][0] == Pt(11000, 8500), "体量：复制");
+            const Id mirrored = FirstId(Run(s, "MM", Json{ { "ids", { id } }, { "axis", { Pt(0, 0), Pt(0, 1000) } }, { "copy", true } }));
+            Check(ElementOf(s, mirrored)["area_m2"] == 60.0, "体量：镜像后仍逆时针");
+            Run(s, "rotate", Json{ { "ids", { id } }, { "about", Pt(0, 0) }, { "angle", 90 } });
+            Check(ElementOf(s, id)["area_m2"] == 60.0, "体量：旋转");
+            // 项目文件原样存下体量
+            const std::string file = Temp("mass.minibim");
+            Run(s, "save", Json{ { "path", file } });
+            Session t;
+            Run(t, "open", Json{ { "path", file } });
+            std::error_code ec;
+            std::filesystem::remove(std::filesystem::path(std::u8string(file.begin(), file.end())), ec);
+            Check(t.GetModel().ToJson()["elements"] == s.GetModel().ToJson()["elements"], "体量：存盘再打开不变");
+            for (int i = 0; i < 3; ++i)
+                Run(s, "undo", Json::object());
+            Check(Count(s, "mass") == 2 && ElementOf(s, id)["boundary"][0] == Pt(11000, 500), "体量：各一步撤销");
+            Check(Contains(Refused(s, "delete", R"({"ids": [100000]})"), "level"), "体量：它立在上面的标高删不掉");
+        }
+        {
+            // mass_floors：它跨过的每个标高一块楼板
+            Session s;
+            const auto [id, l] = Tower(s);
+            const auto floors = IdsOf(Run(s, "MF", Json{ { "mass", id } }));
+            Check(floors.size() == 3 && Count(s, "floor") == 3, "体量楼板：三块");
+            for (size_t i = 0; i < floors.size() && i < 3; ++i)
+            {
+                const Json e = ElementOf(s, floors[i]);
+                Check(IdOf(s, e["level"]) == l[i] && e["area_m2"] == 60.0 && e["boundary"] == BlockCcw(), "体量楼板：标高与轮廓 " + std::to_string(i));
+                Check(e["params"]["Mass Floor"] == Json{ { "mass", ToJson(s.GetModel().GuidOf(id)) }, { "level", ToJson(s.GetModel().GuidOf(l[i])) } },
+                      "体量楼板：记着体量与标高");
+            }
+            const Id high = Run(s, "mass", Json{ { "boundary", Block() }, { "base_offset", 500 }, { "height", 7000 } })["id"].get<Id>();
+            const auto hf = IdsOf(Run(s, "mass_floors", Json{ { "mass", high } }));
+            Check(hf.size() == 2 && IdOf(s, ElementOf(s, hf[0])["level"]) == l[1], "体量楼板：高出标高的从它够到的第一个标高起");
+            Check(Run(s, "mass_floors", Json::object())["ids"].size() == 5, "体量楼板：不给 mass 时所有体量");
+            Session empty;
+            Check(Contains(Refused(empty, "mass_floors", Json::object()), "no mass"), "体量楼板：没有体量");
+            const Id wall = FirstId(Run(s, "wall", R"({"points": [[0, 0], [1000, 0]]})"));
+            Check(Contains(Fails(s, "mass_floors", Json{ { "mass", id }, { "type", "Nothing" } }), "type"), "体量楼板：类型");
+            Check(Contains(Fails(s, "mass_floors", Json{ { "mass", wall } }), "isn't a mass"), "体量楼板：墙不是体量");
+        }
+        {
+            // 再跑一次：更新它做的，过时的只在 prune 时删
+            Session s;
+            const auto [id, l] = Tower(s);
+            const Json first   = Run(s, "mass_floors", Json{ { "mass", id } });
+            const auto floors  = IdsOf(first);
+            Check(floors.size() == 3 && first["made"].size() == 3 && first["updated"].empty(), "体量楼板：第一次都是新做的");
+            const Json again = Run(s, "MF", Json{ { "mass", id } });
+            Check(IdsOf(again) == floors && again["made"].empty() && again["updated"].empty() && Count(s, "floor") == 3, "体量楼板：再跑一次什么也不做");
+            const Id own = Run(s, "floor", R"({"boundary": [[0, 0], [1000, 0], [0, 1000]]})")["id"].get<Id>();
+            Run(s, "modify", Json{ { "id", id }, { "boundary", Json::parse("[[0, 0], [12000, 0], [12000, 6000], [0, 6000]]") } });
+            const Json grown = Run(s, "mass_floors", Json{ { "mass", id } });
+            Check(grown["updated"].size() == 3 && ElementOf(s, floors[1])["area_m2"] == 72.0 && ElementOf(s, own)["area_m2"] == 0.5,
+                  "体量楼板：体量变大，楼板跟着，别的不动");
+            Run(s, "type", R"({"category": "floor", "name": "Thin", "thickness": 100})");
+            Check(Run(s, "mass_floors", Json{ { "mass", id }, { "type", "Thin" } })["updated"].size() == 3 && ElementOf(s, floors[0])["type"] == "Thin",
+                  "体量楼板：换类型");
+            Check(Run(s, "mass_floors", Json{ { "mass", id } })["updated"].empty() && ElementOf(s, floors[0])["type"] == "Thin", "体量楼板：不给类型时保留");
+            Run(s, "modify", Json{ { "id", id }, { "top_level", l[2] } });
+            Json r = Run(s, "mass_floors", Json{ { "mass", id } });
+            Check(r["ids"].size() == 2 && r["stale"] == Json::array({ floors[2] }) && r["removed"].empty() && Count(s, "floor") == 4, "体量楼板：过时的报出来");
+            r = Run(s, "mass_floors", Json{ { "mass", id }, { "prune", true } });
+            Check(r["removed"] == Json::array({ floors[2] }) && r["stale"].empty() && Count(s, "floor") == 3, "体量楼板：prune 删掉过时的");
+            Check(Run(s, "mass_floors", R"({"prune": true})")["removed"].empty() && Count(s, "floor") == 3, "体量楼板：没记号的楼板不动");
+            const std::pair<Json, const char*> marks[] = {
+                { Json{ { "mass", 100000 }, { "level", l[0] } }, "isn't a mass" },
+                { Json{ { "mass", id }, { "level", id } }, "isn't a level" },
+                { Json{ { "face", 1 } }, "{mass, level}" },
+                { Json("x"), "{mass, level}" },
+            };
+            for (const auto& [value, says] : marks)
+            {
+                const std::string why = Refused(s, "modify", Json{ { "id", floors[0] }, { "params", { { "Mass Floor", value } } } });
+                Check(Contains(why, says), "体量楼板：记号 " + value.dump() + "：" + why);
+            }
+            const Id wall = FirstId(Run(s, "wall", R"({"points": [[0, 0], [1000, 0]]})"));
+            Check(!Refused(s, "modify", Json{ { "id", wall }, { "params", { { "Mass Floor", { { "mass", id }, { "level", l[0] } } } } } }).empty(),
+                  "体量楼板：墙不能记体量楼板");
+            const Id copy = FirstId(Run(s, "copy", Json{ { "ids", { floors[0] } }, { "by", Pt(20000, 0) } }));
+            Check(!ElementOf(s, copy)["params"].contains("Mass Floor"), "体量楼板：副本是普通楼板");
+            Run(s, "delete", Json{ { "ids", { id } } });
+            Check(!ElementOf(s, floors[0])["params"].contains("Mass Floor"), "体量楼板：体量删了，楼板是普通的");
+            Check(Contains(Refused(s, "mass_floors", R"({"prune": true})"), "no mass"), "体量楼板：删了体量后没有体量");
+        }
+        {
+            // 按面做墙、楼板、屋顶
+            Session s;
+            const Id id      = Run(s, "mass", Json{ { "boundary", Block() } })["id"].get<Id>();
+            const auto walls = IdsOf(Run(s, "WB", Json{ { "mass", id } }));
+            Check(walls.size() == 4, "按面：四面墙");
+            Json w = walls.empty() ? Json() : ElementOf(s, walls[0]);
+            Check(w["start"] == Pt(10000, 0) && w["end"] == Pt(0, 0) && IdOf(s, w["level"]) == Id(100000) && IdOf(s, w["top_level"]) == Id(100001),
+                  "按面：墙反着走、到体量顶：" + w.dump().substr(0, 200));
+            double lo = 1e300, hi = -1e300, south = 1e300, north = -1e300;
+            for (const Id wid : walls)
+                for (const P2& q : Walls::Outline(s.GetModel(), wid))
+                {
+                    lo    = std::min(lo, q.x);
+                    hi    = std::max(hi, q.x);
+                    south = std::min(south, q.y);
+                    north = std::max(north, q.y);
+                }
+            Check(std::abs(lo) + std::abs(hi - 10000) + std::abs(south) + std::abs(north - 6000) < 1e-6, "按面：墙在轮廓里、外饰面在面上");
+            const Id tall  = Run(s, "mass", Json{ { "boundary", Block() }, { "height", 4000 }, { "base_offset", 200 } })["id"].get<Id>();
+            const auto two = IdsOf(Run(s, "wall_by_face", Json{ { "mass", tall }, { "faces", { 1, 3 } }, { "location", "centre" } }));
+            w = two.empty() ? Json() : ElementOf(s, two[0]);
+            Check(two.size() == 2 && w["height"] == 4000.0 && w["base_offset"] == 200.0 && w["start"] == Pt(10000, 6000), "按面：选的面、高度");
+            const std::pair<Json, const char*> bad[] = {
+                { Json{ { "mass", tall }, { "faces", { 4 } } }, "face" },
+                { Json{ { "mass", tall }, { "faces", { -1 } } }, "face" },
+                { Json{ { "mass", tall }, { "faces", { "top" } } }, "face" },
+                { Json{ { "mass", tall }, { "type", "Nothing" } }, "type" },
+                { Json{ { "mass", 100000 } }, "isn't a mass" },
+                { Json::object(), "mass" },
+            };
+            for (const auto& [p, says] : bad)
+                Check(Contains(Fails(s, "wall_by_face", p), says), std::string("按面：拒绝 ") + p.dump());
+            Json e = ElementOf(s, Run(s, "FB", Json{ { "mass", id } })["id"].get<Id>());
+            Check(IdOf(s, e["level"]) == Id(100001) && e.value("offset", 0.0) == 0.0 && e["area_m2"] == 60.0, "按面：楼板在顶标高");
+            e = ElementOf(s, Run(s, "floor_by_face", Json{ { "mass", tall } })["id"].get<Id>());
+            Check(IdOf(s, e["level"]) == Id(100000) && e["offset"] == 4200.0, "按面：楼板在 height 处");
+            e = ElementOf(s, Run(s, "RB", Json{ { "mass", id } })["id"].get<Id>());
+            Check(IdOf(s, e["level"]) == Id(100001) && e.value("slope", 0.0) == 0.0 && e["boundary"] == BlockCcw(), "按面：平屋顶");
+            e = ElementOf(s, Run(s, "roof_by_face", Json{ { "mass", tall }, { "slope", 20 } })["id"].get<Id>());
+            Check(IdOf(s, e["level"]) == Id(100000) && e["offset"] == 4200.0 && e["slope"] == 20.0, "按面：坡屋顶");
+            Run(s, "delete", Json{ { "ids", { id, tall } } });
+            Check(Count(s, "wall") == 6 && Count(s, "roof") == 2, "按面：体量删了它们还在");
+        }
+        {
+            // update_by_face 照体量现在的样子重建
+            Session s;
+            const auto [id, l] = Tower(s);
+            const auto walls   = IdsOf(Run(s, "WB", Json{ { "mass", id } }));
+            const Id floor     = Run(s, "FB", Json{ { "mass", id } })["id"].get<Id>();
+            const Id roof      = Run(s, "RB", Json{ { "mass", id } })["id"].get<Id>();
+            bool marked = walls.size() == 4;
+            for (size_t i = 0; i < walls.size(); ++i)
+                marked = marked && ElementOf(s, walls[i])["params"]["Mass Face"] == Mark(s, id, i);
+            for (const Id e : { floor, roof })
+                marked = marked && ElementOf(s, e)["params"]["Mass Face"] == Mark(s, id, "top");
+            Check(marked, "按面：记着体量与面");
+            const auto two = IdsOf(Run(s, "wall_by_face", Json{ { "mass", id }, { "faces", { 1, 3 } } }));
+            Check(two.size() == 2 && ElementOf(s, two[1])["params"]["Mass Face"] == Mark(s, id, 3), "按面：选的面记自己的编号");
+            Run(s, "delete", Json{ { "ids", two } });
+            Run(s, "modify", Json{ { "id", id }, { "boundary", Json::parse("[[0, 0], [12000, 0], [12000, 6000], [0, 6000]]") }, { "top_level", l[2] } });
+            Check(ElementOf(s, walls[0])["start"] == Pt(10000, 0), "按面：不会自己跟着体量");
+            Run(s, "wall", R"({"points": [[0, 0], [100, 0]]})");
+            std::vector<Id> every = walls;
+            every.push_back(floor);
+            every.push_back(roof);
+            Json done = Run(s, "UF", Json{ { "mass", id } });
+            Check(done["updated"] == Json(every), "按面：更新到面：" + done.dump());
+            Json w = ElementOf(s, walls[0]);
+            Check(w["start"] == Pt(12000, 0) && w["end"] == Pt(0, 0) && IdOf(s, w["top_level"]) == l[2], "按面：墙到新边、新顶");
+            Check(ElementOf(s, walls[1])["start"] == Pt(12000, 6000), "按面：第二面墙");
+            for (const Id x : { floor, roof })
+            {
+                const Json e = ElementOf(s, x);
+                Check(IdOf(s, e["level"]) == l[2] && e["area_m2"] == 72.0, "按面：楼板、屋顶到新顶");
+            }
+            const size_t steps = s.History().size();
+            done = Run(s, "update_by_face", Json::object());
+            Check(done["updated"].empty() && done["unchanged"] == Json(every) && s.History().size() == steps, "按面：没有要做的，不算一步");
+            Run(s, "modify", Json{ { "id", roof }, { "slope", 25 } });
+            Run(s, "modify", Json{ { "id", id }, { "top_level", l[3] } });
+            Run(s, "update_by_face", Json{ { "ids", { roof, walls[2] } } });
+            const Json r = ElementOf(s, roof);
+            Check(IdOf(s, r["level"]) == l[3] && r["slope"] == 25.0, "按面：之后改的坡度保留");
+            Check(IdOf(s, ElementOf(s, walls[2])["top_level"]) == l[3] && IdOf(s, ElementOf(s, walls[3])["top_level"]) == l[2], "按面：只更新给的");
+            const auto halves = IdsOf(Run(s, "split", Json{ { "id", walls[2] }, { "at", Pt(6000, 6000) } }));
+            bool plain = halves.size() == 2;
+            for (const Id h : halves)
+                plain = plain && !ElementOf(s, h)["params"].contains("Mass Face");
+            Check(plain, "按面：拆开的两段是普通的墙");
+            const Id low = Run(s, "mass", Json{ { "boundary", Block() }, { "height", 4000 }, { "base_offset", 200 } })["id"].get<Id>();
+            const Id f   = Run(s, "floor_by_face", Json{ { "mass", low } })["id"].get<Id>();
+            const Id lw  = FirstId(Run(s, "wall_by_face", Json{ { "mass", low }, { "faces", { 0 } } }));
+            Run(s, "modify", Json{ { "id", low }, { "height", 5000 } });
+            Run(s, "update_by_face", Json{ { "mass", low } });
+            Check(ElementOf(s, f)["offset"] == 5200.0 && ElementOf(s, lw)["height"] == 5000.0, "按面：给了高度的体量");
+            const Id flip = Run(s, "mass", Json{ { "boundary", Block() }, { "height", 3000 }, { "name", "Flip" } })["id"].get<Id>();
+            const auto fw = IdsOf(Run(s, "wall_by_face", Json{ { "mass", flip }, { "faces", { 0, 1 } } }));
+            Run(s, "mirror", Json{ { "ids", { flip } }, { "axis", { Pt(-1000, 0), Pt(-1000, 1000) } } });
+            Check(fw.size() == 2 && ElementOf(s, fw[0])["params"]["Mass Face"] == Mark(s, flip, 2) &&
+                      ElementOf(s, fw[1])["params"]["Mass Face"] == Mark(s, flip, 1),
+                  "按面：原地镜像后面重新编号");
+            Run(s, "update_by_face", Json{ { "mass", flip } });
+            w = fw.empty() ? Json() : ElementOf(s, fw[0]);
+            Check(w["start"] == Pt(-2000, 0) && w["end"] == Pt(-12000, 0), "按面：镜像后跟着自己的边");
+            Run(s, "delete", Json{ { "ids", { flip } } });
+            Run(s, "modify", Json{ { "id", id }, { "boundary", Json::parse("[[0, 0], [12000, 0], [0, 6000]]") } });
+            const std::string why = Fails(s, "update_by_face", Json{ { "mass", id } });
+            Check(Contains(why, "wall " + std::to_string(walls[3])) && Contains(why, "face 3") && Contains(why, "3 faces"), "按面：面没了，整个拒绝：" + why);
+            Run(s, "update_by_face", Json{ { "ids", { walls[0], walls[1], floor } } });
+            Check(ElementOf(s, floor)["area_m2"] == 36.0, "按面：按 ID 更新面还在的");
+            const Id plainWall = FirstId(Run(s, "wall", R"({"points": [[0, 0], [100, 0]]})"));
+            const std::pair<Json, std::string> bad[] = {
+                { Json{ { "ids", { plainWall } } }, "isn't made by face" },
+                { Json{ { "mass", plainWall } }, "isn't a mass" },
+                { Json{ { "mass", id }, { "ids", { walls[0] } } }, "ids" },
+                { Json{ { "ids", { 9999 } } }, "9999" },
+                { Json{ { "ids", "x" } }, "ids" },
+            };
+            for (const auto& [p, says] : bad)
+                Check(Contains(Refused(s, "update_by_face", p), says), "按面：拒绝 " + p.dump());
+            Run(s, "delete", Json{ { "ids", { id, low } } });
+            Check(!ElementOf(s, walls[0])["params"].contains("Mass Face"), "按面：体量删了，记号也去掉");
+            Check(Contains(Refused(s, "update_by_face", Json::object()), "by face"), "按面：没有按面做的");
+            const Id m2 = Run(s, "mass", Json{ { "boundary", Block() }, { "height", 3000 } })["id"].get<Id>();
+            const std::pair<Id, Json> marks[] = {
+                { walls[0], Json{ { "mass", m2 }, { "face", "top" } } },
+                { floor, Json{ { "mass", m2 }, { "face", 0 } } },
+                { walls[0], Json{ { "mass", plainWall }, { "face", 0 } } },
+                { walls[0], Json{ { "mass", m2 } } },
+                { plainWall, Json{ { "mass", m2 }, { "face", -1 } } },
+            };
+            for (const auto& [e, mark] : marks)
+                Check(!Refused(s, "modify", Json{ { "id", e }, { "params", { { "Mass Face", mark } } } }).empty(), "按面：记号不对 " + mark.dump());
+            Run(s, "modify", Json{ { "id", plainWall }, { "params", { { "Mass Face", { { "mass", m2 }, { "face", 7 } } } } } });
+            Check(Contains(Refused(s, "update_by_face", Json::object()), "face 7"), "按面：超出轮廓的面是没了的面");
+        }
+        {
+            // 有顶部轮廓的体量在两个轮廓之间直直放样
+            Session s;
+            const Id l3       = Run(s, "level", R"({"elevation": 6000, "name": "Level 3"})")["id"].get<Id>();
+            const Json top    = Json::parse("[[2000, 2000], [8000, 2000], [8000, 4000], [2000, 4000]]");
+            const Json topCcw = Json::parse("[[2000.0, 2000.0], [8000.0, 2000.0], [8000.0, 4000.0], [2000.0, 4000.0]]");
+            const Json r = Run(s, "mass", Json{ { "boundary", Block() }, { "top_level", l3 }, { "top", top }, { "name", "Frustum" } });
+            const Id id  = r["id"].get<Id>();
+            Check(r["area_m2"] == 60.0 && r["height"] == 6000.0 && r["volume_m3"] == 200.0, "放样：体积按拟柱体：" + r.dump());
+            Json e = ElementOf(s, id);
+            Check(e["top"] == topCcw && e["volume_m3"] == 200.0 && e["gross_floor_area_m2"] == 92.0, "放样：顶部轮廓、总楼面面积");
+            auto floors = IdsOf(Run(s, "MF", Json{ { "mass", id } }));
+            Check(floors.size() == 2 &&
+                      ElementOf(s, floors[1])["boundary"] == Json::parse("[[1000.0, 1000.0], [9000.0, 1000.0], [9000.0, 5000.0], [1000.0, 5000.0]]") &&
+                      ElementOf(s, floors[1])["area_m2"] == 32.0 && ElementOf(s, floors[0])["boundary"] == BlockCcw(),
+                  "放样：半高处的楼板轮廓");
+            Run(s, "modify", Json{ { "id", id }, { "top", Block() } });
+            Check(Run(s, "mass_floors", Json{ { "mass", id } })["updated"] == Json::array({ floors[1] }), "放样：顶部轮廓变了楼板跟着");
+            Run(s, "modify", Json{ { "id", id }, { "top", top } });
+            const Id f = Run(s, "floor_by_face", Json{ { "mass", id } })["id"].get<Id>();
+            Check(ElementOf(s, f)["boundary"] == topCcw && IdOf(s, ElementOf(s, f)["level"]) == l3, "放样：顶面楼板在顶部轮廓");
+            const Id rf = Run(s, "roof_by_face", Json{ { "mass", id } })["id"].get<Id>();
+            Check(ElementOf(s, rf)["boundary"] == topCcw, "放样：顶面屋顶");
+            std::string why = Refused(s, "wall_by_face", Json{ { "mass", id } });
+            Check(Contains(why, "plumb") && Contains(why, "lean"), "放样：斜面上立不了墙：" + why);
+            why = Refused(s, "wall_by_face", Json{ { "mass", id }, { "faces", { 1 } } });
+            Check(Contains(why, "face 1") && Contains(why, "plumb"), "放样：选的面斜：" + why);
+            Run(s, "modify", Json{ { "id", id }, { "top", Json::parse("[[0, 0], [10000, 0], [10000, 3000], [0, 3000]]") } });
+            Run(s, "update_by_face", Json{ { "mass", id } });
+            Check(ElementOf(s, f)["area_m2"] == 30.0, "放样：顶面楼板跟着顶部轮廓");
+            const Json lean = Run(s, "mass", Json{ { "boundary", Block() }, { "top_level", l3 }, { "lean", Pt(3000, 0) }, { "name", "Lean" } });
+            const Id leanId = lean["id"].get<Id>();
+            Check(lean["volume_m3"] == 360.0 && ElementOf(s, leanId)["top"][0] == Pt(3000, 0), "放样：lean");
+            floors = IdsOf(Run(s, "mass_floors", Json{ { "mass", leanId } }));
+            Check(floors.size() == 2 && ElementOf(s, floors[1])["boundary"][0] == Pt(1500, 0), "放样：lean 的楼板");
+            Check(Contains(Refused(s, "wall_by_face", Json{ { "mass", leanId } }), "leans"), "放样：lean 没有竖直的面");
+            const Id part =
+                Run(s, "mass", Json{ { "boundary", Block() }, { "height", 3000 }, { "top", Json::parse("[[0, 0], [10000, 0], [8000, 6000], [0, 6000]]") } })["id"]
+                    .get<Id>();
+            const auto pw = IdsOf(Run(s, "wall_by_face", Json{ { "mass", part } }));
+            Check(pw.size() == 2 && ElementOf(s, pw[0])["params"]["Mass Face"]["face"] == 0 && ElementOf(s, pw[1])["params"]["Mass Face"]["face"] == 3,
+                  "放样：只有竖直的面立墙");
+            Run(s, "modify", Json{ { "id", part }, { "top", Json::parse("[[0, 0], [10000, 0], [10000, 5000], [0, 5000]]") } });
+            Check(Contains(Refused(s, "update_by_face", Json{ { "ids", pw } }), "leans now"), "放样：面斜了");
+            const Id copy = FirstId(Run(s, "copy", Json{ { "ids", { id } }, { "by", Pt(20000, 0) } }));
+            Check(ElementOf(s, copy)["top"][0] == Pt(20000, 0), "放样：复制带着顶部轮廓");
+            Run(s, "mirror", Json{ { "ids", { id } }, { "axis", { Pt(-1000, 0), Pt(-1000, 1000) } } });
+            e = ElementOf(s, id);
+            Check(e["volume_m3"] == 270.0 && e["gross_floor_area_m2"] == 105.0, "放样：镜像：" + e.dump().substr(0, 300));
+            Run(s, "rotate", Json{ { "ids", { id } }, { "about", Pt(0, 0) }, { "angle", 90 } });
+            Check(ElementOf(s, id)["volume_m3"] == 270.0, "放样：旋转");
+            Run(s, "modify", Json{ { "id", id }, { "top", nullptr } });
+            e = ElementOf(s, id);
+            Check(!e.contains("top") && e["volume_m3"] == 360.0, "放样：top 为 null 时不再放样");
+        }
+        {
+            // 顶部轮廓与底面轮廓点点对应，从不缩没
+            Session s;
+            const std::pair<const char*, const char*> bad[] = {
+                { R"({"height": 3000, "top": [[0, 0], [1, 0], [1, 1]]})", "points" },
+                { R"({"height": 3000, "top": "x"})", "top" },
+                { R"({"height": 3000, "top": [[0, 0], [1e300, 0], [1, 1], [0, 1]]})", "top" },
+                { R"({"height": 3000, "top": [[0, 6000], [10000, 6000], [10000, 0], [0, 0]]})", "other way" },
+                { R"({"height": 3000, "top": [[10000, 6000], [0, 6000], [0, 0], [10000, 0]]})", "collapses" },
+                { R"({"height": 3000, "top": [[0, 0], [10000, 0], [10000, 6000], [0, 6000]], "lean": [1, 1]})", "lean" },
+                { R"({"height": 3000, "lean": 5})", "lean" },
+                { R"({"top_level": 100001, "lean": [1e300, 0]})", "lean" },
+            };
+            for (const auto& [text, says] : bad)
+            {
+                Json p        = Json::parse(text);
+                p["boundary"] = Block();
+                Check(Contains(Fails(s, "mass", p), says), std::string("放样：拒绝 ") + text);
+            }
+            const Id id = Run(s, "mass", Json{ { "boundary", Json::parse("[[0, 0], [0, 6000], [10000, 6000], [10000, 0]]") }, { "height", 6000 },
+                                               { "top", Json::parse("[[2000, 2000], [2000, 4000], [8000, 4000], [8000, 2000]]") } })["id"]
+                              .get<Id>();
+            const Json e = ElementOf(s, id);
+            Check(e["volume_m3"] == 200.0 && e["boundary"][1] == Pt(10000, 6000) && e["top"][1] == Pt(8000, 4000), "放样：顺时针的两个轮廓一起反过来");
+            Check(Contains(Refused(s, "modify", Json{ { "id", id }, { "boundary", Json::parse("[[0, 0], [100, 0], [0, 100]]") } }), "points"),
+                  "放样：只改底面轮廓的点数");
+            const Id flat = Run(s, "mass", Json{ { "boundary", Block() }, { "height", 3000 }, { "top", Block() } })["id"].get<Id>();
+            Check(!ElementOf(s, flat).contains("top"), "放样：和底面一样的顶部轮廓不放样");
+        }
+    }
+
 }
 
 int main()
@@ -2522,6 +2881,7 @@ int main()
     TestColumns();
     TestStructure();
     TestMep();
+    TestMassing();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

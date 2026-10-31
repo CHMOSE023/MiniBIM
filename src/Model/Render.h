@@ -29,6 +29,8 @@ namespace MiniBIM::Bim::Render
     inline constexpr Rgb Ink        = { 25, 25, 25 };
     inline constexpr Rgb Faint      = { 120, 120, 120 };
     inline constexpr Rgb GridColor  = { 60, 100, 150 };
+    // 体量的轮廓，虚线
+    inline constexpr Rgb MassColor  = { 88, 112, 168 };
 
     // 线是元素的哪部分：看到的（剖切面以下、注释）、剖到的、字、图案
     enum class Part

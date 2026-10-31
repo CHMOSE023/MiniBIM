@@ -5,6 +5,7 @@
 // 第 2a 步移植了项目文件、撤销、标高、轴网、墙、门窗、楼板、类型、材质与编辑（修改、移动、复制、删除、翻转），
 // 其余命令按 docs/PLAN.md 第 2 阶段的顺序陆续加进来
 #include "Commands/Commands.h"
+#include "Model/Massing.h"
 #include "I18n/Translator.h"
 #include "Ifc/Ifc.h"
 #include "Model/Align.h"
@@ -2301,6 +2302,380 @@ namespace MiniBIM::Bim
             }
         }
 
+        // ── 体量（移植自 BIMCraft commands.rs 的 mass、mass_floors、…_by_face）──────────
+        bool DeleteCmd(Session& s, const Json& p, Json& result, std::string& error);
+
+        // 体量的底面积（平方米）、高（毫米）、体积（立方米）
+        std::tuple<double, double, double> MassSize(const Model& m, const Mass& ms)
+        {
+            const auto [bottom, top] = m.MassSpan(ms);
+            return { M2(std::abs(Geom::Area(ms.boundary))), top - bottom, std::round(m.MassVolume(ms, bottom, top) / 1e7) / 100.0 };
+        }
+
+        bool MassCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "mass";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Mass ms;
+            std::vector<P2> boundary;
+            if (!LevelParam(c, m, p, "level", ms.level, error) || !P.Points("boundary", boundary))
+                return false;
+            std::optional<std::vector<P2>> top;
+            const bool hasTop = !P.Absent("top"), hasLean = !P.Absent("lean");
+            if (hasTop && hasLean)
+                return P.Fail("give `top`, an outline, or `lean`, how far the top moves sideways, not both");
+            if (hasTop)
+            {
+                std::vector<P2> t;
+                if (!P.Points("top", t))
+                    return false;
+                top = std::move(t);
+            }
+            else if (hasLean)
+            {
+                P2 by;
+                if (!P.PointReq("lean", by))
+                    return false;
+                std::vector<P2> t;
+                for (const P2& q : boundary)
+                    t.push_back(q + by);
+                top = std::move(t);
+            }
+            // 逆时针，顶部轮廓同向、点点对应
+            if (Geom::Area(boundary) < 0.0)
+            {
+                std::reverse(boundary.begin(), boundary.end());
+                if (top)
+                    std::reverse(top->begin(), top->end());
+            }
+            std::optional<double> height, baseOffset;
+            std::optional<std::string> name;
+            if (!P.Num("height", height) || !P.Num("base_offset", baseOffset) || !P.String("name", name))
+                return false;
+            // 到上一个标高（同管井），或给了 height 时那么高，或到 top_level
+            if (P.Absent("top_level"))
+            {
+                if (!height)
+                    ms.topLevel = m.LevelAbove(ms.level);
+            }
+            else
+            {
+                Guid t;
+                if (!LevelParam(c, m, p, "top_level", t, error))
+                    return false;
+                ms.topLevel = t;
+            }
+            ms.height     = height.value_or(DefaultHeight);
+            ms.baseOffset = baseOffset.value_or(0.0);
+            ms.name       = name ? *name : LanguageOf::Word(m.language, "Mass");
+            ms.boundary   = std::move(boundary);
+            if (top && *top != ms.boundary)
+                ms.top = std::move(*top);
+            const auto [area, h, volume] = MassSize(m, ms);
+            const Id id = s.ModelMut().Insert(std::move(ms));
+            result = Json{ { "id", id }, { "area_m2", area }, { "height", h }, { "volume_m3", volume } };
+            return true;
+        }
+
+        // mass 指的体量
+        bool MassOf(const char* c, const Model& m, const Json& p, Id& id, Mass& out, std::string& error)
+        {
+            if (Absent(p, "mass"))
+                return Fail(error, c, "`mass`, the id of a mass, is required");
+            Guid g;
+            std::string why;
+            if (!FromJson(p["mass"], g, why))
+                return Fail(error, c, "`mass`: " + why);
+            const auto found = m.elements.IdOf(g);
+            const Element* e = found ? m.elements.Get(*found) : nullptr;
+            if (!e || !e->As<Mass>())
+                return Fail(error, c, m.Shown(g) + " isn't a mass");
+            id  = *found;
+            out = *e->As<Mass>();
+            return true;
+        }
+
+        // made（一个 ID 或一列）里的元素在 key 下记上 value：它们的 ID
+        std::vector<Id> MarkMade(Session& s, const Json& made, const char* key, const Json& value)
+        {
+            std::vector<Id> ids;
+            if (made.is_array())
+            {
+                for (const Json& v : made)
+                    if (v.is_number_integer())
+                        ids.push_back(v.get<Id>());
+            }
+            else if (made.is_number_integer())
+                ids.push_back(made.get<Id>());
+            for (const Id id : ids)
+                if (Element* e = s.ModelMut().elements.GetMut(id); e && e->ParamsMut())
+                    (*e->ParamsMut())[key] = value;
+            return ids;
+        }
+
+        // p 里 keys 给了的参数，交给做元素的命令
+        Json Passing(const Json& p, std::initializer_list<const char*> keys, Json to)
+        {
+            for (const char* k : keys)
+                if (!Absent(p, k))
+                    to[k] = p[k];
+            return to;
+        }
+
+        Json RingJsonOf(const Ring& ring)
+        {
+            Json a = Json::array();
+            for (const P2& q : ring)
+                a.push_back(ToJson(q));
+            return a;
+        }
+
+        bool MassFloorsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "mass_floors";
+            Params P(c, p, error);
+            std::vector<std::pair<Id, Mass>> masses;
+            if (!Absent(p, "mass"))
+            {
+                Id id;
+                Mass ms;
+                if (!MassOf(c, s.GetModel(), p, id, ms, error))
+                    return false;
+                masses.emplace_back(id, std::move(ms));
+            }
+            else
+                for (const auto& [id, e] : s.GetModel().elements.Items())
+                    if (const Mass* ms = e->As<Mass>())
+                        masses.emplace_back(id, *ms);
+            if (masses.empty())
+                return P.Fail("no mass; make one with `mass`");
+            bool prune = false;
+            std::optional<std::string> kind;
+            if (!P.Flag("prune", prune) || !P.String("type", kind))
+                return false;
+            std::vector<Id> ids, made, updated, stale, removed;
+            for (const auto& [mass, ms] : masses)
+            {
+                const Guid massGuid = s.GetModel().GuidOf(mass);
+                const auto held     = Massing::FloorsOf(s.GetModel(), massGuid);
+                const auto slices   = s.GetModel().MassSlices(ms);
+                std::vector<Guid> levels;
+                for (const auto& sl : slices)
+                {
+                    const Model& m   = s.GetModel();
+                    const Guid level = m.GuidOf(sl.level);
+                    levels.push_back(level);
+                    // 体量在这个标高处的轮廓：底面轮廓，放样的在两个轮廓之间
+                    const Ring ring = m.MassOutline(ms, sl.z);
+                    const auto it = std::find_if(held.begin(), held.end(), [&](const auto& h) { return m.Same(h.second, level); });
+                    if (it == held.end())
+                    {
+                        Json one;
+                        if (!FloorCmd(s, Passing(p, { "type" }, Json{ { "boundary", RingJsonOf(ring) }, { "level", ToJson(level) } }), one, error))
+                            return false;
+                        for (const Id id : MarkMade(s, one["id"], Massing::FloorMark,
+                                                    Json{ { "mass", ToJson(massGuid) }, { "level", ToJson(level) } }))
+                        {
+                            made.push_back(id);
+                            ids.push_back(id);
+                        }
+                        continue;
+                    }
+                    const Id f = it->first;
+                    ids.push_back(f);
+                    // 轮廓（与类型）已经对的楼板不动，再跑一次不是一步撤销
+                    const Floor* fl = m.elements.Get(f)->As<Floor>();
+                    if (fl->boundary != ring || (kind && *kind != fl->typeName))
+                    {
+                        if (kind && !m.types.floor.count(*kind))
+                            return P.Fail("floor type `" + *kind + "` doesn't exist");
+                        Floor* mf = s.ModelMut().elements.GetMut(f)->As<Floor>();
+                        mf->boundary = ring;
+                        if (kind)
+                            mf->typeName = *kind;
+                        updated.push_back(f);
+                    }
+                }
+                for (const auto& [f, level] : held)
+                    if (std::none_of(levels.begin(), levels.end(), [&](const Guid& l) { return s.GetModel().Same(l, level); }))
+                        (prune ? removed : stale).push_back(f);
+            }
+            if (!removed.empty())
+            {
+                Json gone;
+                if (!DeleteCmd(s, Json{ { "ids", removed } }, gone, error))
+                    return false;
+            }
+            result = Json{ { "ids", ids }, { "made", made }, { "updated", updated }, { "stale", stale }, { "removed", removed } };
+            return true;
+        }
+
+        bool WallByFaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "wall_by_face";
+            Id mass;
+            Mass ms;
+            if (!MassOf(c, s.GetModel(), p, mass, ms, error))
+                return false;
+            const Ring ring = ms.Footprint(), crown = ms.TopRing();
+            const size_t n = ring.size();
+            // 墙是竖直的，只立在顶边正在底边上方的面上
+            std::set<size_t> faces;
+            if (Absent(p, "faces"))
+            {
+                for (size_t f = 0; f < n; ++f)
+                    if (Massing::Plumb(ring, crown, f))
+                        faces.insert(f);
+                if (faces.empty())
+                    return Fail(error, c, "every face of the mass leans, and a wall stands plumb; none can stand on one");
+            }
+            else
+            {
+                const Json& a = p["faces"];
+                if (!a.is_array() || a.size() > MaxPoints)
+                    return Fail(error, c, "`faces` must be a list of edge numbers, got " + a.dump());
+                for (const Json& v : a)
+                {
+                    if (!v.is_number_integer() || v.get<int64_t>() < 0 || v.get<uint64_t>() >= n)
+                        return Fail(error, c, "face " + v.dump() + " isn't an edge of the footprint: 0 to " + std::to_string(n == 0 ? 0 : n - 1) +
+                                                  ", from its first point");
+                    const size_t f = v.get<size_t>();
+                    if (!Massing::Plumb(ring, crown, f))
+                        return Fail(error, c, "face " + std::to_string(f) + " leans, and a wall stands plumb");
+                    faces.insert(f);
+                }
+            }
+            const Json top = ms.topLevel ? Json{ { "top_level", ToJson(*ms.topLevel) } } : Json{ { "height", ms.height } };
+            const Guid massGuid = s.GetModel().GuidOf(mass);
+            Json ids = Json::array();
+            for (const size_t f : faces)
+            {
+                // 逆时针时体量在边的左边；墙的外侧在它的左边，所以反过来走
+                const P2 a = ring[f], b = ring[(f + 1) % n];
+                Json q{ { "points", Json::array({ ToJson(b), ToJson(a) }) }, { "level", ToJson(ms.level) }, { "base_offset", ms.baseOffset },
+                        { "location", "exterior-finish" } };
+                q.update(top);
+                Json made;
+                if (!WallCmd(s, Passing(p, { "type", "location" }, q), made, error))
+                    return false;
+                for (const Id id : MarkMade(s, made["ids"], Massing::Face, Json{ { "mass", ToJson(massGuid) }, { "face", f } }))
+                    ids.push_back(id);
+            }
+            result = Json{ { "ids", ids } };
+            return true;
+        }
+
+        // 体量的顶面在哪里：一个标高，高出它多少
+        std::pair<Guid, double> TopFace(const Mass& ms)
+        {
+            return ms.topLevel ? std::pair{ *ms.topLevel, 0.0 } : std::pair{ ms.level, ms.baseOffset + ms.height };
+        }
+
+        bool FloorByFaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Id mass;
+            Mass ms;
+            if (!MassOf("floor_by_face", s.GetModel(), p, mass, ms, error))
+                return false;
+            const auto [level, offset] = TopFace(ms);
+            if (!FloorCmd(s, Passing(p, { "type" }, Json{ { "boundary", RingJsonOf(ms.TopRing()) }, { "level", ToJson(level) }, { "offset", offset } }),
+                          result, error))
+                return false;
+            MarkMade(s, result["id"], Massing::Face, Json{ { "mass", ToJson(s.GetModel().GuidOf(mass)) }, { "face", "top" } });
+            return true;
+        }
+
+        bool RoofByFaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Id mass;
+            Mass ms;
+            if (!MassOf("roof_by_face", s.GetModel(), p, mass, ms, error))
+                return false;
+            const auto [level, offset] = TopFace(ms);
+            const Json q{ { "boundary", RingJsonOf(ms.TopRing()) }, { "level", ToJson(level) }, { "offset", offset }, { "slope", 0 }, { "overhang", 0 } };
+            if (!RoofCmd(s, Passing(p, { "type", "slope", "overhang" }, q), result, error))
+                return false;
+            MarkMade(s, result["id"], Massing::Face, Json{ { "mass", ToJson(s.GetModel().GuidOf(mass)) }, { "face", "top" } });
+            return true;
+        }
+
+        bool UpdateByFaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "update_by_face";
+            const Model& m = s.GetModel();
+            const bool hasIds = !Absent(p, "ids") || !Absent(p, "id"), hasMass = !Absent(p, "mass");
+            if (hasIds && hasMass)
+                return Fail(error, c, "give `ids` or `mass`, not both");
+            std::vector<Id> ids;
+            if (hasMass)
+            {
+                Id mass;
+                Mass ms;
+                if (!MassOf(c, m, p, mass, ms, error))
+                    return false;
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const auto f = Massing::FaceOf(*e); f && m.Same(f->first, m.GuidOf(mass)))
+                        ids.push_back(id);
+            }
+            else if (hasIds)
+            {
+                if (!IdsParam(c, m, p, ids, error))
+                    return false;
+                for (const Id id : ids)
+                    if (!Massing::FaceOf(*m.elements.Get(id)))
+                        return Fail(error, c, std::to_string(id) + " isn't made by face; `wall_by_face`, `floor_by_face` and `roof_by_face` make them");
+            }
+            else
+                for (const auto& [id, e] : m.elements.Items())
+                    if (Massing::FaceOf(*e))
+                        ids.push_back(id);
+            if (ids.empty())
+                return Fail(error, c,
+                            "nothing is made by face: `wall_by_face`, `floor_by_face` and `roof_by_face` make walls, floors and roofs that follow a mass");
+            std::vector<std::pair<Id, Element>> changed;
+            std::vector<Id> same;
+            std::vector<std::string> gone;
+            for (const Id id : ids)
+            {
+                const Element* e = m.elements.Get(id);
+                const auto face  = Massing::FaceOf(*e);
+                if (!face)
+                    continue;
+                Element now = *e;
+                const auto mid = m.elements.IdOf(face->first);
+                const Element* me = mid ? m.elements.Get(*mid) : nullptr;
+                if (!me || !me->As<Mass>())
+                {
+                    gone.push_back(std::string(e->Category()) + " " + std::to_string(id) + " was made from mass " + m.Shown(face->first) +
+                                   ", which isn't there");
+                    continue;
+                }
+                std::string why;
+                if (!Massing::Follow(now, *me->As<Mass>(), *mid, face->second, why))
+                    gone.push_back(std::string(e->Category()) + " " + std::to_string(id) + " " + why);
+                else if (now == *e)
+                    same.push_back(id);
+                else
+                    changed.emplace_back(id, std::move(now));
+            }
+            if (!gone.empty())
+            {
+                std::string all;
+                for (const std::string& g : gone)
+                    all += (all.empty() ? "" : "; ") + g;
+                return Fail(error, c, all);
+            }
+            std::vector<Id> updated;
+            for (auto& [id, e] : changed)
+            {
+                updated.push_back(id);
+                s.ModelMut().elements.Insert(id, std::move(e));
+            }
+            result = Json{ { "updated", updated }, { "unchanged", same } };
+            return true;
+        }
+
         bool Modify(Session& s, const Json& p, Json& result, std::string& error)
         {
             const char* c = "modify";
@@ -2466,6 +2841,19 @@ namespace MiniBIM::Bim
             }
             else if (Room* r = out.As<Room>())
                 r->point = f(r->point);
+            // 顶部轮廓同向、点点对应
+            else if (Mass* ms = out.As<Mass>())
+            {
+                for (Ring* ring : { &ms->boundary, ms->top ? &*ms->top : nullptr })
+                {
+                    if (!ring)
+                        continue;
+                    for (P2& q : *ring)
+                        q = f(q);
+                    if (mo.mirror)
+                        std::reverse(ring->begin(), ring->end());
+                }
+            }
             else if (Column* col = out.AsColumn())
                 std::tie(col->at, col->angle) = Turned(f, col->at, col->angle);
             else if (Run* run = out.AsRun())
@@ -2631,8 +3019,16 @@ namespace MiniBIM::Bim
             Model& mm = s.ModelMut();
             for (auto& [id, w] : walls)
                 mm.elements.Insert(id, std::move(w));
+            std::vector<Id> flipped;
             for (auto& [id, e] : others)
+            {
+                if (mo.mirror && e.As<Mass>())
+                    flipped.push_back(id);
                 mm.elements.Insert(id, std::move(e));
+            }
+            // 镜像的体量轮廓反着走：按面做的墙记着的边重新编号
+            for (const Id id : flipped)
+                Massing::Mirrored(mm, id);
             return true;
         }
 
@@ -2690,6 +3086,8 @@ namespace MiniBIM::Bim
                         o->host = it->second;
                     o->mark = NextNumber(Marks(mm, e.IsDoor()));
                 }
+                if (auto* params = e.ParamsMut())
+                    Massing::Detach(*params);
                 const Guid original = mm.GuidOf(from);
                 const Id id = mm.Insert(std::move(e));
                 hosts[original] = mm.GuidOf(id);
@@ -2885,6 +3283,8 @@ namespace MiniBIM::Bim
             Wall first = w, second = w;
             first.end    = cut;
             second.start = cut;
+            Massing::Detach(first.params);
+            Massing::Detach(second.params);
             // 弧按长度分转角
             first.arc  = std::round(first.arc * along / len * 1e9) / 1e9;
             second.arc = std::round((w.arc - first.arc) * 1e9) / 1e9;
@@ -3142,6 +3542,8 @@ namespace MiniBIM::Bim
                 if (gone.count(m.GuidOf(id)))
                     deleted.push_back(id);
             Model& mm = s.ModelMut();
+            // 记号认体量要它还在：先拿掉记号再删
+            Massing::Forget(mm, gone);
             for (const Guid g : gone)
                 mm.elements.Remove(g);
             // 贴着的屋顶或楼板删了的墙松开，插进的屋顶删了的屋顶不再插进
@@ -3403,6 +3805,23 @@ namespace MiniBIM::Bim
               "(cabeamento estruturado, NBR 14565) for each segment of the points, as `pipe` lays them: round, `width` the cable's outside "
               "diameter; `system` names the link or the network it belongs to", CablingCmd, true },
 
+            { "mass", N_("Mass"), { "MS" },
+              "{level?, boundary: [[x,y],…], top?: [[x,y],…] | lean?: [dx,dy], top_level?, height?, base_offset?, name?} a conceptual "
+              "mass: the footprint `boundary` on `level`, `base_offset` mm above it, rising to `top_level` or `height` mm (by default to the "
+              "level above, or 3000). `top`, a ring with as many points, lofts it to that outline at the top; `lean` moves the top sideways",
+              MassCmd, true },
+            { "mass_floors", N_("Mass Floors"), { "MF" },
+              "{mass?, type?, prune?} a floor on each level the mass (or every mass) crosses, along its outline there; run again it updates "
+              "them, and reports the floors on levels it no longer crosses as `stale` (`prune` deletes them)", MassFloorsCmd, true },
+            { "wall_by_face", N_("Wall by Face"), { "WB" },
+              "{mass, faces?: [edge, …], type?, location?} walls on the mass's upright faces (edge i of its footprint runs from point i to "
+              "the next; by default every plumb one), their outside on the face, as high as the mass", WallByFaceCmd, true },
+            { "floor_by_face", N_("Floor by Face"), { "FB" }, "{mass, type?} a floor on the mass's top face", FloorByFaceCmd, true },
+            { "roof_by_face", N_("Roof by Face"), { "RB" }, "{mass, type?, slope?, overhang?} a roof on the mass's top face, flat by default",
+              RoofByFaceCmd, true },
+            { "update_by_face", N_("Update to Face"), { "UF" },
+              "{mass? | ids?} rebuilds the walls, floors and roofs made by face (of the mass, or `ids`, or all) to the mass as it is now",
+              UpdateByFaceCmd, true },
             { "roof", N_("Roof"), {},
               "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, extrusion?, "
               "openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its base `offset` mm above it. "
@@ -3651,6 +4070,22 @@ namespace MiniBIM::Bim
                 v["thickness"] = t->second.thickness;
                 v["grid"]      = t->second.grid;
             }
+        }
+        else if (const Mass* ms = e->As<Mass>())
+        {
+            const auto [area, height, volume] = MassSize(m, *ms);
+            v["area_m2"]   = area;
+            v["height"]    = height;
+            v["volume_m3"] = volume;
+            double gross = 0.0;
+            Json levels  = Json::array();
+            for (const auto& sl : m.MassSlices(*ms))
+            {
+                gross += std::abs(Geom::Area(m.MassOutline(*ms, sl.z)));
+                levels.push_back(sl.level);
+            }
+            v["gross_floor_area_m2"] = M2(gross);
+            v["levels"]              = std::move(levels);
         }
         else if (const Room* r = e->As<Room>())
         {

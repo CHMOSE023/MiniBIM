@@ -4,6 +4,7 @@
 #include "Core/Math/Mat4.hpp"
 #include "Core/Math/MathUtils.hpp"
 #include "I18n/Translator.h"
+#include "Model/Massing.h"
 #include "Model/Model.h"
 #include "Model/Walls.h"
 #include "Solid/ISolidKernel.h"
@@ -36,6 +37,7 @@ namespace MiniBIM
         constexpr Rgb kComponent = { 214 / 255.0f, 204 / 255.0f, 188 / 255.0f };
         // 结构柱（BIMCraft 的 STRUCTURE）；建筑柱同墙
         constexpr Rgb kStructure = { 182 / 255.0f, 184 / 255.0f, 190 / 255.0f };
+        constexpr Rgb kMass      = { 158 / 255.0f, 190 / 255.0f, 224 / 255.0f };
 
         // 门洞扣得比墙面再出去一点，免得布尔运算遇到重合的面
         constexpr double kPast = 50.0;
@@ -380,6 +382,24 @@ namespace MiniBIM
                         add(body, c, flat ? nullptr : &edges);
                 }
                 ++m_counts.runs;
+            }
+            else if (const Bim::Mass* ms = e.As<Bim::Mass>())
+            {
+                // 放样的是从底面轮廓到顶部轮廓的三角形，否则底面轮廓拉伸
+                const auto [bottom, top] = m.MassSpan(*ms);
+                if (ms->Lofted())
+                {
+                    Bim::Fam::Piece piece;
+                    piece.tris = Bim::Massing::Tris(ms->Footprint(), ms->TopRing(), bottom, top);
+                    addPiece(piece, kMass);
+                }
+                else
+                {
+                    const Solid::BodyPtr body = Prism(k, ms->Footprint(), bottom, top - bottom);
+                    if ((ok = body != nullptr))
+                        add(body, kMass);
+                }
+                ++m_counts.masses;
             }
             else if (const Bim::Component* c = e.As<Bim::Component>())
             {

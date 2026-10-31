@@ -90,6 +90,8 @@ namespace MiniBIM::Bim::Align
             for (const Ring& r : f->openings)
                 Path(out, r, true);
         }
+        else if (const Mass* ms = e->As<Mass>())
+            Path(out, ms->boundary, true);
         else if (const Ceiling* c = e->As<Ceiling>())
         {
             Path(out, c->boundary, true);

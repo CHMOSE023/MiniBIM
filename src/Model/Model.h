@@ -189,6 +189,8 @@ namespace MiniBIM::Bim
         // 顶部从下面贴着的屋顶或楼板（代替顶部约束）；底部立在其上的那个
         std::optional<Guid> attachTop;
         std::optional<Guid> attachBase;
+        // 存的参数值：现在只有体量的记号（Model/Massing.h 的 Massing::Face），项目参数移植后也在这里
+        std::map<std::string, Json> params;
         bool operator==(const Wall&) const = default;
     };
 
@@ -222,6 +224,8 @@ namespace MiniBIM::Bim
         // 顶面模型图案的起点与转角（度）：Revit 对齐、旋转图案
         P2                patternOrigin;
         double            patternAngle = 0.0;
+        // 存的参数值：体量的记号（Massing::FloorMark、Massing::Face）
+        std::map<std::string, Json> params;
         bool operator==(const Floor&) const = default;
     };
 
@@ -405,10 +409,35 @@ namespace MiniBIM::Bim
         std::optional<Guid> join;
         std::optional<Extrusion> extrusion;
         std::vector<SketchLine>  sketch;
+        // 存的参数值：体量的记号（Massing::Face）
+        std::map<std::string, Json> params;
 
         // 迹线的各条边，编号同 gables：外轮廓的，然后是每个天井的
         std::vector<Segment> Edges() const;
         bool operator==(const Roof&) const = default;
+    };
+
+    // 体量（Revit 的概念体量，移植自 BIMCraft model.rs 的 Mass）：footprint 从 level 上方 baseOffset 拉伸到上一层，或高 height，或到 topLevel；
+    // 有 top（与 boundary 点点对应、同向的顶部轮廓）时在两者之间直线放样，斜的体量是顶部轮廓横移了的。平面、三维里虚的
+    struct Mass
+    {
+        std::string                name;
+        Guid                       level;
+        Ring                       boundary;
+        std::optional<Guid>        topLevel;
+        double                     height     = 0.0;
+        double                     baseOffset = 0.0;
+        std::optional<std::vector<P2>> top;
+        // 存的参数值（项目参数移植后用）
+        std::map<std::string, Json> params;
+
+        // 顶部轮廓不是底面轮廓：在两者之间放样
+        bool Lofted() const;
+        // 底面轮廓，不论 boundary 怎样转都是逆时针
+        Ring Footprint() const;
+        // 顶部轮廓，同 Footprint 逆时针、点点对应；直上直下时就是底面轮廓
+        Ring TopRing() const;
+        bool operator==(const Mass&) const = default;
     };
 
     // 坡屋顶迹线最多的点数：找坡面相交处费时间
@@ -423,7 +452,7 @@ namespace MiniBIM::Bim
     struct Element
     {
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
-                                     Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable>;
+                                     Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass>;
         Variant v;
 
         Element() = default;
@@ -457,7 +486,7 @@ namespace MiniBIM::Bim
         std::string* FamilyMut();
         // 门窗立在墙里时要的族类别
         std::optional<Fam::Category> HostedCategory() const;
-        // 它存的参数值：构件与门窗的
+        // 它存的参数值：构件与门窗的族参数，墙、楼板、屋顶、体量的体量记号
         const std::map<std::string, Json>* Params() const;
         std::map<std::string, Json>*       ParamsMut();
 
@@ -695,6 +724,20 @@ namespace MiniBIM::Bim
         // ── 柱 ──────────────────────────────────────────────────
         // 从底到顶的高度：标高加 baseOffset，到 topLevel 或高出 height
         std::pair<double, double> Span(Guid level, double baseOffset, const std::optional<Guid>& topLevel, double height) const;
+        // 体量从下到上（Span）；高 z 的水平面穿过它吗；z 处的轮廓（放样的在两个轮廓之间）
+        std::pair<double, double> MassSpan(const Mass& ms) const;
+        bool MassCutBy(const Mass& ms, double z) const;
+        Ring MassOutline(const Mass& ms, double z) const;
+        // from 到 to 之间的体积（立方毫米）：截面积是高度的二次式，辛普森公式是精确的
+        double MassVolume(const Mass& ms, double from, double to) const;
+        // 它穿过的标高，从低到高：从底到顶（不含顶）；各带高程与到下一个（或顶）的高度
+        struct MassSlice
+        {
+            Id     level;
+            double z;
+            double height;
+        };
+        std::vector<MassSlice> MassSlices(const Mass& ms) const;
         std::pair<double, double> ColumnSpan(const Column& c) const;
         // 柱的类型（建筑柱、结构柱、独立基础各自的类型表里）；不是柱或没有这个类型时为空
         const ColumnType* ColumnTypeOf(const Element& e) const;

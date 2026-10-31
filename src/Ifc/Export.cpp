@@ -1,5 +1,7 @@
 // 移植自 BIMCraft crates/core/src/ifc.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Ifc/Ifc.h"
+#include "Model/Massing.h"
+#include "Model/ModelJson.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
 #include <algorithm>
@@ -39,6 +41,8 @@ namespace MiniBIM::Bim::Ifc
         constexpr uint64_t kCommonDefines      = 44;
         constexpr uint64_t kSystems            = 45;
         constexpr uint64_t kSystemMembers      = 46;
+        constexpr uint64_t kLofted             = 47;
+        constexpr uint64_t kLoftedDefines      = 48;
         constexpr uint64_t kQuantities         = 49;
         constexpr uint64_t kQuantityDefines    = 50;
 
@@ -873,6 +877,32 @@ namespace MiniBIM::Bim::Ifc
                 // 高度在截面的哪条线上、是哪个类别：给只认得出类的读者
                 w.Define(ent, RunProperties, { w.TextProperty("Justification", JustifyOf::Name(r->justify)), w.TextProperty("Category", e.Category()) },
                          { kRunProperties, kRunDefines }, id);
+            }
+            // 体量：对象类型为 `Mass` 的代理元素（同 Revit），底面轮廓从底拉伸到顶；放样的是闭合三角面集，另有属性集说哪个角对哪个角
+            else if (const Mass* ms = e.As<Mass>())
+            {
+                const auto storey = storeyAt(ms->level);
+                if (!storey)
+                    continue;
+                const auto [bottom, top] = m.MassSpan(*ms);
+                const uint64_t at = w.Place(storey, { 0.0, 0.0, 0.0 }, std::nullopt);
+                uint64_t shape = 0;
+                if (ms->Lofted())
+                    shape = w.Tessellated({ w.Faceset(Massing::Tris(ms->Footprint(), ms->TopRing(), ms->baseOffset, ms->baseOffset + top - bottom)) });
+                else
+                    shape = w.Body(w.Profile(ms->Footprint(), {}), ms->baseOffset, top - bottom, {});
+                const uint64_t ent = w.Add("IFCBUILDINGELEMENTPROXY(" + w.GuidFor(kElement, id) + ",$," + S(ms->name) + ",$,'Mass'," + Ref(at) + "," +
+                                           Ref(shape) + ",'" + std::to_string(id) + "',.USERDEFINED.)");
+                if (ms->Lofted())
+                {
+                    Json loft{ { "bottom", Json::array() }, { "top", Json::array() } };
+                    for (const P2& q : ms->Footprint())
+                        loft["bottom"].push_back(ToJson(q));
+                    for (const P2& q : ms->TopRing())
+                        loft["top"].push_back(ToJson(q));
+                    w.Define(ent, MassProperties, { w.TextProperty("Loft", loft.dump()) }, { kLofted, kLoftedDefines }, id);
+                }
+                contained[m.GuidOf(ms->level)].push_back(ent);
             }
             // 房间分隔线：沿它的线的虚拟元素，只围合房间
             else if (const RoomSeparator* rs = e.As<RoomSeparator>())

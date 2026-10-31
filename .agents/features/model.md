@@ -14,7 +14,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Geom.h` | `geom.rs`、`walls.rs` 的 `Plane` | 平面几何：`P2`、环、面积、裁剪、三角剖分、平面图的面、区域 |
 | `src/Model/Units.h`、`src/Model/Language.h` | `units.rs`、`language.rs` | 项目单位（显示与输入）、项目语言（新名称用的词） |
 | `src/Model/Ids.h` | `ids.rs` | `Id`、`Guid`、`Elements`（按 ID 或 GUID 找元素） |
-| `src/Model/Model.h` | `model.rs` | 元素（标高、轴网、墙、楼板、天花板、门、窗、房间、房间分隔线、屋顶、构件、柱、结构柱、独立基础、九类 run）、类型、材质、`Model::Check`；屋顶的坡面、房间的区域、构件与带族门窗的实体 |
+| `src/Model/Model.h` | `model.rs` | 元素（标高、轴网、墙、楼板、天花板、门、窗、房间、房间分隔线、屋顶、构件、柱、结构柱、独立基础、九类 run、体量）、类型、材质、`Model::Check`；屋顶的坡面、房间的区域、构件与带族门窗的实体 |
 | `src/Model/Family.h` | `family.rs` | 族（`Bim::Family` 与 `Bim::Fam` 里的参数、公式、形体、符号）：公式求值、参数取值、检查、扫掠与旋转出三角形 |
 | `src/Model/Csg.h` | `csg.rs` | 族的空心形体用的网格布尔运算（BSP，工作表不递归，`Csg::Meter` 限制花费） |
 | `src/Model/FamilyLibrary.cpp` | `family.rs` 的 library、`fixtures.rs` | 新项目带的 34 个族：家具 10、门窗 6、各专业的器具 18 |
@@ -22,6 +22,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Align.h` | `align.rs`、`model.rs` 的 `reference_line` | 对齐：元素在平面上的直边与参照轴线（墙的中心线、两面、两端，门窗的中线与门框，轴网……），把一条线放到另一条上的刚体运动 |
 | `src/Model/Snap.h` | `snap.rs` | 捕捉：平面上点下的点落在哪（端点、中点、交点、圆心、垂足、墙中心线、角度引导线、最近的 10 毫米），标尺的读数与刻度 |
 | `src/Model/Sketch.h` | `sketch.rs` | 草图：零散的直线与圆弧（`SketchLine`）解成闭合的环、嵌套成轮廓与洞（`Sketch::Solve`、`Sketch::SolveOne`），解不出时列出每个问题（相交、重叠、分叉、开口、没有面积、几个外轮廓）与涉及的线 |
+| `src/Model/Massing.h` | `massing.rs` | 体量做出的元素的记号（`Massing::FloorMark`、`Massing::Face`）、按面重建（`Massing::Follow`）、放样的轮廓与三角形、竖直的面、放样的检查 |
 | `src/Model/Font.h` | `font.rs` | 平面图注释用的单线字（拉丁、西里尔大写，附加符号；没有的字画问号） |
 | `src/Model/Skeleton.h` | `skeleton.rs` | 多边形（含天井）的直骨架：坡屋顶的斜脊、天沟、屋脊与各坡面 |
 | `src/Model/Library.h` | `library.rs` | 库条目（类型、材质）与部件（类型的层）的 ID、GUID |
@@ -75,6 +76,13 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   几何都在 `src/Model/Runs.h`：`Runs::Geom`（`Model::RunGeom`：中心线两端，高度按对齐移到中心）给平面的占地、高度范围、三维的棱柱或圆管（`Runs::Geom::Tube`）；
   `Runs::Check` 拒绝太短、比 75° 陡（那是柱）的；`Runs::IfcTable` 是类别与 IFC 类、预定义类型的对照。命令 `beam`、`strip_footing`、`pipe`……（`RunsOf` 每段一个）
   默认的对齐见 `Runs::DefaultJustify`（梁与条形基础顶对齐）。平面：剖到的填色，标高下挂着的与上方的看得到（上方的虚线），不是竖着的画中心线；捕捉两端、中点与线
+- 体量（5c，移植自 `massing.rs`）：`Mass`（名称、标高、逆时针的底面轮廓 `boundary`、`topLevel` 或 `height`、`baseOffset`、可选的顶部轮廓 `top`，与底面点点对应、同向）。
+  `Model::MassSpan`（底与顶的高度）、`Model::MassCutBy`、`Model::MassOutline`（某高度处的轮廓，放样的在两个轮廓之间）、`Model::MassVolume`（拟柱体公式，按截面积精确）、
+  `Model::MassSlices`（它跨过的标高）。由体量做的墙、楼板、屋顶在 `params` 的保留名下记着它：`mass_floors` 的楼板记 `{mass, level}`（`Massing::FloorMark`），
+  按面做的记 `{mass, face}`（`Massing::Face`，墙为底面轮廓的边号，楼板与屋顶为 `"top"`）；`Massing::CheckValue` 检查记号，项目参数不能用这两个名字。
+  复制、拆开的是普通元素（`Massing::Detach`），删掉体量时记号拿掉（`Massing::Forget`，要在删之前调，`Model::Same` 认元素要它还在），
+  原地镜像的体量轮廓反着走、它的墙记着的边重新编号（`Massing::Mirrored`）。`update_by_face` 经 `Massing::Follow` 照体量现在的样子重建，面没了或斜了时整个拒绝。
+  平面：剖切面穿过时那里的轮廓画虚线（`Render::MassColor`），捕捉它的角点，对齐认底面轮廓的边
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
@@ -114,7 +122,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   移植自 BIMCraft 各模块的测试
 - `CommandTests`（`tests/Commands/CommandTests.cpp`）：像前端一样经命令驱动（移植自 BIMCraft 的 `tests.rs`、`render.rs` 的测试）：撤销、脚本、事务、建模、编辑、平面图与拾取、
   项目文件（含打开 BIMCraft 文件时略去的内容）、示例房屋、恶意参数扫描，结构（`TestStructure`）与 MEP（`TestMep`：七类 run 的命令、
-  被拒、类型、编辑、平面与捕捉，起步设备族在各语言里都有、每个类型的形体高度对）
+  被拒、类型、编辑、平面与捕捉，起步设备族在各语言里都有、每个类型的形体高度对）与体量（`TestMassing`：体量、体量楼层再跑与 prune、按面建模、
+  `update_by_face`、放样）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

@@ -123,6 +123,30 @@ msgid "Cabling"
 msgstr ""
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Mass"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass Floors"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall by Face"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor by Face"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Face"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Update to Face"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr ""
 
@@ -1058,6 +1082,50 @@ msgstr ""
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr ""
 
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass Floors (MF): a floor at each level the selected masses cross"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the mass floors"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall by Face (WB): a wall on each edge of the selected masses' footprints"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not build the walls"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor by Face (FB): a floor on the selected masses' top faces"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the floor"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Face (RB): a roof on the selected masses' top faces"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the roof"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not update to the mass"
+msgstr ""
+
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
 msgstr ""
@@ -1556,6 +1624,14 @@ msgid "System"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Volume (m³)"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Gross Floor Area"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr ""
 
@@ -1725,6 +1801,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Earthing Conductors"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Masses"
 msgstr ""
 
 #: apps/Common/src/GUI/PlanView.cpp
@@ -2287,6 +2367,18 @@ msgid "Click where the component goes; Space turns it a quarter turn."
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click the first corner of the mass's footprint."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the footprint's next corner. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click inside the walls to roof them, on the level above: the overhang runs past their faces."
 msgstr ""
 
@@ -2475,6 +2567,10 @@ msgid "Modify | Offset"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Mass"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr ""
 
@@ -2618,6 +2714,10 @@ msgstr ""
 msgid "Not a length"
 msgstr ""
 
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the mass"
+msgstr ""
+
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "Shortcuts file"
 msgstr ""
@@ -2724,6 +2824,18 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Massing"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Conceptual Mass"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Model by Face"
 msgstr ""
 
 #: assets/ui/minibim_ui.json

@@ -102,6 +102,9 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   设备（卫浴装置、管件、管道附件、电气设备、装置、照明、接闪器、接地极、检查井、数据 / 语音插座、机柜、配线架）是构件工具，`m_toolOf` 为设备的键：
   `MainFrame::PlacingFits` 只让它放那几类族（`Tools.cpp` 的 `Fixtures` 表，类型选择器与 `MainFrame::Placing` 都照它），选项栏的标题是设备的；
   建筑的"构件"（`arch.component`）清掉 `m_toolOf`，放任何可载入族。设备与 run 的两字母快捷键在 `ShortcutsDialog.cpp` 的表里
+  "体量"选项卡（移植自界面的 `massing_tab`，命令 `massing.*`）：体量工具 `MainFrame::Tool::Mass` 单击底面轮廓的角点（`m_toolPts`），回到第一点或 Enter 时
+  `MainFrame::FinishMass` 按选项栏的顶部（`ToolOptions::massTop`、`massHeight`，同墙）执行 `mass`；按面建模的五个按钮（体量楼层、面墙、面楼板、面屋顶、更新到面）
+  只在选中了体量时可用（`MainFrame::SelectedMasses`），对每个选中的体量执行一次命令（`MainFrame::ByMass`）。显示体量随视图的图形覆盖移植
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。
   没选东西时特性面板显示工具要放的"新建 …"，类型选择器选的是工具接下来放的类型（`ToolOptions::types`、门窗的族、构件的族与类型）
 - 草图模式（`SketchMode.cpp`，移植自界面的 `sketch.rs`）：`MainFrame::m_sketch` 有值时在草图里。入口是"修改 > 编辑边界"（`modify.editBoundary`，

@@ -1,5 +1,6 @@
 // 移植自 BIMCraft crates/core/src/model.rs、ids.rs、library.rs、lenient.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Model/ModelJson.h"
+#include "Model/Massing.h"
 #include "Model/Sketch.h"
 #include "Model/Text.h"
 #include <cmath>
@@ -382,10 +383,10 @@ namespace MiniBIM::Bim
             {
                 Wall w;
                 bool ok = false;
-                if (!f.Allow({ "type", "level", "start", "end", "top_level", "height", "base_offset", "arc", "location", "attach_top", "attach_base" }))
+                if (!f.Allow({ "type", "level", "start", "end", "top_level", "height", "base_offset", "arc", "location", "attach_top", "attach_base", "params" }))
                     return false;
                 ReadWallLike(f, w, ok);
-                if (!ok || !f.Finish())
+                if (!ok || !ReadParams(f, w.params) || !f.Finish())
                     return false;
                 out = Element(std::move(w));
                 return true;
@@ -393,7 +394,8 @@ namespace MiniBIM::Bim
             if (category == "floor")
             {
                 Floor x;
-                if (!f.Allow({ "type", "level", "boundary", "openings", "offset", "slope", "arrow", "structural", "pattern_origin", "pattern_angle", "sketch" }) ||
+                if (!f.Allow({ "type", "level", "boundary", "openings", "offset", "slope", "arrow", "structural", "pattern_origin", "pattern_angle", "sketch", "params" }) ||
+                    !ReadParams(f, x.params) ||
                     !f.SketchLines("sketch", x.sketch) ||
                     !f.String("type", x.typeName, true) || !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, true) ||
                     !f.Rings("openings", x.openings) || !f.Number("offset", x.offset, false) || !f.Number("slope", x.slope, false) ||
@@ -435,8 +437,8 @@ namespace MiniBIM::Bim
             if (category == "roof")
             {
                 Roof x;
-                if (!f.Allow({ "type", "level", "boundary", "courtyards", "slope", "overhang", "gable", "gables", "offset", "openings", "join", "extrusion", "sketch" }) ||
-                    !f.SketchLines("sketch", x.sketch) ||
+                if (!f.Allow({ "type", "level", "boundary", "courtyards", "slope", "overhang", "gable", "gables", "offset", "openings", "join", "extrusion", "sketch", "params" }) ||
+                    !f.SketchLines("sketch", x.sketch) || !ReadParams(f, x.params) ||
                     !f.String("type", x.typeName, true) || !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, false) ||
                     !f.Rings("courtyards", x.courtyards) || !f.Number("slope", x.slope, false) || !f.Number("overhang", x.overhang, false) ||
                     !f.Bool("gable", x.gable))
@@ -515,6 +517,26 @@ namespace MiniBIM::Bim
                     out = Element(StructuralColumn{ std::move(c) });
                 return true;
             }
+            if (category == "mass")
+            {
+                Mass x;
+                if (!f.Allow({ "name", "level", "boundary", "top_level", "height", "base_offset", "top", "params" }) ||
+                    !f.String("name", x.name, false) || !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, true) ||
+                    !f.OptId("top_level", x.topLevel) || !f.Number("height", x.height, false) || !f.Number("base_offset", x.baseOffset, false) ||
+                    !ReadParams(f, x.params))
+                    return false;
+                if (f.Raw("top") && !f.Raw("top")->is_null())
+                {
+                    Ring top;
+                    if (!f.Points("top", top, true))
+                        return false;
+                    x.top = std::move(top);
+                }
+                if (!f.Finish())
+                    return false;
+                out = Element(std::move(x));
+                return true;
+            }
             if (IsRunCategory(category))
             {
                 Run r;
@@ -534,7 +556,7 @@ namespace MiniBIM::Bim
             }
             error = who + ": unknown variant `" + category +
                     "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof, component, column, structuralcolumn, footing, "
-                    "beam, stripfooting, pipe, conduit, cabletray, wire, downconductor, groundconductor, cable";
+                    "beam, stripfooting, pipe, conduit, cabletray, wire, downconductor, groundconductor, cable, mass";
             return false;
         }
 
@@ -1199,6 +1221,8 @@ namespace MiniBIM::Bim
                 j["attach_top"] = ToJson(*w->attachTop);
             if (w->attachBase)
                 j["attach_base"] = ToJson(*w->attachBase);
+            if (!w->params.empty())
+                j["params"] = ParamsJson(w->params);
         }
         else if (const Floor* f = e.As<Floor>())
         {
@@ -1234,6 +1258,8 @@ namespace MiniBIM::Bim
                 j["pattern_angle"] = f->patternAngle;
             if (!f->sketch.empty())
                 j["sketch"] = SketchJson(f->sketch);
+            if (!f->params.empty())
+                j["params"] = ParamsJson(f->params);
         }
         else if (const RoomSeparator* rs = e.As<RoomSeparator>())
         {
@@ -1295,6 +1321,22 @@ namespace MiniBIM::Bim
             }
             if (!r->sketch.empty())
                 j["sketch"] = SketchJson(r->sketch);
+            if (!r->params.empty())
+                j["params"] = ParamsJson(r->params);
+        }
+        else if (const Mass* ms = e.As<Mass>())
+        {
+            j["name"]     = ms->name;
+            j["level"]    = ToJson(ms->level);
+            j["boundary"] = RingJson(ms->boundary);
+            if (ms->topLevel)
+                j["top_level"] = ToJson(*ms->topLevel);
+            j["height"]      = ms->height;
+            j["base_offset"] = ms->baseOffset;
+            if (ms->top)
+                j["top"] = RingJson(*ms->top);
+            if (!ms->params.empty())
+                j["params"] = ParamsJson(ms->params);
         }
         else if (const Opening* o = e.AsOpening())
         {
@@ -1766,7 +1808,7 @@ namespace MiniBIM::Bim
 
         m.Migrate();
         m.NamesFromFile();
-        // 参数值里不是它的族的参数的（项目参数还没移植）略去
+        // 参数值里不是它的族的参数、也不是体量记号的（项目参数还没移植）略去
         std::vector<Id> withParams;
         for (const auto& [id, e] : m.elements.Items())
             if (e->Params() && !e->Params()->empty())
@@ -1779,9 +1821,9 @@ namespace MiniBIM::Bim
             auto& params = *e->ParamsMut();
             for (auto it = params.begin(); it != params.end();)
             {
-                const bool own = fam != m.families.end() &&
-                                 std::any_of(fam->second.parameters.begin(), fam->second.parameters.end(),
-                                             [&](const Fam::Parameter& p) { return p.name == it->first; });
+                const bool own = Massing::Reserved(it->first) ||
+                                 (fam != m.families.end() && std::any_of(fam->second.parameters.begin(), fam->second.parameters.end(),
+                                                                         [&](const Fam::Parameter& p) { return p.name == it->first; }));
                 if (own)
                 {
                     ++it;

@@ -683,6 +683,56 @@ def _(i):
         i.line([(22, 15 + k), (32 + k, 15 + k), (32 + k, 49 - k), (42, 49 - k)], A, 2.2)
 
 
+# ── 体量选项卡 ─────────────────────────────────────────────
+# 等轴测的体量盒子：顶面四点，竖边向下 26
+MASS_TOP = [(32, 8), (56, 20), (32, 32), (8, 20)]
+
+
+def mass_box(i, c=G, fill=None, w=3):
+    i.poly([(8, 20), (32, 32), (32, 58), (8, 46)], c, fill, w=w)
+    i.poly([(32, 32), (56, 20), (56, 46), (32, 58)], c, fill, w=w)
+    i.poly(MASS_TOP, c, fill, w=w)
+
+
+@icon("Mass")              # massing.mass：体量（等轴测的一个盒子，强调）
+def _(i):
+    mass_box(i, A, AF, 3.5)
+
+
+@icon("MassFloors")        # massing.floors：体量楼层（灰色的体量，里面几层强调的楼板）
+def _(i):
+    mass_box(i, G, None, 2.5)
+    i.poly(MASS_TOP, A, AF, w=3)
+    for dz in (12, 24):
+        i.line([(8, 20 + dz), (32, 32 + dz), (56, 20 + dz)], A, 3.5)
+
+
+@icon("WallByFace")        # massing.wallByFace：面墙（灰色的体量，左前的面是一面强调的墙）
+def _(i):
+    mass_box(i, G, None, 2.5)
+    i.poly([(8, 20), (32, 32), (32, 58), (8, 46)], A, AF, w=3.5)
+
+
+@icon("FloorByFace")       # massing.floorByFace：面楼板（灰色的体量，顶面一块强调的板）
+def _(i):
+    mass_box(i, G, None, 2.5)
+    i.poly([(8, 20), (32, 32), (56, 20), (56, 25), (32, 37), (8, 25)], A, AF, w=3)
+    i.poly(MASS_TOP, A, AF, w=3)
+
+
+@icon("RoofByFace")        # massing.roofByFace：面屋顶（灰色的体量，顶上挑出的一块强调的屋顶）
+def _(i):
+    mass_box(i, G, None, 2.5)
+    i.poly([(32, 3), (62, 18), (32, 33), (2, 18)], A, AF, w=3.5)
+
+
+@icon("UpdateByFace")      # massing.updateByFace：更新到面（灰色的体量，一个绕回来的强调箭头）
+def _(i):
+    mass_box(i, G, GF, 2.5)
+    i.arc(32, 30, 14, 200, 520, A, 3.5)
+    i.poly([(40, 10), (50, 16), (40, 22)], A, A, w=2)
+
+
 @icon("Materials")         # manage.materials：材质（三个色块的球，一块强调）
 def _(i):
     i.circle(32, 32, 24, G, w=3.5)

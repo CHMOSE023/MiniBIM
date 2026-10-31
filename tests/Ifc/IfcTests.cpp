@@ -230,6 +230,8 @@ namespace
             keys = { "level", "slope", "ridge", "area_m2", "outline", "gables", "openings", "courtyards" };
         else if (cat == "grid")
             keys = { "name", "start", "end" };
+        else if (cat == "mass")
+            keys = { "name", "level", "top_level", "height", "base_offset", "boundary", "area_m2", "volume_m3" };
         const auto guid = [](const Json& v) -> std::optional<Guid>
         {
             Guid g;
@@ -1724,6 +1726,61 @@ window {"at": [4000, 6000], "family": "Casement Window"})");
         }
     }
 
+    // 移植自 BIMCraft tests.rs（f3bbb33）：体量是对象类型为 Mass 的代理元素，放样的是闭合三角面集，只在角点对得上时回来
+    void TestMassing()
+    {
+        Session s;
+        Run(s, "level", R"({"elevation": 6000, "name": "Level 3"})");
+        const Json block = Json::parse("[[0, 0], [10000, 0], [10000, 6000], [0, 6000]]");
+        const Id frustum = Run(s, "mass", Json{ { "boundary", block }, { "top_level", "Level 3" }, { "name", "Frustum" },
+                                                { "top", Json::parse("[[2000, 2000], [8000, 2000], [8000, 4000], [2000, 4000]]") } })["id"].get<Id>();
+        Run(s, "mass", Json{ { "boundary", Json::parse("[[20000, 0], [30000, 0], [30000, 6000], [20000, 6000]]") }, { "name", "Plain" } });
+        Run(s, "mass", Json{ { "boundary", Json::parse("[[40000, 0], [45000, 0], [45000, 4000], [40000, 4000]]") }, { "height", 4500 }, { "base_offset", 500 } });
+        const std::string f = Ifc::Export(s.GetModel());
+        Check(Count(f, "IFCTRIANGULATEDFACESET") == 1 && Occurrences(f, "'MiniBIM_Mass'") == 1 && Count(f, "IFCEXTRUDEDAREASOLID") == 2 && !Dangling(f),
+              "体量：放样的一个三角面集与属性集，其余拉伸");
+        bool proxies = Entities(f, "IFCBUILDINGELEMENTPROXY").size() == 3;
+        for (const std::string& l : Entities(f, "IFCBUILDINGELEMENTPROXY"))
+            proxies &= Contains(l, ",'Mass',") && EndsWith(l, ".USERDEFINED.);");
+        Check(proxies, "体量：对象类型为 Mass 的代理元素");
+        Ifc::Imported back;
+        Check(Import(f, back) && back.skipped.empty(), "体量：回来时没有略去的\n" + Skipped(back));
+        const auto before = Building(s.GetModel(), "mass"), after = Building(back.model, "mass");
+        Check(before.size() == 3 && after == before, "体量：回来时一样" + (after == before ? std::string() : "\n  原来：\n" + Join(before) + "  回来：\n" + Join(after)));
+        const Mass* was = s.GetModel().elements.Get(frustum)->As<Mass>();
+        const Mass* lofted = nullptr;
+        for (const auto& [_, e] : back.model.elements.Items())
+            if (const Mass* ms = e->As<Mass>(); ms && ms->Lofted())
+                lofted = ms;
+        Check(lofted && lofted->boundary == was->boundary && lofted->top == was->top, "体量：放样的角点一一对上");
+        if (lofted)
+        {
+            const auto [bottom, top] = back.model.MassSpan(*lofted);
+            Check(std::abs(back.model.MassVolume(*lofted, bottom, top) - 200e9) < 1e3, "体量：放样的体积不变");
+        }
+        // 认 BIMCraft 的属性集
+        std::string bimcraft = f;
+        bimcraft.replace(bimcraft.find("'MiniBIM_Mass'"), 14, "'BIMCraft_Mass'");
+        Ifc::Imported b;
+        Check(Import(bimcraft, b) && b.skipped.empty() && Building(b.model, "mass") == before, "体量：也认 BIMCraft_Mass");
+        // 没有属性集，或它和形体对不上：角点配不成对，略去并列出
+        std::string other = f, moved = f;
+        other.replace(other.find("'MiniBIM_Mass'"), 14, "'Other'");
+        const size_t at = moved.find("[2000.0,2000.0]");
+        Check(at != std::string::npos, "体量：属性集里写着顶部轮廓的角点");
+        if (at != std::string::npos)
+            moved.replace(at, 15, "[2100.0,2000.0]");
+        for (const std::string& broken : { other, moved })
+        {
+            Ifc::Imported i;
+            bool listed = false;
+            const bool ok = Import(broken, i);
+            for (const std::string& why : i.skipped)
+                listed |= Contains(why, "MiniBIM_Mass");
+            Check(ok && Only(i.model, "mass").size() == 2 && listed, "体量：配不成对的放样体量略去并列出\n" + Skipped(i));
+        }
+    }
+
 }
 
 int main()
@@ -1755,6 +1812,7 @@ int main()
     TestColumns();
     TestStructure();
     TestMep();
+    TestMassing();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

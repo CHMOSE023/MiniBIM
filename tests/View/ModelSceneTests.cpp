@@ -188,6 +188,27 @@ namespace
                   std::string("三维场景：") + command + " 的实体，中心在 2400，" + (round ? "圆的" : "方的"));
         }
     }
+    // 体量：拉伸的是 12 个三角形的盒子；放样的是两个轮廓之间的三角形，矩形的拟台每个侧面是平的，也是 12 个；从底到顶
+    void TestMassing()
+    {
+        auto kernel = Solid::CreateSMLibKernel();
+        Bim::Session s;
+        Bim::Json plain, lofted;
+        std::string error;
+        if (!s.Execute("mass", Bim::Json::parse(R"({"boundary": [[0, 0], [10000, 0], [10000, 6000], [0, 6000]], "height": 4000, "base_offset": 500})"), plain, error) ||
+            !s.Execute("mass", Bim::Json::parse(R"({"boundary": [[20000, 0], [30000, 0], [30000, 6000], [20000, 6000]], "height": 6000, "top": [[22000, 2000], [28000, 2000], [28000, 4000], [22000, 4000]]})"),
+                       lofted, error))
+            std::printf("  mass：%s\n", error.c_str());
+        ModelScene scene;
+        const bool built = scene.Build(s.GetModel(), kernel.get(), error);
+        const auto box  = scene.RangeOf(plain.value("id", Bim::Id(0)));
+        const auto loft = scene.RangeOf(lofted.value("id", Bim::Id(0)));
+        const AABB& b = scene.GetBounds();
+        Check(built && scene.GetCounts().masses == 2 && (box.second - box.first) / 3 == 12 && (loft.second - loft.first) / 3 == 12 && Near(b.Min.z, 0.0, 0.5) &&
+                  Near(b.Max.z, 6000.0, 0.5),
+              "三维场景：体量，拉伸的与放样的");
+    }
+
 }
 
 int main()
@@ -198,6 +219,7 @@ int main()
     TestColumns();
     TestStructure();
     TestMep();
+    TestMassing();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

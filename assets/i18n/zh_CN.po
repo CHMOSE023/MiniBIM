@@ -122,6 +122,30 @@ msgid "Cabling"
 msgstr "综合布线"
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Mass"
+msgstr "体量"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass Floors"
+msgstr "体量楼层"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall by Face"
+msgstr "面墙"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor by Face"
+msgstr "面楼板"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Face"
+msgstr "面屋顶"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Update to Face"
+msgstr "更新到面"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "屋顶"
 
@@ -1057,6 +1081,50 @@ msgstr "配线架 (PN)：墙上的一块配线架，放在单击处；空格键�
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "综合布线 (CB)：单击起点和终点；连续单击时每一段一根线缆"
 
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels"
+msgstr "体量 (MS)：单击底面轮廓的各个角点；按 Enter 或再次单击第一个角点完成；Esc 取消"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass Floors (MF): a floor at each level the selected masses cross"
+msgstr "体量楼层 (MF)：在选中体量经过的每个标高上做一块楼板"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the mass floors"
+msgstr "无法做体量楼层"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall by Face (WB): a wall on each edge of the selected masses' footprints"
+msgstr "面墙 (WB)：在选中体量底面轮廓的每条边上做一面墙"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not build the walls"
+msgstr "无法建墙"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor by Face (FB): a floor on the selected masses' top faces"
+msgstr "面楼板 (FB)：在选中体量的顶面上做楼板"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the floor"
+msgstr "无法做楼板"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Face (RB): a roof on the selected masses' top faces"
+msgstr "面屋顶 (RB)：在选中体量的顶面上做屋顶"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the roof"
+msgstr "无法做屋顶"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"
+msgstr "更新到面 (UF)：由选中体量按面做的墙、楼板和屋顶重新跟随体量"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not update to the mass"
+msgstr "无法更新到体量"
+
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
 msgstr "三维视图"
@@ -1549,6 +1617,14 @@ msgid "System"
 msgstr "系统"
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Volume (m³)"
+msgstr "体积 (m³)"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Gross Floor Area"
+msgstr "总楼面面积"
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr "底部标高"
 
@@ -1719,6 +1795,10 @@ msgstr "引下线"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Earthing Conductors"
 msgstr "接地导体"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Masses"
+msgstr "体量"
 
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"
@@ -2271,6 +2351,18 @@ msgid "Click where the component goes; Space turns it a quarter turn."
 msgstr "单击构件的位置；空格键转 90°。"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click the first corner of the mass's footprint."
+msgstr "单击体量底面轮廓的第一个角点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the footprint's next corner. Esc cancels."
+msgstr "单击底面轮廓的下一个角点。Esc 取消。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."
+msgstr "单击下一个角点；按 Enter 或再次单击第一个角点完成体量。Esc 取消。"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click inside the walls to roof them, on the level above: the overhang runs past their faces."
 msgstr "在墙内单击，在上一层为它们建屋顶：屋檐伸出墙面之外。"
 
@@ -2459,6 +2551,10 @@ msgid "Modify | Offset"
 msgstr "修改 | 偏移"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Mass"
+msgstr "修改 | 创建体量"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr "高度："
 
@@ -2602,6 +2698,10 @@ msgstr "无法创建楼板"
 msgid "Not a length"
 msgstr "不是长度"
 
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the mass"
+msgstr "无法创建体量"
+
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "Shortcuts file"
 msgstr "快捷键文件"
@@ -2709,6 +2809,18 @@ msgstr "接地"
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
 msgstr "插座和设备"
+
+#: assets/ui/minibim_ui.json
+msgid "Massing"
+msgstr "体量"
+
+#: assets/ui/minibim_ui.json
+msgid "Conceptual Mass"
+msgstr "概念体量"
+
+#: assets/ui/minibim_ui.json
+msgid "Model by Face"
+msgstr "按面建模"
 
 #: assets/ui/minibim_ui.json
 msgid "Mode"

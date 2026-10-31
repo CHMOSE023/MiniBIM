@@ -1,5 +1,6 @@
 // 移植自 BIMCraft crates/core/src/model.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Model/Model.h"
+#include "Model/Massing.h"
 #include "Model/Sketch.h"
 #include "Model/Skeleton.h"
 #include "Model/Text.h"
@@ -437,6 +438,7 @@ namespace MiniBIM::Bim
             const char* operator()(const DownConductor&) const { return "downconductor"; }
             const char* operator()(const GroundConductor&) const { return "groundconductor"; }
             const char* operator()(const Cable&) const { return "cable"; }
+            const char* operator()(const Mass&) const { return "mass"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -455,8 +457,13 @@ namespace MiniBIM::Bim
                 if (w.topLevel) f(*w.topLevel);
                 if (w.attachTop) f(*w.attachTop);
                 if (w.attachBase) f(*w.attachBase);
+                Massing::RefsMut(w.params, f);
             }
-            void operator()(Floor& x) const { f(x.level); }
+            void operator()(Floor& x) const
+            {
+                f(x.level);
+                Massing::RefsMut(x.params, f);
+            }
             void operator()(Ceiling& x) const { f(x.level); }
             void operator()(Door& o) const { f(o.host); }
             void operator()(Window& o) const { f(o.host); }
@@ -465,6 +472,12 @@ namespace MiniBIM::Bim
             {
                 f(r.level);
                 if (r.join) f(*r.join);
+                Massing::RefsMut(r.params, f);
+            }
+            void operator()(Mass& ms) const
+            {
+                f(ms.level);
+                if (ms.topLevel) f(*ms.topLevel);
             }
             void operator()(Component& c) const { f(c.level); }
             void operator()(Column& c) const { Stood(c); }
@@ -571,16 +584,81 @@ namespace MiniBIM::Bim
             return &c->params;
         if (const Opening* o = AsOpening())
             return &o->params;
+        if (const Wall* w = As<Wall>())
+            return &w->params;
+        if (const Floor* f = As<Floor>())
+            return &f->params;
+        if (const Roof* r = As<Roof>())
+            return &r->params;
+        if (const Mass* ms = As<Mass>())
+            return &ms->params;
         return nullptr;
     }
 
     std::map<std::string, Json>* Element::ParamsMut()
     {
-        if (Component* c = As<Component>())
-            return &c->params;
-        if (Opening* o = AsOpening())
-            return &o->params;
-        return nullptr;
+        return const_cast<std::map<std::string, Json>*>(static_cast<const Element*>(this)->Params());
+    }
+
+    // ── 体量 ─────────────────────────────────────────────────────
+    bool Mass::Lofted() const
+    {
+        return top && *top != boundary;
+    }
+
+    Ring Mass::Footprint() const
+    {
+        Ring ring = boundary;
+        if (Geom::Area(ring) < 0.0)
+            std::reverse(ring.begin(), ring.end());
+        return ring;
+    }
+
+    Ring Mass::TopRing() const
+    {
+        Ring ring = top && top->size() == boundary.size() ? *top : boundary;
+        if (Geom::Area(boundary) < 0.0)
+            std::reverse(ring.begin(), ring.end());
+        return ring;
+    }
+
+    std::pair<double, double> Model::MassSpan(const Mass& ms) const
+    {
+        return Span(ms.level, ms.baseOffset, ms.topLevel, ms.height);
+    }
+
+    bool Model::MassCutBy(const Mass& ms, double z) const
+    {
+        const auto [bottom, top] = MassSpan(ms);
+        return bottom <= z && z < top;
+    }
+
+    Ring Model::MassOutline(const Mass& ms, double z) const
+    {
+        if (!ms.Lofted())
+            return ms.Footprint();
+        const auto [bottom, top] = MassSpan(ms);
+        const double t = top > bottom ? std::clamp((z - bottom) / (top - bottom), 0.0, 1.0) : 0.0;
+        return Massing::RingAt(ms.Footprint(), ms.TopRing(), t);
+    }
+
+    double Model::MassVolume(const Mass& ms, double from, double to) const
+    {
+        const auto area = [&](double z) { return std::abs(Geom::Area(MassOutline(ms, z))); };
+        return (to - from) / 6.0 * (area(from) + 4.0 * area((from + to) / 2.0) + area(to));
+    }
+
+    std::vector<Model::MassSlice> Model::MassSlices(const Mass& ms) const
+    {
+        const auto [bottom, top] = MassSpan(ms);
+        std::vector<std::pair<Id, double>> crossed;
+        for (const auto& [id, l] : Levels())
+            if (l->elevation >= bottom - Tol && l->elevation < top - Tol)
+                crossed.emplace_back(id, l->elevation);
+        std::vector<MassSlice> out;
+        for (size_t i = 0; i < crossed.size(); ++i)
+            out.push_back({ crossed[i].first, crossed[i].second, (i + 1 < crossed.size() ? crossed[i + 1].second : top) - crossed[i].second });
+        return out;
     }
 
     // ── 新模型 ───────────────────────────────────────────────────
@@ -1120,6 +1198,8 @@ namespace MiniBIM::Bim
             return rs->level;
         if (const Roof* r = e.As<Roof>())
             return r->level;
+        if (const Mass* ms = e.As<Mass>())
+            return ms->level;
         if (const Component* c = e.As<Component>())
             return c->level;
         if (const Column* c = e.AsColumn())
@@ -1907,7 +1987,7 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
-        // 元素存的参数值都是它的族的参数（项目参数还没移植，别的键都不认）
+        // 元素存的参数值都是它的族的参数，或体量的记号（项目参数还没移植，别的键都不认）
         const auto ParamsOk = [&](const std::string& who, const Element& e, std::string& err)
         {
             const auto* params = e.Params();
@@ -1917,7 +1997,12 @@ namespace MiniBIM::Bim
             const auto fam = fo ? families.find(fo->first) : families.end();
             for (const auto& [k, v] : *params)
             {
-                (void)v;
+                if (Massing::Reserved(k))
+                {
+                    if (!Massing::CheckValue(*this, who, k, v, e, err))
+                        return false;
+                    continue;
+                }
                 if (fam != families.end() && std::any_of(fam->second.parameters.begin(), fam->second.parameters.end(),
                                                          [&](const Fam::Parameter& p) { return p.name == k; }))
                     continue;
@@ -1981,6 +2066,31 @@ namespace MiniBIM::Bim
             {
                 if (!levelOk(rs->level) || !Line(who, rs->start, rs->end, error))
                     return false;
+            }
+            else if (const Mass* ms = e.As<Mass>())
+            {
+                if (!levelOk(ms->level) || !Boundary(who, ms->boundary, error) || !TextOk(who, "name", ms->name, error) ||
+                    !Coord(who + " base_offset", ms->baseOffset, error) || !ParamsOk(who, e, error))
+                    return false;
+                if (ms->topLevel ? !levelOk(*ms->topLevel) : !Size(who + " height", ms->height, error))
+                    return false;
+                const auto [bottom, top] = MassSpan(*ms);
+                if (top <= bottom + Tol)
+                {
+                    error = who + ": its top must be above its base";
+                    return false;
+                }
+                if (ms->top)
+                {
+                    // 先查它的点：过了这一关，两个轮廓才配得上、截面才算得出
+                    if (ms->top->size() == ms->boundary.size() && !Boundary(who + " top", *ms->top, error))
+                        return false;
+                    if (const auto why = Massing::LoftProblem(ms->boundary, *ms->top))
+                    {
+                        error = who + ": " + *why;
+                        return false;
+                    }
+                }
             }
             else if (const Ceiling* c = e.As<Ceiling>())
             {
@@ -2053,7 +2163,7 @@ namespace MiniBIM::Bim
             else if (const Roof* r = e.As<Roof>())
             {
                 if (!Known(who, r->typeName, types.roof, error) || !levelOk(r->level) || !Coord(who + " overhang", r->overhang, error) ||
-                    !Coord(who + " offset", r->offset, error))
+                    !Coord(who + " offset", r->offset, error) || !ParamsOk(who, e, error))
                     return false;
                 if (r->extrusion)
                 {
@@ -2129,7 +2239,7 @@ namespace MiniBIM::Bim
             else if (const Wall* w = e.As<Wall>())
             {
                 if (!Known(who, w->typeName, types.wall, error) || !levelOk(w->level) || !Line(who, w->start, w->end, error) ||
-                    !Coord(who + " base_offset", w->baseOffset, error))
+                    !Coord(who + " base_offset", w->baseOffset, error) || !ParamsOk(who, e, error))
                     return false;
                 // 圆弧在范围内：整个圆都在模型的范围以内
                 const Walls::Axis axis = Walls::Axis::Of(*w);
@@ -2169,7 +2279,7 @@ namespace MiniBIM::Bim
             {
                 if (!Point(who + " pattern origin", f->patternOrigin, error) || !Coord(who + " pattern angle", f->patternAngle, error) ||
                     !Known(who, f->typeName, types.floor, error) || !levelOk(f->level) || !Boundary(who, f->boundary, error) ||
-                    !Openings(who, f->boundary, f->openings, error) || !Coord(who + " offset", f->offset, error))
+                    !Openings(who, f->boundary, f->openings, error) || !Coord(who + " offset", f->offset, error) || !ParamsOk(who, e, error))
                     return false;
                 if (!(std::isfinite(f->slope) && std::abs(f->slope) <= MaxSlope))
                 {

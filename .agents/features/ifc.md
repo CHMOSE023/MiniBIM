@@ -41,7 +41,10 @@ covers: src/Ifc/*, tests/Ifc/*
 
 ## 约束与坑
 
-- 还没移植的部分：楼梯、坡道、栏杆、管井、体量，以及 BIMCraft 存阶段、设计选项、项目参数的属性集。
+- 体量：导出为对象类型 `Mass` 的 `IFCBUILDINGELEMENTPROXY`（同 Revit），底面轮廓拉伸；放样的写闭合的三角面集，另写属性集 `Ifc::MassProperties`
+  （`MiniBIM_Mass` 的 `Loft`：JSON `{bottom, top}`，形体不说哪个角对哪个角）。导入时顶面是一个轮廓（没有洞）才读；底面与顶面不同时，
+  只有属性集（也认 `BIMCraft_Mass`）里的两个轮廓与形体对得上、`Massing::LoftProblem` 没问题才是放样的体量，否则列进 `skipped`
+- 还没移植的部分：楼梯、坡道、栏杆、管井，以及 BIMCraft 存阶段、设计选项、项目参数的属性集。
   导出不写它们；导入时它们按"MiniBIM has no element for …"列进 `skipped`。BIMCraft 把穿过楼板、天花板、屋顶的洞口元素读作管井，
   这里只读实体里本来就有的洞（作为它们的开洞），实体里没有、只由洞口元素切出的洞列进 `skipped`
 - STEP 解析不信任文件：列表最多套 32 层，放置链最多走 64 层，曲线、轮廓、表示项最多套 16 层；圆盘扫掠超过 `MaxPoints` 段、构件超过 `Fam::MaxTriangles`

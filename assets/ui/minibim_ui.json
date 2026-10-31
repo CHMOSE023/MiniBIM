@@ -83,6 +83,12 @@
     "mep.rack":       { "icon": "Rack.png" },
     "mep.patchPanel": { "icon": "PatchPanel.png" },
     "mep.cabling":    { "icon": "Cabling.png" },
+    "massing.mass":   { "icon": "Mass.png" },
+    "massing.floors": { "icon": "MassFloors.png" },
+    "massing.wallByFace":   { "icon": "WallByFace.png" },
+    "massing.floorByFace":  { "icon": "FloorByFace.png" },
+    "massing.roofByFace":   { "icon": "RoofByFace.png" },
+    "massing.updateByFace": { "icon": "UpdateByFace.png" },
     "view.3d":        { "icon": "View3D.png" },
     "view.plan":      { "icon": "FloorPlan.png" },
     "view.levelUp":   { "icon": "LevelUp.png", "shortcut": "PageUp" },
@@ -157,6 +163,16 @@
             { "title": "Select", "items": [ "modify.select" ] },
             { "title": "Outlets & Equipment", "items": [ "mep.dataOutlet", "mep.voiceOutlet", "mep.rack", "mep.patchPanel" ] },
             { "title": "Cabling", "items": [ "mep.cableTray", "mep.cabling" ] }
+          ]
+        },
+        // 体量：概念体量；按面建模对选中的体量（没选体量时灰掉）。显示体量随视图的可见性移植
+        {
+          "title": "Massing",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Conceptual Mass", "items": [ "massing.mass" ] },
+            { "title": "Model by Face", "items": [ "massing.floors", "massing.wallByFace", "massing.floorByFace", "massing.roofByFace",
+                                                   "massing.updateByFace" ] }
           ]
         },
         {

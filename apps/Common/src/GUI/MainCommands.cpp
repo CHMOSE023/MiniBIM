@@ -188,6 +188,25 @@ namespace MiniBIM
         toolOf("mep.patchPanel", N_("Patch Panel"), N_("Patch Panel (PN): a panel on the wall, where you click; Space turns it"), Tool::Component, "patchpanel");
         toolOf("mep.cabling", N_("Cabling"), N_("Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"), Tool::Run, "cable");
 
+        // ── 体量（移植自 BIMCraft 的体量选项卡）：体量工具；按面建模对选中的体量 ─────────
+        tool("massing.mass", N_("Mass"), N_("Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels"),
+             Tool::Mass);
+        auto byMass = [&](const char* id, const char* label, const char* tooltip, const char* command, const char* title)
+        {
+            add(id, label, tooltip, [this, command, title] { ByMass(command, title); }, [this] { return !m_sketch && !SelectedMasses().empty(); });
+        };
+        byMass("massing.floors", N_("Mass Floors"), N_("Mass Floors (MF): a floor at each level the selected masses cross"), "mass_floors",
+               N_("Could not make the mass floors"));
+        byMass("massing.wallByFace", N_("Wall by Face"), N_("Wall by Face (WB): a wall on each edge of the selected masses' footprints"), "wall_by_face",
+               N_("Could not build the walls"));
+        byMass("massing.floorByFace", N_("Floor by Face"), N_("Floor by Face (FB): a floor on the selected masses' top faces"), "floor_by_face",
+               N_("Could not make the floor"));
+        byMass("massing.roofByFace", N_("Roof by Face"), N_("Roof by Face (RB): a roof on the selected masses' top faces"), "roof_by_face",
+               N_("Could not make the roof"));
+        byMass("massing.updateByFace", N_("Update to Face"),
+               N_("Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"), "update_by_face",
+               N_("Could not update to the mass"));
+
         // ── 视图 ─────────────────────────────────────────────────
         add("view.3d", N_("3D View"), N_("Show the model in 3D"), [this] { ShowModel3D(); });
         add("view.plan", N_("Floor Plan"), N_("Show the plan of a level: the one shown last, or the lowest"), [this] { ShowPlan(std::nullopt); });

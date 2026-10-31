@@ -44,7 +44,9 @@ namespace MiniBIM
             { "structural_column", "struct.column" }, { "beam", "struct.beam" }, { "footing", "struct.footing" },
             { "strip_footing", "struct.wallFooting" }, { "pipe", "mep.pipe" }, { "conduit", "mep.conduit" }, { "cable_tray", "mep.cableTray" },
             { "wire", "mep.wire" }, { "down_conductor", "mep.downConductor" }, { "ground_conductor", "mep.groundConductor" },
-            { "cabling", "mep.cabling" },
+            { "cabling", "mep.cabling" }, { "mass", "massing.mass" }, { "mass_floors", "massing.floors" },
+            { "wall_by_face", "massing.wallByFace" }, { "floor_by_face", "massing.floorByFace" }, { "roof_by_face", "massing.roofByFace" },
+            { "update_by_face", "massing.updateByFace" },
         };
 
         const char* ToolOf(std::string_view bimCommand)

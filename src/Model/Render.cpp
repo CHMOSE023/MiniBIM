@@ -666,6 +666,9 @@ namespace MiniBIM::Bim::Render
                 extent.insert(extent.end(), c->boundary.begin(), c->boundary.end());
             else if (const Room* rm = e->As<Room>(); rm && m.Same(rm->level, level))
                 extent.push_back(rm->point);
+            else if (const Mass* ms = e->As<Mass>(); ms && m.MassCutBy(*ms, r.cut))
+                for (const P2& q : m.MassOutline(*ms, r.cut))
+                    extent.push_back(q);
             else if (const Component* cp = e->As<Component>(); cp && m.Same(cp->level, level))
                 for (const Fam::Piece& p : m.ComponentPieces(*cp))
                     extent.insert(extent.end(), p.outline.begin(), p.outline.end());
@@ -861,6 +864,9 @@ namespace MiniBIM::Bim::Render
             }
             else if (const RoomSeparator* rs = e->As<RoomSeparator>(); rs && m.Same(rs->level, level))
                 d.Stroke({ d.view.ToPx(rs->start), d.view.ToPx(rs->end) }, Pen::ByCategory, Ink, std::nullopt, false);
+            // 剖切面穿过的体量：那里的轮廓，虚线
+            else if (const Mass* ms = e->As<Mass>(); ms && m.MassCutBy(*ms, range.cut))
+                d.Dashed(m.MassOutline(*ms, range.cut), Pen::ByCategory, MassColor, true);
             else if (const Roof* rf = e->As<Roof>(); rf && m.Same(rf->level, level))
             {
                 // 它所在标高的平面：轮廓，以及坡面相交处的屋脊、斜脊、天沟

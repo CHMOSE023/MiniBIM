@@ -259,6 +259,7 @@ namespace MiniBIM
         case Tool::Room:      return "room";
         case Tool::Grid:      return "grid";
         case Tool::Stand: case Tool::Run: return m_toolOf;
+        case Tool::Mass:      return "mass";
         default:              return nullptr;
         }
     }
@@ -280,6 +281,9 @@ namespace MiniBIM
         case Tool::Run:       return m_toolPts.empty() ? N_("Click the start of the run: a chain of clicks makes one for each step, Esc ends it.")
                                                        : N_("Click the end of the run, or type a length and press Enter. Esc stops the chain.");
         case Tool::Component: return N_("Click where the component goes; Space turns it a quarter turn.");
+        case Tool::Mass:      return m_toolPts.empty()    ? N_("Click the first corner of the mass's footprint.")
+                                   : m_toolPts.size() < 3 ? N_("Click the footprint's next corner. Esc cancels.")
+                                                          : N_("Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels.");
         case Tool::Roof:      return N_("Click inside the walls to roof them, on the level above: the overhang runs past their faces.");
         case Tool::Floor:     return N_("Click inside the walls to floor them: the slab runs under their outline, its top at the level.");
         case Tool::Ceiling:   return N_("Click inside a room: a ceiling out to its walls' faces, as high as the Options Bar says.");
@@ -369,7 +373,7 @@ namespace MiniBIM
             { Tool::Rotate, N_("Modify | Rotate") },         { Tool::MirrorPick, N_("Modify | Mirror Pick Axis") },
             { Tool::MirrorDraw, N_("Modify | Mirror Draw Axis") }, { Tool::Align, N_("Modify | Align") },
             { Tool::Trim, N_("Modify | Trim/Extend to Corner") }, { Tool::Split, N_("Modify | Split Element") },
-            { Tool::Offset, N_("Modify | Offset") },
+            { Tool::Offset, N_("Modify | Offset") },         { Tool::Mass, N_("Modify | Create Mass") },
         };
         const std::string unit = Bim::UnitsOf::Name(m.units);
         // 高度：上面的某个标高（没选时上一层），或未连接时输入的高度（墙、柱）
@@ -487,6 +491,9 @@ namespace MiniBIM
             break;
         case Tool::Column:
             heightOptions(m_toolOpt.columnTop, m_toolOpt.columnHeight);
+            break;
+        case Tool::Mass:
+            heightOptions(m_toolOpt.massTop, m_toolOpt.massHeight);
             break;
         // 结构柱的高度；独立基础的厚度与顶的高度
         case Tool::Stand:
@@ -778,6 +785,13 @@ namespace MiniBIM
             }
             break;
         }
+        // 体量：点一个个角点，回到第一点（或 Enter）时做出来
+        case Tool::Mass:
+            if (m_toolPts.size() >= 3 && m_toolPts.front().Dist(p) <= Bim::Tol)
+                FinishMass();
+            else if (m_toolPts.empty() || m_toolPts.back().Dist(p) > Bim::Tol)
+                m_toolPts.push_back(p);
+            break;
         case Tool::Grid:
             if (m_toolPts.empty())
                 m_toolPts.push_back(p);
@@ -870,7 +884,7 @@ namespace MiniBIM
         m_typedLength.clear();
         switch (m_tool)
         {
-        case Tool::Wall: case Tool::Grid: case Tool::Run:
+        case Tool::Wall: case Tool::Grid: case Tool::Run: case Tool::Mass:
             PlacePoint(SnapAt(pixel, m_toolPts, shift).at);
             return;
         case Tool::Column: case Tool::Component: case Tool::Stand:
@@ -1002,6 +1016,8 @@ namespace MiniBIM
                 PlaceTyped();
             else if (m_tool == Tool::Wall || m_tool == Tool::SketchLine || m_tool == Tool::Run)
                 m_toolPts.clear();      // 结束墙链、草图线链、run 的链
+            else if (m_tool == Tool::Mass && m_toolPts.size() >= 3)
+                FinishMass();
             break;
         case Key::Backspace:
             if (m_typedLength.empty())
@@ -1031,7 +1047,8 @@ namespace MiniBIM
     bool MainFrame::OnPlanText(std::string_view text)
     {
         // 画了起点之后输入的是长度（Enter 时用）；空格转构件，不算
-        if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid && m_tool != Tool::SketchLine && m_tool != Tool::Run) || text == " " ||
+        if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid && m_tool != Tool::SketchLine && m_tool != Tool::Run && m_tool != Tool::Mass) ||
+            text == " " ||
             m_typedLength.size() > 40)
             return false;
         for (const char c : text)
@@ -1162,6 +1179,24 @@ namespace MiniBIM
         const Bim::Json level = Bim::ToJson(*m_planLevel);
         switch (m_tool)
         {
+        // 体量：点过的角点连到光标，再虚接回第一点
+        case Tool::Mass:
+        {
+            const Bim::P2 next = marker(SnapAt(*m_hoverPixel, m_toolPts, m_hoverShift));
+            if (m_toolPts.empty())
+                break;
+            std::vector<Bim::Render::Px> path;
+            for (const Bim::P2& q : m_toolPts)
+                path.push_back(v.ToPx(q));
+            path.push_back(v.ToPx(next));
+            Stroke(d, path, 2.0f * px);
+            if (m_toolPts.size() >= 2)
+                Stroke(d, { v.ToPx(next), v.ToPx(m_toolPts.front()) }, 1.0f * px);
+            const Bim::P2 last = m_toolPts.back();
+            const std::string reading = Bim::UnitsOf::WithUnit(m.units, last.Dist(next)) + "  " + Degrees(Bim::Snap::Measure(last, next).angle);
+            tip = !m_typedLength.empty() ? m_typedLength + " (Enter)" : (tip.empty() ? reading : tip + "    " + reading);
+            break;
+        }
         case Tool::Wall: case Tool::Grid:
         {
             const Bim::P2 next = marker(SnapAt(*m_hoverPixel, m_toolPts, m_hoverShift));
@@ -1295,5 +1330,42 @@ namespace MiniBIM
             break;
         }
         showTip();
+    }
+
+    void MainFrame::FinishMass()
+    {
+        if (!m_planLevel || m_toolPts.size() < 3)
+            return;
+        std::string error;
+        const auto top = TopParams(m_toolOpt.massTop, m_toolOpt.massHeight, error);
+        if (!top)
+        {
+            MiniGUI::ShowMessageBox(*m_ui, Tr("Could not create the mass"), error);
+            return;
+        }
+        Bim::Json boundary = Bim::Json::array();
+        for (const Bim::P2& q : m_toolPts)
+            boundary.push_back(Pt(q));
+        Bim::Json params{ { "boundary", boundary }, { "level", Bim::ToJson(*m_planLevel) } };
+        params.update(*top);
+        if (RunCommand("mass", params, N_("Could not create the mass")))
+            m_toolPts.clear();
+    }
+
+    std::vector<Bim::Id> MainFrame::SelectedMasses() const
+    {
+        const Bim::Model& m = m_session.GetModel();
+        std::vector<Bim::Id> out;
+        for (const Bim::Id id : m_selection)
+            if (const Bim::Element* e = m.elements.Get(id); e && e->As<Bim::Mass>())
+                out.push_back(id);
+        return out;
+    }
+
+    void MainFrame::ByMass(const char* command, const char* title)
+    {
+        for (const Bim::Id id : SelectedMasses())
+            if (!RunCommand(command, Bim::Json{ { "mass", id } }, title))
+                break;
     }
 }
