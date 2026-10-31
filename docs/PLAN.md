@@ -11,7 +11,7 @@ MiniBIM 把 [BIMCraft](https://github.com/IPedrax/BIMCraft)（Rust，约 13.7 �
 - 界面：MiniGUI（`src/UI`），界面描述文件 `assets/ui/minibim_ui.json`，自绘标题栏 + 菜单栏 + 三维视口 + 状态栏
 - 渲染：Windows 的 D3D12 / D3D11（WARP 回退），`apps/Render`
 - 几何：SMLib（`3rd/SMLib`）经 `Solid::ISolidKernel`；临时的演示场景检验内核与视口（第 2a 步换成了模型的三维场景 `ModelScene`）
-- 多语言：PO 词典 + `Tr` / `TrN` / `TrC`，MiniGUI 与界面描述文件同样翻译，运行时切换（[i18n.md](i18n.md)）；简体中文、英文
+- 多语言：PO 词典 + `Tr` / `TrN` / `TrC`，MiniGUI 与界面描述文件同样翻译，运行时切换（[i18n.md](i18n.md)）；简体中文、英文、西班牙语、葡萄牙语
 - 图标：`tools/make_icons.py` 生成全部图标（照 MiniCAD 的同名脚本）：程序图标 `app.ico` / `app.png`，现有命令的图标
 - 测试：`I18nTests`、`ViewTests`、`SMLibSmokeTests`
 - CI 与发布：`.github/workflows/build.yml`（Windows 编译、测试、打包；Linux 编译核心库与测试；词典与图标检查；推送 `v*` 标签时发布）
@@ -105,8 +105,12 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   选线、框选、拖端点、删除、在草图里撤销，完成时解不出就说哪里不对并把线标红，草图模式里不离开它的平面。
   留到后面的：直线与圆弧以外的曲线（`curves.rs` 的样条、椭圆等）、在界面里画圆弧（现在只有拾取弧墙得到圆弧）、草图线的圆角、修剪、拆分、偏移与对齐、
   竖井与填充区域的草图、命令的 `check_edits`（简单轮廓的检查）
-- **3f 程序**：开始页（`start.rs`）、最近打开（`recent.rs`）、自动保存（`autosave.rs`）、设置（`settings.rs`）、
-  两个字母的快捷键（`shortcuts.rs`）；合并 BIMCraft 的界面译文
+- **3f 程序（已完成）**：开始页（`start.rs`：新建、打开、示例房屋、最近的卡片，Ctrl+D 叫出与回去）、最近打开（`recent.rs`，`recent.json`）、
+  自动保存与恢复（`autosave.rs`：核心 `Bim::Autosave` 的后台线程，命令 `autosave`、`recover`；启动与打开项目时问恢复 / 放弃 / 稍后）、
+  设置（`settings.rs`：主题、语言、面板、自动保存间隔）、两个字母的快捷键（`shortcuts.rs`：WA、DR、ZF……，键盘快捷键对话框 KS，从文件读入）；
+  合并 BIMCraft 的界面译文：新增西班牙语、葡萄牙语（原文相同的沿用 BIMCraft 的译文，其余新译，`Cut` 意思不同不沿用）。
+  留到后面的：开始页卡片的项目缩略图、自动保存的文件锁（两个程序开同一个项目）、视口与平面视图跟着主题换颜色、BIMCraft 设置里的性能 / 图形 / 更新页、
+  快捷键里 MiniBIM 还没有的动作（捕捉替代 SE、SM……，可见性 VV、临时隐藏 HH……）随那些功能再加；西语、葡语的新译文请母语者校对
 
 ## 第 4 阶段：平台
 

@@ -83,6 +83,10 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
 - 原因：用户设置里存了 `en`，或 `assets/i18n` 没复制到 exe 旁边（`out/debug/MiniBIMWin/i18n/`）
 - 做法：看控制台的"语言："日志（会写出设置和系统语言）；重新编译 `MiniBIMWin` 会复制资源
 
+### 只改了词典（或图标），运行起来还是旧的译文
+- 原因：`assets/` 由 `apps/Win32/CMakeLists.txt` 的 POST_BUILD 复制到 exe 旁边，只在 `MiniBIMWin` 重新链接时才执行；只改 `.po` 不触发
+- 做法：`cp assets/i18n/*.po out/debug/MiniBIMWin/i18n/`（图标同理复制 `assets/icons/`），或改动任一源文件让它重新链接
+
 ### `ModuleNotFoundError: No module named 'PIL'`（运行 `tools/make_icons.py`）
 - 原因：这台机器的 Pillow 装在用户目录的 site-packages 里，`python -I`（隔离模式）不看用户目录；或者确实没装
 - 做法：运行项目自己的脚本不加 `-I`；没装就 `pip install pillow`。`--check` 不需要 Pillow

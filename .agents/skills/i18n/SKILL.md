@@ -39,3 +39,5 @@ covers: tools/extract_messages.py, assets/i18n/*, .agents/skills/i18n/*
 
 BIMCraft 的 `translations/ui/zh.po`、`es.po`、`pt.po` 也以英文原文为键。原文完全相同的条目可以直接沿用译文：
 先运行收集工具让 `.po` 里有这些原文，再按 msgid（和 msgctxt）对照着填。BIMCraft 的译文按 MIT 使用（见 `THIRD_PARTY_NOTICES.md`）。
+第 3f 步合并过一次：`es.po`、`pt.po` 由此而来（BIMCraft 的 `{}` 按出现顺序改成 `{0}`、`{1}`；原文相同而意思不同的不沿用，如剪贴板的 `Cut`），
+其余条目新译；西班牙语用 tú（同 BIMCraft），葡萄牙语用巴西的写法。`zh_CN.po` 保留 MiniBIM 自己的用词，不照搬 BIMCraft 的中文

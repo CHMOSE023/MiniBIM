@@ -68,7 +68,7 @@ packages and publishes a release when a `v*` tag is pushed (`.github/workflows/b
 ### Languages
 
 Interface text is written in English in the code and translated at run time from gettext catalogs (`assets/i18n/*.po`). Pick a
-language under File > Language, or follow the system's. Simplified Chinese and English are available today. A new language is
+language under File > Language, or follow the system's. Simplified Chinese, English, Spanish and Portuguese are available today. A new language is
 one `.po` file, with no code changes, and translations are welcome. See [docs/i18n.md](docs/i18n.md) (in Chinese) for how it
 works.
 
