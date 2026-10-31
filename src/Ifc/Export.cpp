@@ -32,8 +32,13 @@ namespace MiniBIM::Bim::Ifc
         constexpr uint64_t kMaterials          = 12;
         constexpr uint64_t kSlabMaterials      = 18;
         constexpr uint64_t kComponentMaterials = 19;
+        constexpr uint64_t kRunMaterials       = 40;
+        constexpr uint64_t kRunProperties      = 41;
+        constexpr uint64_t kRunDefines         = 42;
         constexpr uint64_t kCommon             = 43;
         constexpr uint64_t kCommonDefines      = 44;
+        constexpr uint64_t kSystems            = 45;
+        constexpr uint64_t kSystemMembers      = 46;
         constexpr uint64_t kQuantities         = 49;
         constexpr uint64_t kQuantityDefines    = 50;
 
@@ -446,6 +451,29 @@ namespace MiniBIM::Bim::Ifc
                 return Add("IFCFACETEDBREP(" + Ref(shell) + ")");
             }
 
+            // 实体：profile 沿放置 at 的 z 轴拉伸 depth，at 可以朝向任何方向
+            uint64_t BodyAlong(uint64_t profile, uint64_t at, double depth)
+            {
+                const uint64_t solid = Add("IFCEXTRUDEDAREASOLID(" + Ref(profile) + "," + Ref(at) + "," + Ref(z) + "," + Real(depth) + ")");
+                const uint64_t rep   = Add("IFCSHAPEREPRESENTATION(" + Ref(body) + ",'Body','SweptSolid',(" + Ref(solid) + "))");
+                return Add("IFCPRODUCTDEFINITIONSHAPE($,$,(" + Ref(rep) + "))");
+            }
+
+            // 原点处的轴：z 轴沿 zDir，x 轴沿与它垂直的 xDir
+            uint64_t Aim(P3 zDir, P3 xDir)
+            {
+                const uint64_t o = Add("IFCCARTESIANPOINT((0.,0.,0.))");
+                const auto dir = [&](const P3& d) { return Add("IFCDIRECTION((" + Ratio(d[0]) + "," + Ratio(d[1]) + "," + Ratio(d[2]) + "))"); };
+                const uint64_t zz = dir(zDir), xx = dir(xDir);
+                return Add("IFCAXIS2PLACEMENT3D(" + Ref(o) + "," + Ref(zz) + "," + Ref(xx) + ")");
+            }
+
+            // 文字属性
+            uint64_t TextProperty(const std::string& name, const std::string& value)
+            {
+                return Add("IFCPROPERTYSINGLEVALUE(" + S(name) + ",$,IFCTEXT(" + S(value) + "),$)");
+            }
+
             // 结构构件的 Pset_*Common：它承重
             void LoadBearing(uint64_t ent, const std::string& pset, Id id)
             {
@@ -585,6 +613,7 @@ namespace MiniBIM::Bim::Ifc
             return it == storeys.end() ? std::nullopt : std::optional<uint64_t>(it->second.second);
         };
         std::map<Guid, std::vector<uint64_t>> contained, spaces;
+        std::map<std::string, std::vector<uint64_t>> systems;
         // 墙的（实体、放置）：给开在它上面的洞口
         std::map<Id, std::pair<uint64_t, uint64_t>> placed;
         // 楼板、天花板、屋顶的实体：给材质层组
@@ -767,7 +796,7 @@ namespace MiniBIM::Bim::Ifc
                 if (const auto relating = w.Relating(made, name))
                     w.Add("IFCRELASSOCIATESMATERIAL(" + w.GuidFor(kComponentMaterials, id) + ",$,$,$,(" + Ref(ent) + ")," + Ref(*relating) + ")");
             }
-            // 柱：截面（矩形或圆）从底向上拉伸；结构柱写成同样的柱，说它承重
+            // 柱：截面（矩形或圆）从底向上拉伸；结构柱写成同样的柱、独立基础写成 IFCFOOTING，说它们承重
             else if (const Column* col = e.AsColumn())
             {
                 const auto storey = storeyAt(col->level);
@@ -786,11 +815,64 @@ namespace MiniBIM::Bim::Ifc
                 else
                     profile = w.Rectangle(P2(0.0, 0.0), P2(t->width, t->depth));
                 const uint64_t shape = w.Body(profile, 0.0, top - bottom, {});
-                const uint64_t ent = w.Add("IFCCOLUMN(" + w.GuidFor(kElement, id) + ",$," + S(col->typeName) + ",$," + S(col->typeName) + "," + Ref(at) + "," +
-                                           Ref(shape) + ",'" + std::to_string(id) + "',.COLUMN.)");
+                const bool footing = e.As<Footing>() != nullptr;
+                const uint64_t ent = w.Add(std::string(footing ? "IFCFOOTING(" : "IFCCOLUMN(") + w.GuidFor(kElement, id) + ",$," + S(col->typeName) + ",$," +
+                                           S(col->typeName) + "," + Ref(at) + "," + Ref(shape) + ",'" + std::to_string(id) + "'," +
+                                           (footing ? ".PAD_FOOTING.)" : ".COLUMN.)"));
                 contained[m.GuidOf(col->level)].push_back(ent);
                 if (e.As<StructuralColumn>())
                     w.LoadBearing(ent, "Pset_ColumnCommon", id);
+                else if (footing)
+                    w.LoadBearing(ent, "Pset_FootingCommon", id);
+            }
+            // run：截面沿轴线扫过，用它的材质，是它所属系统的成员
+            else if (const Run* r = e.AsRun())
+            {
+                const auto storey = storeyAt(r->level);
+                const RunType* t = m.RunTypeOf(e);
+                const auto g = m.RunGeom(e);
+                const auto cls = Runs::Ifc(e.Category());
+                if (!storey || !t || !g || !cls)
+                    continue;
+                const P3 d = V3::Sub(g->b, g->a);
+                const double len = std::sqrt(V3::Dot(d, d));
+                const P3 axis = V3::Mul(d, 1.0 / len);
+                // 放在中心线的起点；截面的 x 横过它、水平，y 向上
+                const uint64_t at = w.Place(storey, { g->a[0], g->a[1], g->a[2] - m.Elevation(r->level) }, std::nullopt);
+                P3 across{ 1.0, 0.0, 0.0 };
+                if (!g->Vertical())
+                {
+                    const double h = std::hypot(axis[0], axis[1]);
+                    across = { -axis[1] / h, axis[0] / h, 0.0 };
+                }
+                uint64_t profile = 0;
+                if (g->round)
+                {
+                    const uint64_t c      = w.Point(P2(0.0, 0.0));
+                    const uint64_t centre = w.Add("IFCAXIS2PLACEMENT2D(" + Ref(c) + ",$)");
+                    profile = w.Add("IFCCIRCLEPROFILEDEF(.AREA.,$," + Ref(centre) + "," + Real(g->width / 2.0) + ")");
+                }
+                else
+                    profile = w.Rectangle(P2(0.0, 0.0), P2(g->width, g->depth));
+                const uint64_t along = w.Aim(axis, across);
+                const uint64_t shape = w.BodyAlong(profile, along, g->Length());
+                const uint64_t ent = w.Add(std::string(cls->first) + "(" + w.GuidFor(kElement, id) + ",$," + S(r->typeName) + ",$," + S(r->typeName) + "," +
+                                           Ref(at) + "," + Ref(shape) + ",'" + std::to_string(id) + "'," + cls->second + ")");
+                contained[m.GuidOf(r->level)].push_back(ent);
+                if (e.As<Beam>())
+                    w.LoadBearing(ent, "Pset_BeamCommon", id);
+                else if (e.As<StripFooting>())
+                    w.LoadBearing(ent, "Pset_FootingCommon", id);
+                if (!t->material.empty())
+                {
+                    const uint64_t material = w.Material(m, t->material);
+                    w.Add("IFCRELASSOCIATESMATERIAL(" + w.GuidFor(kRunMaterials, id) + ",$,$,$,(" + Ref(ent) + ")," + Ref(material) + ")");
+                }
+                if (!r->system.empty())
+                    systems[r->system].push_back(ent);
+                // 高度在截面的哪条线上、是哪个类别：给只认得出类的读者
+                w.Define(ent, RunProperties, { w.TextProperty("Justification", JustifyOf::Name(r->justify)), w.TextProperty("Category", e.Category()) },
+                         { kRunProperties, kRunDefines }, id);
             }
             // 房间分隔线：沿它的线的虚拟元素，只围合房间
             else if (const RoomSeparator* rs = e.As<RoomSeparator>())
@@ -968,6 +1050,15 @@ namespace MiniBIM::Bim::Ifc
         {
             const uint64_t usage = w.Add("IFCMATERIALLAYERSETUSAGE(" + Ref(sets[key.first]) + ",.AXIS2.,.NEGATIVE.," + key.second + ",$)");
             w.Add("IFCRELASSOCIATESMATERIAL(" + w.GuidFor(kMaterials, k++) + ",$,$,$,(" + Refs(ents) + ")," + Ref(usage) + ")");
+        }
+        // 系统是它的 run 归入的 IfcSystem；GlobalId 随它的名称，加了别的系统也不变
+        for (const auto& [name, members] : systems)
+        {
+            uint64_t key = 0xcbf29ce484222325ull;
+            for (const unsigned char b : name)
+                key = (key ^ uint64_t(b)) * 0x00000100000001b3ull;
+            const uint64_t system = w.Add("IFCSYSTEM(" + w.GuidFor(kSystems, key) + ",$," + S(name) + ",$,$)");
+            w.Add("IFCRELASSIGNSTOGROUP(" + w.GuidFor(kSystemMembers, key) + ",$,$,$,(" + Refs(members) + "),$," + Ref(system) + ")");
         }
         for (const auto& [level, s] : storeys)
         {

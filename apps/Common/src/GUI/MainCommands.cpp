@@ -122,11 +122,36 @@ namespace MiniBIM
         tool("arch.column", N_("Column"), N_("Column: click where it stands"), Tool::Column);
         tool("arch.component", N_("Component"), N_("Component: a family's type, where you click; Space turns it"), Tool::Component);
         tool("arch.roof", N_("Roof"), N_("Roof by Footprint: click inside the walls to roof them, on the level above"), Tool::Roof);
-        tool("arch.floor", N_("Floor"), N_("Floor: click inside the walls to floor them"), Tool::Floor);
+        // 建筑的楼板与结构选项卡的结构楼板是同一个工具，放的楼板是否承重不同
+        auto floorTool = [&](const char* id, const char* label, const char* tooltip, bool structural)
+        {
+            add(id, label, tooltip,
+                [this, structural]
+                {
+                    const bool same = m_tool == Tool::Floor && m_toolOpt.floorStructural == structural;
+                    m_toolOpt.floorStructural = structural;
+                    SetTool(same ? Tool::Modify : Tool::Floor);
+                },
+                [this] { return !m_sketch; }, [this, structural] { return m_tool == Tool::Floor && m_toolOpt.floorStructural == structural; });
+        };
+        floorTool("arch.floor", N_("Floor"), N_("Floor: click inside the walls to floor them"), false);
         tool("arch.ceiling", N_("Ceiling"), N_("Ceiling: click inside a room for a ceiling out to its walls"), Tool::Ceiling);
         tool("arch.room", N_("Room"), N_("Room: click inside walls"), Tool::Room);
         tool("arch.level", N_("Level"), N_("Level: a new level at an elevation"), Tool::Level);
         tool("arch.grid", N_("Grid"), N_("Grid: click its two ends"), Tool::Grid);
+
+        // ── 结构：结构柱、梁、结构楼板、独立基础、条形基础（移植自 BIMCraft structure.rs）──────
+        // 放一个类别的 Stand 或 Run 工具；之后 MEP 的选项卡加按钮即可，不加工具
+        auto toolOf = [&](const char* id, const char* label, const char* tooltip, Tool t, const char* category)
+        {
+            add(id, label, tooltip, [this, t, category] { SetToolOf(t, category); }, [this] { return !m_sketch; },
+                [this, t, category] { return m_tool == t && m_toolOf && std::string_view(m_toolOf) == category; });
+        };
+        toolOf("struct.column", N_("Column"), N_("Structural Column: click where it stands"), Tool::Stand, "structuralcolumn");
+        toolOf("struct.beam", N_("Beam"), N_("Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"), Tool::Run, "beam");
+        floorTool("struct.floor", N_("Floor"), N_("Floor: Structural (SB): click inside the walls to floor them with a slab that carries load"), true);
+        toolOf("struct.footing", N_("Isolated"), N_("Isolated Footing (FI): click where the footing goes"), Tool::Stand, "footing");
+        toolOf("struct.wallFooting", N_("Wall Footing"), N_("Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"), Tool::Run, "stripfooting");
 
         // ── 视图 ─────────────────────────────────────────────────
         add("view.3d", N_("3D View"), N_("Show the model in 3D"), [this] { ShowModel3D(); });

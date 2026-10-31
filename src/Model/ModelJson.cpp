@@ -499,7 +499,7 @@ namespace MiniBIM::Bim
                 out = Element(std::move(c));
                 return true;
             }
-            if (category == "column" || category == "structuralcolumn")
+            if (category == "column" || category == "structuralcolumn" || category == "footing")
             {
                 Column c;
                 if (!f.Allow({ "type", "level", "at", "angle", "top_level", "height", "base_offset" }) || !f.String("type", c.typeName, true) ||
@@ -509,8 +509,22 @@ namespace MiniBIM::Bim
                     return false;
                 if (category == "column")
                     out = Element(std::move(c));
+                else if (category == "footing")
+                    out = Element(Footing{ std::move(c) });
                 else
                     out = Element(StructuralColumn{ std::move(c) });
+                return true;
+            }
+            if (IsRunCategory(category))
+            {
+                Run r;
+                if (!f.Allow({ "type", "level", "start", "end", "offset", "end_offset", "justify", "system" }) || !f.String("type", r.typeName, true) ||
+                    !f.Id("level", r.level, true) || !f.Point("start", r.start, true) || !f.Point("end", r.end, true) ||
+                    !f.Number("offset", r.offset, false) || !f.OptNumber("end_offset", r.endOffset) ||
+                    !EnumName(f, "justify", r.justify, [](std::string_view s) { return JustifyOf::FromName(s); }, "top, centre, bottom") ||
+                    !f.String("system", r.system, false) || !f.Finish())
+                    return false;
+                out = *Element::OfRun(category, std::move(r));
                 return true;
             }
             if (leftOut)
@@ -519,7 +533,8 @@ namespace MiniBIM::Bim
                 return true;
             }
             error = who + ": unknown variant `" + category +
-                    "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof, component, column, structuralcolumn";
+                    "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof, component, column, structuralcolumn, footing, "
+                    "beam, stripfooting, pipe, conduit, cabletray, wire, downconductor, groundconductor, cable";
             return false;
         }
 
@@ -610,6 +625,28 @@ namespace MiniBIM::Bim
                 if (!f.IsObject() || !read(f, t) || !f.Finish())
                     return false;
                 out[it.key()] = std::move(t);
+            }
+            return true;
+        }
+
+        // run 的类型：{类别: {名称: {width, depth, round?, material?}}}
+        bool ReadRunTypes(Fields& parent, std::map<std::string, std::map<std::string, RunType>>& out)
+        {
+            const Json* v = parent.Raw("runs");
+            if (!v)
+                return true;
+            if (!v->is_object())
+                return parent.Fail("`runs` must be an object of categories");
+            out.clear();
+            for (auto it = v->begin(); it != v->end(); ++it)
+            {
+                Fields cat(*v, parent.Who(), parent.Path() + "/runs", parent.LeftOut(), parent.Error());
+                if (!ReadNamed(cat, it.key().c_str(), out[it.key()], true, [](Fields& f, RunType& r)
+                    {
+                        return f.Number("width", r.width, true) && f.Number("depth", r.depth, true) && f.Bool("round", r.round) &&
+                               f.String("material", r.material, false);
+                    }))
+                    return false;
             }
             return true;
         }
@@ -1283,6 +1320,19 @@ namespace MiniBIM::Bim
             j["height"]      = col->height;
             j["base_offset"] = col->baseOffset;
         }
+        else if (const Run* r = e.AsRun())
+        {
+            j["type"]   = r->typeName;
+            j["level"]  = ToJson(r->level);
+            j["start"]  = ToJson(r->start);
+            j["end"]    = ToJson(r->end);
+            j["offset"] = r->offset;
+            if (r->endOffset)
+                j["end_offset"] = *r->endOffset;
+            j["justify"] = JustifyOf::Name(r->justify);
+            if (!r->system.empty())
+                j["system"] = r->system;
+        }
         else if (const Component* c = e.As<Component>())
         {
             j["family"] = c->family;
@@ -1340,6 +1390,25 @@ namespace MiniBIM::Bim
         t["ceiling"] = std::move(ceilings);
         if (!types.structuralColumn.empty())
             t["structural_column"] = ColumnTypesJson(types.structuralColumn);
+        if (!types.footing.empty())
+            t["footing"] = ColumnTypesJson(types.footing);
+        if (!types.runs.empty())
+        {
+            Json runs = Json::object();
+            for (const auto& [cat, map] : types.runs)
+            {
+                Json one = Json::object();
+                for (const auto& [n, r] : map)
+                {
+                    Json x = Json{ { "width", r.width }, { "depth", r.depth }, { "round", r.round } };
+                    if (!r.material.empty())
+                        x["material"] = r.material;
+                    one[n] = std::move(x);
+                }
+                runs[cat] = std::move(one);
+            }
+            t["runs"] = std::move(runs);
+        }
         return t;
     }
 
@@ -1530,7 +1599,8 @@ namespace MiniBIM::Bim
                 !ReadNamed(t, "ceiling", m.types.ceiling, false, [&](Fields& g, CeilingType& x)
                 {
                     return layered(g, x) && g.Number("grid", x.grid, false);
-                }) || !ReadNamed(t, "structural_column", m.types.structuralColumn, false, ReadColumnType) || !t.Finish())
+                }) || !ReadNamed(t, "structural_column", m.types.structuralColumn, false, ReadColumnType) ||
+                !ReadNamed(t, "footing", m.types.footing, false, ReadColumnType) || !ReadRunTypes(t, m.types.runs) || !t.Finish())
                 return false;
         }
 

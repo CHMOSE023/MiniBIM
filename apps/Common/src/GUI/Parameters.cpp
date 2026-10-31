@@ -1,6 +1,7 @@
 // 移植自 BIMCraft crates/ui-egui/src/properties.rs、browser.rs、lang.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "GUI/Parameters.h"
 #include "I18n/Translator.h"
+#include "Model/Model.h"
 #include "Model/Text.h"
 #include <cctype>
 #include <cmath>
@@ -90,6 +91,17 @@ namespace MiniBIM::Props
             { "Other", "at", "Location", Point },
             { "Other", "angle", "Rotation (°)", Number },
         };
+        // 梁、条形基础与别的 run：两端在参照标高上多高、高度在截面哪条线上
+        constexpr Row Run[] = {
+            { "Constraints", "level", N_("Reference Level"), Level },
+            { "Constraints", "offset", N_("Start Level Offset"), Length },
+            { "Constraints", "end_offset", N_("End Level Offset"), Limit, N_("Same as start") },
+            { "Constraints", "justify", N_("Z Justification"), Justification },
+            { "Dimensions", "length", "Length", LengthShown },
+            { "Identity Data", "system", N_("System"), Text },
+            { "Other", "start", "Start", Point },
+            { "Other", "end", "End", Point },
+        };
         constexpr Row Roof[] = {
             { "Constraints", "level", N_("Base Level"), Level },
             { "Constraints", "offset", "Base Offset", Length },
@@ -170,7 +182,8 @@ namespace MiniBIM::Props
         if (category == "level") return LevelRows;
         if (category == "grid") return Grid;
         if (category == "component") return Component;
-        if (category == "column" || category == "structuralcolumn") return Column;
+        if (category == "column" || category == "structuralcolumn" || category == "footing") return Column;
+        if (Bim::IsRunCategory(category)) return Run;
         if (category == "roof") return Roof;
         return {};
     }
@@ -321,6 +334,12 @@ namespace MiniBIM::Props
             { "roof", N_("Roof"), N_("Roofs") },           { "ceiling", N_("Ceiling"), N_("Ceilings") },
             { "roomseparator", N_("Room Separator"), N_("Room Separators") },
             { "column", N_("Column"), N_("Columns") },     { "structuralcolumn", N_("Structural Column"), N_("Structural Columns") },
+            { "footing", N_("Footing"), N_("Footings") },  { "stripfooting", N_("Strip Footing"), N_("Strip Footings") },
+            { "beam", N_("Beam"), N_("Beams") },           { "pipe", N_("Pipe"), N_("Pipes") },
+            { "conduit", N_("Conduit"), N_("Conduits") },  { "cabletray", N_("Cable Tray"), N_("Cable Trays") },
+            { "wire", N_("Wire"), N_("Wires") },           { "cable", N_("Cable"), N_("Cables") },
+            { "downconductor", N_("Down Conductor"), N_("Down Conductors") },
+            { "groundconductor", N_("Earthing Conductor"), N_("Earthing Conductors") },
         };
         for (const auto& n : names)
             if (category == n.category)

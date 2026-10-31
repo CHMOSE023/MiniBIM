@@ -81,7 +81,8 @@ namespace MiniBIM
                 return { { "Dimensions", "width", "Width" }, { "Dimensions", "height", "Height" }, { "Construction", "sill", N_("Default Sill Height") } };
             if (category == "roof") return { { "Construction", "thickness", N_("Thickness") } };
             if (category == "ceiling") return { { "Construction", "thickness", "Thickness" }, { "Construction", "grid", N_("Tile Size") } };
-            if (category == "column" || category == "structuralcolumn") return { { "Dimensions", "width", "Width" }, { "Dimensions", "depth", N_("Depth") } };
+            if (category == "column" || category == "structuralcolumn" || category == "footing" || Bim::IsRunCategory(category))
+                return { { "Dimensions", "width", "Width" }, { "Dimensions", "depth", N_("Depth") } };
             return {};
         }
 
@@ -92,8 +93,14 @@ namespace MiniBIM
             if (category == "floor") return get(m.types.floor, [](const auto& t) { return t.thickness; });
             if (category == "roof") return get(m.types.roof, [](const auto& t) { return t.thickness; });
             if (category == "ceiling") return get(m.types.ceiling, [&](const auto& t) { return key == "grid" ? t.grid : t.thickness; });
-            if (category == "column" || category == "structuralcolumn")
-                return get(category == "column" ? m.types.column : m.types.structuralColumn, [&](const auto& t) { return key == "width" ? t.width : t.depth; });
+            if (category == "column" || category == "structuralcolumn" || category == "footing")
+                return get(category == "column" ? m.types.column : category == "footing" ? m.types.footing : m.types.structuralColumn,
+                           [&](const auto& t) { return key == "width" ? t.width : t.depth; });
+            if (Bim::IsRunCategory(category))
+            {
+                const auto runs = m.types.runs.find(category);
+                return runs == m.types.runs.end() ? 0.0 : get(runs->second, [&](const auto& t) { return key == "width" ? t.width : t.depth; });
+            }
             const auto& openings = category == "door" ? m.types.door : m.types.window;
             return get(openings, [&](const auto& t) { return key == "width" ? t.width : key == "height" ? t.height : t.sill; });
         }
@@ -118,6 +125,8 @@ namespace MiniBIM
             std::vector<Bim::Id> elements;
             std::vector<std::pair<TypeRow, std::string>> fields;
             std::vector<LayerRow> layers, layersWere;
+            // run 的类型：截面是否圆的（圆的没有进深，宽度是直径）、用库里哪种材质（空为没有）
+            std::optional<std::pair<bool, std::string>> shape;
             Naming      naming = Naming::None;
             std::string naminText;
             std::string error;
@@ -141,6 +150,15 @@ namespace MiniBIM
                         d.layers.push_back({ Bim::Function::Structure, {}, Bim::UnitsOf::Length(m.units, t.thickness) });
                 }
             d.layersWere = d.layers;
+            d.shape.reset();
+            if (Bim::IsRunCategory(d.category))
+            {
+                const Bim::RunType* t = nullptr;
+                if (const auto runs = m.types.runs.find(d.category); runs != m.types.runs.end())
+                    if (const auto it = runs->second.find(name); it != runs->second.end())
+                        t = &it->second;
+                d.shape = std::pair{ t && t->round, t ? t->material : std::string() };
+            }
             d.naming = Naming::None;
             d.error.clear();
         }
@@ -165,9 +183,17 @@ namespace MiniBIM
                 }
                 p["layers"] = std::move(layers);
             }
+            if (d.shape)
+            {
+                p["round"]    = d.shape->first;
+                p["material"] = d.shape->second;
+            }
             for (const auto& [r, typed] : d.fields)
             {
                 if (layered && std::string(r.key) == "thickness")
+                    continue;
+                // 圆的进深即直径
+                if (d.shape && d.shape->first && std::string(r.key) == "depth")
                     continue;
                 const auto v = Bim::UnitsOf::Parse(units, typed);
                 if (!v)
@@ -277,7 +303,7 @@ namespace MiniBIM
         auto typed = [](const std::string& c)
         {
             return c == "wall" || c == "floor" || c == "roof" || c == "ceiling" || c == "door" || c == "window" || c == "component" ||
-                   c == "column" || c == "structuralcolumn";
+                   c == "column" || c == "structuralcolumn" || c == "footing" || Bim::IsRunCategory(c);
         };
         TypeSubject t;
         if (!m_selection.empty())
@@ -459,8 +485,8 @@ namespace MiniBIM
                 {
                     if (r.group != g)
                         continue;
-                    // 复合的：厚度由层定
-                    if (layered && std::string(r.key) == "thickness")
+                    // 复合的：厚度由层定；圆的 run 没有进深
+                    if ((layered && std::string(r.key) == "thickness") || (d->shape && d->shape->first && std::string(r.key) == "depth"))
                     {
                         grid->AddProperty<Label>(e, Tr(r.label), typed, 13.0f, Theme::TextDim);
                         continue;
@@ -470,6 +496,26 @@ namespace MiniBIM
                     std::string* into = &typed;
                     box->SetOnChanged([into](const std::string& s) { *into = s; });
                 }
+            }
+
+            // ── run 的截面：圆的、材质 ──
+            if (d->shape)
+            {
+                row = Row(body);
+                auto* round = row->AddChild<CheckBox>(Tr("Round"), d->shape->first);
+                round->SetOnChanged([d, rebuild](bool on)
+                {
+                    d->shape->first = on;
+                    rebuild();
+                });
+                Caption(row, Tr("Material:"));
+                std::vector<std::string> materials{ Tr("(none)") };
+                for (const auto& [n, _] : m.materials)
+                    materials.push_back(n);
+                const auto mi = std::find(materials.begin() + 1, materials.end(), d->shape->second);
+                auto* mat = Sized(row->AddChild<ComboBox>(materials, d->shape->second.empty() || mi == materials.end() ? 0 : static_cast<int>(mi - materials.begin())), 200.0f);
+                mat->SetMaxVisibleItems(14);
+                mat->SetOnChanged([d, materials](int i) { if (i >= 0) d->shape->second = i == 0 ? std::string() : materials[static_cast<size_t>(i)]; });
             }
 
             // ── 层：墙从外到内，楼板、屋顶、天花板从上到下 ──

@@ -27,7 +27,9 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
   - 天花板：底面在标高上方 `offset`，拉伸类型的厚度、减去洞口
   - 屋顶：`Model::RoofPieces` 的每块（坡面减去洞与开洞）一个实体，底面在坡面上、顶面高出 `Model::RoofRise`（铅垂量的厚度）；
     平的拉伸，斜的同贴附的墙一样围成网格。房间与房间分隔线不画
-  - 柱：`Model::ColumnOutline` 从底拉伸到顶（`Model::ColumnSpan`），建筑柱同墙的颜色、结构柱灰蓝（BIMCraft 的 `STRUCTURE`）
+  - 柱：`Model::ColumnOutline` 从底拉伸到顶（`Model::ColumnSpan`），建筑柱同墙的颜色、结构柱与独立基础灰蓝（BIMCraft 的 `STRUCTURE`）
+  - run（梁、条形基础、管道……）：矩形的经 `Runs::Geom::Prism` 拉伸（坡的用 `SlopedPrism`），圆的是 `Runs::Geom::Tube` 的三角形（同构件，不经内核）；
+    颜色取类型的材质，没有时灰蓝；`Counts::runs` 数它们与独立基础
   - 门窗（没有族时）：墙中间 50 毫米厚的板，与墙正交，门为木色、窗为玻璃色
   - 构件与带族的门窗：族的形体（`Model::ComponentPieces`、`Model::OpeningPieces`）本来就是朝外的三角形（族的扫掠、旋转与空心切割移植自 BIMCraft），
     直接交给渲染器，不经实体内核；按形体材质的颜色着色（库里没有时构件用米色、门窗用门或玻璃的颜色），边只画折角处（相邻面夹角超过 10°）和开口处
@@ -55,5 +57,5 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 
 - `ViewTests`（`tests/View/OrbitCameraTests.cpp`）：屏幕方向、框住包围盒（含留边）、缩放与平移时点的屏幕位置、有偏移时环绕与缩放
 - `SMLibSmokeTests`：SMLib 静态库能建模、布尔、求体积、离散化
-- `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗、天花板、屋顶、家具都建出来，范围（檐口到屋脊）对，墙在窗洞处扣掉，柱的范围与拾取；没有内核时不建
+- `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗、天花板、屋顶、家具都建出来，范围（檐口到屋脊）对，墙在窗洞处扣掉，柱的范围与拾取，梁、圆梁与基础建出来、拾取得到；没有内核时不建
 - 画面不对时先用 skill `ui-check` 截图；换图形接口对比（`--gpu d3d11`、`--gpu warp`）

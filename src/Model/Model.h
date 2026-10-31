@@ -6,6 +6,7 @@
 #include "Model/Json.h"
 #include "Model/Language.h"
 #include "Model/Library.h"
+#include "Model/Runs.h"
 #include "Model/Units.h"
 #include <array>
 #include <cstdint>
@@ -320,6 +321,61 @@ namespace MiniBIM::Bim
         bool operator==(const StructuralColumn&) const = default;
     };
 
+    // 独立基础：平放的柱，height 是它的厚度，类型是基础的
+    struct Footing : Column
+    {
+        bool operator==(const Footing&) const = default;
+    };
+
+    // run 的高度在截面的哪条线上：顶面、中线或底面
+    enum class Justify
+    {
+        Top,
+        Centre,
+        Bottom,
+    };
+
+    namespace JustifyOf
+    {
+        // 项目文件与 IFC 里的写法：top、centre、bottom
+        const char* Name(Justify j);
+        // 也认美式拼写 center；不分大小写
+        std::optional<Justify> FromName(std::string_view name);
+    }
+
+    // 两点之间的直线元素（Model/Runs.h）：level 上从 start 到 end，justify 那条线在起点高出标高 offset、在终点 endOffset（没有时同 offset），
+    // 截面是类型的；system 是它所属的系统（"Água fria"、回路）。梁、条形基础、管道、线管、桥架、导线、引下线、接地线、缆线
+    // 都是同样的数据，类别与类型各自分开
+    struct Run
+    {
+        std::string           typeName;
+        Guid                  level;
+        P2                    start;
+        P2                    end;
+        double                offset = 0.0;
+        std::optional<double> endOffset;
+        Justify               justify = Justify::Centre;
+        std::string           system;
+        bool operator==(const Run&) const = default;
+    };
+
+#define MINIBIM_RUN(Name)                                       struct Name : Run                                           {                                                               bool operator==(const Name&) const = default;           };
+    MINIBIM_RUN(Beam)
+    MINIBIM_RUN(StripFooting)
+    MINIBIM_RUN(Pipe)
+    MINIBIM_RUN(Conduit)
+    MINIBIM_RUN(CableTray)
+    MINIBIM_RUN(Wire)
+    MINIBIM_RUN(DownConductor)
+    MINIBIM_RUN(GroundConductor)
+    MINIBIM_RUN(Cable)
+#undef MINIBIM_RUN
+
+    // 元素是 run 的类别，同 Element::AsRun
+    inline constexpr std::array<const char*, 9> RunCategories = { "beam",     "stripfooting",  "pipe",            "conduit", "cabletray",
+                                                                  "wire",     "downconductor", "groundconductor", "cable" };
+    bool IsRunCategory(std::string_view category);
+
     // 拉伸屋顶的形状：底面在过 line 的竖直平面里的轮廓，各点为 [沿线距起点, 高于屋顶底部]，从线左边 from 到 to 毫米处垂直于线扫过
     struct Extrusion
     {
@@ -366,7 +422,8 @@ namespace MiniBIM::Bim
     // 一个元素。文件里写作带 "category" 的对象：{"category": "wall", …}
     struct Element
     {
-        using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn>;
+        using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
+                                     Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable>;
         Variant v;
 
         Element() = default;
@@ -378,16 +435,22 @@ namespace MiniBIM::Bim
         // 门或窗
         const Opening* AsOpening() const;
         Opening*       AsOpening();
-        // 建筑柱或结构柱
+        // 建筑柱、结构柱或独立基础
         const Column* AsColumn() const;
         Column*       AsColumn();
+        // 梁、条形基础、管道……不论类别（RunCategories）
+        const Run* AsRun() const;
+        Run*       AsRun();
+        // 类别 category 的 run 成为元素；不是 run 的类别时为空
+        static std::optional<Element> OfRun(std::string_view category, Run r);
         // 楼板、天花板、屋顶记着的草图；别的元素没有
         const std::vector<SketchLine>* SketchOf() const;
         std::vector<SketchLine>*       SketchOf();
         bool IsDoor() const   { return std::holds_alternative<Door>(v); }
         bool IsWindow() const { return std::holds_alternative<Window>(v); }
 
-        // 类别：level、grid、roomseparator、wall、floor、ceiling、door、window、room、roof、component、column、structuralcolumn
+        // 类别：level、grid、roomseparator、wall、floor、ceiling、door、window、room、roof、component、column、structuralcolumn、footing，
+        // 以及 RunCategories
         const char* Category() const;
         // 它的族与类型：构件的，或带族的门窗的
         std::optional<std::pair<std::string, std::string>> FamilyOf() const;
@@ -487,7 +550,17 @@ namespace MiniBIM::Bim
         bool operator==(const ColumnType&) const = default;
     };
 
-    // 项目的类型，按类别、名称。BIMCraft 还有栏杆、基础与各种管线的类型，移植到时再加
+    // run 的类型：截面宽 width、高 depth，或 round 时直径 width 的圆；用 material 做（库里的一个，或者没有）
+    struct RunType
+    {
+        double      width = 0.0;
+        double      depth = 0.0;
+        bool        round = false;
+        std::string material;
+        bool operator==(const RunType&) const = default;
+    };
+
+    // 项目的类型，按类别、名称。BIMCraft 还有栏杆的类型，移植到时再加
     struct Types
     {
         std::map<std::string, WallType>    wall;
@@ -498,6 +571,9 @@ namespace MiniBIM::Bim
         std::map<std::string, RoofType>    roof;
         std::map<std::string, CeilingType> ceiling;
         std::map<std::string, ColumnType>  structuralColumn;
+        std::map<std::string, ColumnType>  footing;
+        // run 的类型，按类别、名称：runs["beam"]["Beam 200 x 500"]
+        std::map<std::string, std::map<std::string, RunType>> runs;
         bool operator==(const Types&) const = default;
     };
 
@@ -620,10 +696,16 @@ namespace MiniBIM::Bim
         // 从底到顶的高度：标高加 baseOffset，到 topLevel 或高出 height
         std::pair<double, double> Span(Guid level, double baseOffset, const std::optional<Guid>& topLevel, double height) const;
         std::pair<double, double> ColumnSpan(const Column& c) const;
-        // 柱的类型（建筑柱、结构柱各自的类型表里）；不是柱或没有这个类型时为空
+        // 柱的类型（建筑柱、结构柱、独立基础各自的类型表里）；不是柱或没有这个类型时为空
         const ColumnType* ColumnTypeOf(const Element& e) const;
         // 柱的平面轮廓，逆时针：矩形的四角，或圆柱的 24 边形；不是柱或没有类型时为空
         Ring ColumnOutline(const Element& e) const;
+        // ── 梁与其他 run ────────────────────────────────────────
+        // run 的类型；不是 run 或没有这个类型时为空
+        const RunType* RunTypeOf(const Element& e) const;
+        // 算好的 run：两端与截面。别的元素或没有这个类型时为空
+        std::optional<Runs::Geom> RunGeom(const Element& e) const;
+
         // 类型的层用到、库里还没有的材质放进库：旧项目或别处来的文件打开时
         void AdoptMaterials();
 

@@ -207,7 +207,8 @@ namespace MiniBIM
 
         // ── 工具（Tools.cpp）──────────────────────────────────────
         // 平面上单击做什么：选（修改），或放一类东西
-        enum class Tool { Modify, Wall, Door, Window, Column, Component, Roof, Floor, Ceiling, Room, Level, Grid,
+        // Stand 放结构柱或独立基础、Run 放梁、条形基础或别的 run，类别在 m_toolOf（照 BIMCraft 的 Tool::Stand、Tool::Run）
+        enum class Tool { Modify, Wall, Door, Window, Column, Component, Roof, Floor, Ceiling, Room, Level, Grid, Stand, Run,
                           Move, Copy, Rotate, MirrorPick, MirrorDraw, Align, Trim, Split, Offset,
                           SketchLine, SketchRect, SketchPick };
         // 改选择集的工具（移动、复制、旋转、镜像）要先选东西
@@ -215,6 +216,13 @@ namespace MiniBIM
         // 画草图线的工具（只在草图模式里）
         static bool SketchTool(Tool t) { return t == Tool::SketchLine || t == Tool::SketchRect || t == Tool::SketchPick; }
         void SetTool(Tool tool);
+        // 放类别 category 的 Stand 或 Run 工具；已是它时回到修改
+        void SetToolOf(Tool tool, const char* category);
+        // Run 工具：换类别时选项栏的对齐与偏移换成这个工具上次的，或它的默认
+        void KeepRunOptions(const char* category);
+        // run 与 Stand 工具的命令参数（选项栏的高度、选的类型）；读不出高度时为空，原因放在 error
+        std::optional<Bim::Json> RunParams(Bim::P2 a, Bim::P2 b, std::string& error) const;
+        std::optional<Bim::Json> StandParams(Bim::P2 at, std::string& error) const;
         // Esc：先丢掉输入的长度，再丢掉画了一半的（墙链、轴网的起点），再退出工具，最后清空选择集
         void Escape();
         std::unique_ptr<MiniGUI::Node> CreateOptionsBar();
@@ -500,10 +508,18 @@ namespace MiniBIM
             std::string   levelElevation;
             std::string   levelName;
             double        componentAngle = 0.0;
+            bool          floorStructural = false;              // 楼板工具放结构楼板（结构选项卡的"楼板：结构"）
+            std::string   footingThickness = "400";
+            std::string   footingTop   = "0";                   // 独立基础、条形基础的顶在标高上多高
+            Bim::Justify  runJustify   = Bim::Justify::Top;     // run 工具：高度在截面哪条线上，与它的高度
+            std::string   runOffset    = "0";
+            const char*   runLoaded    = "beam";                // 上面两项是哪个 run 工具的
+            std::map<std::string, std::pair<Bim::Justify, std::string>> runKept;   // 别的 run 工具上次的
             std::map<std::string, std::string> types;            // 类别 → 类型
             std::map<std::string, std::string> openingFamilies;  // door / window → 族（选了项目自己的类型时没有）
             std::optional<std::pair<std::string, std::string>> component;
         } m_toolOpt;
+        const char*     m_toolOf = nullptr;                 // Stand、Run 工具放的类别
         MiniGUI::Node*  m_optionsBody = nullptr;
         // 修改工具的状态
         std::optional<Bim::P2>          m_rotateCentre;     // 旋转中心：选工具时为选择集的中心

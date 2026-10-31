@@ -41,20 +41,27 @@ namespace MiniBIM::Bim::Render
             return { Pen::Projection, Pen::Cut };
         }
 
-        // 柱在平面上占的地方与它的底、顶（BIMCraft 的 stands；基础、梁随它们移植）
+        // 柱、基础与 run 在平面上占的地方与它的底、顶（BIMCraft 的 stands）
         struct Stand
         {
             Ring   outline;
             double bottom = 0.0, top = 0.0;
+            // 基础与 run 挂在画它的标高下面，顶面与视图底部齐平：这样也算看得到
+            bool   hangs = false;
         };
 
         std::optional<Stand> Stands(const Model& m, const Element& e)
         {
-            const Column* col = e.AsColumn();
-            if (!col)
+            if (const Column* col = e.AsColumn())
+            {
+                const auto [bottom, top] = m.ColumnSpan(*col);
+                return Stand{ m.ColumnOutline(e), bottom, top, e.As<Footing>() != nullptr };
+            }
+            const auto g = m.RunGeom(e);
+            if (!g)
                 return std::nullopt;
-            const auto [bottom, top] = m.ColumnSpan(*col);
-            return Stand{ m.ColumnOutline(e), bottom, top };
+            const auto [bottom, top] = g->ZSpan();
+            return Stand{ g->Footprint(), bottom, top, true };
         }
 
         // 注释的元素用注释的线宽：轴网、标高、房间的标签（BIMCraft 还有尺寸、标记、文字、高程点、剖面与立面的标记）
@@ -648,7 +655,9 @@ namespace MiniBIM::Bim::Render
             }
             else if (const auto st = Stands(m, *e))
             {
-                if ((st->bottom <= r.cut && r.cut < st->top) || (r.depth < st->top && st->top <= r.cut))
+                const double flush = st->hangs ? Tol : 0.0;
+                const auto own = e->AsRun() ? m.LevelOf(*e) : std::nullopt;
+                if ((st->bottom <= r.cut && r.cut < st->top) || (r.depth - flush < st->top && st->top <= r.cut) || (own && m.Same(*own, level)))
                     extent.insert(extent.end(), st->outline.begin(), st->outline.end());
             }
             else if (const Floor* f = e->As<Floor>(); f && m.Same(f->level, level))
@@ -745,10 +754,27 @@ namespace MiniBIM::Bim::Render
             if (!w && !st)
                 continue;
             const double top = w ? m.TopZ(*w) : st->top;
-            if (!(range.depth < top && top <= range.cut))
+            const double flush = st && st->hangs ? Tol : 0.0;
+            if (!(range.depth - flush < top && top <= range.cut))
                 continue;
             d.Own(id);
             d.Line(w ? Walls::Outline(m, id, &index) : st->outline, Pen::ByCategory, top > range.bottom - Tol ? Ink : Faint, true);
+        }
+        // run 看得到而没剖到处的中心线，淡的虚线：Revit 画梁的记号，也是拾取它的地方
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            const auto g = m.RunGeom(*e);
+            if (!g || g->Vertical())
+                continue;
+            const auto [lo, hi] = g->ZSpan();
+            const bool seen = range.depth - Tol < hi && hi <= range.cut;
+            const bool over = range.cut < lo && lo <= range.top;
+            if (seen || over)
+            {
+                d.Own(id);
+                d.Stroke({ d.view.ToPx(P2{ g->a[0], g->a[1] }), d.view.ToPx(P2{ g->b[0], g->b[1] }) }, Pen::ByCategory, Faint,
+                         std::vector<float>{ 14.0f, 5.0f }, false);
+            }
         }
         d.SetPart(Part::Cut);
         // 剖到的墙与柱
@@ -873,6 +899,21 @@ namespace MiniBIM::Bim::Render
                     }
                 }
             }
+        }
+        // 也在上方：剖切面以上、视图范围顶部以下的 run，虚线
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            const auto g = m.RunGeom(*e);
+            if (!g)
+                continue;
+            const double lo = g->ZSpan().first;
+            if (!(range.cut < lo && lo <= range.top))
+                continue;
+            d.Own(id);
+            std::vector<Px> px;
+            for (const P2& q : g->Footprint())
+                px.push_back(d.view.ToPx(q));
+            d.Stroke(std::move(px), Pen::ByCategory, Ink, std::vector<float>{ 10.0f, 5.0f }, true);
         }
         d.Own(std::nullopt);
         d.ByCategory(m);

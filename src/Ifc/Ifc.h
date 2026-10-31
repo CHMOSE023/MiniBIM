@@ -13,12 +13,16 @@
 // 导入读 IFC2x3 或 IFC4（Revit、别的 BIM 软件与 BIMCraft 写的）：楼层成为标高，墙（直的或弯的）与其中的门窗、楼板（平的或带坡度）、
 // 天花板、房间、轴网、屋顶（平的，或矩形上的坡屋顶）、家具与器具等构件成为 MiniBIM 的元素，各按几何量出：
 // 拉伸轮廓、Brep 或三角网格都一样，所以文件怎么描述元素不要紧。被屋顶切顶的墙贴着那个屋顶。
-// MiniBIM 还没有的元素（柱、楼梯、坡道、栏杆、管井、管线、体量……）与违反规则的略去并列出原因。
+// 柱、梁、基础与管线（run）按截面与轴线读出，系统随它们回来。
+// MiniBIM 还没有的元素（楼梯、坡道、栏杆、管井、体量……）与违反规则的略去并列出原因。
 // BIMCraft 的阶段、设计选项与项目参数的属性集还没移植（docs/PLAN.md 第 2 阶段）
 namespace MiniBIM::Bim::Ifc
 {
     // 房间分隔线的虚拟元素带的对象类型，导入按它认出来
     inline constexpr const char* Separation = "RoomSeparation";
+    // run（梁、管道……）的高度在截面哪条线上、是哪个类别所在的属性集（它的系统是它归入的 IfcSystem）；
+    // 导入也认 BIMCraft 写的同样的属性集 BIMCraft_Run
+    inline constexpr const char* RunProperties = "MiniBIM_Run";
 
     // 128 位写成 IFC 的 GlobalId：22 位 64 进制数字，第一位放最高的 2 位。元素的 GUID 这样写就是它的 GlobalId，
     // 同 IfcOpenShell 的 guid.compress 写 UUID

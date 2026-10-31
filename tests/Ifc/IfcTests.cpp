@@ -1307,6 +1307,170 @@ window {"at": [4000, 6000], "family": "Casement Window"})");
         Check(turned, "导入：转过的柱回来，转角、截面、到上一个标高都对");
         Check(round, "导入：圆柱回来，直径、高度、底的偏移都对");
     }
+
+    // ── 结构（移植自 BIMCraft structure_tests.rs 的 IFC 部分，f3bbb33）──────────
+    // 元素是什么、在哪里，到十分之一毫米，不论 ID 与类型名
+    std::vector<std::string> Described(const Model& m, std::string_view category)
+    {
+        const auto fine = [](const Json& v)
+        {
+            char b[64];
+            if (v.is_number())
+            {
+                std::snprintf(b, sizeof b, "%.1f", v.get<double>() + 0.0);
+                return std::string(b);
+            }
+            return v.dump();
+        };
+        const bool run = category == "beam" || category == "stripfooting";
+        std::vector<const char*> keys;
+        if (run)
+            keys = { "width", "depth", "round", "length" };
+        else if (category == "floor")
+            keys = { "structural" };
+        else if (category == "footing")
+            keys = { "at", "round", "height", "base_offset", "top_level" };
+        else
+            keys = { "at", "round", "height", "base_offset" };
+        std::vector<std::string> out;
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            if (e->Category() != category)
+                continue;
+            const Json v = ElementJson(m, id);
+            std::string s;
+            for (const char* k : keys)
+            {
+                std::string val;
+                if (v.contains(k) && v[k].is_array())
+                {
+                    for (const Json& x : v[k])
+                        val += fine(x) + ",";
+                }
+                else
+                    val = v.contains(k) ? fine(v[k]) : "null";
+                s += std::string(k) + "=" + val + " ";
+            }
+            if (!run && category != "floor")
+            {
+                const double w = v["width"].get<double>(), d = v["depth"].get<double>();
+                s += "section=" + fine(std::min(w, d)) + "x" + fine(std::max(w, d)) + " ";
+            }
+            if (v.contains("axis"))
+            {
+                std::string ends[2];
+                for (int k = 0; k < 2; ++k)
+                    for (int c = 0; c < 3; ++c)
+                        ends[k] += fine(v["axis"][k][c]) + (c < 2 ? "," : "");
+                // 哪一端是起点由文件说了算：往西画的梁回来是往东的
+                if (ends[1] < ends[0])
+                    std::swap(ends[0], ends[1]);
+                s += "axis=" + ends[0] + "->" + ends[1];
+            }
+            out.push_back(s);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+
+    void TheStructure(Session& s)
+    {
+        Run(s, "beam", R"({"points": [[0, 0], [6000, 0]], "offset": 3000})");
+        Run(s, "beam", R"({"points": [[0, 3000], [4000, 3000]], "offset": 2800, "end_offset": 3400, "justify": "centre", "type": "Beam 150 x 400"})");
+        Run(s, "beam", R"({"points": [[500, 5000], [3500, 4000]], "type": "Steel Tube 150", "offset": 3000, "end_offset": 3900, "justify": "centre"})");
+        Run(s, "footing", R"({"at": [0, 0], "thickness": 500, "angle": 20, "type": "Footing 1500 x 1500"})");
+        Run(s, "footing", R"({"at": [6000, 0]})");
+        Run(s, "strip_footing", R"({"points": [[0, 0], [6000, 0], [6000, 5000]], "offset": -200})");
+        Run(s, "structural_column", R"({"at": [4000, 3000], "type": "Concrete Round 400"})");
+        Run(s, "structural_column", R"({"at": [5000, 3000], "type": "Concrete 200 x 500", "angle": 30})");
+        Run(s, "column", R"({"at": [8000, 3000]})");
+        // 自己的类型；一根往西画的梁；一个挂在上一个标高下的基础
+        Run(s, "type", R"({"category": "beam", "name": "B 250 x 600", "width": 250, "depth": 600, "material": "Concrete"})");
+        Run(s, "type", R"({"category": "stripfooting", "name": "S 900 x 350", "width": 900, "depth": 350})");
+        Run(s, "type", R"({"category": "structuralcolumn", "name": "C 250 x 600", "width": 250, "depth": 600})");
+        Run(s, "type", R"({"category": "footing", "name": "F 1800", "width": 1800, "depth": 1800})");
+        Run(s, "beam", R"({"points": [[6000, 6500], [0, 6500]], "type": "B 250 x 600", "offset": 3000})");
+        // 还有一根朝北偏西的，光凭实体的点定不了它的方向
+        Run(s, "beam", R"({"points": [[7500, 500], [6500, 4500]], "offset": 3000})");
+        Run(s, "strip_footing", R"({"points": [[0, 5500], [3000, 5500]], "type": "S 900 x 350"})");
+        Run(s, "structural_column", R"({"at": [1000, 4000], "type": "C 250 x 600"})");
+        Run(s, "footing", R"({"at": [3000, 4000], "type": "F 1800", "offset": 3000, "thickness": 400})");
+        Run(s, "floor", R"({"boundary": [[0, 0], [6000, 0], [6000, 5000], [0, 5000]], "structural": true, "offset": 3000})");
+        Run(s, "floor", R"({"boundary": [[7000, 0], [9000, 0], [9000, 2000], [7000, 2000]]})");
+    }
+
+    void TestStructure()
+    {
+        {
+            Session s;
+            Run(s, "beam", R"({"points": [[0, 0], [6000, 0]], "offset": 2800, "system": "Frame A"})");
+            const std::string f = Ifc::Export(s.GetModel());
+            const size_t at = f.find("=IFCBEAM(");
+            const std::string beam = at == std::string::npos ? "" : f.substr(at, f.find('\n', at) - at);
+            Check(Count(f, "IFCBEAM") == 1 && Contains(beam, "'Beam 200 x 500'") && Contains(beam, ".BEAM.);") && !Dangling(f), "导出：梁是 IFCBEAM");
+            Check(Count(f, "IFCRECTANGLEPROFILEDEF") == 1 && Contains(f, ",200.,500.);") && Contains(f, ",6000.);"), "导出：梁 200 宽 500 高，拉伸 6000");
+            Check(Contains(f, "IFCCARTESIANPOINT((0.,0.,2550.))"), "导出：放在中心线的起点，顶下 250");
+            Check(Contains(f, "IFCDIRECTION((1.,0.,0.))") && Contains(f, "IFCDIRECTION((0.,1.,0.))"), "导出：沿东，截面的 x 朝北");
+            Check(Contains(f, "IFCMATERIAL('Concrete'") && Count(f, "IFCRELASSOCIATESMATERIAL") >= 1, "导出：梁的材质");
+            Check(Contains(f, "'Pset_BeamCommon'") && Contains(f, "IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$)"), "导出：梁承重");
+            Check(Contains(f, std::string("'") + Ifc::RunProperties + "'") && Contains(f, "IFCTEXT('top')"), "导出：run 的属性集写对齐");
+            Check(Count(f, "IFCSYSTEM") == 1 && Contains(f, "'Frame A'") && Count(f, "IFCRELASSIGNSTOGROUP") == 1, "导出：所属系统");
+        }
+        {
+            Session s;
+            Run(s, "beam", R"({"points": [[0, 0], [3000, 0]], "offset": 0, "end_offset": 4000, "justify": "centre", "type": "Steel Tube 150"})");
+            const std::string f = Ifc::Export(s.GetModel());
+            Check(Count(f, "IFCCIRCLEPROFILEDEF") == 1 && Contains(f, ",75.);") && Contains(f, ",5000.);"), "导出：圆梁是圆的轮廓，沿斜长拉伸");
+            Check(Contains(f, "IFCDIRECTION((0.6,0.,0.8))"), "导出：斜梁沿它的轴");
+        }
+        {
+            Session s;
+            Run(s, "footing", R"({"at": [0, 0]})");
+            Run(s, "strip_footing", R"({"points": [[0, 0], [4000, 0]]})");
+            Run(s, "structural_column", R"({"at": [0, 0], "type": "Concrete Round 400"})");
+            Run(s, "column", R"({"at": [5000, 0]})");
+            const std::string f = Ifc::Export(s.GetModel());
+            Check(Count(f, "IFCFOOTING") == 2 && Occurrences(f, ".PAD_FOOTING.);") == 1 && Occurrences(f, ".STRIP_FOOTING.);") == 1,
+                  "导出：独立基础与条形基础是 IFCFOOTING");
+            Check(Count(f, "IFCCOLUMN") == 2 && Contains(f, ",1200.,1200.);") && Contains(f, "IFCCARTESIANPOINT((0.,0.,-400.))") && Contains(f, ",200.);"),
+                  "导出：基础 1200 见方，从标高下 400 起");
+            Check(Occurrences(f, "'Pset_ColumnCommon'") == 1 && Occurrences(f, "'Pset_FootingCommon'") == 2, "导出：只有结构的说它承重");
+        }
+        {
+            Session s;
+            TheStructure(s);
+            const std::string f = Ifc::Export(s.GetModel());
+            Ifc::Imported i;
+            const bool ok = Import(f, i);
+            Check(ok && i.skipped.empty(), "导入：结构全部读回\n" + Skipped(i));
+            for (const char* category : { "beam", "stripfooting", "structuralcolumn", "footing", "column", "floor" })
+            {
+                const auto before = Described(s.GetModel(), category), after = Described(i.model, category);
+                Check(!before.empty() && after == before, std::string("导入：") + category + " 回来一样\n  前：" + Join(before) + "\n  后：" + Join(after));
+            }
+            bool east = true;
+            for (const Element* e : Only(i.model, "beam"))
+                if (const MiniBIM::Bim::Run* r = e->AsRun())
+                    east &= r->start.x <= r->end.x;
+            Check(east, "导入：梁回来都朝东");
+            const Types& t = i.model.types;
+            Check(t.structuralColumn.count("C 250 x 600") && t.footing.count("F 1800") && t.runs.count("beam") && t.runs.at("beam").count("B 250 x 600") &&
+                      t.runs.count("stripfooting") && t.runs.at("stripfooting").count("S 900 x 350"),
+                  "导入：类型跟着回来，各在各的表里");
+            std::string error;
+            Check(i.model.Check(error), "导入：模型完好：" + error);
+        }
+        {
+            // BIMCraft 写的属性集也认
+            Session s;
+            Run(s, "pipe", R"({"points": [[0, 0], [3000, 0]], "offset": 2500, "justify": "bottom", "system": "Cold water"})");
+            const std::string f = Replace(Ifc::Export(s.GetModel()), std::string("'") + Ifc::RunProperties + "'", "'BIMCraft_Run'");
+            Ifc::Imported i;
+            const auto pipes = Import(f, i) ? Only(i.model, "pipe") : std::vector<const Element*>{};
+            const MiniBIM::Bim::Run* r = pipes.size() == 1 ? pipes[0]->AsRun() : nullptr;
+            Check(r && r->justify == Justify::Bottom && r->offset == 2500.0 && r->system == "Cold water", "导入：BIMCraft_Run 属性集的对齐与系统\n" + Skipped(i));
+        }
+    }
 }
 
 int main()
@@ -1336,6 +1500,7 @@ int main()
     TestSliding();
     TestRoomSeparators();
     TestColumns();
+    TestStructure();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

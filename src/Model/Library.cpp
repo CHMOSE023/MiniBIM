@@ -220,6 +220,11 @@ namespace MiniBIM::Bim
             out.emplace_back(Kind::Type("ceiling"), n);
         for (const auto& [n, _] : types.structuralColumn)
             out.emplace_back(Kind::Type("structuralcolumn"), n);
+        for (const auto& [n, _] : types.footing)
+            out.emplace_back(Kind::Type("footing"), n);
+        for (const auto& [cat, map] : types.runs)
+            for (const auto& [n, _] : map)
+                out.emplace_back(Kind::Type(cat), n);
         for (const auto& [n, _] : materials)
             out.emplace_back(Kind::Of(Kind::Tag::Material), n);
         for (const auto& [n, _] : families)
@@ -550,6 +555,10 @@ namespace MiniBIM::Bim
             for (Layer& l : x.layers)
                 if (!l.material.empty())
                     f(material, l.material);
+        for (auto& [cat, map] : types.runs)
+            for (auto& [n, r] : map)
+                if (!r.material.empty())
+                    f(material, r.material);
         for (auto& [_, fam] : families)
             fam.MaterialRefsMut([&](std::string& m) { f(material, m); });
     }

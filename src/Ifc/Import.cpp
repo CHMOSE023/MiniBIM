@@ -157,6 +157,87 @@ namespace MiniBIM::Bim::Ifc
             return s.v;
         }
 
+        // 在一个实体的点里找到的 run
+        struct Found
+        {
+            P3     start{};
+            P3     end{};
+            double width = 0.0;
+            double depth = 0.0;
+            bool   round = false;
+        };
+
+        // pts 构成的 run：中心线沿它们散开最远的方向（协方差的主轴，幂迭代求出），截面是横过它、垂直于它围住它们的框，
+        // width 水平、depth 与之垂直；截面的角点多且离中心都一样远时是圆的。立着的轴宽度沿东。点太少时为空
+        std::optional<Found> RunIn(const std::vector<P3>& pts)
+        {
+            if (pts.size() < 4)
+                return std::nullopt;
+            auto unit = [](const P3& v)
+            {
+                const double l = std::sqrt(V3::Dot(v, v));
+                return l > 0.0 ? V3::Mul(v, 1.0 / l) : v;
+            };
+            P3 c{};
+            for (const P3& p : pts)
+                c = V3::Add(c, p);
+            c = V3::Mul(c, 1.0 / double(pts.size()));
+            double cov[3][3] = {};
+            for (const P3& p : pts)
+            {
+                const P3 q = V3::Sub(p, c);
+                for (int i = 0; i < 3; ++i)
+                    for (int j = 0; j < 3; ++j)
+                        cov[i][j] += q[i] * q[j];
+            }
+            P3 d = unit(P3{ 1.0, 0.7, 0.3 });
+            for (int it = 0; it < 64; ++it)
+            {
+                P3 next{};
+                for (int i = 0; i < 3; ++i)
+                    next[i] = cov[i][0] * d[0] + cov[i][1] * d[1] + cov[i][2] * d[2];
+                if (V3::Dot(next, next) < 1e-18)
+                    return std::nullopt;
+                d = unit(next);
+            }
+            // 朝东，否则朝北，所以不论文件从哪一端写起都读成一样；立着的朝上，同迭代的第一个方向（z 为正）
+            const bool upright = std::hypot(d[0], d[1]) < 1e-6;
+            if (d[0] < -1e-9 || (std::abs(d[0]) <= 1e-9 && d[1] < -1e-9))
+                d = V3::Mul(d, -1.0);
+            // 立着的宽度沿东，同竖起来的 run 画的样子
+            const P3 across = upright ? P3{ 1.0, 0.0, 0.0 } : unit(P3{ -d[1], d[0], 0.0 });
+            const P3 up     = V3::Cross(d, across);
+            auto ext = [&](const P3& axis)
+            {
+                Spread s;
+                for (const P3& p : pts)
+                    s.Add(V3::Dot(V3::Sub(p, c), axis));
+                return s.v;
+            };
+            const auto t = ext(d), u = ext(across), v = ext(up);
+            if (!t || !u || !v)
+                return std::nullopt;
+            const P3 mid = V3::Add(c, V3::Add(V3::Mul(d, (t->first + t->second) / 2.0),
+                                              V3::Add(V3::Mul(across, (u->first + u->second) / 2.0), V3::Mul(up, (v->first + v->second) / 2.0))));
+            const double half = (t->second - t->first) / 2.0;
+            Spread radii;
+            std::set<std::pair<int64_t, int64_t>> corners;
+            for (const P3& p : pts)
+            {
+                const P3 r = V3::Sub(p, mid);
+                const P3 x = V3::Sub(r, V3::Mul(d, V3::Dot(r, d)));
+                radii.Add(std::sqrt(V3::Dot(x, x)));
+                corners.emplace(int64_t(std::round(V3::Dot(r, across) * 2.0)), int64_t(std::round(V3::Dot(r, up) * 2.0)));
+            }
+            const bool round = corners.size() >= 12 && radii.v && radii.v->second > 0.0 && (radii.v->second - radii.v->first) / radii.v->second < 0.03;
+            auto size = [](double x) { return std::round(x * 100.0) / 100.0; };
+            const double width = round ? size(2.0 * radii.v->second) : size(u->second - u->first);
+            const double depth = round ? width : size(v->second - v->first);
+            if (!(half > 0.0 && width > 0.0 && depth > 0.0))
+                return std::nullopt;
+            return Found{ V3::Sub(mid, V3::Mul(d, half)), V3::Add(mid, V3::Mul(d, half)), width, depth, round };
+        }
+
         // ── 坐标系 ──────────────────────────────────────────────
         struct Frame
         {
@@ -1120,6 +1201,8 @@ namespace MiniBIM::Bim::Ifc
             // 元素的类型，以及元素或类型用什么做
             std::unordered_map<uint64_t, uint64_t> typed;
             std::unordered_map<uint64_t, uint64_t> material;
+            // 元素归入的组（系统）
+            std::unordered_map<uint64_t, uint64_t> group;
 
             static Links Read(const File& f, const std::vector<uint64_t>& ids)
             {
@@ -1173,6 +1256,12 @@ namespace MiniBIM::Bim::Ifc
                         if (const auto mat = Reference(a(5)))
                             for (const uint64_t x : RefsOf(a(4)))
                                 l.material[x] = *mat;
+                    }
+                    else if (e.name == "IFCRELASSIGNSTOGROUP")
+                    {
+                        if (const auto g = Reference(a(6)))
+                            for (const uint64_t x : RefsOf(a(4)))
+                                l.group[x] = *g;
                     }
                 }
                 return l;
@@ -2083,6 +2172,31 @@ namespace MiniBIM::Bim::Ifc
                     bearing.insert(x);
         }
 
+        // 本程序（或 BIMCraft）写在 run 上的属性集说的：它的高度在截面哪条线上、它的类别，按产品
+        std::unordered_map<uint64_t, std::pair<std::optional<Justify>, std::optional<std::string>>> runProps;
+        for (const uint64_t rid : named({ "IFCRELDEFINESBYPROPERTIES" }))
+        {
+            const Entity& rel = *e(rid);
+            const Entity* set = r.At(Arg(rel, 5));
+            if (!set || set->name != "IFCPROPERTYSET")
+                continue;
+            const auto setName = TextOf(Arg(*set, 2));
+            if (setName != RunProperties && setName != "BIMCraft_Run")
+                continue;
+            const auto said = [&](std::string_view key) -> std::optional<std::string>
+            {
+                for (const uint64_t pid : RefsOf(Arg(*set, 4)))
+                    if (const Entity* p = e(pid); p && p->name == "IFCPROPERTYSINGLEVALUE" && TextOf(Arg(*p, 0)) == key)
+                        if (const auto t = TextOf(Arg(*p, 2)))
+                            return std::string(*t);
+                return std::nullopt;
+            };
+            const auto j = said("Justification");
+            const std::pair<std::optional<Justify>, std::optional<std::string>> props{ j ? JustifyOf::FromName(*j) : std::nullopt, said("Category") };
+            for (const uint64_t x : RefsOf(Arg(rel, 4)))
+                runProps[x] = props;
+        }
+
         const std::vector<uint64_t> projects = named({ "IFCPROJECT" });
         const Entity* project = projects.empty() ? nullptr : e(projects.front());
         std::optional<std::string_view> title = project ? TextOf(Arg(*project, 2)) : std::nullopt;
@@ -2483,8 +2597,18 @@ namespace MiniBIM::Bim::Ifc
             seen.insert(id);
         }
 
-        // 柱：横过它的截面与它立多高；承重的是结构柱（BIMCraft 还把不是条形的基础读成独立基础，基础随它移植）
-        for (const uint64_t id : named({ "IFCCOLUMN", "IFCCOLUMNSTANDARDCASE" }))
+        // 柱：横过它的截面与它立多高；承重的是结构柱，不是条形的基础是独立基础（平放的柱）
+        const auto strip = [&](uint64_t id)
+        {
+            const Entity* x = e(id);
+            const auto k = x ? Enumeration(Arg(*x, 8)) : std::nullopt;
+            return k == "STRIP_FOOTING" || k == "FOOTING_BEAM";
+        };
+        std::vector<uint64_t> standing = named({ "IFCCOLUMN", "IFCCOLUMNSTANDARDCASE" });
+        for (const uint64_t id : named({ "IFCFOOTING" }))
+            if (!strip(id))
+                standing.push_back(id);
+        for (const uint64_t id : standing)
         {
             const Entity& c = *e(id);
             const auto faces = r.Body(c);
@@ -2536,21 +2660,107 @@ namespace MiniBIM::Bim::Ifc
                 continue;
             }
             const std::string base = label(id).value_or(round ? "Imported Round " + Num(w) : "Imported " + Num(w) + " x " + Num(d));
+            const bool footing    = c.name == "IFCFOOTING";
             const bool structural = bearing.count(id) != 0;
-            auto& types = structural ? m.types.structuralColumn : m.types.column;
+            auto& types = footing ? m.types.footing : structural ? m.types.structuralColumn : m.types.column;
             Column col;
             col.typeName = KindOf(
                 types, base, [&](const ColumnType& k) { return k.round == round && std::abs(k.width - w) < 0.05 && std::abs(k.depth - d) < 0.05; },
                 ColumnType{ w, d, round });
             col.level = levelFor(id, z0);
-            std::tie(col.topLevel, col.height) = topped(col.level, z0, z1);
+            if (footing)
+                col.height = z1 - z0;
+            else
+                std::tie(col.topLevel, col.height) = topped(col.level, z0, z1);
             col.height     = Round(col.height, 1000.0);
             col.angle      = round ? 0.0 : Round(std::atan2(u.y, u.x) * 180.0 / kPi, 1e6) + 0.0;
             col.at         = Micron(at);
             col.baseOffset = Round(z0 - elevation(col.level), 1000.0) + 0.0;
-            const Id cid = structural ? m.Insert(StructuralColumn{ std::move(col) }) : m.Insert(std::move(col));
+            const Id cid = footing ? m.Insert(Footing{ std::move(col) }) : structural ? m.Insert(StructuralColumn{ std::move(col) }) : m.Insert(std::move(col));
             made(cid, id);
             seen.insert(id);
+        }
+
+        // run（梁、条形基础、管道……）：在它的实体里找到它沿着走的最长方向与垂直于它的截面。绕轴转过的读成外框。
+        // 产品的类与类型说是哪个类别，本程序写的文件还有它的属性集
+        {
+            std::vector<const char*> classes;
+            for (const Runs::IfcRow& row : Runs::IfcTable())
+                if (std::find_if(classes.begin(), classes.end(), [&](const char* c) { return std::string_view(c) == row.ifcClass; }) == classes.end())
+                    classes.push_back(row.ifcClass);
+            classes.push_back("IFCBEAMSTANDARDCASE");
+            std::vector<uint64_t> ids;
+            for (const char* cls : classes)
+                for (const uint64_t id : named({ cls }))
+                    if (std::string_view(cls) != "IFCFOOTING" || strip(id))
+                        ids.push_back(id);
+            std::sort(ids.begin(), ids.end());
+            for (const uint64_t id : ids)
+            {
+                const Entity* b = e(id);
+                if (!b)
+                    continue;
+                const auto props = runProps.find(id);
+                std::optional<std::string_view> declared;
+                if (props != runProps.end() && props->second.second)
+                    declared = *props->second.second;
+                const auto category = Runs::FromIfc(b->name, Enumeration(Arg(*b, 8)), declared);
+                if (!category)
+                    continue;
+                std::vector<P3> pts;
+                for (const auto& face : r.Body(*b))
+                    pts.insert(pts.end(), face.begin(), face.end());
+                const auto found = RunIn(pts);
+                if (!found)
+                {
+                    leave(id, "it has no body MiniBIM can read, or it stands (a column) or lies flat");
+                    continue;
+                }
+                const Runs::Geom geom{ found->start, found->end, found->width, found->depth, found->round };
+                std::string why;
+                if (!Runs::Check(who(id), *category, geom, why))
+                {
+                    const size_t colon = why.find(": ");
+                    leave(id, colon == std::string::npos ? why : why.substr(colon + 2));
+                    continue;
+                }
+                const Guid level = levelFor(id, std::min(found->start[2], found->end[2]));
+                const double w = found->width, d = found->depth;
+                const std::string base = label(id).value_or(found->round ? "Imported Round " + Num(w) : "Imported " + Num(w) + " x " + Num(d));
+                // 用库里有的、同名的材质做
+                std::string material;
+                if (const auto mat = Find(l.material, id))
+                    if (const Entity* x = e(*mat); x && x->name == "IFCMATERIAL")
+                        if (const auto n = TextOf(Arg(*x, 0)); n && m.materials.count(std::string(*n)))
+                            material = std::string(*n);
+                auto& types = m.types.runs[*category];
+                Run run;
+                run.typeName = KindOf(
+                    types, base,
+                    [&](const RunType& k) { return k.round == found->round && std::abs(k.width - w) < 0.05 && std::abs(k.depth - d) < 0.05 && k.material == material; },
+                    RunType{ w, d, found->round, material });
+                const auto height = [&](double z) { return Round(z - elevation(level), 1000.0) + 0.0; };
+                // 实体给的是中心线；本程序写的高度所在的线把高度放回输入时的那条线上
+                run.justify = props != runProps.end() && props->second.first ? *props->second.first : Justify::Centre;
+                const Runs::Geom g{ found->start, found->end, w, d, found->round };
+                const double shift = run.justify == Justify::Top ? g.Half() : run.justify == Justify::Bottom ? -g.Half() : 0.0;
+                const double z0 = height(found->start[2] + shift), z1 = height(found->end[2] + shift);
+                if (const auto gid = Find(l.group, id))
+                    if (const Entity* x = e(*gid); x && (x->name == "IFCSYSTEM" || x->name == "IFCDISTRIBUTIONSYSTEM"))
+                        if (const auto n = TextOf(Arg(*x, 2)))
+                            run.system = Clip(*n);
+                run.level     = level;
+                run.start     = Micron(r.Flat(found->start));
+                run.end       = Micron(r.Flat(found->end));
+                run.offset    = z0;
+                if (std::abs(z1 - z0) > 1e-6)
+                    run.endOffset = z1;
+                auto el = Element::OfRun(*category, std::move(run));
+                if (!el)
+                    continue;
+                made(m.Insert(std::move(*el)), id);
+                seen.insert(id);
+            }
         }
 
         // 屋顶：平的，或矩形上的坡屋顶，按它朝上的面量

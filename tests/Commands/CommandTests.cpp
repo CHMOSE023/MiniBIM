@@ -2043,6 +2043,194 @@ namespace
             (void)line;
         }
     }
+
+    // 移植自 BIMCraft structure_tests.rs（f3bbb33）：结构选项卡的梁、结构柱、独立基础、条形基础与结构楼板
+    std::vector<Id> IdsOf(const Json& r)
+    {
+        std::vector<Id> ids;
+        if (r.is_object() && r.contains("ids"))
+            for (const Json& v : r["ids"])
+                ids.push_back(v.get<Id>());
+        return ids;
+    }
+
+    // 应当失败，且模型不变：返回原因
+    std::string Fails(Session& s, const char* id, const Json& p)
+    {
+        const Json before = s.GetModel().ToJson();
+        const std::string why = Refused(s, id, p);
+        Check(!why.empty() && s.GetModel().ToJson() == before, std::string("结构：被拒的 ") + id + " 不改模型（" + p.dump().substr(0, 60) + "）");
+        return why;
+    }
+
+    Json Axis(std::initializer_list<std::array<double, 3>> pts)
+    {
+        Json a = Json::array();
+        for (const auto& p : pts)
+            a.push_back(Json::array({ p[0], p[1], p[2] }));
+        return a;
+    }
+
+    void TestStructure()
+    {
+        {
+            Session s;
+            const auto beams = IdsOf(Run(s, "beam", R"({"points": [[0, 0], [6000, 0], [6000, 4000]]})"));
+            Check(beams.size() == 2, "梁：每段一根");
+            const Json b = beams.empty() ? Json() : ElementOf(s, beams[0]);
+            Check(b["category"] == "beam" && b["type"] == "Beam 200 x 500" && b["justify"] == "top", "梁：类别、默认类型、顶对齐");
+            Check(b["length"] == 6000.0 && b["width"] == 200.0 && b["depth"] == 500.0, "梁：长度与截面");
+            Check(b["axis"] == Axis({ { 0, 0, -250 }, { 6000, 0, -250 } }), "梁：顶在标高上，中心线低半个高度：" + b["axis"].dump());
+            Check(beams.size() == 2 && ElementOf(s, beams[1])["length"] == 4000.0, "梁：第二段");
+            Check(IdsOf(Run(s, "BM", R"({"points": [[0, 0], [1000, 0], [1000, 1000]], "closed": true})")).size() == 3, "梁：BM，闭合成一圈");
+            Check(Count(s, "beams") == 5, "梁：按类别数");
+        }
+        {
+            Session s;
+            const auto r = IdsOf(Run(s, "beam",
+                                     R"({"points": [[0, 0], [3000, 0]], "offset": 2800, "end_offset": 3400, "justify": "centre", "system": "Roof frame", "level": "Level 1"})"));
+            const Json b = r.empty() ? Json() : ElementOf(s, r[0]);
+            Check(b["axis"] == Axis({ { 0, 0, 2800 }, { 3000, 0, 3400 } }), "梁：两端的高度，坡起来");
+            Check(b["system"] == "Roof frame" && b["justify"] == "centre", "梁：所属系统与对齐");
+            const auto c = IdsOf(Run(s, "beam", R"({"points": [[0, 1000], [3000, 1000]], "justify": "center"})"));
+            if (!c.empty())
+            {
+                Run(s, "modify", Json{ { "id", c[0] }, { "offset", 500 } });
+                Check(ElementOf(s, c[0])["axis"] == Axis({ { 0, 1000, 500 }, { 3000, 1000, 500 } }), "梁：center 也认，modify 改高度");
+            }
+        }
+        {
+            Session s;
+            const Json line = Json::array({ Pt(0, 0), Pt(3000, 0) });
+            Check(Contains(Fails(s, "beam", Json{ { "points", { Pt(0, 0), Pt(0, 0) } } }), "too short"), "梁：太短");
+            Check(Contains(Fails(s, "beam", Json{ { "points", { Pt(0, 0) } } }), "at least 2"), "梁：至少两点");
+            Check(Contains(Fails(s, "beam", Json{ { "points", line }, { "type", "Nope" } }), "type `Nope` doesn't exist"), "梁：没有的类型");
+            Check(Contains(Fails(s, "beam", Json{ { "points", line }, { "justify", "sideways" } }), "justify"), "梁：对齐写错");
+            Check(Contains(Fails(s, "beam", Json{ { "points", line }, { "offset", 1e300 } }), "offset"), "梁：高度太大");
+            Check(Contains(Fails(s, "beam", Json{ { "points", line }, { "offset", "high" } }), "offset"), "梁：高度不是数");
+            Check(Contains(Fails(s, "beam", Json{ { "points", line }, { "system", std::string(300, 'x') } }), "system"), "梁：系统名太长");
+            Check(Contains(Fails(s, "beam", Json{ { "points", line }, { "level", "Nowhere" } }), "Nowhere"), "梁：没有的标高");
+            const std::string steep = Fails(s, "beam", Json{ { "points", { Pt(0, 0), Pt(100, 0) } }, { "offset", 0 }, { "end_offset", 5000 } });
+            Check(Contains(steep, "slopes") && Contains(steep, "column"), "梁：比 75° 陡的是柱：" + steep);
+            Check(Contains(Fails(s, "beam", Json{ { "points", { Pt(0, 0), Pt(1000, 0), Pt(2000, 0) } }, { "end_offset", 100 } }), "end_offset"),
+                  "梁：end_offset 只给一段");
+        }
+        {
+            Session s;
+            const Json made = Run(s, "type", R"({"category": "beam", "name": "IPE 200", "width": 100, "depth": 200, "material": "Metal"})");
+            Check(made["type"] == Json::parse(R"({"width": 100.0, "depth": 200.0, "round": false, "material": "Metal"})"), "run 类型：新建：" + made.dump());
+            const Json tube = Run(s, "type", R"({"category": "beams", "name": "Tube 100", "width": 100, "round": true})");
+            Check(tube["type"]["depth"] == 100.0 && tube["type"]["round"] == true, "run 类型：圆的进深即宽度");
+            const auto id = IdsOf(Run(s, "beam", R"({"points": [[0, 0], [3000, 0]], "type": "IPE 200"})"));
+            Run(s, "type", R"({"category": "beam", "name": "IPE 200", "width": 150})");
+            const Json b = id.empty() ? Json() : ElementOf(s, id[0]);
+            Check(b["width"] == 150.0 && b["depth"] == 200.0, "run 类型：改了处处跟着变，没说的不变");
+            Check(Contains(Fails(s, "type", Json::parse(R"({"category": "beam", "name": "Odd", "width": 100, "depth": 200, "material": "Unobtainium"})")), "library"),
+                  "run 类型：材质要在库里");
+            Check(Contains(Fails(s, "type", Json::parse(R"({"category": "beam", "name": "Flat", "width": 100})")), "depth"), "run 类型：要 depth");
+            Check(Contains(Fails(s, "type", Json::parse(R"({"category": "beam", "name": "Zero", "width": 0, "depth": 10})")), "above zero"), "run 类型：尺寸大于 0");
+            const std::string e = Fails(s, "type", Json::parse(R"({"category": "duct", "name": "P", "width": 10})"));
+            Check(Contains(e, "beam"), "run 类型：报错列出有类型的类别：" + e);
+            Run(s, "type", R"({"category": "stripfooting", "name": "Strip 800 x 300", "width": 800, "depth": 300})");
+            Run(s, "type", R"({"category": "structural column", "name": "C 250 x 600", "width": 250, "depth": 600})");
+            Run(s, "type", R"({"category": "footing", "name": "F 2000", "width": 2000, "depth": 2000})");
+            const Model& m = s.GetModel();
+            Check(m.types.structuralColumn.count("C 250 x 600") && !m.types.column.count("C 250 x 600") && m.types.footing.count("F 2000") &&
+                      m.types.runs.count("stripfooting") && m.types.runs.at("stripfooting").count("Strip 800 x 300"),
+                  "类型：条形基础、结构柱、独立基础各有各的");
+        }
+        {
+            Session s;
+            const Id f = Run(s, "footing", R"({"at": [1000, 2000]})")["id"].get<Id>();
+            Json e = ElementOf(s, f);
+            Check(e["category"] == "footing" && e["type"] == "Footing 1200 x 1200" && e["height"] == 400.0 && e["base_offset"] == -400.0,
+                  "独立基础：400 厚，顶在标高上：" + e.dump());
+            const Id g = Run(s, "footing", R"({"at": [5000, 2000], "thickness": 600, "offset": -200, "angle": 30})")["id"].get<Id>();
+            e = ElementOf(s, g);
+            Check(e["height"] == 600.0 && e["base_offset"] == -800.0 && e["angle"] == 30.0, "独立基础：厚度、顶的高度、角度");
+            Check(Contains(Fails(s, "footing", Json::parse(R"({"at": [0, 0], "thickness": 0})")), "thickness"), "独立基础：厚度为 0");
+            Check(Contains(Fails(s, "footing", Json::parse(R"({"at": [0, 0], "thickness": -5})")), "thickness"), "独立基础：厚度为负");
+            Check(Count(s, "footings") == 2 && Count(s, "columns") == 0, "独立基础：按自己的类别数");
+        }
+        {
+            Session s;
+            const auto r = IdsOf(Run(s, "strip_footing", R"({"points": [[0, 0], [5000, 0]]})"));
+            const Json e = r.empty() ? Json() : ElementOf(s, r[0]);
+            Check(e["category"] == "stripfooting" && e["type"] == "Strip 600 x 300" && e["justify"] == "top", "条形基础：类别、默认类型、顶对齐");
+            Check(e["axis"] == Axis({ { 0, 0, -150 }, { 5000, 0, -150 } }), "条形基础：顶在标高上");
+            Check(Contains(Fails(s, "strip_footing", Json::parse(R"({"points": [[0, 0], [5000, 0]], "type": "Beam 200 x 500"})")), "Strip 600 x 300"),
+                  "条形基础：梁的类型不是它的");
+        }
+        {
+            Session s;
+            const Id beam = IdsOf(Run(s, "beam", R"({"points": [[0, 0], [4000, 0]], "offset": 2800, "end_offset": 3000})")).at(0);
+            const Id column = Run(s, "structural_column", R"({"at": [0, 0], "angle": 0})")["id"].get<Id>();
+            const Id footing = Run(s, "footing", R"({"at": [0, 0]})")["id"].get<Id>();
+            const auto axis = [&] { return ElementOf(s, beam)["axis"]; };
+            const Json z0 = axis()[0][2], z1 = axis()[1][2];
+            Run(s, "move", Json{ { "ids", { beam, column, footing } }, { "by", Pt(1000, 500) } });
+            Check(axis()[0] == Json::array({ 1000.0, 500.0, z0 }), "结构：移动，高度不变");
+            Check(ElementOf(s, column)["at"] == Pt(1000, 500) && ElementOf(s, footing)["at"] == Pt(1000, 500), "结构：柱与基础随着移动");
+            Run(s, "rotate", Json{ { "ids", { beam, column } }, { "about", Pt(1000, 500) }, { "angle", 90 } });
+            const Json a = axis();
+            Check(NearNum(a[1][0], 1000.0, 1e-6) && NearNum(a[1][1], 4500.0, 1e-6) && ElementOf(s, column)["angle"] == 90.0, "结构：旋转：" + a.dump());
+            const auto copy = IdsOf(Run(s, "mirror", Json{ { "ids", { beam } }, { "axis", { Pt(0, 0), Pt(0, 1000) } }, { "copy", true } }));
+            const Json mirrored = copy.empty() ? Json() : ElementOf(s, copy[0])["axis"];
+            Check(!copy.empty() && mirrored[0][2] == z0 && mirrored[1][2] == z1 && NearNum(mirrored[0][0], -1000.0, 1e-6), "结构：镜像，各端的高度跟着各端");
+            Run(s, "copy", Json{ { "ids", { beam, column, footing } }, { "by", Pt(0, -2000) } });
+            Check(Count(s, "beam") == 3, "结构：复制");
+            Run(s, "delete", Json{ { "ids", { beam, column, footing } } });
+            Check(Count(s, "footing") == 1, "结构：删除");
+            Run(s, "undo", Json::object());
+            Check(Count(s, "footing") == 2, "结构：撤销删除");
+        }
+        {
+            Session s;
+            Run(s, "beam", R"({"points": [[0, 0], [4000, 0]], "system": "Level 2 frame"})");
+            Run(s, "structural_column", R"({"at": [0, 0]})");
+            Run(s, "footing", R"({"at": [0, 0]})");
+            Run(s, "strip_footing", R"({"points": [[0, 0], [4000, 0]]})");
+            Run(s, "pipe", R"({"points": [[0, 0], [4000, 0]], "offset": 2500, "end_offset": 2400, "justify": "bottom"})");
+            Run(s, "floor", R"({"boundary": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]], "structural": true})");
+            const std::string path = Temp("structure.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            std::error_code ec;
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+            Check(t.GetModel().ToJson() == s.GetModel().ToJson(), "结构：存了再打开一模一样");
+            Json old = Session().GetModel().ToJson();
+            for (const char* gone : { "runs", "structural_column", "footing" })
+                old["types"].erase(gone);
+            Model m;
+            std::vector<std::string> left;
+            std::string error;
+            Check(Model::Read(old.dump(), m, left, error) && m.types.runs.empty() && m.Check(error), "结构：没有结构类型的旧文件能打开：" + error);
+            // 圆而不如宽那么深的 run 类型的文件被拒
+            Json bad = Session().GetModel().ToJson();
+            bad["types"]["runs"]["beam"]["Bad"] = Json::parse(R"({"width": 100, "depth": 50, "round": true})");
+            Model n;
+            Check(!Model::Read(bad.dump(), n, left, error) || !n.Check(error), "结构：圆的 run 类型进深不等于宽度的文件被拒");
+        }
+        {
+            // 移植自 BIMCraft structure_tests.rs 的平面图：看到挂在标高下的梁、剖切面以上的梁与标高下的基础
+            Session s;
+            const Id below = IdsOf(Run(s, "beam", R"({"points": [[0, 0], [4000, 0]]})")).at(0);
+            const Id over  = IdsOf(Run(s, "beam", R"({"points": [[0, 2000], [4000, 2000]], "offset": 1800})")).at(0);
+            const Id f     = Run(s, "footing", R"({"at": [2000, 4000]})")["id"].get<Id>();
+            const Model& m = s.GetModel();
+            const Render::Drawing d = Render::Plan(m, m.GuidOf(Id(100000)), 1200, 900);
+            const auto owns = [&](Id id)
+            {
+                for (size_t i = 0; i < d.prims.size(); ++i)
+                    if (d.owners[i] == std::optional<Id>(id))
+                        return true;
+                return false;
+            };
+            Check(owns(below) && owns(over) && owns(f), "平面图：标高下的梁、剖切面以上的梁、标高下的基础都画");
+            Check(d.Pick(d.view.ToPx(P2(2000, 0)), 4.0f) == below, "平面图：拾取梁");
+        }
+    }
 }
 
 int main()
@@ -2065,6 +2253,7 @@ int main()
     TestHostileParams();
     TestBimcraft0733();
     TestColumns();
+    TestStructure();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

@@ -1697,15 +1697,32 @@ namespace MiniBIM::Bim
             return true;
         }
 
-        // 命令要的柱（category 为 column 或 structuralcolumn），还没放进模型：工具预览一次单击会放下的
-        bool StoodOf(const Model& m, const Json& p, const std::string& category, Element& out, std::string& error)
+        // 命令要的柱（category 为 column、structuralcolumn 或 footing），还没放进模型：工具预览一次单击会放下的
+        bool StoodOfImpl(const Model& m, const Json& p, const std::string& category, Element& out, std::string& error)
         {
-            const char* c = category == "column" ? "column" : "structural_column";
+            const char* c = CommandOf(category);
             Params P(c, p, error);
             Column col;
             std::optional<double> angle, height, baseOffset;
             if (!P.PointReq("at", col.at) || !LevelParam(c, m, p, "level", col.level, error) || !TypeParam(P, m, category.c_str(), col.typeName) ||
-                !P.Num("angle", angle) || !P.Num("height", height) || !P.Num("base_offset", baseOffset))
+                !P.Num("angle", angle))
+                return false;
+            // 独立基础是平放的柱：厚 thickness，顶面高出标高 offset
+            if (category == "footing")
+            {
+                std::optional<double> thickness, top;
+                if (!P.Num("thickness", thickness) || !P.Num("offset", top))
+                    return false;
+                const double th = thickness.value_or(400.0);
+                if (th <= 0.0)
+                    return P.Fail("`thickness` must be above zero, got " + Num(th));
+                col.angle      = angle.value_or(0.0);
+                col.height     = th;
+                col.baseOffset = top.value_or(0.0) - th;
+                out = Element(Footing{ std::move(col) });
+                return true;
+            }
+            if (!P.Num("height", height) || !P.Num("base_offset", baseOffset))
                 return false;
             // 到上一个标高，或给了 height 时那么高，或到 top_level
             if (P.Absent("top_level"))
@@ -1733,7 +1750,7 @@ namespace MiniBIM::Bim
         bool ColumnCmd(Session& s, const Json& p, Json& result, std::string& error)
         {
             Element e;
-            if (!StoodOf(s.GetModel(), p, "column", e, error))
+            if (!StoodOfImpl(s.GetModel(), p, "column", e, error))
                 return false;
             result = Json{ { "id", s.ModelMut().Insert(std::move(e)) } };
             return true;
@@ -1742,11 +1759,88 @@ namespace MiniBIM::Bim
         bool StructuralColumnCmd(Session& s, const Json& p, Json& result, std::string& error)
         {
             Element e;
-            if (!StoodOf(s.GetModel(), p, "structuralcolumn", e, error))
+            if (!StoodOfImpl(s.GetModel(), p, "structuralcolumn", e, error))
                 return false;
             result = Json{ { "id", s.ModelMut().Insert(std::move(e)) } };
             return true;
         }
+
+        bool FootingCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Element e;
+            if (!StoodOfImpl(s.GetModel(), p, "footing", e, error))
+                return false;
+            result = Json{ { "id", s.ModelMut().Insert(std::move(e)) } };
+            return true;
+        }
+
+        // 命令要的 run（类别 category：梁、条形基础……），points 每一段一个，还没放进模型：工具预览一次单击会放下的
+        bool RunsOfImpl(const Model& m, const Json& p, const std::string& category, std::vector<Element>& out, std::string& error)
+        {
+            const char* c = CommandOf(category);
+            Params P(c, p, error);
+            std::vector<P2> pts;
+            bool closed = false;
+            if (!P.Points("points", pts) || !P.Flag("closed", closed))
+                return false;
+            if (pts.size() < 2)
+                return P.Fail("`points` needs at least 2 points");
+            if (closed)
+                pts.push_back(pts.front());
+            Run r;
+            std::optional<double> offset, endOffset;
+            std::optional<std::string> justify, system;
+            if (!LevelParam(c, m, p, "level", r.level, error) || !TypeParam(P, m, category.c_str(), r.typeName) || !P.Num("offset", offset) ||
+                !P.Num("end_offset", endOffset) || !P.String("justify", justify) || !P.String("system", system))
+                return false;
+            if (endOffset && pts.size() != 2)
+                return P.Fail("`end_offset` is the height of one run's end: give 2 points");
+            r.justify = Runs::DefaultJustify(category);
+            if (justify)
+            {
+                const auto j = JustifyOf::FromName(*justify);
+                if (!j)
+                    return P.Fail("`justify` is top, centre or bottom, not `" + *justify + "`");
+                r.justify = *j;
+            }
+            r.offset    = offset.value_or(0.0);
+            r.endOffset = endOffset;
+            r.system    = system.value_or("");
+            out.clear();
+            for (size_t i = 0; i + 1 < pts.size(); ++i)
+            {
+                Run one   = r;
+                one.start = pts[i];
+                one.end   = pts[i + 1];
+                const auto e = Element::OfRun(category, std::move(one));
+                if (!e)
+                    return P.Fail("`" + category + "` has no runs");
+                out.push_back(*e);
+            }
+            return true;
+        }
+
+        bool Chain(Session& s, const Json& p, const char* category, Json& result, std::string& error)
+        {
+            std::vector<Element> made;
+            if (!RunsOfImpl(s.GetModel(), p, category, made, error))
+                return false;
+            Json ids = Json::array();
+            for (Element& e : made)
+                ids.push_back(s.ModelMut().Insert(std::move(e)));
+            result = Json{ { "ids", ids } };
+            return true;
+        }
+
+        bool BeamCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "beam", r, e); }
+        bool StripFootingCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "stripfooting", r, e); }
+        bool PipeCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "pipe", r, e); }
+        bool ConduitCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "conduit", r, e); }
+        bool CableTrayCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "cabletray", r, e); }
+        bool WireCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "wire", r, e); }
+        bool DownConductorCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "downconductor", r, e); }
+        bool GroundConductorCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "groundconductor", r, e); }
+        bool CablingCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "cable", r, e); }
 
         // ── 类型与材质 ───────────────────────────────────────────
         // 一层，严格地读（拼错的键报错）
@@ -1987,9 +2081,9 @@ namespace MiniBIM::Bim
                 one.door[*name] = ty;
                 t = Bim::ToJson(one)["door"][*name];
             }
-            else if (category == "column" || category == "structuralcolumn")
+            else if (category == "column" || category == "structuralcolumn" || category == "footing")
             {
-                auto& map = category == "column" ? m.types.column : m.types.structuralColumn;
+                auto& map = category == "column" ? m.types.column : category == "footing" ? m.types.footing : m.types.structuralColumn;
                 std::optional<ColumnType> old;
                 if (const auto it = map.find(*name); it != map.end())
                     old = it->second;
@@ -2011,8 +2105,42 @@ namespace MiniBIM::Bim
                 one.column[*name] = ty;
                 t = Bim::ToJson(one)["column"][*name];
             }
+            // 梁或别的 run 的：截面宽 width、高 depth，或圆的；用库里的一种材质做
+            else if (IsRunCategory(category))
+            {
+                auto& map = m.types.runs[category];
+                std::optional<RunType> old;
+                if (const auto it = map.find(*name); it != map.end())
+                    old = it->second;
+                if (!width && !old)
+                    return need("width");
+                bool round = old && old->round;
+                if (!P.Absent("round") && !P.Flag("round", round))
+                    return false;
+                std::optional<double> depth;
+                std::optional<std::string> material;
+                if (!P.Num("depth", depth) || !P.String("material", material))
+                    return false;
+                RunType ty;
+                ty.width = width ? *width : old->width;
+                ty.round = round;
+                if (round)
+                    ty.depth = ty.width;
+                else if (depth)
+                    ty.depth = *depth;
+                else if (old)
+                    ty.depth = old->depth;
+                else
+                    return need("depth");
+                ty.material = material ? *material : old ? old->material : "";
+                map[*name] = ty;
+                Types one;
+                one.runs[category][*name] = ty;
+                t = Bim::ToJson(one)["runs"][category][*name];
+            }
             else
-                return P.Fail("`" + category + "` has no types here; use wall, floor, ceiling, door, window, column, structural column or roof (the other categories come with docs/PLAN.md, phase 2)");
+                return P.Fail("`" + category + "` has no types here; use wall, floor, ceiling, door, window, column, structural column, footing, roof or a "
+                              "run's category (beam, strip footing, pipe, conduit, cable tray, wire, down conductor, ground conductor, cable)");
             result = Json{ { "category", category }, { "name", *name }, { "type", t } };
             return true;
         }
@@ -2340,6 +2468,11 @@ namespace MiniBIM::Bim
                 r->point = f(r->point);
             else if (Column* col = out.AsColumn())
                 std::tie(col->at, col->angle) = Turned(f, col->at, col->angle);
+            else if (Run* run = out.AsRun())
+            {
+                run->start = f(run->start);
+                run->end   = f(run->end);
+            }
             // 镜像是族翻过来
             else if (Component* cp = out.As<Component>())
             {
@@ -2881,6 +3014,12 @@ namespace MiniBIM::Bim
             if (category == "roof") return f(m.types.roof);
             if (category == "ceiling") return f(m.types.ceiling);
             if (category == "structuralcolumn") return f(m.types.structuralColumn);
+            if (category == "footing") return f(m.types.footing);
+            if (IsRunCategory(category))
+            {
+                const auto it = m.types.runs.find(category);
+                return it != m.types.runs.end() && f(it->second);
+            }
             return false;
         }
 
@@ -3225,6 +3364,45 @@ namespace MiniBIM::Bim
               "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column of the structure, as `column` makes one but "
               "in its own category with its own types (`type` with category structural column): up to the next level, or `height` mm "
               "tall, or up to `top_level`. CL is `column`'s too; on the desktop's Structure tab it is this one", StructuralColumnCmd, true },
+            { "footing", N_("Isolated Footing"), { "FI" },
+              "{at: [x,y], type?, thickness?, offset?, angle?, level?} an isolated (pad) footing, its plan the type's (category "
+              "footing), `thickness` mm thick (400) with its top `offset` mm over the level (0: at it), so it hangs below", FootingCmd, true },
+            { "beam", N_("Beam"), { "BM" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a beam for each "
+              "segment of the points: its section the type's (category beam: `width` across, `depth` deep, or round), its `justify` "
+              "line (top by default) `offset` mm over the level at its start (0: at the level, so it hangs below) and `end_offset` at "
+              "its end (the same: level), for a single segment; `system` names the system it belongs to. It slopes up to 75°", BeamCmd, true },
+            { "strip_footing", N_("Wall Footing"), { "FW" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, system?} a continuous footing under a wall for each segment of the "
+              "points, its section the type's (category stripfooting), its top `offset` mm over the level (0: at it)", StripFootingCmd, true },
+            { "pipe", N_("Pipe"), { "PI" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a pipe for each "
+              "segment of the points: its section the type's (category pipe: round, `width` the outside diameter), its `justify` line "
+              "(centre by default) `offset` mm over the level at its start (0: at the level) and `end_offset` at its end (the same: level), "
+              "for a single segment, so a drain falls and a riser rises; the same point twice and two heights make one stand upright. "
+              "`system` names the system it belongs to (\"Água fria\", \"Esgoto\")", PipeCmd, true },
+            { "conduit", N_("Conduit"), { "CN" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a conduit (eletroduto) "
+              "for each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit", ConduitCmd, true },
+            { "cable_tray", N_("Cable Tray"), { "CT" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a cable tray (eletrocalha) "
+              "for each segment of the points, as `pipe` lays them: its section the type's `width` across by `depth` deep", CableTrayCmd, true },
+            { "wire", N_("Wire"), { "EW" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a wire (condutor) for "
+              "each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit", WireCmd, true },
+            { "down_conductor", N_("Down Conductor"), { "DC" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a down conductor "
+              "(condutor de descida, NBR 5419) for each segment of the points, as `pipe` lays them: round, or a flat strip; the same point "
+              "twice and two heights make one stand upright down a wall; `system` names the protection system it belongs to", DownConductorCmd, true },
+            { "ground_conductor", N_("Earthing Conductor"), { "GC" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} an earthing conductor "
+              "(condutor de aterramento, the ring or mesh of NBR 5419) for each segment of the points, as `pipe` lays them, usually under "
+              "the level (a negative `offset`)", GroundConductorCmd, true },
+            { "cabling", N_("Cabling"), { "CB" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} structured cabling "
+              "(cabeamento estruturado, NBR 14565) for each segment of the points, as `pipe` lays them: round, `width` the cable's outside "
+              "diameter; `system` names the link or the network it belongs to", CablingCmd, true },
+
             { "roof", N_("Roof"), {},
               "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, extrusion?, "
               "openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its base `offset` mm above it. "
@@ -3238,11 +3416,13 @@ namespace MiniBIM::Bim
               "to its left. `openings` are holes through it in plan; with `join`, a roof it runs into, it ends where it meets that one's top",
               RoofCmd, true },
             { "type", N_("Edit Type"), {},
-              "{category: wall|floor|ceiling|door|window|column|structuralcolumn|roof, name, thickness? | width?, height?, sill?, operation?, grid? | width?, depth?, round?} creates the type, or changes it "
+              "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|beam|stripfooting|pipe|conduit|cabletray|wire|"
+              "downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation?, grid? | width?, depth?, round?, material?} creates the type, or changes it "
               "everywhere it's used. A wall or floor type may have `layers` [{function?: structure|substrate|thermal|membrane|finish, material?, "
               "thickness}, …], a wall's from its exterior side in, a floor's from the top down: it's as thick as they are, and a new `thickness` "
               "goes to its structure. A roof's or a ceiling's layers too, from the top down; a ceiling type may have `grid`: its square tiles' "
-              "width, mm, which reflected ceiling plans draw (0, none). A column's or a structural column's: `width` by `depth`, or `round`, `width` across", TypeCmd, true },
+              "width, mm, which reflected ceiling plans draw (0, none). A column's, a structural column's or a footing's: `width` by `depth`, or `round`, "
+              "`width` across; a run's (a beam's, a pipe's, a cable tray's…) too, made of a `material` of the library", TypeCmd, true },
             { "material", N_("Materials"), {},
               "{name, color?: \"#rrggbb\" | [r, g, b], cut?, surface?, rename?, delete?: true} a material of the project's library, created or "
               "changed: its colour in shaded 3D views, the pattern its cut shows and the one its surfaces show", MaterialCmd, true },
@@ -3407,6 +3587,23 @@ namespace MiniBIM::Bim
                 v["width"] = t->width;
                 v["depth"] = t->depth;
                 v["round"] = t->round;
+            }
+        }
+        // 截面、沿轴线多长、中心线两端的高度
+        else if (e->AsRun())
+        {
+            const RunType* t = m.RunTypeOf(*e);
+            const auto g = m.RunGeom(*e);
+            if (t && g)
+            {
+                v["width"]  = t->width;
+                v["depth"]  = t->depth;
+                v["round"]  = t->round;
+                v["length"] = Hundredth(g->Length());
+                Json axis = Json::array();
+                for (const P3& q : { g->a, g->b })
+                    axis.push_back(Json::array({ Hundredth(q[0]), Hundredth(q[1]), Hundredth(q[2]) }));
+                v["axis"] = axis;
             }
         }
         else if (const Floor* f = e->As<Floor>())
@@ -3648,5 +3845,36 @@ namespace MiniBIM::Bim
             if (std::find(taken.begin(), taken.end(), next) == taken.end() || n == UINT64_MAX)
                 return next;
         }
+    }
+
+    const char* CommandOf(std::string_view category)
+    {
+        static const std::pair<const char*, const char*> table[] = {
+            { "structuralcolumn", "structural_column" }, { "stripfooting", "strip_footing" }, { "beam", "beam" }, { "pipe", "pipe" },
+            { "conduit", "conduit" }, { "cabletray", "cable_tray" }, { "wire", "wire" }, { "downconductor", "down_conductor" },
+            { "groundconductor", "ground_conductor" }, { "cable", "cabling" }, { "footing", "footing" },
+        };
+        for (const auto& [cat, command] : table)
+            if (category == cat)
+                return command;
+        return "column";
+    }
+
+    std::optional<const char*> RunCategoryOf(std::string_view command)
+    {
+        for (const char* c : RunCategories)
+            if (command == CommandOf(c))
+                return c;
+        return std::nullopt;
+    }
+
+    bool RunsOf(const Model& m, const Json& p, std::string_view category, std::vector<Element>& out, std::string& error)
+    {
+        return RunsOfImpl(m, p, std::string(category), out, error);
+    }
+
+    bool StoodOf(const Model& m, const Json& p, std::string_view category, Element& out, std::string& error)
+    {
+        return StoodOfImpl(m, p, std::string(category), out, error);
     }
 }

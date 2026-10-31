@@ -31,6 +31,8 @@ namespace MiniBIM
             int roofs   = 0;
             int components = 0;
             int columns = 0;
+            // 梁、基础与其他 run（管道、线管……）
+            int runs    = 0;
         };
 
         // kernel 为空（构建时关掉了 SMLib）时返回 false；个别元素建模失败时其余照样显示，也返回 false。

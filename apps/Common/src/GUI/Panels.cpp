@@ -389,6 +389,26 @@ namespace MiniBIM
                     });
                     break;
                 }
+                // run 的对齐：顶、中、底；几个取值不同时空着
+                case Kind::Justification:
+                {
+                    static const std::pair<const char*, const char*> names[] = { { "top", N_("Top") }, { "centre", N_("Centre") }, { "bottom", N_("Bottom") } };
+                    std::vector<std::string> options;
+                    int at = -1;
+                    for (const auto& [k, n] : names)
+                    {
+                        if (val.is_string() && val.get<std::string>() == k)
+                            at = static_cast<int>(options.size());
+                        options.push_back(Tr(n));
+                    }
+                    auto* box = grid->AddProperty<ComboBox>(g, label, options, at);
+                    box->SetOnChanged([this, ids, key](int i)
+                    {
+                        if (i >= 0)
+                            m_platform->Post([this, ids, key, name = std::string(names[static_cast<size_t>(i)].first)] { EditParameter(ids, key, name); });
+                    });
+                    break;
+                }
                 // 按名称显示；墙的 JSON 略去默认的墙中心线
                 case Kind::LocationLine:
                 {
@@ -537,7 +557,9 @@ namespace MiniBIM
         // 族：系统族（墙、楼板……）的类型，再是可载入族的类型
         std::vector<Entry> families;
         // 双击类型：类型属性；右键：类型属性、删除
-        for (const char* c : { "wall", "floor", "roof", "ceiling", "door", "window", "column", "structuralcolumn" })
+        std::vector<const char*> systemFamilies{ "wall", "floor", "roof", "ceiling", "door", "window", "column", "structuralcolumn", "footing" };
+        systemFamilies.insert(systemFamilies.end(), std::begin(Bim::RunCategories), std::end(Bim::RunCategories));
+        for (const char* c : systemFamilies)
         {
             std::vector<Entry> types;
             for (const std::string& t : m.TypeNames(c))

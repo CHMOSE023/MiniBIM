@@ -30,6 +30,7 @@ namespace MiniBIM::Props
         MetresShown,    // 长度，m，只显示
         LocationLine,   // 墙的定位线，下拉列表
         Attached,       // 墙顶或墙底是否贴着屋顶、楼板，只显示
+        Justification,  // run 的高度在截面哪条线上（顶、中、底），下拉列表
     };
 
     // 一行参数：组、`elements` 里的字段（点号进入下一层，如 view_range.cut）、名称、编辑方式。组与名称是英文原文，显示前 Tr

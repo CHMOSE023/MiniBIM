@@ -24,4 +24,12 @@ namespace MiniBIM::Bim
     std::string NextNumber(const std::vector<std::string>& taken);
     // 环按角点、到微米，从西南角起
     Ring Tidy(const Ring& ring);
+    // 做类别 category 元素的命令：structuralcolumn → structural_column，cabletray → cable_tray……（柱以外不认识的为 column）
+    const char* CommandOf(std::string_view category);
+    // 命令 command 做的 run 类别（pipe、cable_tray → cabletray……）；不做 run 时为空。CommandOf 的反向
+    std::optional<const char*> RunCategoryOf(std::string_view command);
+    // 命令要的 run（梁、管道……），points 每一段一个，还没放进模型：工具预览一次单击会放下的
+    bool RunsOf(const Model& m, const Json& p, std::string_view category, std::vector<Element>& out, std::string& error);
+    // 命令要的柱、结构柱或独立基础（category 为 column、structuralcolumn、footing），还没放进模型：工具预览用
+    bool StoodOf(const Model& m, const Json& p, std::string_view category, Element& out, std::string& error);
 }

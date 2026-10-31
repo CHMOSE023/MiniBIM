@@ -348,8 +348,38 @@ namespace MiniBIM
                 const auto [bottom, top] = m.ColumnSpan(*col);
                 const Solid::BodyPtr body = Prism(k, m.ColumnOutline(e), bottom, top - bottom);
                 if ((ok = body != nullptr))
-                    add(body, e.As<Bim::StructuralColumn>() ? kStructure : kWall);
-                ++m_counts.columns;
+                    add(body, e.As<Bim::Column>() ? kWall : kStructure);
+                ++(e.As<Bim::Footing>() ? m_counts.runs : m_counts.columns);
+            }
+            else if (const auto g = m.RunGeom(e))
+            {
+                // 矩形截面的是斜的棱柱，圆的是圆管；用类型材质的颜色
+                const Bim::RunType* t = m.RunTypeOf(e);
+                const auto mat = m.materials.find(t->material);
+                const Rgb c = mat == m.materials.end() ? kStructure
+                                                       : Rgb{ mat->second.color[0] / 255.0f, mat->second.color[1] / 255.0f, mat->second.color[2] / 255.0f };
+                if (g->round)
+                {
+                    Bim::Fam::Piece piece;
+                    std::tie(piece.tris, piece.caps) = g->Tube();
+                    piece.material = t->material;
+                    piece.round    = true;
+                    addPiece(piece, c);
+                }
+                else
+                {
+                    const auto [ring, bottom, top] = g->Prism();
+                    Bim::Walls::Prism p;
+                    p.ring   = ring;
+                    p.bottom = bottom;
+                    p.top    = top;
+                    const bool flat = bottom.g == P2{};
+                    const Solid::BodyPtr body = flat ? Prism(k, ring, bottom.z, top.z - bottom.z) : SlopedPrism(k, p);
+                    const std::vector<Point3> edges = prismEdges(p);
+                    if ((ok = body != nullptr))
+                        add(body, c, flat ? nullptr : &edges);
+                }
+                ++m_counts.runs;
             }
             else if (const Bim::Component* c = e.As<Bim::Component>())
             {

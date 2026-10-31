@@ -58,6 +58,11 @@
     "arch.room":      { "icon": "Room.png" },
     "arch.level":     { "icon": "Level.png" },
     "arch.grid":      { "icon": "Grid.png" },
+    "struct.column":  { "icon": "StructuralColumn.png" },
+    "struct.beam":    { "icon": "Beam.png" },
+    "struct.floor":   { "icon": "StructuralFloor.png" },
+    "struct.footing": { "icon": "Footing.png" },
+    "struct.wallFooting": { "icon": "WallFooting.png" },
     "view.3d":        { "icon": "View3D.png" },
     "view.plan":      { "icon": "FloorPlan.png" },
     "view.levelUp":   { "icon": "LevelUp.png", "shortcut": "PageUp" },
@@ -90,6 +95,15 @@
             { "title": "Select", "items": [ "modify.select" ] },
             { "title": "Build", "items": [ "arch.wall", "arch.door", "arch.window", "arch.column", "arch.component", "arch.roof", "arch.floor", "arch.ceiling" ] },
             { "title": "Room & Area", "items": [ "arch.room" ] },
+            { "title": "Datum", "items": [ "arch.level", "arch.grid" ] }
+          ]
+        },
+        {
+          "title": "Structure",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Structure", "items": [ "struct.column", "struct.beam", "struct.floor" ] },
+            { "title": "Foundation", "items": [ "struct.footing", "struct.wallFooting" ] },
             { "title": "Datum", "items": [ "arch.level", "arch.grid" ] }
           ]
         },

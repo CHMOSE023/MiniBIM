@@ -343,12 +343,71 @@ namespace MiniBIM::Bim
             return c;
         if (const StructuralColumn* c = As<StructuralColumn>())
             return c;
+        if (const Footing* c = As<Footing>())
+            return c;
         return nullptr;
     }
 
     Column* Element::AsColumn()
     {
         return const_cast<Column*>(static_cast<const Element*>(this)->AsColumn());
+    }
+
+    const Run* Element::AsRun() const
+    {
+        return std::visit([](const auto& x) -> const Run*
+        {
+            if constexpr (std::is_base_of_v<Run, std::decay_t<decltype(x)>>)
+                return &x;
+            else
+                return nullptr;
+        }, v);
+    }
+
+    Run* Element::AsRun()
+    {
+        return const_cast<Run*>(static_cast<const Element*>(this)->AsRun());
+    }
+
+    std::optional<Element> Element::OfRun(std::string_view category, Run r)
+    {
+        if (category == "beam") return Element(Beam{ std::move(r) });
+        if (category == "stripfooting") return Element(StripFooting{ std::move(r) });
+        if (category == "pipe") return Element(Pipe{ std::move(r) });
+        if (category == "conduit") return Element(Conduit{ std::move(r) });
+        if (category == "cabletray") return Element(CableTray{ std::move(r) });
+        if (category == "wire") return Element(Wire{ std::move(r) });
+        if (category == "downconductor") return Element(DownConductor{ std::move(r) });
+        if (category == "groundconductor") return Element(GroundConductor{ std::move(r) });
+        if (category == "cable") return Element(Cable{ std::move(r) });
+        return std::nullopt;
+    }
+
+    bool IsRunCategory(std::string_view category)
+    {
+        return std::find(RunCategories.begin(), RunCategories.end(), category) != RunCategories.end();
+    }
+
+    namespace JustifyOf
+    {
+        const char* Name(Justify j)
+        {
+            switch (j)
+            {
+            case Justify::Top:    return "top";
+            case Justify::Bottom: return "bottom";
+            default:              return "centre";
+            }
+        }
+
+        std::optional<Justify> FromName(std::string_view name)
+        {
+            const std::string n = Text::AsciiLower(name);
+            if (n == "top") return Justify::Top;
+            if (n == "centre" || n == "center") return Justify::Centre;
+            if (n == "bottom") return Justify::Bottom;
+            return std::nullopt;
+        }
     }
 
     const char* Element::Category() const
@@ -368,6 +427,16 @@ namespace MiniBIM::Bim
             const char* operator()(const Component&) const { return "component"; }
             const char* operator()(const Column&) const { return "column"; }
             const char* operator()(const StructuralColumn&) const { return "structuralcolumn"; }
+            const char* operator()(const Footing&) const { return "footing"; }
+            const char* operator()(const Beam&) const { return "beam"; }
+            const char* operator()(const StripFooting&) const { return "stripfooting"; }
+            const char* operator()(const Pipe&) const { return "pipe"; }
+            const char* operator()(const Conduit&) const { return "conduit"; }
+            const char* operator()(const CableTray&) const { return "cabletray"; }
+            const char* operator()(const Wire&) const { return "wire"; }
+            const char* operator()(const DownConductor&) const { return "downconductor"; }
+            const char* operator()(const GroundConductor&) const { return "groundconductor"; }
+            const char* operator()(const Cable&) const { return "cable"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -400,6 +469,16 @@ namespace MiniBIM::Bim
             void operator()(Component& c) const { f(c.level); }
             void operator()(Column& c) const { Stood(c); }
             void operator()(StructuralColumn& c) const { Stood(c); }
+            void operator()(Footing& c) const { Stood(c); }
+            void operator()(Beam& r) const { f(r.level); }
+            void operator()(StripFooting& r) const { f(r.level); }
+            void operator()(Pipe& r) const { f(r.level); }
+            void operator()(Conduit& r) const { f(r.level); }
+            void operator()(CableTray& r) const { f(r.level); }
+            void operator()(Wire& r) const { f(r.level); }
+            void operator()(DownConductor& r) const { f(r.level); }
+            void operator()(GroundConductor& r) const { f(r.level); }
+            void operator()(Cable& r) const { f(r.level); }
             void Stood(Column& c) const
             {
                 f(c.level);
@@ -439,6 +518,8 @@ namespace MiniBIM::Bim
             FamilyAndType(c->family, c->typeName, f);
         else if (Column* col = AsColumn())
             f(Kind::Type(category), col->typeName);
+        else if (Run* r = AsRun())
+            f(Kind::Type(category), r->typeName);
     }
 
     const std::vector<SketchLine>* Element::SketchOf() const
@@ -561,10 +642,54 @@ namespace MiniBIM::Bim
         m.types.window["Fixed 600 x 900"]   = OpeningType{ 600.0, 900.0, 1100.0, std::nullopt };
         m.types.column["Rectangular 400 x 400"] = ColumnType{ 400.0, 400.0, false };
         m.types.column["Round 300"]             = ColumnType{ 300.0, 300.0, true };
-        // 结构的：混凝土柱（BIMCraft 还有基础与梁的类型，移植到时再加）
+        // 结构的：混凝土柱、基础、梁与条形基础
         for (const auto& [n, w, d, round] : { std::tuple{ "Concrete 300 x 300", 300.0, 300.0, false }, std::tuple{ "Concrete 200 x 500", 200.0, 500.0, false },
                                               std::tuple{ "Concrete Round 400", 400.0, 400.0, true } })
             m.types.structuralColumn[n] = ColumnType{ w, d, round };
+        for (const auto& [n, w] : { std::pair{ "Footing 1200 x 1200", 1200.0 }, std::pair{ "Footing 1500 x 1500", 1500.0 } })
+            m.types.footing[n] = ColumnType{ w, w, false };
+        struct StartRun
+        {
+            const char* category;
+            const char* name;
+            double      width, depth;
+            bool        round;
+            const char* material;
+        };
+        const StartRun runs[] = {
+            { "beam", "Beam 200 x 500", 200.0, 500.0, false, "Concrete" },
+            { "beam", "Beam 150 x 400", 150.0, 400.0, false, "Concrete" },
+            { "beam", "Steel Tube 150", 150.0, 150.0, true, "Metal" },
+            { "stripfooting", "Strip 600 x 300", 600.0, 300.0, false, "Concrete" },
+            // 给排水：冷水与排水用 PVC（外径，毫米），热水用铜
+            { "pipe", "PVC 25", 25.0, 25.0, true, "PVC" },
+            { "pipe", "PVC 50", 50.0, 50.0, true, "PVC" },
+            { "pipe", "PVC 110", 110.0, 110.0, true, "PVC" },
+            { "pipe", "Copper 22", 22.0, 22.0, true, "Copper" },
+            // 电气：PVC 与钢的线管、带孔的桥架与导线，按外部尺寸
+            { "conduit", "PVC 20", 20.0, 20.0, true, "PVC" },
+            { "conduit", "PVC 25", 25.0, 25.0, true, "PVC" },
+            { "conduit", "PVC 32", 32.0, 32.0, true, "PVC" },
+            { "conduit", "Steel 25", 25.0, 25.0, true, "Metal" },
+            { "cabletray", "Perforated 100 x 50", 100.0, 50.0, false, "Metal" },
+            { "cabletray", "Perforated 200 x 50", 200.0, 50.0, false, "Metal" },
+            { "cabletray", "Perforated 300 x 100", 300.0, 100.0, false, "Metal" },
+            { "wire", "Wire 2.5", 4.0, 4.0, true, "Copper" },
+            { "wire", "Wire 4", 5.0, 5.0, true, "Copper" },
+            { "wire", "Wire 6", 6.5, 6.5, true, "Copper" },
+            // 防雷（NBR 5419）：钢、铜或扁钢的引下线，裸铜的接地线
+            { "downconductor", "Steel 8", 8.0, 8.0, true, "Metal" },
+            { "downconductor", "Copper 8", 8.0, 8.0, true, "Copper" },
+            { "downconductor", "Flat 25 x 3", 25.0, 3.0, false, "Metal" },
+            { "groundconductor", "Copper 9", 9.0, 9.0, true, "Copper" },
+            { "groundconductor", "Steel 8", 8.0, 8.0, true, "Metal" },
+            // 数据与语音布线（NBR 14565）：按类别的双绞线与光缆
+            { "cable", "Cat6", 6.0, 6.0, true, "PVC" },
+            { "cable", "Cat6A", 7.5, 7.5, true, "PVC" },
+            { "cable", "Optical 3", 3.0, 3.0, true, "PVC" },
+        };
+        for (const StartRun& r : runs)
+            m.types.runs[r.category][r.name] = RunType{ r.width, r.depth, r.round, LanguageOf::Word(language, r.material) };
         m.types.roof["Generic - 300mm"]    = RoofType{ 300.0, {} };
         m.types.ceiling["Generic - 20mm"]  = CeilingType{ 20.0, 0.0, {} };
         m.types.ceiling["Tile 600 x 600"]  = CeilingType{ 20.0, 600.0, {} };
@@ -801,6 +926,12 @@ namespace MiniBIM::Bim
         if (c == "roof")   return Keys(types.roof);
         if (c == "ceiling") return Keys(types.ceiling);
         if (c == "structuralcolumn") return Keys(types.structuralColumn);
+        if (c == "footing") return Keys(types.footing);
+        if (IsRunCategory(c))
+        {
+            const auto it = types.runs.find(c);
+            return it == types.runs.end() ? std::vector<std::string>{} : Keys(it->second);
+        }
         return {};
     }
 
@@ -820,6 +951,17 @@ namespace MiniBIM::Bim
             preferred = "Rectangular 400 x 400";
         else if (c == "structuralcolumn")
             preferred = "Concrete 300 x 300";
+        else
+        {
+            static const std::pair<const char*, const char*> byRun[] = {
+                { "footing", "Footing 1200 x 1200" }, { "beam", "Beam 200 x 500" }, { "stripfooting", "Strip 600 x 300" },
+                { "pipe", "PVC 50" }, { "conduit", "PVC 25" }, { "cabletray", "Perforated 100 x 50" }, { "wire", "Wire 2.5" },
+                { "downconductor", "Steel 8" }, { "groundconductor", "Copper 9" }, { "cable", "Cat6" },
+            };
+            for (const auto& [cat, name] : byRun)
+                if (c == cat)
+                    preferred = name;
+        }
         const std::vector<std::string> names = TypeNames(category);
         for (const std::string& n : names)
             if (n == preferred)
@@ -982,6 +1124,8 @@ namespace MiniBIM::Bim
             return c->level;
         if (const Column* c = e.AsColumn())
             return c->level;
+        if (const Run* r = e.AsRun())
+            return r->level;
         if (const Opening* o = e.AsOpening())
         {
             const Wall* w = GetWall(o->host);
@@ -1009,9 +1153,30 @@ namespace MiniBIM::Bim
         const Column* col = e.AsColumn();
         if (!col)
             return nullptr;
-        const auto& map = e.As<StructuralColumn>() ? types.structuralColumn : types.column;
+        const auto& map = e.As<StructuralColumn>() ? types.structuralColumn : e.As<Footing>() ? types.footing : types.column;
         const auto it = map.find(col->typeName);
         return it == map.end() ? nullptr : &it->second;
+    }
+
+    const RunType* Model::RunTypeOf(const Element& e) const
+    {
+        const Run* r = e.AsRun();
+        if (!r)
+            return nullptr;
+        const auto cat = types.runs.find(e.Category());
+        if (cat == types.runs.end())
+            return nullptr;
+        const auto it = cat->second.find(r->typeName);
+        return it == cat->second.end() ? nullptr : &it->second;
+    }
+
+    std::optional<Runs::Geom> Model::RunGeom(const Element& e) const
+    {
+        const Run*     r = e.AsRun();
+        const RunType* t = RunTypeOf(e);
+        if (!r || !t)
+            return std::nullopt;
+        return Runs::Geom::Of(*this, *r, *t);
     }
 
     Ring Model::ColumnOutline(const Element& e) const
@@ -1617,13 +1782,44 @@ namespace MiniBIM::Bim
                     return false;
             }
         }
-        for (const auto& [cat, map] : { std::pair{ "column", &types.column }, std::pair{ "structural column", &types.structuralColumn } })
+        for (const auto& [cat, map] : { std::pair{ "column", &types.column }, std::pair{ "structural column", &types.structuralColumn },
+                                        std::pair{ "footing", &types.footing } })
             for (const auto& [n, t] : *map)
             {
                 const std::string who = std::string(cat) + " type `" + n + "`";
                 if (!Size(who + " width", t.width, error) || !Size(who + " depth", t.depth, error))
                     return false;
             }
+        for (const auto& [cat, map] : types.runs)
+        {
+            if (!IsRunCategory(cat))
+            {
+                std::vector<std::string> all(RunCategories.begin(), RunCategories.end());
+                std::string list;
+                for (size_t i = 0; i < all.size(); ++i)
+                    list += (i ? ", " : "") + all[i];
+                error = "`" + cat + "` has no run types; there are " + list;
+                return false;
+            }
+            for (const auto& [n, t] : map)
+            {
+                const std::string who = cat + " type `" + n + "`";
+                if (!Size(who + " width", t.width, error) || !Size(who + " depth", t.depth, error))
+                    return false;
+                if (t.round && t.depth != t.width)
+                {
+                    error = who + ": a round section is as deep as it is wide (" + Num(t.width) + " mm), not " + Num(t.depth) + " mm";
+                    return false;
+                }
+                if (!TextOk(who, "material", t.material, error))
+                    return false;
+                if (!t.material.empty() && !materials.count(t.material))
+                {
+                    error = who + ": material `" + t.material + "` isn't in the library; add it with `material`";
+                    return false;
+                }
+            }
+        }
         for (const auto& [n, x] : materials)
         {
             if (!TextOk("material `" + n + "`", "name", n, error))
@@ -1829,7 +2025,8 @@ namespace MiniBIM::Bim
             }
             else if (const Column* col = e.AsColumn())
             {
-                if (!Known(who, col->typeName, e.As<StructuralColumn>() ? types.structuralColumn : types.column, error) || !levelOk(col->level) ||
+                const auto& map = e.As<StructuralColumn>() ? types.structuralColumn : e.As<Footing>() ? types.footing : types.column;
+                if (!Known(who, col->typeName, map, error) || !levelOk(col->level) ||
                     !Point(who, col->at, error) || !Coord(who + " angle", col->angle, error) || !Coord(who + " base_offset", col->baseOffset, error))
                     return false;
                 if (col->topLevel ? !levelOk(*col->topLevel) : !Size(who + " height", col->height, error))
@@ -1840,6 +2037,18 @@ namespace MiniBIM::Bim
                     error = who + ": its top must be above its base";
                     return false;
                 }
+            }
+            else if (const Run* r = e.AsRun())
+            {
+                const std::string category = e.Category();
+                static const std::map<std::string, RunType> none;
+                const auto cat = types.runs.find(category);
+                const auto& map = cat == types.runs.end() ? none : cat->second;
+                if (!Known(who, r->typeName, map, error) || !levelOk(r->level) || !Point(who + " start", r->start, error) ||
+                    !Point(who + " end", r->end, error) || !Coord(who + " offset", r->offset, error) ||
+                    (r->endOffset && !Coord(who + " end_offset", *r->endOffset, error)) || !TextOk(who, "system", r->system, error) ||
+                    !Runs::Check(who, category, Runs::Geom::Of(*this, *r, map.at(r->typeName)), error))
+                    return false;
             }
             else if (const Roof* r = e.As<Roof>())
             {

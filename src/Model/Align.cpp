@@ -114,6 +114,17 @@ namespace MiniBIM::Bim::Align
                 Axes(out, col->at, col->angle, std::max(t->width, t->depth) / 2.0);
             }
         }
+        else if (const Run* r = e->AsRun())
+        {
+            if (const auto g = m.RunGeom(*e))
+            {
+                if (g->Vertical() && g->round)
+                    Axes(out, r->start, 0.0, g->width / 2.0);
+                else
+                    Path(out, g->Footprint(), true);
+            }
+            out.emplace_back(r->start, r->end);
+        }
         else if (const Component* c = e->As<Component>())
         {
             for (const auto& piece : m.ComponentPieces(*c))

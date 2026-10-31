@@ -14,7 +14,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Geom.h` | `geom.rs`、`walls.rs` 的 `Plane` | 平面几何：`P2`、环、面积、裁剪、三角剖分、平面图的面、区域 |
 | `src/Model/Units.h`、`src/Model/Language.h` | `units.rs`、`language.rs` | 项目单位（显示与输入）、项目语言（新名称用的词） |
 | `src/Model/Ids.h` | `ids.rs` | `Id`、`Guid`、`Elements`（按 ID 或 GUID 找元素） |
-| `src/Model/Model.h` | `model.rs` | 元素（标高、轴网、墙、楼板、天花板、门、窗、房间、房间分隔线、屋顶、构件、柱、结构柱）、类型、材质、`Model::Check`；屋顶的坡面、房间的区域、构件与带族门窗的实体 |
+| `src/Model/Model.h` | `model.rs` | 元素（标高、轴网、墙、楼板、天花板、门、窗、房间、房间分隔线、屋顶、构件、柱、结构柱、独立基础、九类 run）、类型、材质、`Model::Check`；屋顶的坡面、房间的区域、构件与带族门窗的实体 |
 | `src/Model/Family.h` | `family.rs` | 族（`Bim::Family` 与 `Bim::Fam` 里的参数、公式、形体、符号）：公式求值、参数取值、检查、扫掠与旋转出三角形 |
 | `src/Model/Csg.h` | `csg.rs` | 族的空心形体用的网格布尔运算（BSP，工作表不递归，`Csg::Meter` 限制花费） |
 | `src/Model/FamilyLibrary.cpp` | `family.rs` 的 library、`fixtures.rs` | 新项目带的 34 个族：家具 10、门窗 6、各专业的器具 18 |
@@ -65,9 +65,16 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   复制的房间、轴网、门窗取下一个编号
 - 柱（R1，为读 Revit 文件先移植）：`Column` 站在一个标高上，到 `topLevel`（命令不给 `height` 时为上一个标高）或 `height` 那么高（`Model::ColumnSpan`），
   截面是类型的矩形或圆（`ColumnType`，圆柱的进深即直径，`Model::ColumnOutline`）。`StructuralColumn` 是同样的柱，类别是 structuralcolumn、
-  类型另有一张表（`Types::structuralColumn`，文件里 `structural_column`，没有时不写）。BIMCraft 的基础、梁、条形基础还没移植。
+  类型另有一张表（`Types::structuralColumn`，文件里 `structural_column`，没有时不写）。`Footing`（独立基础）也是平放的柱，类型在 `Types::footing`，
+  命令 `footing` 给厚度 `thickness`（默认 400）与顶的高度 `offset`，存成 `height` 与 `baseOffset`。
   平面图里剖到的柱与墙一起填色、描并集的边，剖切面以下看到的画轮廓（`Render.cpp` 的 `Stands`）；三维见 `.agents/features/view3d.md`、IFC 见 `.agents/features/ifc.md`；
-  对齐给矩形柱的四边与十字轴线、捕捉给柱的中心。界面上还没有放柱的工具
+  对齐给矩形柱的四边与十字轴线、捕捉给柱的中心。放柱、结构柱、基础的工具见 `.agents/features/main-window.md`
+- run（第 5 阶段，移植自 `runs.rs`）：两点之间的直构件，`Run`（类型名、标高、起终点、`offset`、可选的 `endOffset`、`Justify` 对齐、`system`），
+  九个类别各派生一个结构体（`MINIBIM_RUN`：`Beam`、`StripFooting`、`Pipe`、`Conduit`、`CableTray`、`Wire`、`DownConductor`、`GroundConductor`、`Cable`，
+  列在 `RunCategories`），取基类用 `Element::AsRun`、由类别做元素用 `Element::OfRun`。类型 `RunType`（宽、高、圆、材质）按类别放在 `Types::runs`（文件里 `runs`）。
+  几何都在 `src/Model/Runs.h`：`Runs::Geom`（`Model::RunGeom`：中心线两端，高度按对齐移到中心）给平面的占地、高度范围、三维的棱柱或圆管（`Runs::Geom::Tube`）；
+  `Runs::Check` 拒绝太短、比 75° 陡（那是柱）的；`Runs::IfcTable` 是类别与 IFC 类、预定义类型的对照。命令 `beam`、`strip_footing`、`pipe`……（`RunsOf` 每段一个）
+  默认的对齐见 `Runs::DefaultJustify`（梁与条形基础顶对齐）。平面：剖到的填色，标高下挂着的与上方的看得到（上方的虚线），不是竖着的画中心线；捕捉两端、中点与线
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）

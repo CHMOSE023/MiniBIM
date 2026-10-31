@@ -129,6 +129,37 @@ namespace
         const Bim::Element* e = hit ? s.GetModel().elements.Get(*hit) : nullptr;
         Check(e && std::string(e->Category()) == "structuralcolumn", "三维场景：从上往下拾取到结构柱");
     }
+
+    // 移植自 BIMCraft structure_tests.rs 的 the_3d_view_has_a_solid_for_a_beam_a_round_one_and_the_columns_and_footings（f3bbb33）
+    void TestStructure()
+    {
+        Bim::Session s;
+        Bim::Json out;
+        std::string error;
+        const auto run = [&](const char* id, const char* p)
+        {
+            if (!s.Execute(id, Bim::Json::parse(p), out, error))
+                std::printf("  %s：%s\n", id, error.c_str());
+            return out;
+        };
+        const Bim::Id beam = run("beam", R"({"points": [[0, 0], [6000, 0]], "offset": 2800})")["ids"][0].get<Bim::Id>();
+        const Bim::Id tube = run("beam", R"({"points": [[0, 2000], [6000, 2000]], "type": "Steel Tube 150", "justify": "centre"})")["ids"][0].get<Bim::Id>();
+        run("structural_column", R"({"at": [0, 4000]})");
+        const Bim::Id footing = run("footing", R"({"at": [3000, 4000]})")["id"].get<Bim::Id>();
+        auto kernel = Solid::CreateSMLibKernel();
+        ModelScene scene;
+        const bool built = scene.Build(s.GetModel(), kernel.get(), error);
+        if (!built)
+            std::printf("  %s\n", error.c_str());
+        Check(built && scene.GetCounts().columns == 1 && scene.GetCounts().runs == 3, "三维场景：梁、圆梁与基础都建出来");
+        const auto down = [&](double x, double y) { return scene.Pick({ x, y, 20000.0 }, { 0.0, 0.0, -1.0 }); };
+        const auto up   = [&](double x, double y) { return scene.Pick({ x, y, -20000.0 }, { 0.0, 0.0, 1.0 }); };
+        Check(down(3000, 0) == beam && up(3000, 0) == beam && down(3000, 2000) == tube && down(3000, 4000) == footing, "三维场景：拾取到梁、圆梁与基础");
+        // 梁 2300 到 2800；基础 -400 到 0；圆梁中心线在标高上，伸到 -75
+        const AABB& b = scene.GetBounds();
+        Check(Near(b.Min.z, -400.0, 1.0) && Near(b.Max.z, 3000.0, 1.0) && Near(b.Min.x, -150.0, 1.0) && Near(b.Max.x, 6000.0, 1.0),
+              "三维场景：结构的范围");
+    }
 }
 
 int main()
@@ -137,6 +168,7 @@ int main()
     TestSampleHouse();
     TestOpeningsAreCut();
     TestColumns();
+    TestStructure();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

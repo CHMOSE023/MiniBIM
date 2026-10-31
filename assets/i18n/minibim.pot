@@ -82,6 +82,46 @@ msgstr ""
 msgid "Structural Column"
 msgstr ""
 
+#: src/Commands/Commands.cpp
+msgid "Isolated Footing"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Beam"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall Footing"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Pipe"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Conduit"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Cable Tray"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Wire"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Down Conductor"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Earthing Conductor"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Cabling"
+msgstr ""
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr ""
@@ -210,7 +250,7 @@ msgstr ""
 msgid "Intersection"
 msgstr ""
 
-#: src/Model/Snap.cpp
+#: src/Model/Snap.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Centre"
 msgstr ""
 
@@ -378,7 +418,7 @@ msgstr ""
 msgid "Could not recover the project"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp assets/ui/minibim_ui.json
 msgid "Structure"
 msgstr ""
 
@@ -519,6 +559,18 @@ msgid "Type Parameters"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
+msgid "Round"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Material:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "(none)"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
 msgid "Layers"
 msgstr ""
 
@@ -528,10 +580,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Material"
-msgstr ""
-
-#: apps/Common/src/GUI/Dialogs.cpp
-msgid "(none)"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
@@ -568,10 +616,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Materials and Finishes"
-msgstr ""
-
-#: apps/Common/src/GUI/Dialogs.cpp
-msgid "Material:"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
@@ -848,6 +892,30 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Grid: click its two ends"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Structural Column: click where it stands"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor: Structural (SB): click inside the walls to floor them with a slab that carries load"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Isolated"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Isolated Footing (FI): click where the footing goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
@@ -1159,6 +1227,14 @@ msgstr ""
 msgid "Unconnected"
 msgstr ""
 
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Top"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Bottom"
+msgstr ""
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Not enclosed: the walls around it don't close."
 msgstr ""
@@ -1316,6 +1392,30 @@ msgid "Top Level"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Reference Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Start Level Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "End Level Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Same as start"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Z Justification"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "System"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr ""
 
@@ -1356,15 +1456,7 @@ msgid "View Range"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Top"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Cut Plane"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Bottom"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -1441,6 +1533,58 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Structural Columns"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Footings"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Strip Footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Strip Footings"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Beams"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Pipes"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Conduits"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cable Trays"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Wires"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cable"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cables"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Down Conductors"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Earthing Conductors"
 msgstr ""
 
 #: apps/Common/src/GUI/PlanView.cpp
@@ -1859,6 +2003,50 @@ msgid "Version {0}"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Beam"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Wall Footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Pipe"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Conduit"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Cable Tray"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Wire"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Down Conductor"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Earthing Conductor"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Cabling"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Structural Column"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Isolated Footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click a sketch line to select it, Ctrl adds; drag a selected line's end to move it. Delete removes, Ctrl+Z steps back."
 msgstr ""
 
@@ -1884,6 +2072,22 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click to place a column, as high as the Options Bar says."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place a structural column, as high as the Options Bar says."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place an isolated footing: its top at the Options Bar's offset, as thick as it says."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the run: a chain of clicks makes one for each step, Esc ends it."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the run, or type a length and press Enter. Esc stops the chain."
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -2127,6 +2331,22 @@ msgid "Gable"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Thickness:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Top Offset:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Justification:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Offset:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Rotation:"
 msgstr ""
 
@@ -2144,10 +2364,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Place Centre"
-msgstr ""
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Offset:"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -2172,6 +2388,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the column"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the run"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -2276,6 +2500,10 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Datum"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Foundation"
 msgstr ""
 
 #: assets/ui/minibim_ui.json

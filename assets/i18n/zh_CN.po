@@ -81,6 +81,46 @@ msgstr "柱"
 msgid "Structural Column"
 msgstr "结构柱"
 
+#: src/Commands/Commands.cpp
+msgid "Isolated Footing"
+msgstr "独立基础"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Beam"
+msgstr "梁"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall Footing"
+msgstr "条形基础"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Pipe"
+msgstr "管道"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Conduit"
+msgstr "线管"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Cable Tray"
+msgstr "电缆桥架"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Wire"
+msgstr "导线"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Down Conductor"
+msgstr "引下线"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Earthing Conductor"
+msgstr "接地导体"
+
+#: src/Commands/Commands.cpp
+msgid "Cabling"
+msgstr "综合布线"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "屋顶"
@@ -209,7 +249,7 @@ msgstr "中点"
 msgid "Intersection"
 msgstr "交点"
 
-#: src/Model/Snap.cpp
+#: src/Model/Snap.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Centre"
 msgstr "圆心"
 
@@ -377,7 +417,7 @@ msgstr "稍后"
 msgid "Could not recover the project"
 msgstr "无法恢复项目"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp assets/ui/minibim_ui.json
 msgid "Structure"
 msgstr "结构"
 
@@ -518,6 +558,18 @@ msgid "Type Parameters"
 msgstr "类型参数"
 
 #: apps/Common/src/GUI/Dialogs.cpp
+msgid "Round"
+msgstr "圆形"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Material:"
+msgstr "材质："
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "(none)"
+msgstr "（无）"
+
+#: apps/Common/src/GUI/Dialogs.cpp
 msgid "Layers"
 msgstr "层"
 
@@ -528,10 +580,6 @@ msgstr "功能"
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Material"
 msgstr "材质"
-
-#: apps/Common/src/GUI/Dialogs.cpp
-msgid "(none)"
-msgstr "（无）"
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Out"
@@ -568,10 +616,6 @@ msgstr "应用"
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Materials and Finishes"
 msgstr "材质和装饰"
-
-#: apps/Common/src/GUI/Dialogs.cpp
-msgid "Material:"
-msgstr "材质："
 
 #: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Name"
@@ -848,6 +892,30 @@ msgstr "标高：在某个高程新建标高"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Grid: click its two ends"
 msgstr "轴网：单击它的两端"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Structural Column: click where it stands"
+msgstr "结构柱：单击它立的地方"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
+msgstr "梁 (BM)：单击起点和终点；连续单击时每一段一根梁"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor: Structural (SB): click inside the walls to floor them with a slab that carries load"
+msgstr "楼板：结构 (SB)：在墙里面单击，放一块承重的楼板"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Isolated"
+msgstr "独立基础"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Isolated Footing (FI): click where the footing goes"
+msgstr "独立基础 (FI)：单击放基础的地方"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
+msgstr "条形基础 (FW)：在墙下单击起点和终点，或连续单击"
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
@@ -1152,6 +1220,14 @@ msgstr "类型选择器"
 msgid "Unconnected"
 msgstr "未连接"
 
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Top"
+msgstr "顶部"
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Bottom"
+msgstr "底部"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Not enclosed: the walls around it don't close."
 msgstr "未封闭：四周的墙没有围合。"
@@ -1309,6 +1385,30 @@ msgid "Top Level"
 msgstr "顶部标高"
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Reference Level"
+msgstr "参照标高"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Start Level Offset"
+msgstr "起点标高偏移"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "End Level Offset"
+msgstr "终点标高偏移"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Same as start"
+msgstr "同起点"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Z Justification"
+msgstr "Z 轴对正"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "System"
+msgstr "系统"
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr "底部标高"
 
@@ -1349,16 +1449,8 @@ msgid "View Range"
 msgstr "视图范围"
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Top"
-msgstr "顶部"
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Cut Plane"
 msgstr "剖切面"
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Bottom"
-msgstr "底部"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "View Depth"
@@ -1435,6 +1527,58 @@ msgstr "柱"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Structural Columns"
 msgstr "结构柱"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Footing"
+msgstr "基础"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Footings"
+msgstr "基础"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Strip Footing"
+msgstr "条形基础"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Strip Footings"
+msgstr "条形基础"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Beams"
+msgstr "梁"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Pipes"
+msgstr "管道"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Conduits"
+msgstr "线管"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cable Trays"
+msgstr "电缆桥架"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Wires"
+msgstr "导线"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cable"
+msgstr "线缆"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cables"
+msgstr "线缆"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Down Conductors"
+msgstr "引下线"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Earthing Conductors"
+msgstr "接地导体"
 
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"
@@ -1843,6 +1987,50 @@ msgid "Version {0}"
 msgstr "版本 {0}"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Beam"
+msgstr "修改 | 放置 梁"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Wall Footing"
+msgstr "修改 | 放置 条形基础"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Pipe"
+msgstr "修改 | 放置 管道"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Conduit"
+msgstr "修改 | 放置 线管"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Cable Tray"
+msgstr "修改 | 放置 电缆桥架"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Wire"
+msgstr "修改 | 放置 导线"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Down Conductor"
+msgstr "修改 | 放置 引下线"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Earthing Conductor"
+msgstr "修改 | 放置 接地导体"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Cabling"
+msgstr "修改 | 放置 综合布线"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Structural Column"
+msgstr "修改 | 放置 结构柱"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Isolated Footing"
+msgstr "修改 | 放置 独立基础"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click a sketch line to select it, Ctrl adds; drag a selected line's end to move it. Delete removes, Ctrl+Z steps back."
 msgstr "单击草图线选中，Ctrl 加选；拖选中线的端点移动它。Delete 删除，Ctrl+Z 退回一步。"
 
@@ -1869,6 +2057,22 @@ msgstr "单击一面墙放置窗。"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click to place a column, as high as the Options Bar says."
 msgstr "单击以放置柱，高度由选项栏指定。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place a structural column, as high as the Options Bar says."
+msgstr "单击放置结构柱，高度照选项栏。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place an isolated footing: its top at the Options Bar's offset, as thick as it says."
+msgstr "单击放置独立基础：顶面在选项栏的偏移处，厚度照选项栏。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the run: a chain of clicks makes one for each step, Esc ends it."
+msgstr "单击起点：连续单击时每一段放一根，Esc 结束。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the run, or type a length and press Enter. Esc stops the chain."
+msgstr "单击终点，或输入长度后按 Enter。Esc 结束连续放置。"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click where the component goes; Space turns it a quarter turn."
@@ -2111,6 +2315,22 @@ msgid "Gable"
 msgstr "山墙"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Thickness:"
+msgstr "厚度："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Top Offset:"
+msgstr "顶部偏移："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Justification:"
+msgstr "对正："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Offset:"
+msgstr "偏移："
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Rotation:"
 msgstr "旋转："
 
@@ -2129,10 +2349,6 @@ msgstr "角度："
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Place Centre"
 msgstr "放置中心"
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Offset:"
-msgstr "偏移："
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "the next free name"
@@ -2157,6 +2373,14 @@ msgstr "无法放置轴网"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the column"
 msgstr "无法放置柱"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the footing"
+msgstr "无法放置基础"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the run"
+msgstr "无法放置"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the component"
@@ -2261,6 +2485,10 @@ msgstr "房间和面积"
 #: assets/ui/minibim_ui.json
 msgid "Datum"
 msgstr "基准"
+
+#: assets/ui/minibim_ui.json
+msgid "Foundation"
+msgstr "基础"
 
 #: assets/ui/minibim_ui.json
 msgid "Mode"

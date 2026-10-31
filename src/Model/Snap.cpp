@@ -109,6 +109,16 @@ namespace MiniBIM::Bim::Snap
                         if (m.Same(col->level, level) && near(at))
                             s.points.emplace_back(col->at, Kind::Centre);
                     }
+                    else if (const Run* r = e.AsRun())
+                    {
+                        const P2 ends[] = { r->start, r->end };
+                        if (!m.Same(r->level, level) || !near(ends))
+                            continue;
+                        s.points.emplace_back(r->start, Kind::Endpoint);
+                        s.points.emplace_back(r->end, Kind::Endpoint);
+                        s.points.emplace_back(r->start + (r->end - r->start) * 0.5, Kind::Midpoint);
+                        s.lines.emplace_back(r->start, r->end);
+                    }
                     else if (const Component* c = e.As<Component>())
                     {
                         const P2 at[] = { c->at };

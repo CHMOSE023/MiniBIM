@@ -27,6 +27,7 @@
 //   - 门、窗：单击墙，离那一段墙的中点近时放在正中；构件：单击处，空格转 90°
 //   - 屋顶：单击墙里面，在上一层按下面一层的墙建迹线屋顶；楼板：沿这一层的墙；天花板、房间：单击处四周围合的区域
 //   - 标高：选项栏输入高程后"创建"；轴网：两次单击两端
+//   - 结构柱、独立基础（Stand）：单击处；梁、条形基础与别的 run（Run）：单击两端，连成链时每一下从上一点再放一根
 // 点下去的点都经捕捉（Bim::Snap）：端点、中点、交点、圆心、垂足、墙中心线、角度引导线；Shift 保持水平或竖直。
 // 画了起点之后可以直接输入长度（项目单位）按 Enter：沿光标方向（落在引导线上时沿它）量这么长
 namespace MiniBIM
@@ -95,6 +96,27 @@ namespace MiniBIM
             out = v.get<double>();
             return true;
         }
+
+        // Stand、Run 工具的上下文选项卡标题（BIMCraft structure.rs 的 title）
+        const char* PlaceTitle(std::string_view c)
+        {
+            static const std::pair<const char*, const char*> titles[] = {
+                { "beam", N_("Modify | Place Beam") },          { "stripfooting", N_("Modify | Place Wall Footing") },
+                { "pipe", N_("Modify | Place Pipe") },          { "conduit", N_("Modify | Place Conduit") },
+                { "cabletray", N_("Modify | Place Cable Tray") }, { "wire", N_("Modify | Place Wire") },
+                { "downconductor", N_("Modify | Place Down Conductor") }, { "groundconductor", N_("Modify | Place Earthing Conductor") },
+                { "cable", N_("Modify | Place Cabling") },
+                { "structuralcolumn", N_("Modify | Place Structural Column") }, { "footing", N_("Modify | Place Isolated Footing") },
+            };
+            for (const auto& [category, title] : titles)
+                if (c == category)
+                    return title;
+            return nullptr;
+        }
+
+        const std::pair<Bim::Justify, const char*> Justifications[] = {
+            { Bim::Justify::Top, N_("Top") }, { Bim::Justify::Centre, N_("Centre") }, { Bim::Justify::Bottom, N_("Bottom") },
+        };
     }
 
     // =========================================================
@@ -111,6 +133,8 @@ namespace MiniBIM
         if (tool != Tool::Modify && m_sketch.has_value() != SketchTool(tool))
             return;
         m_tool = tool;
+        if (tool != Tool::Stand && tool != Tool::Run)
+            m_toolOf = nullptr;
         if ((ToolCategory() || tool == Tool::Level) && !m_selection.empty())
             m_selection.clear();
         m_toolPts.clear();
@@ -126,6 +150,38 @@ namespace MiniBIM
         m_commands.NotifyStateChanged();
         if (m_viewport)
             m_viewport->RequestRender();
+    }
+
+    void MainFrame::SetToolOf(Tool tool, const char* category)
+    {
+        if (m_tool == tool && m_toolOf && std::string_view(m_toolOf) == category)
+        {
+            SetTool(Tool::Modify);
+            return;
+        }
+        if (tool == Tool::Run)
+            KeepRunOptions(category);
+        m_toolOf = category;
+        SetTool(tool);
+        // 没能换（草图模式里）：类别也不换
+        if (m_tool != tool)
+            m_toolOf = nullptr;
+    }
+
+    void MainFrame::KeepRunOptions(const char* category)
+    {
+        ToolOptions& o = m_toolOpt;
+        if (std::string_view(o.runLoaded) == category)
+            return;
+        o.runKept[o.runLoaded] = { o.runJustify, o.runOffset };
+        if (const auto kept = o.runKept.find(category); kept != o.runKept.end())
+            std::tie(o.runJustify, o.runOffset) = kept->second;
+        else
+        {
+            o.runJustify = Bim::Runs::DefaultJustify(category);
+            o.runOffset  = "0";
+        }
+        o.runLoaded = category;
     }
 
     void MainFrame::Escape()
@@ -169,6 +225,7 @@ namespace MiniBIM
         case Tool::Ceiling:   return "ceiling";
         case Tool::Room:      return "room";
         case Tool::Grid:      return "grid";
+        case Tool::Stand: case Tool::Run: return m_toolOf;
         default:              return nullptr;
         }
     }
@@ -184,6 +241,11 @@ namespace MiniBIM
         case Tool::Door:      return N_("Click a wall to place the door.");
         case Tool::Window:    return N_("Click a wall to place the window.");
         case Tool::Column:    return N_("Click to place a column, as high as the Options Bar says.");
+        case Tool::Stand:     return m_toolOf && std::string_view(m_toolOf) == "structuralcolumn"
+                                         ? N_("Click to place a structural column, as high as the Options Bar says.")
+                                         : N_("Click to place an isolated footing: its top at the Options Bar's offset, as thick as it says.");
+        case Tool::Run:       return m_toolPts.empty() ? N_("Click the start of the run: a chain of clicks makes one for each step, Esc ends it.")
+                                                       : N_("Click the end of the run, or type a length and press Enter. Esc stops the chain.");
         case Tool::Component: return N_("Click where the component goes; Space turns it a quarter turn.");
         case Tool::Roof:      return N_("Click inside the walls to roof them, on the level above: the overhang runs past their faces.");
         case Tool::Floor:     return N_("Click inside the walls to floor them: the slab runs under their outline, its top at the level.");
@@ -343,6 +405,11 @@ namespace MiniBIM
                 bar->AddChild<Label>(Tr(name), 13.0f)->SetBold(true);
                 bar->AddChild<Separator>(true);
             }
+        if (const char* title = (m_tool == Tool::Stand || m_tool == Tool::Run) && m_toolOf ? PlaceTitle(m_toolOf) : nullptr)
+        {
+            bar->AddChild<Label>(Tr(title), 13.0f)->SetBold(true);
+            bar->AddChild<Separator>(true);
+        }
         switch (m_tool)
         {
         case Tool::Modify:
@@ -386,6 +453,46 @@ namespace MiniBIM
             break;
         case Tool::Column:
             heightOptions(m_toolOpt.columnTop, m_toolOpt.columnHeight);
+            break;
+        // 结构柱的高度；独立基础的厚度与顶的高度
+        case Tool::Stand:
+            if (m_toolOf && std::string_view(m_toolOf) == "structuralcolumn")
+                heightOptions(m_toolOpt.columnTop, m_toolOpt.columnHeight);
+            else
+            {
+                label(Tr("Thickness:"));
+                field(m_toolOpt.footingThickness, 70.0f, unit);
+                label(Tr("Top Offset:"));
+                field(m_toolOpt.footingTop, 70.0f, unit);
+            }
+            break;
+        // run 的高度在截面哪条线上、它在标高上多高；条形基础只有顶的高度
+        case Tool::Run:
+            if (m_toolOf && std::string_view(m_toolOf) != "stripfooting")
+            {
+                label(Tr("Justification:"));
+                std::vector<std::string> items;
+                int at = 0;
+                for (const auto& [j, n] : Justifications)
+                {
+                    if (j == m_toolOpt.runJustify)
+                        at = static_cast<int>(items.size());
+                    items.push_back(Tr(n));
+                }
+                combo(items, at, 100.0f, [this](int i)
+                {
+                    if (i >= 0)
+                        m_toolOpt.runJustify = Justifications[static_cast<size_t>(i)].first;
+                });
+                label(Tr("Offset:"));
+                field(m_toolOpt.runOffset, 70.0f, unit);
+            }
+            else
+            {
+                label(Tr("Top Offset:"));
+                field(m_toolOpt.footingTop, 70.0f, unit);
+            }
+            check(Tr("Chain"), m_toolOpt.chain);
             break;
         case Tool::Component:
         {
@@ -533,6 +640,52 @@ namespace MiniBIM
         return Bim::Json{ { "height", *h } };
     }
 
+    std::optional<Bim::Json> MainFrame::RunParams(Bim::P2 a, Bim::P2 b, std::string& error) const
+    {
+        const Bim::Model& m = m_session.GetModel();
+        const std::string category = m_toolOf ? m_toolOf : "beam";
+        const bool strip = category == "stripfooting";
+        const std::string& typed = strip ? m_toolOpt.footingTop : m_toolOpt.runOffset;
+        const auto offset = Bim::UnitsOf::Parse(m.units, typed);
+        if (!offset)
+        {
+            error = Format(Tr("`{0}` is not a height"), { typed });
+            return std::nullopt;
+        }
+        Bim::Json p{ { "points", Bim::Json::array({ Pt(a), Pt(b) }) }, { "level", Bim::ToJson(*m_planLevel) }, { "offset", *offset } };
+        if (!strip)
+            p["justify"] = Bim::JustifyOf::Name(m_toolOpt.runJustify);
+        return Typed(category, std::move(p));
+    }
+
+    std::optional<Bim::Json> MainFrame::StandParams(Bim::P2 at, std::string& error) const
+    {
+        const Bim::Model& m = m_session.GetModel();
+        const std::string category = m_toolOf ? m_toolOf : "footing";
+        Bim::Json p;
+        if (category == "structuralcolumn")
+        {
+            const auto top = TopParams(m_toolOpt.columnTop, m_toolOpt.columnHeight, error);
+            if (!top)
+                return std::nullopt;
+            p = *top;
+        }
+        else
+        {
+            const auto thickness = Bim::UnitsOf::Parse(m.units, m_toolOpt.footingThickness);
+            const auto top = Bim::UnitsOf::Parse(m.units, m_toolOpt.footingTop);
+            if (!thickness || !top)
+            {
+                error = Format(Tr("`{0}` is not a height"), { thickness ? m_toolOpt.footingTop : m_toolOpt.footingThickness });
+                return std::nullopt;
+            }
+            p = Bim::Json{ { "thickness", *thickness }, { "offset", *top } };
+        }
+        p["at"]    = Pt(at);
+        p["level"] = Bim::ToJson(*m_planLevel);
+        return Typed(category, std::move(p));
+    }
+
     std::optional<std::pair<std::string, std::string>> MainFrame::Placing() const
     {
         const Bim::Model& m = m_session.GetModel();
@@ -606,6 +759,44 @@ namespace MiniBIM
             RunCommand("column", params, N_("Could not place the column"));
             break;
         }
+        case Tool::Stand:
+        {
+            std::string error;
+            const auto params = StandParams(p, error);
+            const char* title = m_toolOf && std::string_view(m_toolOf) == "footing" ? N_("Could not place the footing") : N_("Could not place the column");
+            if (!params)
+                MiniGUI::ShowMessageBox(*m_ui, Tr(title), error);
+            else
+                RunCommand(Bim::CommandOf(m_toolOf ? m_toolOf : ""), *params, title);
+            break;
+        }
+        // 第一下是起点，之后每一下放到这一点；连成链时从这一点接着放
+        case Tool::Run:
+        {
+            if (m_toolPts.empty())
+            {
+                m_toolPts.push_back(p);
+                break;
+            }
+            const Bim::P2 last = m_toolPts.back();
+            if (last.Dist(p) <= Bim::Tol)
+                break;
+            std::string error;
+            const auto params = RunParams(last, p, error);
+            if (!params)
+            {
+                MiniGUI::ShowMessageBox(*m_ui, Tr("Could not place the run"), error);
+                break;
+            }
+            if (RunCommand(Bim::CommandOf(m_toolOf ? m_toolOf : ""), *params, N_("Could not place the run")))
+            {
+                if (m_toolOpt.chain)
+                    m_toolPts.push_back(p);
+                else
+                    m_toolPts.clear();
+            }
+            break;
+        }
         case Tool::Component:
             if (const auto what = Placing())
                 RunCommand("component", Bim::Json{ { "family", what->first }, { "type", what->second }, { "at", Pt(p) }, { "level", level },
@@ -636,10 +827,10 @@ namespace MiniBIM
         m_typedLength.clear();
         switch (m_tool)
         {
-        case Tool::Wall: case Tool::Grid:
+        case Tool::Wall: case Tool::Grid: case Tool::Run:
             PlacePoint(SnapAt(pixel, m_toolPts, shift).at);
             return;
-        case Tool::Column: case Tool::Component:
+        case Tool::Column: case Tool::Component: case Tool::Stand:
             PlacePoint(SnapAt(pixel, {}, false).at);
             return;
         // 离那一段墙的中点近时放在正中
@@ -677,7 +868,11 @@ namespace MiniBIM
             Bim::Json p;
             const char* c = m_tool == Tool::Floor ? "floor" : "roof";
             if (m_tool == Tool::Floor)
+            {
                 p = Typed("floor", Bim::Json{ { "level", level } });
+                if (m_toolOpt.floorStructural)
+                    p["structural"] = true;
+            }
             else
             {
                 double slope = 0.0;
@@ -762,8 +957,8 @@ namespace MiniBIM
         case Key::Enter:
             if (!m_typedLength.empty())
                 PlaceTyped();
-            else if (m_tool == Tool::Wall || m_tool == Tool::SketchLine)
-                m_toolPts.clear();      // 结束墙链、草图线链
+            else if (m_tool == Tool::Wall || m_tool == Tool::SketchLine || m_tool == Tool::Run)
+                m_toolPts.clear();      // 结束墙链、草图线链、run 的链
             break;
         case Key::Backspace:
             if (m_typedLength.empty())
@@ -793,7 +988,8 @@ namespace MiniBIM
     bool MainFrame::OnPlanText(std::string_view text)
     {
         // 画了起点之后输入的是长度（Enter 时用）；空格转构件，不算
-        if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid && m_tool != Tool::SketchLine) || text == " " || m_typedLength.size() > 40)
+        if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid && m_tool != Tool::SketchLine && m_tool != Tool::Run) || text == " " ||
+            m_typedLength.size() > 40)
             return false;
         for (const char c : text)
             if (static_cast<unsigned char>(c) < 0x20)
@@ -954,6 +1150,33 @@ namespace MiniBIM
                 c.at       = at;
                 sketched(Bim::Element{ c });
             }
+            break;
+        }
+        // 会放下的结构柱或独立基础，与 run：照命令会做出的样子（BIMCraft 的 stand_sketch、run_sketch）
+        case Tool::Stand:
+        {
+            const Bim::P2 at = marker(SnapAt(*m_hoverPixel, {}, false));
+            std::string error;
+            Bim::Element e;
+            if (const auto p = StandParams(at, error); p && Bim::StoodOf(m, *p, m_toolOf ? m_toolOf : "", e, error))
+                sketched(e);
+            break;
+        }
+        case Tool::Run:
+        {
+            const Bim::P2 next = marker(SnapAt(*m_hoverPixel, m_toolPts, m_hoverShift));
+            if (m_toolPts.empty())
+                break;
+            const Bim::P2 last = m_toolPts.back();
+            std::string error;
+            std::vector<Bim::Element> made;
+            if (const auto p = RunParams(last, next, error); p && last.Dist(next) > Bim::Tol && Bim::RunsOf(m, *p, m_toolOf ? m_toolOf : "", made, error))
+                for (const Bim::Element& e : made)
+                    sketched(e);
+            else
+                Stroke(d, { v.ToPx(last), v.ToPx(next) }, 2.0f * px);
+            const std::string reading = Bim::UnitsOf::WithUnit(m.units, last.Dist(next)) + "  " + Degrees(Bim::Snap::Measure(last, next).angle);
+            tip = !m_typedLength.empty() ? m_typedLength + " (Enter)" : (tip.empty() ? reading : tip + "    " + reading);
             break;
         }
         case Tool::Component:
