@@ -34,6 +34,8 @@ namespace MiniBIM::Bim::Ifc
         constexpr uint64_t kMaterials          = 12;
         constexpr uint64_t kSlabMaterials      = 18;
         constexpr uint64_t kComponentMaterials = 19;
+        constexpr uint64_t kProperties         = 20;
+        constexpr uint64_t kDefines            = 21;
         constexpr uint64_t kRunMaterials       = 40;
         constexpr uint64_t kRunProperties      = 41;
         constexpr uint64_t kRunDefines         = 42;
@@ -618,6 +620,8 @@ namespace MiniBIM::Bim::Ifc
         };
         std::map<Guid, std::vector<uint64_t>> contained, spaces;
         std::map<std::string, std::vector<uint64_t>> systems;
+        // 每个元素自己的实体：给它的项目参数值
+        std::map<Id, uint64_t> products;
         // 墙的（实体、放置）：给开在它上面的洞口
         std::map<Id, std::pair<uint64_t, uint64_t>> placed;
         // 楼板、天花板、屋顶的实体：给材质层组
@@ -686,6 +690,7 @@ namespace MiniBIM::Bim::Ifc
                 const uint64_t ent = w.Add("IFCWALL(" + w.GuidFor(kElement, id) + ",$," + S(wl->typeName) + ",$," + S(wl->typeName) + "," + Ref(at) + "," +
                                            Ref(shape) + ",'" + std::to_string(id) + "',.STANDARD.)");
                 contained[m.GuidOf(wl->level)].push_back(ent);
+                products[id] = ent;
                 placed[id] = { ent, at };
                 const auto h = holes.find(id);
                 w.Quantities(ent, "Qto_WallBaseQuantities", WallQuantities(m, *wl, h == holes.end() ? noHoles : h->second), id);
@@ -715,6 +720,7 @@ namespace MiniBIM::Bim::Ifc
                 const uint64_t ent = w.Add("IFCSLAB(" + w.GuidFor(kElement, id) + ",$," + S(f->typeName) + ",$," + S(f->typeName) + "," + Ref(at) + "," +
                                            Ref(shape) + ",'" + std::to_string(id) + "',.FLOOR.)");
                 contained[m.GuidOf(f->level)].push_back(ent);
+                products[id] = ent;
                 hosts[id] = ent;
                 if (f->structural)
                     w.LoadBearing(ent, "Pset_SlabCommon", id);
@@ -745,6 +751,7 @@ namespace MiniBIM::Bim::Ifc
                 const uint64_t ent = w.Add("IFCCOVERING(" + w.GuidFor(kElement, id) + ",$," + S(c->typeName) + ",$," + S(c->typeName) + "," + Ref(at) +
                                            "," + Ref(shape) + ",'" + std::to_string(id) + "',.CEILING.)");
                 contained[m.GuidOf(c->level)].push_back(ent);
+                products[id] = ent;
                 hosts[id] = ent;
             }
             else if (const Room* r = e.As<Room>())
@@ -775,6 +782,7 @@ namespace MiniBIM::Bim::Ifc
                                    { "NetFloorArea", "AREA", net->Area() / 1e6 } },
                                  id);
                 spaces[m.GuidOf(r->level)].push_back(ent);
+                products[id] = ent;
             }
             // 构件：它的类别的元素，按族与类型命名（同 Revit），每个形体是着它材质颜色的闭合三角面集
             else if (const Component* cp = e.As<Component>())
@@ -797,6 +805,7 @@ namespace MiniBIM::Bim::Ifc
                 const uint64_t ent = w.Add(std::string(cls.entity) + "(" + w.GuidFor(kElement, id) + ",$," + name + ",$," + object + "," + Ref(at) + "," +
                                            Ref(shape) + ",'" + std::to_string(id) + "'," + cls.kind + ")");
                 contained[m.GuidOf(cp->level)].push_back(ent);
+                products[id] = ent;
                 if (const auto relating = w.Relating(made, name))
                     w.Add("IFCRELASSOCIATESMATERIAL(" + w.GuidFor(kComponentMaterials, id) + ",$,$,$,(" + Ref(ent) + ")," + Ref(*relating) + ")");
             }
@@ -824,6 +833,7 @@ namespace MiniBIM::Bim::Ifc
                                            S(col->typeName) + "," + Ref(at) + "," + Ref(shape) + ",'" + std::to_string(id) + "'," +
                                            (footing ? ".PAD_FOOTING.)" : ".COLUMN.)"));
                 contained[m.GuidOf(col->level)].push_back(ent);
+                products[id] = ent;
                 if (e.As<StructuralColumn>())
                     w.LoadBearing(ent, "Pset_ColumnCommon", id);
                 else if (footing)
@@ -863,6 +873,7 @@ namespace MiniBIM::Bim::Ifc
                 const uint64_t ent = w.Add(std::string(cls->first) + "(" + w.GuidFor(kElement, id) + ",$," + S(r->typeName) + ",$," + S(r->typeName) + "," +
                                            Ref(at) + "," + Ref(shape) + ",'" + std::to_string(id) + "'," + cls->second + ")");
                 contained[m.GuidOf(r->level)].push_back(ent);
+                products[id] = ent;
                 if (e.As<Beam>())
                     w.LoadBearing(ent, "Pset_BeamCommon", id);
                 else if (e.As<StripFooting>())
@@ -903,6 +914,7 @@ namespace MiniBIM::Bim::Ifc
                     w.Define(ent, MassProperties, { w.TextProperty("Loft", loft.dump()) }, { kLofted, kLoftedDefines }, id);
                 }
                 contained[m.GuidOf(ms->level)].push_back(ent);
+                products[id] = ent;
             }
             // 房间分隔线：沿它的线的虚拟元素，只围合房间
             else if (const RoomSeparator* rs = e.As<RoomSeparator>())
@@ -918,6 +930,7 @@ namespace MiniBIM::Bim::Ifc
                 const uint64_t ent = w.Add("IFCVIRTUALELEMENT(" + w.GuidFor(kElement, id) + ",$,'Room Separation Line',$,'" + Separation + "'," + Ref(at) +
                                            "," + Ref(shape) + ",'" + std::to_string(id) + "')");
                 contained[m.GuidOf(rs->level)].push_back(ent);
+                products[id] = ent;
             }
             else if (const Roof* rf = e.As<Roof>())
             {
@@ -945,6 +958,7 @@ namespace MiniBIM::Bim::Ifc
                 const uint64_t ent = w.Add("IFCROOF(" + w.GuidFor(kElement, id) + ",$," + S(rf->typeName) + ",$," + S(rf->typeName) + "," + Ref(at) + "," +
                                            Ref(shape) + ",'" + std::to_string(id) + "'," + kind + ")");
                 contained[m.GuidOf(rf->level)].push_back(ent);
+                products[id] = ent;
                 hosts[id] = ent;
             }
         }
@@ -1018,6 +1032,7 @@ namespace MiniBIM::Bim::Ifc
             if (const auto r = w.Relating(made, S(o->typeName)))
                 w.Add("IFCRELASSOCIATESMATERIAL(" + w.GuidFor(kComponentMaterials, id) + ",$,$,$,(" + Ref(ent) + ")," + Ref(*r) + ")");
             contained[m.GuidOf(wl->level)].push_back(ent);
+            products[id] = ent;
         }
 
         // 复合类型的层：用到的每个类型一个材质层组，每层的材质只写一次，带颜色供查看器着色；
@@ -1097,6 +1112,47 @@ namespace MiniBIM::Bim::Ifc
                 w.Add("IFCRELCONTAINEDINSPATIALSTRUCTURE(" + w.GuidFor(kContains, levelId) + ",$,$,$,(" + Refs(it->second) + ")," + Ref(s.first) + ")");
             if (const auto it = spaces.find(level); it != spaces.end())
                 w.Add("IFCRELAGGREGATES(" + w.GuidFor(kSpaces, levelId) + ",$,$,$," + Ref(s.first) + ",(" + Refs(it->second) + "))");
+        }
+        // 每个元素的项目参数值：一个自己的属性集 `Project Parameters`，长度用文件的毫米
+        for (const auto& [id, ent] : products)
+        {
+            const Element* e = m.elements.Get(id);
+            const auto* params = e ? e->Params() : nullptr;
+            if (!params)
+                continue;
+            std::vector<uint64_t> props;
+            for (const auto& [name, v] : *params)
+            {
+                // 它类别的项目参数：构件的族自己的参数值是族的
+                const auto p = m.parameters.find(name);
+                if (p == m.parameters.end() ||
+                    std::find(p->second.categories.begin(), p->second.categories.end(), e->Category()) == p->second.categories.end())
+                    continue;
+                std::string value;
+                switch (p->second.kind)
+                {
+                case ParameterKind::Text:
+                    if (v.is_string())
+                        value = "IFCTEXT(" + S(v.get<std::string>()) + ")";
+                    break;
+                case ParameterKind::Number:
+                    if (v.is_number())
+                        value = "IFCREAL(" + Real(v.get<double>()) + ")";
+                    break;
+                case ParameterKind::Length:
+                    if (v.is_number())
+                        value = "IFCLENGTHMEASURE(" + Real(v.get<double>()) + ")";
+                    break;
+                case ParameterKind::YesNo:
+                    if (v.is_boolean())
+                        value = std::string("IFCBOOLEAN(") + (v.get<bool>() ? ".T." : ".F.") + ")";
+                    break;
+                }
+                if (!value.empty())
+                    props.push_back(w.Add("IFCPROPERTYSINGLEVALUE(" + S(name) + ",$," + value + ",$)"));
+            }
+            if (!props.empty())
+                w.Define(ent, ProjectParameters, props, { kProperties, kDefines }, id);
         }
         for (auto& [id, c] : std::exchange(w.common, {}))
             w.Define(std::get<0>(c), std::get<1>(c), std::get<2>(c), { kCommon, kCommonDefines }, id);

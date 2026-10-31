@@ -61,6 +61,8 @@ namespace MiniBIM
         {
             if (kind == FileKind::Shortcuts)
                 f.Add(Tr("Shortcuts file") + " (*.json;*.xml;*.txt;*.md)", "json;xml;txt;md");
+            else if (kind == FileKind::FillPatterns)
+                f.Add(Tr("Fill pattern file") + " (*.pat)", "pat");
             else if (kind == FileKind::ProjectOrRevit)
             {
                 f.Add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", "minibim;bimcraft;ifc;rvt");
@@ -514,9 +516,11 @@ namespace MiniBIM
     {
         // AppPlatform 要求当场返回路径：在界面线程上等对话框关闭（期间只取系统事件，不画界面）
         DialogFilters filters;
-        const char* ext = kind == SaveKind::Ifc ? ".ifc" : ".minibim";
+        const char* ext = kind == SaveKind::Ifc ? ".ifc" : kind == SaveKind::FillPatterns ? ".pat" : ".minibim";
         if (kind == SaveKind::Ifc)
             filters.Add(Tr("IFC file") + " (*.ifc)", "ifc");
+        else if (kind == SaveKind::FillPatterns)
+            filters.Add(Tr("Fill pattern file") + " (*.pat)", "pat");
         else
             filters.Add(Tr("MiniBIM project") + " (*.minibim)", "minibim");
         SyncDialog dialog;

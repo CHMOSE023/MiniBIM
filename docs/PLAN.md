@@ -163,7 +163,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - **5b 卫浴、电气、防雷、数据（已完成）**：run 的核心在 5a 已有，设备族（`FamilyLibrary.cpp`）与它们的 IFC 类在第 2 阶段已有；
   这一段加界面的四个选项卡（`mep.*`：七个 Run 工具按钮，十三个设备按钮是只放某几类族的构件工具）、二十个图标、两字母快捷键，
   并把 BIMCraft `mep_tests.rs` 里不要明细表、剖面的测试移植进 `CommandTests`、`IfcTests`、`ModelSceneTests`。
-  留到后面的：剖面切到 run（随剖面）、明细表按系统（随明细表）、按类别隐藏与项目参数（随 5e、5f）
+  留到后面的：剖面切到 run（随剖面）、明细表按系统（随明细表）、按类别隐藏与项目参数（5e、5f 已完成）
 - **5c 体量（已完成）**：核心移植 `massing.rs`（`src/Model/Massing.h`，剖面切体量的 `section_lines` 随剖面）与体量元素 `Mass`
   （底面轮廓、可选的顶部轮廓放样、到顶部标高或高度），墙、楼板、屋顶带 `params`（体量的记号 `Mass Floor`、`Mass Face` 存在这里）；
   命令 `mass`（MS）、`mass_floors`（MF）、`wall_by_face`（WB）、`floor_by_face`（FB）、`roof_by_face`（RB）、`update_by_face`（UF），
@@ -172,13 +172,13 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   （体量工具，按面建模的五个按钮对选中的体量）与六个图标。BIMCraft `tests.rs` 里不要明细表、剖面、视图图形的体量测试已移植。
   功能区按钮的最大宽度放宽到 100（见"与 MiniCAD 的差异"）。
   留到后面的：显示体量（`show_mass`，要视图的图形覆盖，随 5e）、体量楼层明细表与体量的明细表（随 5e）、剖面切体量（随 5e）、
-  体量的项目参数（随 5f）、顶部轮廓在特性面板里的编辑
+  顶部轮廓在特性面板里的编辑（体量的项目参数 5f 已完成）
 - **5d 注释（已完成）**：核心移植注释元素（尺寸、文字、高程点、标记、详图线、填充区域）、`lines.rs` / `fills.rs` 的线型与填充图案、线样式、
   填充区域类型、文字类型（`src/Model/Styles.h`）与详图线的曲线（`src/Model/Curve.h`）；命令 `dimension`（DI）、`tag`（TG）、`text`（TX）、`text_type`、
   `spot`（EL）、`detail_line`（DL）、`filled_region`（FR）、`measure`（ME），编辑、删除、项目文件（BIMCraft 文件里在平面视图、剖面、立面、图纸里的注释读入时略去）、
   平面的画法（尺寸、单线字的文字与边框、引线、填充图案、线样式的虚线）；界面的"注释"选项卡（尺寸三种、高程点、详图线、填充与遮罩区域、文字、测量、
   按类别标记与全部标记）与十一个图标。注释的视图暂时是标高的平面，平面视图元素随 5e。功能区按钮的最大宽度再放宽到 130，放不下的名称缩小字号（见"与 MiniCAD 的差异"）。
-  留到后面的：注释不进 IFC（BIMCraft 也不导出）、椭圆与样条的详图线、保温层与云线照普通的线画、线样式与填充图案的管理对话框（随 5f）、
+  留到后面的：注释不进 IFC（BIMCraft 也不导出）、椭圆与样条的详图线、保温层与云线照普通的线画、
   在剖面、立面、图纸上的注释（随 5e）、拖动尺寸文字与标记的夹点
 - 5e 视图，分四步（已完成）：
   - **5e1 可见性 / 图形与平面视图（已完成）**：`graphics.rs` 的覆盖与 `Look`、平面视图与三维视图元素（`src/Model/Graphics.h`、`src/Model/Views.cpp`）；
@@ -187,7 +187,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
     留到后面的：三维视图里的覆盖颜色、透明度与视觉样式的画法，图案覆盖（前景、背景）的画法，Linework，阶段与设计选项（BIMCraft 文件里的读入时略去）
   - **5e2 视图样板、视图过滤器、明细表（已完成）**：`schedule.rs` 与 `graphics.rs` 的样板、过滤器（`src/Model/Schedule.h`）；命令 `schedule`、`filter`、`template`，
     `graphics` 的 `template` 与 `filters`，样板控制的组视图自己不能改；明细表对话框、视图过滤器对话框、创建样板，V/G 对话框里的样板与过滤器，项目浏览器的明细表，三个图标。
-    留到后面的：楼梯、坡道、栏杆的明细表，项目参数的字段（随 5f），阶段与设计选项，界面导出 CSV 与 .xlsx
+    留到后面的：楼梯、坡道、栏杆的明细表，阶段与设计选项（项目参数的字段 5f 已完成），界面导出 CSV 与 .xlsx
   - **5e3 剖面与立面（已完成）**：元素 `Section`、`Elevation`，命令 `section`（CR）、`elevation`，`crop`、`scale`、`detail`、`graphics` 收剖面；平面上的剖面线与立面记号；
     剖面图由三维场景的三角形算出剖到的环与线后的面（`ModelScene::Cut`），画灰色填充、消隐线、标高与轴网；"视图"选项卡的剖面工具（两点）与建筑立面，
     项目浏览器的"立面""剖面"，两个图标。留到后面的：剖面里的注释（文字、高程点、详图线）、复合墙的层线、剖到 run 与体量的线、剖面导出 PNG、拖动裁剪框、
@@ -195,7 +195,12 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   - **5e4 图纸与视口（已完成）**：元素 `Sheet`、`Viewport`，命令 `sheet`、`place`，`move` 挪视口；`Render::DrawSheet` 画标题栏、平面、剖面、明细表与视图标题，
     界面把三维视图与剖面看到的形体画进视口的框；"视图"选项卡的"图纸组合"（新图纸、放置视图对话框），项目浏览器的"图纸（全部）"，图纸视口的平移、缩放、
     选中与拖动视口，两个图标。留到后面的：图纸上的文字与详图线、导出 PDF / PNG、标题栏族与修订、改图纸的编号与名称
-- 5f 管理：项目参数、线宽、对象样式、线样式、清除未使用、填充图案
+- **5f 管理（已完成）**：`model.rs` 的项目参数（`ProjectParameter`，`src/Model/Manage.cpp`）、`pen.rs` 的线宽与 `styles.rs` 的对象样式（`src/Model/Pens.h`）、
+  `fills.rs` 的 PAT 文件（`src/Model/Pat.h`）；命令 `parameter`、`line_weights`、`object_styles`、`line_pattern`、`line_style`、`fill_pattern`、
+  `import_fill_patterns`、`export_fill_patterns`、`purge`（PU）。天花板、房间、柱、run 也带 `params`；平面与剖面的笔宽来自项目的线宽，类别的笔来自对象样式；
+  明细表与视图过滤器认项目参数的字段；项目文件里项目参数的值按参数的 GUID 存；IFC 导出导入属性集 `Project Parameters`。界面"管理"选项卡的六个对话框
+  （`ManageDialogs.cpp`）、特性面板的"项目参数"组、六个图标，三个宿主的 PAT 文件对话框。
+  留到后面的：线型图案的编辑对话框（命令已有）、清除图片、楼梯坡道栏杆与组（MiniBIM 还没有）、阶段与设计选项
 - 5g 插入：链接模型、点云、CAD（DXF）导入
 
 ## 同步 BIMCraft 新版

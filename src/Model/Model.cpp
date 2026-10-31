@@ -655,6 +655,14 @@ namespace MiniBIM::Bim
             return &r->params;
         if (const Mass* ms = As<Mass>())
             return &ms->params;
+        if (const Ceiling* c = As<Ceiling>())
+            return &c->params;
+        if (const Room* r = As<Room>())
+            return &r->params;
+        if (const Column* col = AsColumn())
+            return &col->params;
+        if (const Run* r = AsRun())
+            return &r->params;
         return nullptr;
     }
 
@@ -2058,7 +2066,7 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
-        if (!CheckStyles(error))
+        if (!CheckStyles(error) || !CheckManage(error))
             return false;
         for (const auto& [n, t] : types.ceiling)
         {
@@ -2069,7 +2077,7 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
-        // 元素存的参数值都是它的族的参数，或体量的记号（项目参数还没移植，别的键都不认）
+        // 元素存的参数值都是它的族的参数、体量的记号，或它的类别的项目参数（值是那一种的）
         const auto ParamsOk = [&](const std::string& who, const Element& e, std::string& err)
         {
             const auto* params = e.Params();
@@ -2088,8 +2096,18 @@ namespace MiniBIM::Bim
                 if (fam != families.end() && std::any_of(fam->second.parameters.begin(), fam->second.parameters.end(),
                                                          [&](const Fam::Parameter& p) { return p.name == k; }))
                     continue;
-                err = who + ": `" + k + "` isn't a parameter of " + e.Category() + "s; add it with `parameter`";
-                return false;
+                const ProjectParameter* p = ParameterOf(e, k);
+                if (!p)
+                {
+                    err = who + ": `" + k + "` isn't a parameter of " + e.Category() + "s; add it with `parameter`";
+                    return false;
+                }
+                if (!p->Holds(v))
+                {
+                    static const char* what[] = { "text", "a number", "a length", "yes or no" };
+                    err = who + ": `" + k + "` holds " + what[static_cast<int>(p->kind)] + ", not " + v.dump();
+                    return false;
+                }
             }
             return true;
         };
@@ -2165,6 +2183,9 @@ namespace MiniBIM::Bim
             const Element& e = *ptr;
             const std::string who = std::string(e.Category()) + " " + std::to_string(id);
             if (const auto* lines = e.SketchOf(); lines && !Sketch::Check(who, *lines, error))
+                return false;
+            // 天花板、房间、柱与 run 只有项目参数的值（别的元素在各自的分支里查）
+            if ((e.As<Ceiling>() || e.As<Room>() || e.AsColumn() || e.AsRun()) && !ParamsOk(who, e, error))
                 return false;
             auto levelOk = [&](Guid l)
             {

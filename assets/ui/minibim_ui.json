@@ -32,6 +32,12 @@
     "modify.flip":  { "icon": "FlipWall.png" },
     "modify.typeProperties": { "icon": "TypeProperties.png" },
     "manage.materials":      { "icon": "Materials.png" },
+    "manage.parameters":     { "icon": "ProjectParameters.png" },
+    "manage.objectStyles":   { "icon": "ObjectStyles.png" },
+    "manage.lineWeights":    { "icon": "LineWeights.png" },
+    "manage.lineStyles":     { "icon": "LineStyles.png" },
+    "manage.fillPatterns":   { "icon": "FillPatterns.png" },
+    "manage.purge":          { "icon": "Purge.png" },
     "modify.align":      { "icon": "Align.png" },
     "modify.offset":     { "icon": "Offset.png" },
     "modify.mirrorPick": { "icon": "MirrorPick.png" },
@@ -237,7 +243,8 @@
         {
           "title": "Manage",
           "panels": [
-            { "title": "Settings", "items": [ "manage.materials" ] }
+            { "title": "Settings", "items": [ "manage.materials", "manage.objectStyles", "manage.lineStyles", "manage.lineWeights", "manage.fillPatterns", "manage.parameters" ] },
+            { "title": "Clean Up", "items": [ "manage.purge" ] }
           ]
         }
       ]

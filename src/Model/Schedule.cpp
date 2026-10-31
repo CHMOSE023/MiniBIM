@@ -369,6 +369,16 @@ namespace MiniBIM::Bim::Schedules
                         }
                         }
                     }
+                // 它的类别的项目参数：自己的值；没有时，是否为否（同特性面板）
+                if (const auto pp = m.parameters.find(name); pp != m.parameters.end() &&
+                    std::find(pp->second.categories.begin(), pp->second.categories.end(), cat) != pp->second.categories.end())
+                {
+                    const auto* params = e.Params();
+                    if (params)
+                        if (const auto it = params->find(name); it != params->end())
+                            return it->second;
+                    return pp->second.kind == ParameterKind::YesNo ? Json(false) : Json(nullptr);
+                }
                 // 族的参数：构件与族的门窗
                 const std::string* family = nullptr;
                 if (const Component* cp = e.As<Component>())
@@ -688,6 +698,13 @@ namespace MiniBIM::Bim::Schedules
         if (const Category* c = OwnOf(cat))
             for (const Own& o : c->fields)
                 add(o.name, o.kind);
+        // 它的类别的项目参数
+        for (const auto& [n, p] : m.parameters)
+            if (std::find(p.categories.begin(), p.categories.end(), cat) != p.categories.end())
+                add(n, p.kind == ParameterKind::Text     ? Kind::Text
+                     : p.kind == ParameterKind::Number   ? Kind::Number
+                     : p.kind == ParameterKind::Length   ? Kind::Length
+                                                         : Kind::YesNo);
         if (cat == "component")
             for (const auto& [_, f] : m.families)
                 for (const Fam::Parameter& p : f.parameters)

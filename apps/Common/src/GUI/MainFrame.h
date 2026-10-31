@@ -316,6 +316,13 @@ namespace MiniBIM
         void OpenTypeDialog(const TypeSubject& t);
         void OpenFamilyDialog(const TypeSubject& t);
         void OpenMaterials();
+        // ── 管理选项卡（ManageDialogs.cpp）：项目参数、线宽、对象样式、线样式、填充图案、清除未使用 ──
+        void OpenProjectParameters();
+        void OpenLineWeights();
+        void OpenObjectStyles();
+        void OpenLineStyles();
+        void OpenFillPatterns();
+        void OpenPurge();
         // 可见性 / 图形（Dialogs.cpp）：正在显示的视图隐藏哪些类别，平面的比例与详细程度
         void OpenVisibilityGraphics();
         // 复制正在显示的平面（mode：duplicate、detailing、dependent），之后显示新的平面视图

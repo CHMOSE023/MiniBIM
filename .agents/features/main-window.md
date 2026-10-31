@@ -145,7 +145,12 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   （功能、材质、厚度，向外 / 向内或向上 / 向下、删除、插入层，改了层时厚度由层定）；确定、取消、应用，都经 `type`、`rename_type`。
   族类型（`MainFrame::OpenFamilyDialog`）：族的类型参数，公式算出的只显示；经 `family`、`rename_type`。确定后选中的元素换成显示的类型，没选东西时工具改放它。
   打开哪个由 `MainFrame::CurrentTypeSubject` 定：选中的一类元素的同一个类型，或工具要放的类型；入口是"修改 > 类型属性"、特性面板的"编辑类型"、
-  项目浏览器里双击类型（右键还有删除，经 `delete_type`）。材质（`MainFrame::OpenMaterials`，"管理 > 材质"）：颜色、透明度（三维视图还不画半透明）、截面与表面图案，每个改动是一条 `material` 命令
+  项目浏览器里双击类型（右键还有删除，经 `delete_type`）。材质（`MainFrame::OpenMaterials`，"管理 > 材质"）：颜色、透明度（三维视图还不画半透明）、截面与表面图案，每个改动是一条 `material` 命令。
+  "管理"选项卡的其余对话框在 `ManageDialogs.cpp`，每个改动是一条模型命令、失败原因写在对话框里：项目参数（`MainFrame::OpenProjectParameters`：名称、种类、类别）、
+  对象样式（`MainFrame::OpenObjectStyles`：各类别看到的与剖到的笔）、线样式（`MainFrame::OpenLineStyles`：笔、颜色、线型图案）、线宽（`MainFrame::OpenLineWeights`：
+  选一个比例看模型的 16 支笔、注释的 16 支笔，加删比例）、填充图案（`MainFrame::OpenFillPatterns`：制图或模型、各族线的角度与间距，导入导出 PAT 经
+  `FileKind::FillPatterns` / `SaveKind::FillPatterns`）、清除未使用（`MainFrame::OpenPurge`：勾选种类，`dry_run` 列出，再清）。
+  特性面板在选中的元素下列出它类别的项目参数（"项目参数"组：是 / 否为复选框，其余写着改，清空即去掉值），改时 `modify {ids, params: {名称: 值}}`
 - 两块面板在模型、选择集、视图、语言变了时重建（`MainFrame::RefreshPanels` 经 `AppPlatform::Post` 推到当前消息之后，合并成一次；不在控件自己的回调里拆掉它）。
   控件回调里要改模型的，也经 `AppPlatform::Post` 再执行命令
 - 文件对话框经 `AppPlatform::PickFile`（异步：选好时回调，取消时不回调）与 `AppPlatform::ChooseSavePath`
@@ -200,7 +205,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 
 ## 测试与排查
 
-- 界面效果：skill `ui-check`，中英文各截一张。对话框可以用 `-Run` 直接打开（如 `-Run arch.wall,modify.typeProperties`、`-Run manage.materials`）。截图脚本不能点视图，选中元素后的特性面板、工具的预览要靠手动看
+- 界面效果：skill `ui-check`，中英文各截一张。对话框可以用 `-Run` 直接打开（如 `-Run arch.wall,modify.typeProperties`、`-Run manage.materials`、`-Run manage.objectStyles`）。截图脚本不能点视图，选中元素后的特性面板、工具的预览要靠手动看
   （或临时加几行在第一次画平面后选上元素、选工具、调 `MainFrame::ToolClick` 再截，截完删掉）
 - `AppTests`：参数表、值的写法与读法、搜索，以及示例房屋里每个元素的每个可写参数照面板的写法交给 `modify` 都被接受；
   Revit 导入报告（`RevitReport`：认出 `.rvt`、数略去了几个、拆出 id、按类别计数、状态栏那一句、复制的纯文本）；拖进窗口的文件排队（`OpenQueue`）

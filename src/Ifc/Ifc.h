@@ -16,7 +16,7 @@
 // 柱、梁、基础与管线（run）按截面与轴线读出，系统随它们回来。
 // 体量是对象类型为 `Mass` 的代理元素（同 Revit），拉伸体或放样的闭合三角面集。
 // MiniBIM 还没有的元素（楼梯、坡道、栏杆、管井……）与违反规则的略去并列出原因。
-// BIMCraft 的阶段、设计选项与项目参数的属性集还没移植（docs/PLAN.md 第 2 阶段）
+// 元素的项目参数值在属性集 `Project Parameters` 里（导出与导入都认）；BIMCraft 的阶段与设计选项的属性集还没移植
 namespace MiniBIM::Bim::Ifc
 {
     // 房间分隔线的虚拟元素带的对象类型，导入按它认出来
@@ -27,6 +27,8 @@ namespace MiniBIM::Bim::Ifc
     // 放样的体量记它的底面轮廓与顶部轮廓怎样点点对应的属性集（形体是不说这个的闭合三角面集）：`Loft`，JSON `{bottom, top}`；
     // 导入也认 BIMCraft 写的 BIMCraft_Mass
     inline constexpr const char* MassProperties = "MiniBIM_Mass";
+    // 元素的项目参数值所在的属性集（同 BIMCraft 的名字，两边互认）
+    inline constexpr const char* ProjectParameters = "Project Parameters";
 
     // 128 位写成 IFC 的 GlobalId：22 位 64 进制数字，第一位放最高的 2 位。元素的 GUID 这样写就是它的 GlobalId，
     // 同 IfcOpenShell 的 guid.compress 写 UUID

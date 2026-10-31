@@ -10,7 +10,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "New"
 msgstr "Nuevo"
 
@@ -198,6 +198,42 @@ msgstr "Estilo visual"
 msgid "Crop View"
 msgstr "Recortar vista"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Project Parameters"
+msgstr "Parámetros del proyecto"
+
+#: src/Commands/Commands.cpp
+msgid "Line Patterns"
+msgstr "Patrones de línea"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Styles"
+msgstr "Estilos de línea"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Fill Patterns"
+msgstr "Patrones de relleno"
+
+#: src/Commands/Commands.cpp
+msgid "Import Fill Patterns"
+msgstr "Importar patrones de relleno"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Export Fill Patterns"
+msgstr "Exportar patrones de relleno"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purge Unused"
+msgstr "Limpiar no usados"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Weights"
+msgstr "Grosores de línea"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Object Styles"
+msgstr "Estilos de objeto"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Sheet"
 msgstr "Plano"
@@ -222,11 +258,11 @@ msgstr "Duplicar vista"
 msgid "Schedule"
 msgstr "Tabla de planificación"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "View Filter"
 msgstr "Filtro de vista"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "View Template"
 msgstr "Plantilla de vista"
 
@@ -238,7 +274,7 @@ msgstr "Cubierta"
 msgid "Edit Type"
 msgstr "Editar tipo"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Materials"
 msgstr "Materiales"
 
@@ -302,7 +338,7 @@ msgstr "Recortar/extender a esquina"
 msgid "Split"
 msgstr "Dividir"
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "Delete"
 msgstr "Eliminar"
 
@@ -378,7 +414,7 @@ msgstr "Id"
 msgid "Type"
 msgstr "Tipo"
 
-#: src/Model/Schedule.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Family"
 msgstr "Familia"
 
@@ -422,7 +458,7 @@ msgstr "Marca"
 msgid "Operation"
 msgstr "Apertura"
 
-#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Name"
 msgstr "Nombre"
 
@@ -470,7 +506,7 @@ msgstr "Superficie bruta de plantas"
 msgid "Elevation"
 msgstr "Elevación"
 
-#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Line Style"
 msgstr "Estilo de línea"
 
@@ -502,7 +538,7 @@ msgstr "Perpendicular"
 msgid "Nearest"
 msgstr "Más cercano"
 
-#: src/Model/Snap.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Model/Snap.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Angle"
 msgstr "Ángulo"
 
@@ -582,7 +618,7 @@ msgstr "Expandir la cinta (o doble clic en una ficha)"
 msgid "Search commands"
 msgstr "Buscar comandos"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "Cerrar"
 
@@ -826,7 +862,7 @@ msgstr "Capas"
 msgid "Function"
 msgstr "Función"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Material"
 msgstr "Material"
 
@@ -866,7 +902,7 @@ msgstr "Aplicar"
 msgid "Materials and Finishes"
 msgstr "Materiales y acabados"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Color"
 msgstr "Color"
 
@@ -922,7 +958,7 @@ msgstr "Filtros"
 msgid "Visible"
 msgstr "Visible"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Reset"
 msgstr "Restablecer"
 
@@ -1081,6 +1117,30 @@ msgstr "Editar el tipo de los elementos seleccionados o de lo que coloca la herr
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "The project's materials: their colours and patterns"
 msgstr "Los materiales del proyecto: sus colores y patrones"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Values each element of chosen categories can hold, shown in Properties and schedules"
+msgstr "Valores que puede tener cada elemento de las categorías elegidas, mostrados en Propiedades y en las tablas de planificación"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The pen each model category draws in, seen and cut"
+msgstr "La pluma con la que dibuja cada categoría de modelo, en proyección y en corte"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "How wide each pen draws on paper, at each scale"
+msgstr "Qué tan ancho dibuja cada pluma en el papel, en cada escala"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's line styles: pen, colour and line pattern"
+msgstr "Los estilos de línea del proyecto: pluma, color y patrón de línea"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's fill patterns; import and export PAT files"
+msgstr "Los patrones de relleno del proyecto; importa y exporta archivos PAT"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Take out types, families and the rest that nothing uses"
+msgstr "Quita los tipos, familias y demás que nada usa"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "What the view shows: hide or show categories; a plan's scale and detail level"
@@ -1747,6 +1807,216 @@ msgstr "Publicado con la licencia MIT. Los componentes de terceros y sus licenci
 msgid "Language: {0}"
 msgstr "Idioma: {0}"
 
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "0 (hairline)"
+msgstr "0 (línea fina)"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Types"
+msgstr "Tipos"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Families"
+msgstr "Familias"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "View Filters"
+msgstr "Filtros de vista"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "View Templates"
+msgstr "Plantillas de vista"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Family Type"
+msgstr "Tipo de familia"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "{0} Type"
+msgstr "Tipo de {0}"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Parameters"
+msgstr "Parámetros"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Parameter"
+msgstr "Parámetro"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "A project parameter is a value each element of its categories can hold, shown in Properties and in schedules. Make one with New."
+msgstr "Un parámetro de proyecto es un valor que puede tener cada elemento de sus categorías, mostrado en Propiedades y en las tablas de planificación. Crea uno con Nuevo."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Type of Parameter"
+msgstr "Tipo de parámetro"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Text"
+msgstr "Texto"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Number"
+msgstr "Número"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Length"
+msgstr "Longitud"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Yes/No"
+msgstr "Sí/No"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Categories"
+msgstr "Categorías"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "What each pen draws on paper, in mm. The model's pens draw at the scale nearest a view's own; annotations' pens at any scale."
+msgstr "Lo que dibuja cada pluma en el papel, en mm. Las plumas del modelo dibujan a la escala más cercana a la de la vista; las de anotación, a cualquier escala."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Scale"
+msgstr "Escala"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr "Quitar"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "New scale 1 :"
+msgstr "Nueva escala 1 :"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Add"
+msgstr "Añadir"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Pen"
+msgstr "Pluma"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model at {0}"
+msgstr "Modelo a {0}"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Annotation"
+msgstr "Anotación"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "The pen each category's lines draw in, in every plan and section, where it is seen and where a view cuts it. A view's Visibility/Graphics overrides them."
+msgstr "La pluma con la que se dibujan las líneas de cada categoría en todas las plantas y secciones, donde se ve y donde la vista la corta. La Visibilidad/Gráficos de una vista las reemplaza."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Category"
+msgstr "Categoría"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "object style"
+msgid "Projection"
+msgstr "Proyección"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "object style"
+msgid "Cut"
+msgstr "Corte"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Weight"
+msgstr "Grosor de línea"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Pattern"
+msgstr "Patrón de línea"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Fill Pattern"
+msgstr "Patrón de relleno"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Import..."
+msgstr "Importar..."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Imported {0} fill pattern."
+msgid_plural "Imported {0} fill patterns."
+msgstr[0] "Se importó {0} patrón de relleno."
+msgstr[1] "Se importaron {0} patrones de relleno."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Left out {0} that MiniBIM can't use."
+msgid_plural "Left out {0} that MiniBIM can't use."
+msgstr[0] "Se omitió {0} que MiniBIM no puede usar."
+msgstr[1] "Se omitieron {0} que MiniBIM no puede usar."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Export..."
+msgstr "Exportar..."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Exported the fill patterns."
+msgstr "Se exportaron los patrones de relleno."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Pattern Type"
+msgstr "Tipo de patrón"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Drafting"
+msgstr "Diseño"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model"
+msgstr "Modelo"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model patterns' lengths are mm in the building."
+msgstr "Las longitudes de los patrones de modelo son mm en el edificio."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Drafting patterns' lengths are mm on paper, the same at any scale."
+msgstr "Las longitudes de los patrones de diseño son mm en el papel, iguales a cualquier escala."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Solid fill"
+msgstr "Relleno sólido"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Spacing"
+msgstr "Separación"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "dashed"
+msgstr "discontinua"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Add Lines"
+msgstr "Añadir líneas"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Takes out what nothing in the project uses, and then what that leaves unused. A category keeps one type, and a family one type."
+msgstr "Quita lo que nada del proyecto usa y, después, lo que eso deja sin usar. Una categoría conserva un tipo, y una familia, un tipo."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Nothing of these is unused."
+msgstr "Nada de esto está sin usar."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purge {0} Item"
+msgid_plural "Purge {0} Items"
+msgstr[0] "Limpiar {0} elemento"
+msgstr[1] "Limpiar {0} elementos"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purged {0} item."
+msgid_plural "Purged {0} items."
+msgstr[0] "Se limpió {0} elemento."
+msgstr[1] "Se limpiaron {0} elementos."
+
 #: apps/Common/src/GUI/Modify.cpp
 msgid "Could not move"
 msgstr "No se pudo mover"
@@ -1890,10 +2160,6 @@ msgstr "Vistas (todas)"
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Sheets (all)"
 msgstr "Planos (todos)"
-
-#: apps/Common/src/GUI/Panels.cpp
-msgid "Families"
-msgstr "Familias"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Constraints"
@@ -2458,14 +2724,6 @@ msgid "New Schedule"
 msgstr "Nueva tabla"
 
 #: apps/Common/src/GUI/Schedules.cpp
-msgid "Category"
-msgstr "Categoría"
-
-#: apps/Common/src/GUI/Schedules.cpp
-msgid "View Filters"
-msgstr "Filtros de vista"
-
-#: apps/Common/src/GUI/Schedules.cpp
 msgid "Filter {0}"
 msgstr "Filtro {0}"
 
@@ -2474,16 +2732,8 @@ msgid "Make a filter with New, then choose its categories and rules."
 msgstr "Crea un filtro con Nuevo y luego elige sus categorías y reglas."
 
 #: apps/Common/src/GUI/Schedules.cpp
-msgid "Categories"
-msgstr "Categorías"
-
-#: apps/Common/src/GUI/Schedules.cpp
 msgid "Rules: elements of these categories that meet every rule"
 msgstr "Reglas: los elementos de estas categorías que cumplen todas las reglas"
-
-#: apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
-msgid "Remove"
-msgstr "Quitar"
 
 #: apps/Common/src/GUI/Schedules.cpp
 msgid "Add Rule"
@@ -3453,6 +3703,10 @@ msgid "Shortcuts file"
 msgstr "Archivo de métodos abreviados"
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Fill pattern file"
+msgstr "Archivo de patrones de relleno"
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"
 msgstr "Todos los proyectos"
 
@@ -3599,3 +3853,7 @@ msgstr "Navegar"
 #: assets/ui/minibim_ui.json
 msgid "Manage"
 msgstr "Gestionar"
+
+#: assets/ui/minibim_ui.json
+msgid "Clean Up"
+msgstr "Limpieza"

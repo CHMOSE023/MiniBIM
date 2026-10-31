@@ -9,7 +9,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "New"
 msgstr "新建"
 
@@ -197,6 +197,42 @@ msgstr "视觉样式"
 msgid "Crop View"
 msgstr "裁剪视图"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Project Parameters"
+msgstr "项目参数"
+
+#: src/Commands/Commands.cpp
+msgid "Line Patterns"
+msgstr "线型图案"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Styles"
+msgstr "线样式"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Fill Patterns"
+msgstr "填充样式"
+
+#: src/Commands/Commands.cpp
+msgid "Import Fill Patterns"
+msgstr "导入填充样式"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Export Fill Patterns"
+msgstr "导出填充样式"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purge Unused"
+msgstr "清除未使用项"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Weights"
+msgstr "线宽"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Object Styles"
+msgstr "对象样式"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Sheet"
 msgstr "图纸"
@@ -221,11 +257,11 @@ msgstr "复制视图"
 msgid "Schedule"
 msgstr "明细表"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "View Filter"
 msgstr "视图过滤器"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "View Template"
 msgstr "视图样板"
 
@@ -237,7 +273,7 @@ msgstr "屋顶"
 msgid "Edit Type"
 msgstr "编辑类型"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Materials"
 msgstr "材质"
 
@@ -301,7 +337,7 @@ msgstr "修剪/延伸为角"
 msgid "Split"
 msgstr "拆分"
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "Delete"
 msgstr "删除"
 
@@ -377,7 +413,7 @@ msgstr "ID"
 msgid "Type"
 msgstr "类型"
 
-#: src/Model/Schedule.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Family"
 msgstr "族"
 
@@ -421,7 +457,7 @@ msgstr "标记"
 msgid "Operation"
 msgstr "开启方式"
 
-#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Name"
 msgstr "名称"
 
@@ -469,7 +505,7 @@ msgstr "总楼面面积"
 msgid "Elevation"
 msgstr "高程"
 
-#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Line Style"
 msgstr "线样式"
 
@@ -501,7 +537,7 @@ msgstr "垂足"
 msgid "Nearest"
 msgstr "最近点"
 
-#: src/Model/Snap.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Model/Snap.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Angle"
 msgstr "角度"
 
@@ -581,7 +617,7 @@ msgstr "展开功能区（双击选项卡也可以）"
 msgid "Search commands"
 msgstr "搜索命令"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "关闭"
 
@@ -825,7 +861,7 @@ msgstr "层"
 msgid "Function"
 msgstr "功能"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Material"
 msgstr "材质"
 
@@ -865,7 +901,7 @@ msgstr "应用"
 msgid "Materials and Finishes"
 msgstr "材质和装饰"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Color"
 msgstr "颜色"
 
@@ -921,7 +957,7 @@ msgstr "过滤器"
 msgid "Visible"
 msgstr "可见"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Reset"
 msgstr "重置"
 
@@ -1080,6 +1116,30 @@ msgstr "编辑选中元素的类型，或工具要放的类型"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "The project's materials: their colours and patterns"
 msgstr "项目的材质：颜色与填充图案"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Values each element of chosen categories can hold, shown in Properties and schedules"
+msgstr "所选类别的每个图元都可以有的值，显示在特性与明细表中"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The pen each model category draws in, seen and cut"
+msgstr "每个模型类别的线用几号笔：看到的与剖到的"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "How wide each pen draws on paper, at each scale"
+msgstr "每号笔在纸上画多宽，各个比例分别设"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's line styles: pen, colour and line pattern"
+msgstr "项目的线样式：笔号、颜色与线型图案"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's fill patterns; import and export PAT files"
+msgstr "项目的填充样式；导入、导出 PAT 文件"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Take out types, families and the rest that nothing uses"
+msgstr "去掉没有用到的类型、族等"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "What the view shows: hide or show categories; a plan's scale and detail level"
@@ -1740,6 +1800,212 @@ msgstr "按 MIT 许可证发布。第三方组件及其许可证见 THIRD_PARTY_
 msgid "Language: {0}"
 msgstr "语言：{0}"
 
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "0 (hairline)"
+msgstr "0（细线）"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Types"
+msgstr "类型"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Families"
+msgstr "族"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "View Filters"
+msgstr "视图过滤器"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "View Templates"
+msgstr "视图样板"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Family Type"
+msgstr "族类型"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "{0} Type"
+msgstr "{0}类型"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Parameters"
+msgstr "参数"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Parameter"
+msgstr "参数"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "A project parameter is a value each element of its categories can hold, shown in Properties and in schedules. Make one with New."
+msgstr "项目参数是它的类别的每个图元都可以有的值，显示在特性与明细表中。用“新建”建一个。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Type of Parameter"
+msgstr "参数类型"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Text"
+msgstr "文字"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Number"
+msgstr "数值"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Length"
+msgstr "长度"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Yes/No"
+msgstr "是/否"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Categories"
+msgstr "类别"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "What each pen draws on paper, in mm. The model's pens draw at the scale nearest a view's own; annotations' pens at any scale."
+msgstr "每号笔在纸上画多宽，单位毫米。模型的笔按最接近视图比例的那一组画；注释的笔在任何比例下都一样。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Scale"
+msgstr "比例"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr "删除"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "New scale 1 :"
+msgstr "新比例 1 :"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Add"
+msgstr "添加"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Pen"
+msgstr "笔号"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model at {0}"
+msgstr "模型（{0}）"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Annotation"
+msgstr "注释"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "The pen each category's lines draw in, in every plan and section, where it is seen and where a view cuts it. A view's Visibility/Graphics overrides them."
+msgstr "每个类别的线在所有平面与剖面中用几号笔：看到的与被视图剖到的。视图的可见性/图形会替代它们。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Category"
+msgstr "类别"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "object style"
+msgid "Projection"
+msgstr "投影"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "object style"
+msgid "Cut"
+msgstr "截面"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Weight"
+msgstr "线宽"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Pattern"
+msgstr "线型图案"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Fill Pattern"
+msgstr "填充样式"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Import..."
+msgstr "导入..."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Imported {0} fill pattern."
+msgid_plural "Imported {0} fill patterns."
+msgstr[0] "导入了 {0} 个填充样式。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Left out {0} that MiniBIM can't use."
+msgid_plural "Left out {0} that MiniBIM can't use."
+msgstr[0] "略去了 {0} 个 MiniBIM 用不了的。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Export..."
+msgstr "导出..."
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Exported the fill patterns."
+msgstr "已导出填充样式。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Pattern Type"
+msgstr "图案类型"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Drafting"
+msgstr "绘图"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model"
+msgstr "模型"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model patterns' lengths are mm in the building."
+msgstr "模型图案的长度是建筑里的毫米。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Drafting patterns' lengths are mm on paper, the same at any scale."
+msgstr "绘图图案的长度是纸上的毫米，任何比例下都一样。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Solid fill"
+msgstr "实体填充"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Spacing"
+msgstr "间距"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "dashed"
+msgstr "虚线"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Add Lines"
+msgstr "添加线"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Takes out what nothing in the project uses, and then what that leaves unused. A category keeps one type, and a family one type."
+msgstr "去掉项目里没有用到的东西，再去掉因此变得没用的。每个类别留一个类型，每个族也留一个类型。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Nothing of these is unused."
+msgstr "这些里面没有未使用的。"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purge {0} Item"
+msgid_plural "Purge {0} Items"
+msgstr[0] "清除 {0} 项"
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purged {0} item."
+msgid_plural "Purged {0} items."
+msgstr[0] "已清除 {0} 项。"
+
 #: apps/Common/src/GUI/Modify.cpp
 msgid "Could not move"
 msgstr "无法移动"
@@ -1883,10 +2149,6 @@ msgstr "视图（全部）"
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Sheets (all)"
 msgstr "图纸（全部）"
-
-#: apps/Common/src/GUI/Panels.cpp
-msgid "Families"
-msgstr "族"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Constraints"
@@ -2444,14 +2706,6 @@ msgid "New Schedule"
 msgstr "新建明细表"
 
 #: apps/Common/src/GUI/Schedules.cpp
-msgid "Category"
-msgstr "类别"
-
-#: apps/Common/src/GUI/Schedules.cpp
-msgid "View Filters"
-msgstr "视图过滤器"
-
-#: apps/Common/src/GUI/Schedules.cpp
 msgid "Filter {0}"
 msgstr "过滤器 {0}"
 
@@ -2460,16 +2714,8 @@ msgid "Make a filter with New, then choose its categories and rules."
 msgstr "用“新建”建一个过滤器，再选它的类别与规则。"
 
 #: apps/Common/src/GUI/Schedules.cpp
-msgid "Categories"
-msgstr "类别"
-
-#: apps/Common/src/GUI/Schedules.cpp
 msgid "Rules: elements of these categories that meet every rule"
 msgstr "规则：这些类别里满足每条规则的元素"
-
-#: apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
-msgid "Remove"
-msgstr "删除"
 
 #: apps/Common/src/GUI/Schedules.cpp
 msgid "Add Rule"
@@ -3436,6 +3682,10 @@ msgid "Shortcuts file"
 msgstr "快捷键文件"
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Fill pattern file"
+msgstr "填充样式文件"
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"
 msgstr "所有项目"
 
@@ -3582,3 +3832,7 @@ msgstr "导航"
 #: assets/ui/minibim_ui.json
 msgid "Manage"
 msgstr "管理"
+
+#: assets/ui/minibim_ui.json
+msgid "Clean Up"
+msgstr "清理"

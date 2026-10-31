@@ -7,6 +7,7 @@
 #include "Commands/Session.h"
 #include "Model/Align.h"
 #include "Model/ModelJson.h"
+#include "Model/Pat.h"
 #include "Model/Render.h"
 #include "Model/Snap.h"
 #include "Model/Walls.h"
@@ -18,6 +19,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -3292,6 +3294,262 @@ namespace
         }
     }
 
+    // 管理（第 5f 步，移植自 BIMCraft styles.rs、pen.rs、pat.rs、purge_tests.rs 与项目参数的测试）
+    // d 里 id 的 part 那部分最宽的实线
+    float WidestOf(const Render::Drawing& d, Id id, Render::Part part)
+    {
+        float w = 0.0f;
+        for (size_t i = 0; i < d.prims.size(); ++i)
+            if (d.owners[i] == std::optional<Id>(id) && d.parts[i] == part && d.prims[i].kind == Render::Prim::Kind::Line && !d.prims[i].dash)
+                w = std::max(w, d.prims[i].width);
+        return w;
+    }
+
+    void TestManage()
+    {
+        {
+            // 对象样式：问时列出每个模型类别，什么都不改
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const auto history = s.History();
+            Json r = Run(s, "object_styles", Json::object());
+            Check(r["categories"].size() == GraphicsOf::Model.size() &&
+                      r["categories"][0] == Json{ { "category", "wall" }, { "projection", 4 }, { "cut", 10 }, { "own", false } },
+                  "对象样式：列出每个类别：" + r["categories"][0].dump());
+            Check(s.History() == history, "对象样式：问不进撤销");
+            const size_t steps = s.History().size();
+            Run(s, "object_styles", R"({"categories": {"wall": {"cut": 12}, "door": {"projection": 2, "cut": 5}}})");
+            Check(s.History().size() == steps + 1 && s.History().back() == "Object Styles", "对象样式：一个撤销步骤");
+            Check(s.GetModel().ObjectStyleOf("wall") == ObjectStyle{ 4, 12 } && s.GetModel().ObjectStyleOf("door") == ObjectStyle{ 2, 5 },
+                  "对象样式：给了的笔");
+            const std::string path = Temp("styles.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            Check(t.GetModel().objectStyles == s.GetModel().objectStyles, "对象样式：项目文件往返");
+            // 回到起步的那一类不再记着
+            Run(s, "object_styles", R"({"categories": {"wall": {"cut": 10}}})");
+            Check(s.GetModel().objectStyles.size() == 1 && s.GetModel().objectStyles.count("door"), "对象样式：同起步的不记");
+            Run(s, "undo", Json::object());
+            Check(s.GetModel().ObjectStyleOf("wall").cut == 12, "对象样式：撤销");
+            Run(s, "object_styles", R"({"reset": true})");
+            Check(s.GetModel().objectStyles.empty(), "对象样式：重设");
+            const Json before = s.GetModel().ToJson();
+            for (const auto& [p, says] : std::vector<std::pair<const char*, const char*>>{
+                     { R"({"categories": {"grid": {"cut": 3}}})", "isn't a model category" },
+                     { R"({"categories": {"walls": {"cut": 3}}})", "Object Styles has: wall" },
+                     { R"({"categories": {"wall": {"cut": 17}}})", "0 (a hairline) to 16" },
+                     { R"({"categories": {"wall": {"cut": 2.5}}})", "whole number" },
+                     { R"({"categories": {"wall": {"colour": 3}}})", "colour" },
+                     { R"({"categories": ["wall"]})", "categories" },
+                     { R"({"reset": "yes"})", "reset" } })
+                Check(Contains(Refused(s, "object_styles", p), says), std::string("对象样式拒绝：") + p);
+            Check(s.GetModel().ToJson() == before, "对象样式：拒绝时什么都不改");
+            // 平面里墙剖到的线用对象样式的笔，视图的可见性 / 图形优先
+            const Id west = walls[3];
+            Run(s, "object_styles", R"({"categories": {"wall": {"cut": 13}}})");
+            Render::Drawing d = Drawn(s, 100000);
+            Check(std::abs(WidestOf(d, west, Render::Part::Cut) - d.Width(13)) < 1e-4f, "对象样式：平面里剖到的墙用笔 13");
+            Run(s, "graphics", R"({"view": 100000, "categories": {"wall": {"cut": {"weight": 2}}}})");
+            d = Drawn(s, 100000);
+            Check(std::abs(WidestOf(d, west, Render::Part::Cut) - d.Width(2)) < 1e-4f, "对象样式：可见性 / 图形优先");
+        }
+        {
+            // 线宽：问时列出，按项目单位起名比例
+            Session s;
+            Json r = Run(s, "line_weights", Json::object());
+            Check(r["model"][3]["scale"] == 100.0 && r["model"][3]["name"] == "1 : 100" && r["model"][3]["widths"][3] == 0.18 &&
+                      r["annotation"][9] == 0.35 && r["own"] == false,
+                  "线宽：项目起步的：" + r["model"][3].dump());
+            Check(!s.CanUndo(), "线宽：问不进撤销");
+            Json widths20 = Json::array(), widths200 = Json::array(), ann = Json::array();
+            for (int i = 0; i < 16; ++i)
+            {
+                widths20.push_back(0.5);
+                widths200.push_back(0.1);
+                ann.push_back(0.3);
+            }
+            r = Run(s, "line_weights", Json{ { "model", Json::array({ Json{ { "scale", 200 }, { "widths", widths200 } }, Json{ { "scale", 20 }, { "widths", widths20 } } }) },
+                                             { "annotation", ann } });
+            Check(r["model"][0]["scale"] == 20.0 && r["own"] == true && s.History().back() == "Line Weights", "线宽：给了的，比例从细到粗");
+            const LineWeights lw = s.GetModel().LineWeightsOf();
+            Check(lw.ModelAt(30.0)[4] == 0.5 && lw.ModelAt(1000.0)[4] == 0.1 && lw.Annotation()[4] == 0.3, "线宽：按最近的比例");
+            Json ann2 = Json::array();
+            for (int i = 0; i < 16; ++i)
+                ann2.push_back(0.2);
+            Run(s, "line_weights", Json{ { "annotation", ann2 } });
+            Check(s.GetModel().LineWeightsOf().model.size() == 2, "线宽：只给注释的，模型的留着");
+            const std::string path = Temp("weights.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            Check(t.GetModel().lineWeights == s.GetModel().lineWeights, "线宽：项目文件往返");
+            Run(s, "undo", Json::object());
+            Check(s.GetModel().LineWeightsOf().annotation[0] == 0.3, "线宽：撤销");
+            Run(s, "line_weights", R"({"reset": true})");
+            Check(!s.GetModel().lineWeights, "线宽：重设");
+            Json short15 = Json::array(), negative = Json::array(), twice = Json::array();
+            for (int i = 0; i < 15; ++i)
+                short15.push_back(0.2);
+            for (int i = 0; i < 16; ++i)
+                negative.push_back(-1.0);
+            twice.push_back(Json{ { "scale", 50 }, { "widths", ann2 } });
+            twice.push_back(Json{ { "scale", 50 }, { "widths", ann2 } });
+            for (const auto& [p, says] : std::vector<std::pair<Json, const char*>>{
+                     { Json{ { "model", Json::array() } }, "1 to 32 scales" },
+                     { Json{ { "annotation", short15 } }, "16" },
+                     { Json{ { "annotation", negative } }, "annotation pen 1 is -1 mm wide" },
+                     { Json{ { "model", twice } }, "twice" },
+                     { Json{ { "model", Json::array({ Json{ { "scale", 50 }, { "widths", ann2 }, { "pen", 3 } } }) } }, "pen" },
+                     { Json{ { "reset", "yes" } }, "reset" } })
+                Check(Contains(Refused(s, "line_weights", p), says), "线宽拒绝：" + p.dump());
+            // 墙按视图比例的那一列画：1 : 100 时笔 10 是 0.35 毫米
+            House(s);
+            Json wide = Json::array();
+            for (int i = 0; i < 16; ++i)
+                wide.push_back(1.0);
+            Render::Drawing d = Drawn(s, 100000);
+            const float before = WidestOf(d, 100005, Render::Part::Cut);
+            Run(s, "line_weights", Json{ { "model", Json::array({ Json{ { "scale", 100 }, { "widths", wide } } }) } });
+            d = Drawn(s, 100000);
+            Check(WidestOf(d, 100005, Render::Part::Cut) > before * 2.5f, "线宽：平面里的墙按项目的线宽画");
+        }
+        {
+            // 项目参数：文字参数给墙与门，墙上设值；值不对的拒绝
+            Session s;
+            const std::vector<Id> walls = House(s);
+            Json r = Run(s, "parameter", R"({"name": "Fire Rating", "categories": ["walls", "door"]})");
+            Check(r["parameter"] == Json{ { "kind", "text" }, { "categories", { "door", "wall" } } }, "项目参数：类别按单数排好：" + r.dump());
+            Run(s, "modify", Json{ { "id", walls[0] }, { "params", { { "Fire Rating", "2h" } } } });
+            Check(ElementOf(s, walls[0])["params"]["Fire Rating"] == "2h", "项目参数：墙上的值");
+            Check(Contains(Refused(s, "modify", Json{ { "id", walls[0] }, { "params", { { "Fire Rating", 2 } } } }), "holds text"), "项目参数：值的种类不对");
+            Check(Contains(Refused(s, "modify", Json{ { "id", walls[0] }, { "params", { { "Acoustic", 2 } } } }), "add it with `parameter`"),
+                  "项目参数：没有的参数");
+            // 柱、管道、房间、天花板也能有
+            Run(s, "parameter", R"({"name": "Cost", "kind": "number", "categories": ["column", "pipe", "room", "ceiling"]})");
+            const Id col = Run(s, "column", R"({"at": [4000, 3000]})")["id"].get<Id>();
+            Run(s, "modify", Json{ { "id", col }, { "params", { { "Cost", 120.5 } } } });
+            Check(ElementOf(s, col)["params"]["Cost"] == 120.5, "项目参数：柱的值");
+            Check(Contains(Refused(s, "modify", Json{ { "id", walls[1] }, { "params", { { "Cost", 1 } } } }), "isn't a parameter of walls"),
+                  "项目参数：不是它的类别的");
+            // 明细表里是一列
+            r = Run(s, "schedule", R"({"name": "Walls", "category": "wall", "fields": ["Fire Rating"]})");
+            Check(Contains(r.dump(), "2h"), "项目参数：明细表的一列：" + r.dump());
+            // 文件里按参数的 GUID 存，读回来是名称
+            const std::string path = Temp("params.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            std::string text;
+            {
+                std::ifstream in(std::filesystem::path(std::u8string(path.begin(), path.end())), std::ios::binary);
+                std::ostringstream ss;
+                ss << in.rdbuf();
+                text = ss.str();
+            }
+            const auto guid = s.GetModel().library.GuidOf(Kind::Of(Kind::Tag::Parameter), "Fire Rating");
+            Check(guid && Contains(text, "\"" + guid->ToString() + "\": \"2h\""), "项目参数：文件里按 GUID");
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            Check(ElementOf(t, walls[0])["params"]["Fire Rating"] == "2h" && t.GetModel().parameters == s.GetModel().parameters, "项目参数：项目文件往返");
+            // 改名：值与明细表的列跟着
+            Run(s, "parameter", R"({"name": "Fire Rating", "rename": "Fire Resistance"})");
+            Check(ElementOf(s, walls[0])["params"]["Fire Resistance"] == "2h" && Contains(Run(s, "schedule", R"({"name": "Walls"})").dump(), "Fire Resistance"),
+                  "项目参数：改名跟着");
+            Check(Contains(Refused(s, "parameter", R"({"name": "Fire Resistance", "kind": "number"})"), "has values of its kind"), "项目参数：有值时不能换种类");
+            // 不再用于墙：墙的值去掉
+            Run(s, "parameter", R"({"name": "Fire Resistance", "categories": ["door"]})");
+            Check(ElementOf(s, walls[0])["params"].is_null() || !ElementOf(s, walls[0])["params"].contains("Fire Resistance"), "项目参数：离开类别时去掉值");
+            Check(Run(s, "inspect", Json::object())["parameters"].size() == 2, "项目参数：inspect 列出");
+            Check(Contains(Refused(s, "parameter", R"({"name": "Length", "categories": ["wall"]})"), "of their own") &&
+                      Contains(Refused(s, "parameter", R"({"name": "Spare"})"), "needs a category") &&
+                      Contains(Refused(s, "parameter", R"({"name": "Spare", "categories": ["grid"]})"), "isn't a category it can be for"),
+                  "项目参数：拒绝");
+            Run(s, "parameter", R"({"name": "Cost", "delete": true})");
+            Check(!s.GetModel().parameters.count("Cost") && ElementOf(s, col)["params"].is_null(), "项目参数：删除时元素的值去掉");
+        }
+        {
+            // 线型图案、线样式：新建、改名时用到的跟着、用着时不能删
+            Session s;
+            House(s);
+            Run(s, "line_pattern", R"({"name": "Long Dash", "segments": [{"dash": 8}, {"space": 2}]})");
+            Run(s, "line_style", R"({"name": "Red Dash", "pen": 3, "color": "#ff0000", "pattern": "Long Dash"})");
+            const Id line = Run(s, "detail_line", R"({"start": [0, -1000], "end": [4000, -1000], "style": "Red Dash"})")["id"].get<Id>();
+            Run(s, "line_pattern", R"({"name": "Long Dash", "rename": "Long Dashes"})");
+            Check(s.GetModel().lineStyles.at("Red Dash").pattern == std::optional<std::string>("Long Dashes"), "线型图案：改名时线样式跟着");
+            Run(s, "line_style", R"({"name": "Red Dash", "rename": "Red Dashes", "pen": 5})");
+            Check(ElementOf(s, line)["style"] == "Red Dashes" && s.GetModel().lineStyles.at("Red Dashes").pen == 5, "线样式：改名时详图线跟着");
+            Check(Contains(Refused(s, "line_style", R"({"name": "Red Dashes", "delete": true})"), "detail line"), "线样式：用着时不能删");
+            Check(Contains(Refused(s, "line_pattern", R"({"name": "Long Dashes", "delete": true})"), "line style `Red Dashes`"), "线型图案：用着时不能删");
+            Check(Contains(Refused(s, "line_style", R"({"name": "Nothing"})"), "make one with `pen`") &&
+                      Contains(Refused(s, "line_pattern", R"({"name": "Solid", "segments": [{"dash": 3}, {"space": 1}]})"), "no pattern"),
+                  "线样式、线型图案：拒绝");
+            Check(Run(s, "line_style", Json::object())["styles"].contains("Thin Lines"), "线样式：列出");
+            Run(s, "delete", Json{ { "ids", { line } } });
+            Run(s, "line_style", R"({"name": "Red Dashes", "delete": true})");
+            Check(!s.GetModel().lineStyles.count("Red Dashes"), "线样式：删除");
+            // 填充图案：新建、改名时填充区域类型跟着
+            Run(s, "fill_pattern", R"({"name": "Grid 10", "lines": [{"angle": 0, "spacing": 10}, {"angle": 90, "spacing": 10}]})");
+            Run(s, "filled_region", R"({"sketch": [[[0, 0], [1000, 0]], [[1000, 0], [1000, 1000]], [[1000, 1000], [0, 1000]], [[0, 1000], [0, 0]]]})");
+            Model& m = s.ModelMut();
+            m.regionTypes["Gridded"] = RegionType{ std::string("Grid 10"), {}, std::nullopt, {}, false };
+            Run(s, "fill_pattern", R"({"name": "Grid 10", "rename": "Grid 10mm"})");
+            Check(s.GetModel().regionTypes.at("Gridded").foreground == std::optional<std::string>("Grid 10mm"), "填充图案：改名时填充区域类型跟着");
+            Check(Contains(Refused(s, "fill_pattern", R"({"name": "Grid 10mm", "delete": true})"), "fills with"), "填充图案：用着时不能删");
+            Check(Contains(Refused(s, "fill_pattern", R"({"name": "Bad", "lines": [{"angle": 0, "spacing": 0}]})"), "0.05 to 100000"), "填充图案：线距太小");
+        }
+        {
+            // PAT 文件：读、写回一样；英寸换成毫米，反方向的偏移，不成图案的留在外面
+            const char* brick = ";%UNITS=MM\n;%VERSION=3.0\n*Brick 230x75, running bond\n;%TYPE=MODEL\n0, 0,0, 0,75\n90, 0,0, 75,115, 75,-75\n;a comment\n"
+                                "*Diagonal, 45 degrees\n45, 0,0, 0,3\n";
+            Pat::Read r;
+            std::string why;
+            Check(Pat::ReadText(brick, r, why) && r.leftOut.empty() && r.patterns.size() == 2 && r.patterns[0].first == "Brick 230x75" &&
+                      r.patterns[0].second.model && !r.patterns[1].second.model,
+                  "PAT：读出两个图案");
+            Check(r.patterns[0].second.lines[1] == HatchLine{ 90.0, P2(0, 0), 75.0, 115.0, { 75.0, -75.0 } }, "PAT：一族线");
+            std::vector<std::pair<std::string, const FillPattern*>> back;
+            for (const auto& [n, p] : r.patterns)
+                back.emplace_back(n, &p);
+            Pat::Read again;
+            Check(Pat::ReadText(Pat::Write(back), again, why) && again == r, "PAT：写回一样");
+            const char* inch = ";%UNITS=INCH\n*Lines\n0, 0,0, 1,-2, 0.5,-0.25\n*Flat\n0, 0,0, 0,0\n*Words\n0, zero, 0, 0, 1\n*Empty\n*Lines\n0, 0,0, 0,1\n";
+            Check(Pat::ReadText(inch, r, why) && r.patterns.size() == 1 && r.patterns[0].second.lines[0].shift == -25.4 &&
+                      r.patterns[0].second.lines[0].spacing == 50.8 && r.leftOutCount == 4,
+                  "PAT：英寸、反方向、留在外面的：" + std::to_string(r.leftOutCount));
+            // 命令：导入（重名的留着不换），导出
+            Session s;
+            Json res = Run(s, "import_fill_patterns", Json{ { "text", brick } });
+            Check(res["imported"].size() == 2 && s.GetModel().fillPatterns.count("Brick 230x75"), "导入填充图案");
+            res = Run(s, "import_fill_patterns", Json{ { "text", brick } });
+            Check(res["imported"].empty() && res["left_out_count"] == 2, "导入填充图案：重名的留着");
+            res = Run(s, "export_fill_patterns", R"({"names": ["Brick 230x75"]})");
+            Check(Contains(res["text"].get<std::string>(), "*Brick 230x75\n;%TYPE=MODEL\n0,0,0,0,75\n"), "导出填充图案：" + res["text"].get<std::string>());
+        }
+        {
+            // 清除未使用：试清不改；每个类别留一个类型；一个撤销步骤
+            Session s;
+            House(s);
+            Run(s, "type", R"({"category": "wall", "name": "Spare 100", "thickness": 100})");
+            const size_t wallTypes = s.GetModel().types.wall.size();
+            const size_t steps = s.History().size();
+            const Json dry = Run(s, "purge", R"({"dry_run": true})");
+            Check(dry["count"].get<size_t>() > 0 && dry["dry_run"] == true && s.GetModel().types.wall.size() == wallTypes && s.History().size() == steps,
+                  "清除未使用：试清什么都不改");
+            const Json r = Run(s, "purge", Json::object());
+            Check(r["count"] == dry["count"], "清除未使用：试清说得对");
+            std::string used = ElementOf(s, 100002)["type"].get<std::string>();
+            Check(s.GetModel().types.wall.size() == 1 && s.GetModel().types.wall.count(used) && s.GetModel().types.window.size() == 1,
+                  "清除未使用：墙用的类型留着，窗留一个");
+            Check(s.History().size() == steps + 1 && Run(s, "purge", Json::object())["count"] == 0, "清除未使用：一个撤销步骤，再清没有了");
+            Run(s, "undo", Json::object());
+            Check(s.GetModel().types.wall.size() == wallTypes, "清除未使用：撤销");
+            // 材质、视图过滤器
+            Run(s, "filter", R"({"name": "Unused filter", "categories": ["wall"]})");
+            const Json more = Run(s, "purge", R"({"kinds": ["material", "filter"], "dry_run": true})");
+            Check(Contains(more.dump(), "Unused filter"), "清除未使用：没用的视图过滤器：" + more.dump());
+            Check(Contains(Refused(s, "purge", R"({"kinds": ["pictures"]})"), "`kinds` holds"), "清除未使用：拒绝没有的种类");
+        }
+    }
+
     void TestSchedules()
     {
         const Id level1 = 100000;
@@ -3793,6 +4051,7 @@ int main()
     TestSchedules();
     TestSections();
     TestSheets();
+    TestManage();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

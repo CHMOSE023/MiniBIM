@@ -11,6 +11,7 @@
 #include "Model/Align.h"
 #include "Model/Sketch.h"
 #include "Model/ModelJson.h"
+#include "Model/Pat.h"
 #include "Model/Render.h"
 #include "Model/Schedule.h"
 #include "Model/Snap.h"
@@ -20,6 +21,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <set>
 #include <sstream>
@@ -4392,6 +4394,930 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // ── 管理（第 5f 步，移植自 BIMCraft 的 parameter、line_pattern、line_style、fill_pattern、purge、line_weights、object_styles）──
+        // name 去掉前后空白；没给或只有空白时为空
+        bool NameParam(Params& P, const char* key, std::optional<std::string>& out)
+        {
+            std::optional<std::string> v;
+            if (!P.String(key, v))
+                return false;
+            out.reset();
+            if (v && !Text::Trim(*v).empty())
+                out = std::string(Text::Trim(*v));
+            return true;
+        }
+
+        // kind 的库条目 from 改叫 to：库里的条目（GUID 不变），以及用到它的
+        void RenameEntry(Model& m, const Kind& kind, const std::string& from, const std::string& to)
+        {
+            m.library.Renamed(kind, from, to);
+            m.LibRefsMut([&](const Kind& k, std::string& n)
+            {
+                if (k == kind && n == from)
+                    n = to;
+            });
+        }
+
+        // 每个视图与视图样板的图形：按类别、过滤器、元素的覆盖
+        void EachOverride(Model& m, const std::function<void(Override&)>& f)
+        {
+            const auto graphics = [&](Graphics& g)
+            {
+                for (auto& [_, o] : g.categories)
+                    f(o);
+                for (Applied& a : g.filters)
+                    f(a.over);
+                for (auto& [_, o] : g.elements)
+                    f(o);
+            };
+            std::vector<Guid> views;
+            for (const auto& [id, _] : m.elements.Items())
+                views.push_back(m.GuidOf(id));
+            for (const Guid v : views)
+                if (const Graphics* g = m.ViewGraphics(v))
+                {
+                    Graphics copy = *g;
+                    graphics(copy);
+                    if (!(copy == *g))
+                        *m.ViewGraphicsMut(v) = std::move(copy);
+                }
+            for (auto& [_, t] : m.viewTemplates)
+                graphics(t.graphics);
+        }
+
+        // 覆盖里用到填充图案 name 的地方
+        bool OverrideUses(const Override& o, const std::string& name)
+        {
+            for (const Style* s : { &o.projection, &o.cut })
+                for (const std::optional<PatternFill>* layer : { &s->foreground, &s->background })
+                    if (*layer && (*layer)->pattern == name)
+                        return true;
+            return false;
+        }
+
+        bool ParameterCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "parameter";
+            if (!Only(c, p, { "name", "kind", "categories", "rename", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given;
+            if (!NameParam(P, "name", given))
+                return false;
+            if (!given)
+                return P.Fail("`name` is required");
+            const std::string name = *given;
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            const Model& m0 = s.GetModel();
+            // 一个用在它上面有规则的视图过滤器：拿掉会改变过滤器挑出的东西
+            const auto inUse = [&](const std::vector<std::string>& gone) -> bool
+            {
+                for (const auto& [fn, f] : m0.viewFilters)
+                {
+                    const bool cats = std::any_of(f.categories.begin(), f.categories.end(),
+                                                  [&](const std::string& k) { return std::find(gone.begin(), gone.end(), NormalizeCategory(k)) != gone.end(); });
+                    if (cats && std::any_of(f.rules.begin(), f.rules.end(), [&](const Schedules::Filter& r) { return r.field == name; }))
+                        return P.Fail("view filter `" + fn + "` has a rule on `" + name + "`; take the rule off before the parameter goes"), true;
+                }
+                return false;
+            };
+            // 不再用于 gone 里的类别：那些元素的值，以及那些类别的明细表的这一列、按它的过滤与排序。构件的同名族参数是族的，留着
+            const auto clear = [&](Model& m, const std::vector<std::string>& gone)
+            {
+                std::vector<Id> ids;
+                for (const auto& [id, _] : m.elements.Items())
+                    ids.push_back(id);
+                for (const Id id : ids)
+                {
+                    const Element* e = m.elements.Get(id);
+                    if (const Schedule* sc = e->As<Schedule>())
+                    {
+                        if (std::find(gone.begin(), gone.end(), NormalizeCategory(sc->of)) == gone.end())
+                            continue;
+                        Schedule x = *sc;
+                        std::erase_if(x.fields, [&](const Schedules::Field& f) { return f.name == name && !f.formula; });
+                        std::erase_if(x.filters, [&](const Schedules::Filter& f) { return f.field == name; });
+                        std::erase_if(x.sort, [&](const Schedules::Sort& f) { return f.field == name; });
+                        if (!(x == *sc))
+                            *m.elements.GetMut(id)->As<Schedule>() = std::move(x);
+                        continue;
+                    }
+                    const auto* params = e->Params();
+                    if (!params || !params->count(name) || std::find(gone.begin(), gone.end(), e->Category()) == gone.end())
+                        continue;
+                    if (const auto fo = e->FamilyOf())
+                        if (const auto f = m.families.find(fo->first); f != m.families.end() &&
+                            std::any_of(f->second.parameters.begin(), f->second.parameters.end(), [&](const Fam::Parameter& q) { return q.name == name; }))
+                            continue;
+                    m.elements.GetMut(id)->ParamsMut()->erase(name);
+                }
+            };
+            if (del)
+            {
+                const auto was = m0.parameters.find(name);
+                if (was == m0.parameters.end())
+                    return P.Fail("there's no parameter `" + name + "`");
+                const std::vector<std::string> cats = was->second.categories;
+                if (inUse(cats))
+                    return false;
+                Model& m = s.ModelMut();
+                m.parameters.erase(name);
+                clear(m, cats);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            ProjectParameter param;
+            if (const auto it = m0.parameters.find(name); it != m0.parameters.end())
+                param = it->second;
+            const ProjectParameter before = param;
+            if (!P.Absent("kind"))
+            {
+                const Json& v = *Get(p, "kind");
+                const auto k = v.is_string() ? ParameterKindOf::Parse(v.get<std::string>()) : std::nullopt;
+                if (!k)
+                    return P.Fail("`kind`: " + Show(v) + " isn't one of text, number, length, yesno");
+                // 它的类别的元素自己的值（构件的同名族参数的值不算）
+                bool valued = false;
+                for (const auto& [_, e] : m0.elements.Items())
+                    valued = valued || (m0.ParameterOf(*e, name) && e->Params()->count(name));
+                if (*k != param.kind && valued)
+                    return P.Fail("`" + name + "` has values of its kind; take them away before it holds another");
+                param.kind = *k;
+            }
+            std::vector<std::string> gone;
+            if (!P.Absent("categories"))
+            {
+                const Json& v = *Get(p, "categories");
+                if (!v.is_array())
+                    return P.Fail("`categories` is a list of categories, not " + Show(v));
+                std::vector<std::string> list;
+                for (const Json& k : v)
+                {
+                    if (!k.is_string())
+                        return P.Fail("`categories` is a list of categories, not " + Show(v));
+                    const std::string cat = NormalizeCategory(k.get<std::string>());
+                    if (std::find(ParameterCategories.begin(), ParameterCategories.end(), cat) == ParameterCategories.end())
+                    {
+                        std::string all;
+                        for (const char* x : ParameterCategories)
+                            all += (all.empty() ? "" : ", ") + std::string(x);
+                        return P.Fail("`" + k.get<std::string>() + "` isn't a category it can be for; there are " + all);
+                    }
+                    list.push_back(cat);
+                }
+                std::sort(list.begin(), list.end());
+                list.erase(std::unique(list.begin(), list.end()), list.end());
+                for (const std::string& k : param.categories)
+                    if (std::find(list.begin(), list.end(), k) == list.end())
+                        gone.push_back(k);
+                if (inUse(gone))
+                    return false;
+                param.categories = std::move(list);
+            }
+            std::optional<std::string> rename;
+            if (!NameParam(P, "rename", rename))
+                return false;
+            if (!P.Absent("rename") && !rename)
+                return P.Fail("`rename` needs a name");
+            const std::string now = rename ? *rename : name;
+            if (now != name && m0.parameters.count(now))
+                return P.Fail("there's a parameter `" + now + "` already");
+            if (now == name && m0.parameters.count(name) && before == param)
+            {
+                result = Json{ { "name", name }, { "parameter", Json{ { "kind", ParameterKindOf::Name(param.kind) }, { "categories", param.categories } } } };
+                return true;
+            }
+            Model& m = s.ModelMut();
+            clear(m, gone);
+            if (now != name && m.parameters.count(name))
+            {
+                m.parameters.erase(name);
+                m.library.Renamed(Kind::Of(Kind::Tag::Parameter), name, now);
+                const auto mine = [&](const std::string& cat)
+                {
+                    return std::find(param.categories.begin(), param.categories.end(), NormalizeCategory(cat)) != param.categories.end();
+                };
+                for (auto& [_, f] : m.viewFilters)
+                    if (std::any_of(f.categories.begin(), f.categories.end(), mine))
+                        for (Schedules::Filter& r : f.rules)
+                            if (r.field == name)
+                                r.field = now;
+                std::vector<Id> ids;
+                for (const auto& [id, _] : m.elements.Items())
+                    ids.push_back(id);
+                for (const Id id : ids)
+                {
+                    const Element* e = m.elements.Get(id);
+                    if (const Schedule* sc = e->As<Schedule>())
+                    {
+                        if (!mine(sc->of))
+                            continue;
+                        Schedule x = *sc;
+                        for (Schedules::Field& f : x.fields)
+                            if (!f.formula && f.name == name)
+                                f.name = now;
+                        for (Schedules::Filter& f : x.filters)
+                            if (f.field == name)
+                                f.field = now;
+                        for (Schedules::Sort& f : x.sort)
+                            if (f.field == name)
+                                f.field = now;
+                        if (!(x == *sc))
+                            *m.elements.GetMut(id)->As<Schedule>() = std::move(x);
+                        continue;
+                    }
+                    const auto* params = e->Params();
+                    if (!params || !params->count(name) || !mine(e->Category()))
+                        continue;
+                    auto& ps = *m.elements.GetMut(id)->ParamsMut();
+                    Json v = std::move(ps[name]);
+                    ps.erase(name);
+                    ps[now] = std::move(v);
+                }
+            }
+            m.parameters[now] = param;
+            result = Json{ { "name", now }, { "parameter", Json{ { "kind", ParameterKindOf::Name(param.kind) }, { "categories", param.categories } } } };
+            return true;
+        }
+
+        bool LinePatternCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "line_pattern";
+            if (!Only(c, p, { "name", "segments", "rename", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given, rename;
+            if (!NameParam(P, "name", given) || !NameParam(P, "rename", rename))
+                return false;
+            const Model& m0 = s.GetModel();
+            if (!given)
+            {
+                Json all = Json::object();
+                for (const auto& [n, x] : m0.linePatterns)
+                    all[n] = ToJson(x);
+                result = Json{ { "patterns", std::move(all) } };
+                return true;
+            }
+            const std::string name = *given;
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                if (!m0.linePatterns.count(name))
+                    return P.Fail("there's no line pattern `" + name + "`");
+                for (const auto& [user, st] : m0.lineStyles)
+                    if (st.pattern == name)
+                        return P.Fail("`" + name + "` is line style `" + user + "`'s pattern; give it another first");
+                s.ModelMut().linePatterns.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            LinePattern pattern;
+            const auto was = m0.linePatterns.find(name);
+            if (P.Absent("segments"))
+            {
+                if (was == m0.linePatterns.end())
+                {
+                    std::vector<std::string> there;
+                    for (const auto& [n, _] : m0.linePatterns)
+                        there.push_back(n);
+                    return P.Fail("there's no line pattern `" + name + "`; make one with `segments`" + KnownNames(there));
+                }
+                pattern = was->second;
+            }
+            else
+            {
+                std::string why;
+                if (!FromJson(*Get(p, "segments"), pattern, why))
+                    return P.Fail("`segments` is [{\"dash\": mm} | {\"space\": mm} | \"dot\", …]: " + why);
+            }
+            const std::string now = rename ? *rename : name;
+            if (now != name && m0.linePatterns.count(now))
+                return P.Fail("there's already a line pattern `" + now + "`");
+            if (Text::AsciiLower(now) == Text::AsciiLower(Lines::Solid))
+                return P.Fail(std::string(Lines::Solid) + " is a line with no pattern; name it another way");
+            if (!pattern.Check(now, error))
+            {
+                error = Bad(c, error);
+                return false;
+            }
+            if (now != name || was == m0.linePatterns.end() || !(was->second == pattern))
+            {
+                Model& m = s.ModelMut();
+                if (now != name && m.linePatterns.count(name))
+                {
+                    m.linePatterns.erase(name);
+                    RenameEntry(m, Kind::Of(Kind::Tag::LinePattern), name, now);
+                }
+                m.linePatterns[now] = pattern;
+            }
+            result = Json{ { "name", now }, { "segments", ToJson(pattern) } };
+            return true;
+        }
+
+        bool LineStyleCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "line_style";
+            if (!Only(c, p, { "name", "pen", "color", "pattern", "rename", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given, rename;
+            if (!NameParam(P, "name", given) || !NameParam(P, "rename", rename))
+                return false;
+            const Model& m0 = s.GetModel();
+            if (!given)
+            {
+                Json all = Json::object();
+                for (const auto& [n, x] : m0.lineStyles)
+                    all[n] = ToJson(x);
+                result = Json{ { "styles", std::move(all) } };
+                return true;
+            }
+            const std::string name = *given;
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                if (!m0.lineStyles.count(name))
+                    return P.Fail("there's no line style `" + name + "`");
+                for (const auto& [id, e] : m0.elements.Items())
+                {
+                    if (const DetailLine* l = e->As<DetailLine>(); l && l->style == name)
+                        return P.Fail("detail line " + std::to_string(id) + " is drawn in `" + name + "`; give it another style first");
+                    if (const FilledRegion* r = e->As<FilledRegion>())
+                    {
+                        const bool uses = r->lineStyle == name ||
+                                          std::any_of(r->sketch.begin(), r->sketch.end(), [&](const SketchLine& l) { return l.style == name; });
+                        if (uses)
+                            return P.Fail("filled region " + std::to_string(id) + " is bounded in `" + name + "`; give it another line style first");
+                    }
+                }
+                s.ModelMut().lineStyles.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            const auto was = m0.lineStyles.find(name);
+            LineStyle style;
+            if (was != m0.lineStyles.end())
+                style = was->second;
+            else if (P.Absent("pen"))
+                return P.Fail("there's no line style `" + name + "`; make one with `pen`");
+            else
+                style = LineStyle{ 1, {}, std::nullopt };
+            if (!P.Absent("pen"))
+            {
+                const auto pen = AsWhole(*Get(p, "pen"));
+                if (!pen || *pen > Pens::Max)
+                    return P.Fail("`pen` is a pen, 0 (a hairline) to 16, not " + Show(*Get(p, "pen")));
+                style.pen = static_cast<uint8_t>(*pen);
+            }
+            if (!P.Absent("color"))
+            {
+                const auto col = Colour(*Get(p, "color"));
+                if (!col)
+                    return P.Fail("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not " + Show(*Get(p, "color")));
+                style.color = *col;
+            }
+            if (p.is_object() && p.contains("pattern"))
+            {
+                const Json& v = p["pattern"];
+                if (v.is_null())
+                    style.pattern.reset();
+                else if (!v.is_string())
+                    return P.Fail("`pattern` is a line pattern's name, or \"" + std::string(Lines::Solid) + "\", not " + Show(v));
+                else
+                {
+                    const std::string n(Text::Trim(v.get<std::string>()));
+                    if (Text::AsciiLower(n) == Text::AsciiLower(Lines::Solid))
+                        style.pattern.reset();
+                    else
+                        style.pattern = n;
+                }
+            }
+            const std::string now = rename ? *rename : name;
+            if (now != name && m0.lineStyles.count(now))
+                return P.Fail("there's already a line style `" + now + "`");
+            if (!Lines::CheckStyle(style, now, m0.linePatterns, error))
+            {
+                error = Bad(c, error);
+                return false;
+            }
+            if (now != name || was == m0.lineStyles.end() || !(was->second == style))
+            {
+                Model& m = s.ModelMut();
+                if (now != name && m.lineStyles.count(name))
+                {
+                    m.lineStyles.erase(name);
+                    RenameEntry(m, Kind::Of(Kind::Tag::LineStyle), name, now);
+                }
+                m.lineStyles[now] = style;
+            }
+            result = Json{ { "name", now }, { "style", ToJson(style) } };
+            return true;
+        }
+
+        bool FillPatternCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "fill_pattern";
+            if (!Only(c, p, { "name", "target", "lines", "rename", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given, rename;
+            if (!NameParam(P, "name", given) || !NameParam(P, "rename", rename))
+                return false;
+            const Model& m0 = s.GetModel();
+            if (!given)
+            {
+                Json all = Json::object();
+                for (const auto& [n, x] : m0.fillPatterns)
+                    all[n] = ToJson(x);
+                result = Json{ { "patterns", std::move(all) } };
+                return true;
+            }
+            const std::string name = *given;
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                if (!m0.fillPatterns.count(name))
+                    return P.Fail("there's no fill pattern `" + name + "`");
+                for (const auto& [user, t] : m0.regionTypes)
+                    if (t.foreground == name || t.background == name)
+                        return P.Fail("filled region type `" + user + "` fills with `" + name + "`; give it another first");
+                bool shown = false;
+                Model probe = m0;
+                EachOverride(probe, [&](Override& o) { shown = shown || OverrideUses(o, name); });
+                if (shown)
+                    return P.Fail("a view's Visibility/Graphics fills with `" + name + "`; give it another first");
+                s.ModelMut().fillPatterns.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            const auto was = m0.fillPatterns.find(name);
+            FillPattern pattern;
+            if (was != m0.fillPatterns.end())
+                pattern = was->second;
+            else if (P.Absent("lines") && P.Absent("target"))
+            {
+                std::vector<std::string> there;
+                for (const auto& [n, _] : m0.fillPatterns)
+                    there.push_back(n);
+                return P.Fail("there's no fill pattern `" + name + "`; make one with `lines`" + KnownNames(there));
+            }
+            if (!P.Absent("target"))
+            {
+                const Json& v = *Get(p, "target");
+                if (!v.is_string() || (v.get<std::string>() != "drafting" && v.get<std::string>() != "model"))
+                    return P.Fail("`target` is drafting or model, not " + Show(v));
+                pattern.model = v.get<std::string>() == "model";
+            }
+            if (!P.Absent("lines"))
+            {
+                const Json& v = *Get(p, "lines");
+                const char* shape = "`lines` is [{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …]";
+                if (!v.is_array())
+                    return P.Fail(std::string(shape) + ", not " + Show(v));
+                std::vector<HatchLine> lines;
+                for (const Json& x : v)
+                {
+                    HatchLine l;
+                    std::string why;
+                    if (!FromJson(x, l, why))
+                        return P.Fail(std::string(shape) + ": " + why);
+                    lines.push_back(std::move(l));
+                }
+                pattern.lines = std::move(lines);
+            }
+            const std::string now = rename ? *rename : name;
+            if (now != name && m0.fillPatterns.count(now))
+                return P.Fail("there's already a fill pattern `" + now + "`");
+            if (!pattern.Check(now, error))
+            {
+                error = Bad(c, error);
+                return false;
+            }
+            if (now != name || was == m0.fillPatterns.end() || !(was->second == pattern))
+            {
+                Model& m = s.ModelMut();
+                if (now != name && m.fillPatterns.count(name))
+                {
+                    m.fillPatterns.erase(name);
+                    RenameEntry(m, Kind::Of(Kind::Tag::FillPattern), name, now);
+                    // 视图的可见性 / 图形里的图案跟着改名
+                    EachOverride(m, [&](Override& o)
+                    {
+                        for (Style* st : { &o.projection, &o.cut })
+                            for (std::optional<PatternFill>* layer : { &st->foreground, &st->background })
+                                if (*layer && (*layer)->pattern == name)
+                                    (*layer)->pattern = now;
+                    });
+                }
+                m.fillPatterns[now] = pattern;
+            }
+            result = Json{ { "name", now }, { "pattern", ToJson(pattern) } };
+            return true;
+        }
+
+        bool ImportFillPatterns(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "import_fill_patterns";
+            if (!Only(c, p, { "path", "text", "replace" }, error))
+                return false;
+            Params P(c, p, error);
+            bool replace = false;
+            std::optional<std::string> path;
+            if (!P.Flag("replace", replace) || !P.String("path", path))
+                return false;
+            // PAT 文件的文字比名称长得多：text 收得下一个文件那么长（Pat::ReadText 拒绝更长的）
+            std::optional<std::string> text;
+            if (!P.Absent("text"))
+            {
+                const Json& v = *Get(p, "text");
+                if (!v.is_string())
+                    return P.Fail("`text` must be the text of a PAT file");
+                text = v.get<std::string>();
+            }
+            if (path.has_value() == text.has_value())
+                return P.Fail("give `path`, a PAT file, or its `text`");
+            std::string body, why;
+            if (path)
+            {
+                std::error_code ec;
+                const uintmax_t size = std::filesystem::file_size(ToPath(*path), ec);
+                if (!ec && size > Pat::MaxText)
+                    return P.Fail(*path + " is too large (" + std::to_string(size) + " bytes)");
+                if (!ReadFile(*path, body, why))
+                    return P.Fail(why);
+                body = Pat::Decode(body);
+            }
+            else
+                body = *text;
+            Pat::Read read;
+            if (!Pat::ReadText(body, read, why))
+                return P.Fail(why);
+            // 恶意的文件可能留下几千个：回复列出前几个，数出全部
+            Json imported = Json::array(), leftOut = Json::array();
+            size_t count = read.leftOutCount;
+            Model next = s.GetModel();
+            for (auto& [name, pattern] : read.patterns)
+            {
+                if (next.fillPatterns.count(name) && !replace)
+                {
+                    ++count;
+                    if (leftOut.size() < Pat::MaxLeftOut)
+                        leftOut.push_back(Json{ { "name", name }, { "why", "the project has a pattern of that name" } });
+                    continue;
+                }
+                next.fillPatterns[name] = std::move(pattern);
+                imported.push_back(name);
+            }
+            for (const auto& [name, why2] : read.leftOut)
+                if (leftOut.size() < Pat::MaxLeftOut)
+                    leftOut.push_back(Json{ { "name", name }, { "why", why2 } });
+            if (!imported.empty())
+                s.ModelMut().fillPatterns = std::move(next.fillPatterns);
+            result = Json{ { "imported", std::move(imported) }, { "left_out", std::move(leftOut) }, { "left_out_count", count } };
+            return true;
+        }
+
+        bool ExportFillPatterns(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "export_fill_patterns";
+            if (!Only(c, p, { "path", "names" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<std::string> path;
+            if (!P.String("path", path))
+                return false;
+            std::optional<std::set<std::string>> names;
+            if (!P.Absent("names"))
+            {
+                const Json& v = *Get(p, "names");
+                if (!v.is_array() || !std::all_of(v.begin(), v.end(), [](const Json& x) { return x.is_string(); }))
+                    return P.Fail("`names` is [name, …], not " + Show(v));
+                names.emplace();
+                for (const Json& x : v)
+                {
+                    if (!m.fillPatterns.count(x.get<std::string>()))
+                        return P.Fail("there's no fill pattern `" + x.get<std::string>() + "`");
+                    names->insert(x.get<std::string>());
+                }
+            }
+            std::vector<std::pair<std::string, const FillPattern*>> chosen;
+            for (const auto& [n, x] : m.fillPatterns)
+                if (!names || names->count(n))
+                    chosen.emplace_back(n, &x);
+            const std::string text = Pat::Write(chosen);
+            if (path)
+            {
+                std::string why;
+                if (!AtomicWrite(*path, text, why))
+                    return P.Fail(why);
+                result = Json{ { "path", *path } };
+            }
+            else
+                result = Json{ { "text", text } };
+            return true;
+        }
+
+        // 清除未使用能清除的（BIMCraft 的 PURGE_KINDS；MiniBIM 没有图片，picture 什么也不清除）
+        constexpr std::array<const char*, 6> PurgeKinds = { "type", "family", "material", "picture", "filter", "template" };
+        constexpr int PurgePasses = 16;
+
+        // kinds 里没被用到的库条目，一遍清除会去掉的：每个类别留一个类型（默认的，否则第一个），每个族留一个类型；
+        // 族去掉时它的类型跟着去。去掉一些后可能又有没被用到的，下一遍再找
+        std::vector<std::pair<Kind, std::string>> UnusedEntries(const Model& m, const std::set<std::string>& kinds)
+        {
+            const auto uses = LibraryUses(m);
+            const auto has = [&](const char* k) { return kinds.count(k) > 0; };
+            const auto unused = [&](const Kind& k, const std::string& n) { return !uses.count({ k, n }); };
+            std::vector<std::pair<Kind, std::string>> out;
+            std::map<std::string, std::vector<std::string>> categories;
+            for (const auto& [kind, name] : m.LibraryNames())
+                if (kind.tag == Kind::Tag::Type)
+                    categories[kind.category].push_back(name);
+            if (has("type"))
+                for (const auto& [cat, names] : categories)
+                {
+                    const Kind kind = Kind::Type(cat);
+                    std::vector<std::string> gone;
+                    for (const std::string& n : names)
+                        if (unused(kind, n))
+                            gone.push_back(n);
+                    if (gone.size() == names.size())
+                    {
+                        const auto d = m.DefaultType(cat);
+                        const std::string keep = d && std::find(gone.begin(), gone.end(), *d) != gone.end() ? *d : gone.front();
+                        std::erase(gone, keep);
+                    }
+                    for (const std::string& n : gone)
+                        out.emplace_back(kind, n);
+                }
+            std::vector<std::string> familiesGone;
+            if (has("family"))
+                for (const auto& [f, _] : m.families)
+                    if (unused(Kind::Of(Kind::Tag::Family), f))
+                        familiesGone.push_back(f);
+            for (const std::string& f : familiesGone)
+                out.emplace_back(Kind::Of(Kind::Tag::Family), f);
+            if (has("type"))
+                for (const auto& [f, fam] : m.families)
+                {
+                    if (std::find(familiesGone.begin(), familiesGone.end(), f) != familiesGone.end())
+                        continue;
+                    std::vector<std::string> gone;
+                    for (const auto& [t, _] : fam.types)
+                        if (unused(Kind::Of(Kind::Tag::FamilyType), f + ": " + t))
+                            gone.push_back(f + ": " + t);
+                    if (!gone.empty() && gone.size() == fam.types.size())
+                        gone.pop_back();
+                    for (const std::string& n : gone)
+                        out.emplace_back(Kind::Of(Kind::Tag::FamilyType), n);
+                }
+            if (has("material"))
+                for (const auto& [n, _] : m.materials)
+                    if (unused(Kind::Of(Kind::Tag::Material), n))
+                        out.emplace_back(Kind::Of(Kind::Tag::Material), n);
+            // 视图过滤器：视图与样板套用的；视图样板：视图跟随的
+            std::set<std::string> filters, templates;
+            const auto look = [&](const Graphics& g)
+            {
+                for (const Applied& a : g.filters)
+                    filters.insert(a.filter);
+                if (g.templateName)
+                    templates.insert(*g.templateName);
+            };
+            for (const auto& [id, _] : m.elements.Items())
+                if (const Graphics* g = m.ViewGraphics(m.GuidOf(id)))
+                    look(*g);
+            for (const auto& [_, t] : m.viewTemplates)
+                look(t.graphics);
+            if (has("filter"))
+                for (const auto& [n, _] : m.viewFilters)
+                    if (!filters.count(n))
+                        out.emplace_back(Kind::Of(Kind::Tag::ViewFilter), n);
+            if (has("template"))
+                for (const auto& [n, _] : m.viewTemplates)
+                    if (!templates.count(n))
+                        out.emplace_back(Kind::Of(Kind::Tag::ViewTemplate), n);
+            return out;
+        }
+
+        // 去掉库条目：有没有这个
+        bool RemoveEntry(Model& m, const Kind& kind, const std::string& name)
+        {
+            switch (kind.tag)
+            {
+            case Kind::Tag::Type:
+                return WithTypes(m, kind.category, [&](auto& t) { return t.erase(name) > 0; });
+            case Kind::Tag::Family:
+                return m.families.erase(name) > 0;
+            case Kind::Tag::FamilyType:
+            {
+                const size_t colon = name.find(": ");
+                const auto f = colon == std::string::npos ? m.families.end() : m.families.find(name.substr(0, colon));
+                return f != m.families.end() && f->second.types.erase(name.substr(colon + 2)) > 0;
+            }
+            case Kind::Tag::Material:
+                return m.materials.erase(name) > 0;
+            case Kind::Tag::ViewFilter:
+                return m.viewFilters.erase(name) > 0;
+            case Kind::Tag::ViewTemplate:
+                return m.viewTemplates.erase(name) > 0;
+            default:
+                return false;
+            }
+        }
+
+        bool PurgeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "purge";
+            if (!Only(c, p, { "kinds", "dry_run" }, error))
+                return false;
+            Params P(c, p, error);
+            std::set<std::string> kinds{ "type", "family" };
+            if (!P.Absent("kinds"))
+            {
+                const Json& v = *Get(p, "kinds");
+                if (!v.is_array())
+                    return P.Fail("`kinds` is a list of what to purge, not " + Show(v));
+                kinds.clear();
+                for (const Json& k : v)
+                {
+                    if (!k.is_string() || std::find_if(PurgeKinds.begin(), PurgeKinds.end(), [&](const char* x) { return k.get<std::string>() == x; }) == PurgeKinds.end())
+                        return P.Fail("`kinds` holds type, family, material, picture, filter, template, not " + Show(k));
+                    kinds.insert(k.get<std::string>());
+                }
+            }
+            bool dryRun = false;
+            if (!P.Flag("dry_run", dryRun))
+                return false;
+            // 在副本上一遍一遍地清：试清的列表就是真清时会去掉的
+            Model model = s.GetModel();
+            std::vector<std::pair<Kind, std::string>> removed;
+            for (int pass = 0; pass < PurgePasses; ++pass)
+            {
+                const auto unused = UnusedEntries(model, kinds);
+                if (unused.empty())
+                    break;
+                for (const auto& [kind, name] : unused)
+                    if (RemoveEntry(model, kind, name))
+                        removed.emplace_back(kind, name);
+                model.SyncLibrary();
+            }
+            if (!dryRun && !removed.empty())
+                s.ModelMut() = std::move(model);
+            Json listed = Json::array();
+            for (const auto& [kind, name] : removed)
+                listed.push_back(Json{ { "kind", kind.Label() }, { "name", name } });
+            result = Json{ { "removed", listed }, { "count", listed.size() }, { "dry_run", dryRun } };
+            return true;
+        }
+
+        bool LineWeightsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "line_weights";
+            if (!Only(c, p, { "model", "annotation", "reset" }, error))
+                return false;
+            Params P(c, p, error);
+            if (!P.Absent("reset") && !Get(p, "reset")->is_boolean())
+                return P.Fail("`reset` is true or false, not " + Show(*Get(p, "reset")));
+            bool reset = false;
+            if (!P.Flag("reset", reset))
+                return false;
+            const Model& m0 = s.GetModel();
+            const auto row = [&](const Json& v, PenRow& out)
+            {
+                if (!v.is_array() || v.size() != out.size())
+                    return false;
+                for (size_t i = 0; i < out.size(); ++i)
+                {
+                    if (!v[i].is_number())
+                        return false;
+                    out[i] = v[i].get<double>();
+                }
+                return true;
+            };
+            if (reset)
+            {
+                if (m0.lineWeights)
+                    s.ModelMut().lineWeights.reset();
+            }
+            else if (!P.Absent("model") || !P.Absent("annotation"))
+            {
+                LineWeights lw = m0.LineWeightsOf();
+                if (!P.Absent("model"))
+                {
+                    const Json& v = *Get(p, "model");
+                    const std::string shape = "`model` is [{scale, widths: [the 16 pens' widths, mm]}, …]";
+                    if (!v.is_array())
+                        return P.Fail(shape + ", not " + Show(v));
+                    lw.model.clear();
+                    for (const Json& col : v)
+                    {
+                        ScalePens sp;
+                        if (!col.is_object() || !col.contains("scale") || !col["scale"].is_number() || !col.contains("widths") ||
+                            !row(col["widths"], sp.widths) || col.size() != 2)
+                            return P.Fail(shape + ", not " + Show(col));
+                        sp.scale = col["scale"].get<double>();
+                        lw.model.push_back(sp);
+                    }
+                }
+                if (!P.Absent("annotation") && !row(*Get(p, "annotation"), lw.annotation))
+                    return P.Fail("`annotation` is the 16 pens' widths, mm, not " + Show(*Get(p, "annotation")));
+                lw.Sort();
+                if (!lw.Check(error))
+                {
+                    error = Bad(c, error);
+                    return false;
+                }
+                if (!m0.lineWeights || !(*m0.lineWeights == lw))
+                    s.ModelMut().lineWeights = std::move(lw);
+            }
+            const Model& m = s.GetModel();
+            const LineWeights lw = m.LineWeightsOf();
+            Json model = Json::array();
+            for (const ScalePens& col : lw.model)
+                model.push_back(Json{ { "scale", col.scale }, { "name", UnitsOf::Scale(m.units, col.scale) }, { "widths", col.widths } });
+            result = Json{ { "model", std::move(model) }, { "annotation", lw.annotation }, { "own", m.lineWeights.has_value() } };
+            return true;
+        }
+
+        bool ObjectStylesCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "object_styles";
+            if (!Only(c, p, { "categories", "reset" }, error))
+                return false;
+            Params P(c, p, error);
+            if (!P.Absent("reset") && !Get(p, "reset")->is_boolean())
+                return P.Fail("`reset` is true or false, not " + Show(*Get(p, "reset")));
+            bool reset = false;
+            if (!P.Flag("reset", reset))
+                return false;
+            const Model& m0 = s.GetModel();
+            if (reset)
+            {
+                if (!m0.objectStyles.empty())
+                    s.ModelMut().objectStyles.clear();
+            }
+            else if (!P.Absent("categories"))
+            {
+                const Json& v = *Get(p, "categories");
+                const std::string shape = "`categories` is {category: {projection?: pen, cut?: pen}, …}";
+                if (!v.is_object())
+                    return P.Fail(shape + ", not " + Show(v));
+                std::map<std::string, ObjectStyle> styles = m0.objectStyles;
+                for (auto it = v.begin(); it != v.end(); ++it)
+                {
+                    const std::string cat = it.key();
+                    if (!ObjectStyles::Known(cat))
+                    {
+                        std::string all;
+                        for (const char* k : GraphicsOf::Model)
+                            all += (all.empty() ? "" : ", ") + std::string(k);
+                        return P.Fail("`" + cat + "` isn't a model category; Object Styles has: " + all);
+                    }
+                    if (!it->is_object())
+                        return P.Fail(shape + ", not " + Show(*it));
+                    ObjectStyle st = m0.ObjectStyleOf(cat);
+                    for (auto k = it->begin(); k != it->end(); ++k)
+                    {
+                        uint8_t* slot = k.key() == "projection" ? &st.projection : k.key() == "cut" ? &st.cut : nullptr;
+                        if (!slot)
+                            return P.Fail(shape + ": `" + k.key() + "` isn't one of projection, cut");
+                        const auto pen = AsWhole(*k);
+                        if (!pen)
+                            return P.Fail("`" + cat + "` " + k.key() + ": a pen is a whole number, 0 (a hairline) to 16, not " + Show(*k));
+                        if (*pen > Pens::Max)
+                            return P.Fail("object style `" + cat + "` " + k.key() + ": a line weight is a pen, 0 (a hairline) to 16, not " +
+                                          std::to_string(*pen));
+                        *slot = static_cast<uint8_t>(*pen);
+                    }
+                    if (st == ObjectStyles::Default(cat))
+                        styles.erase(cat);
+                    else
+                        styles[cat] = st;
+                }
+                if (styles != m0.objectStyles)
+                    s.ModelMut().objectStyles = std::move(styles);
+            }
+            const Model& m = s.GetModel();
+            Json all = Json::array();
+            for (const char* cat : GraphicsOf::Model)
+            {
+                const ObjectStyle st = m.ObjectStyleOf(cat);
+                all.push_back(Json{ { "category", cat }, { "projection", st.projection }, { "cut", st.cut }, { "own", m.objectStyles.count(cat) > 0 } });
+            }
+            result = Json{ { "categories", std::move(all) } };
+            return true;
+        }
+
         // ── 图纸与视口（第 5e4 步，移植自 BIMCraft 的 sheet、place）──
         bool SheetCmd(Session& s, const Json& p, Json& result, std::string& error)
         {
@@ -5663,6 +6589,15 @@ namespace MiniBIM::Bim
             return all;
         }
 
+        // 项目参数：{名称: {kind, categories}}
+        Json ParametersJson(const Model& m)
+        {
+            Json out = Json::object();
+            for (const auto& [n, p] : m.parameters)
+                out[n] = Json{ { "kind", ParameterKindOf::Name(p.kind) }, { "categories", p.categories } };
+            return out;
+        }
+
         bool Inspect(Session& s, const Json&, Json& result, std::string&)
         {
             const Model& m = s.GetModel();
@@ -5686,6 +6621,7 @@ namespace MiniBIM::Bim
                            { "types", Bim::ToJson(m.types) },
                            { "materials", Bim::ToJson(m.materials) },
                            { "families", FamiliesJson(m) },
+                           { "parameters", ParametersJson(m) },
                            { "warnings", Json::array() },
                            { "history", s.History() } };
             return true;
@@ -5908,6 +6844,71 @@ namespace MiniBIM::Bim
               "an elevation to its bottom-left and top-right corners (mm along its line from its start, and up), its line shortened to the "
               "region's sides; null uncrops it; without a region, a plan crops to what it shows now, a section to the model's heights",
               CropCmd, true },
+            // ── 管理 ──
+            { "parameter", N_("Project Parameters"), {},
+              "{name, kind?: text|number|length|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|column|component|mass|"
+              "structuralcolumn|footing|beam|stripfooting|pipe|conduit|cabletray|wire|downconductor|groundconductor|cable, …], rename?, "
+              "delete?: true} a project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each element of "
+              "its categories may have of its own, set with `modify {id, params: {name: value}}` (lengths in mm, yes or no as true or "
+              "false). Off a category, that category's elements lose their values of it; deleted, every element does; renamed, they "
+              "follow it, and so do schedules' fields and view filters' rules. `inspect` lists them",
+              ParameterCmd, true },
+            { "line_pattern", N_("Line Patterns"), {},
+              "{name?, segments?: [{dash: mm} | {space: mm} | \"dot\", …], rename?, delete?: true} a line pattern of the project's: "
+              "dashes, spaces and dots repeating along a line, lengths in mm on paper. A new one needs `segments`. `rename` renames it, "
+              "the line styles drawing in it following; `delete` takes it away while no line style uses it. Without `name`, it lists "
+              "every pattern",
+              LinePatternCmd, true },
+            { "line_style", N_("Line Styles"), {},
+              "{name?, pen?, color?: \"#rrggbb\" | [r, g, b], pattern?: name | \"Solid\", rename?, delete?: true} a line style of the "
+              "project's, as Revit's: the pen (0, a hairline, to 16) its lines draw in, their colour (black unless told) and their line "
+              "pattern. A new one needs `pen`; one changed keeps what it isn't given. A project starts with Hairline, Thin Lines, Medium "
+              "Lines, Wide Lines, Hidden Lines, Centre Lines and Overhead Lines. `rename` renames it, the lines drawn in it following; "
+              "`delete` takes it away, while no line is drawn in it. Without `name`, it lists every style",
+              LineStyleCmd, true },
+            { "fill_pattern", N_("Fill Patterns"), {},
+              "{name?, target?: drafting|model, lines?: [{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …], rename?, "
+              "delete?: true} a fill pattern of the project's, as Revit's (and a PAT file's): families of parallel lines, each at `angle` "
+              "degrees through `origin`, its lines `spacing` apart and each `shift` along from the last, whole or dashed (`dashes`: a "
+              "dash's length, a space's as a negative one, 0 a dot); no lines, it fills solid. A drafting pattern's lengths are mm on "
+              "paper, the same at any scale; a model pattern's mm in the building. `rename` renames it, the region types and views "
+              "filling with it following; `delete` takes it away while nothing fills with it. Without `name`, it lists every pattern",
+              FillPatternCmd, true },
+            { "import_fill_patterns", N_("Import Fill Patterns"), {},
+              "{path | text, replace?: false} the fill patterns of a PAT file, from the file at `path` or as `text`: each `*Name` and "
+              "its families of lines, in mm unless the file says `;%UNITS=INCH`, drafting unless a pattern says `;%TYPE=MODEL`. A "
+              "pattern the project already has is left as it is unless `replace`; one that can't be a pattern (no lines, an offset of "
+              "0, dashes that are all spaces, too many families) is left out. A file is read up to its first 2000 patterns. It returns "
+              "those `imported`, those `left_out` (the first 100, each with why) and `left_out_count`, all of them",
+              ImportFillPatterns, true },
+            { "export_fill_patterns", N_("Export Fill Patterns"), {},
+              "{path?, names?: [name, …]} the project's fill patterns (those `names` says, else all but the solid ones, which a PAT "
+              "file can't hold) as a PAT file in mm, written to `path`, or returned as `text` without it",
+              ExportFillPatterns, false },
+            { "purge", N_("Purge Unused"), { "PU" },
+              "{kinds?: [type|family|material|picture|filter|template, …], dry_run?} takes out what nothing uses, again for what that "
+              "leaves unused: types and families unless `kinds` says; a category keeps a type and a family a type; with `dry_run` it "
+              "lists what would go and changes nothing",
+              PurgeCmd, true },
+            { "line_weights", N_("Line Weights"), {},
+              "{model?: [{scale, widths}, …], annotation?: [16 widths], reset?: true} the project's line weights, as Revit's Manage > "
+              "Line Weights: what each pen draws on paper, mm. `model` gives, whole, the model's pens 1 to 16 at each of its scales "
+              "(1 to 32 of them, 1 : `scale`): a view draws its walls, doors, patterns and the rest of the model in the column of the "
+              "scale nearest its own (by how many times finer or coarser; the finer of two as near). `annotation` gives the 16 pens "
+              "that dimensions, tags, text, grids, levels and marks draw in, at any scale. Each width is 0.01 to 20 mm; pen 0 is "
+              "always a hairline. `reset` goes back to what a project in its units starts with (the model's pens wider at finer "
+              "scales; at 1 : 100, pen 4 is 0.18 mm and pen 10 0.35 mm). Without any, it says what they are, each scale named as the "
+              "project's units name it, and `own` whether the project has set them",
+              LineWeightsCmd, true },
+            { "object_styles", N_("Object Styles"), {},
+              "{categories?: {category: {projection?: pen, cut?: pen}, …}, reset?: true} the project's object styles, as Revit's "
+              "Manage > Object Styles: the pen (0, a hairline, to 16) each model category draws its lines in where it is seen "
+              "(`projection`) and where a view cuts it (`cut`), in every plan and section; a view's Visibility/Graphics overrides "
+              "them. A category given keeps the pen it isn't given. The rest of an element's lines keep their own: a compound wall's "
+              "layers, a door's jambs. `reset` goes back to what a project starts with (cut pen 10 and seen pen 4; a door's and a "
+              "window's cut 6, a railing seen 6, a mass 4 both). Without either, it says each model category's, `own` whether the "
+              "project has set it apart",
+              ObjectStylesCmd, true },
             { "sheet", N_("Sheet"), {},
               "{number?, name?, size?: A0|A1|A2|A3|A4} a sheet: paper of an ISO size, landscape (A3 unless given), with a title block. "
               "Numbered A101, A102… unless given; named `Unnamed` in the project's language unless given",

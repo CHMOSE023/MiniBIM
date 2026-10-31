@@ -325,6 +325,7 @@ namespace MiniBIM
         const int id = m_nextPickId++;
         m_pickRequests[id] = std::move(done);
         MiniBIMWeb_PickFile(id, kind == FileKind::Shortcuts      ? ".json,.xml,.txt,.md"
+                              : kind == FileKind::FillPatterns   ? ".pat"
                               : kind == FileKind::ProjectOrRevit ? ".minibim,.bimcraft,.ifc,.rvt"
                                                                  : ".minibim,.bimcraft,.ifc");
     }

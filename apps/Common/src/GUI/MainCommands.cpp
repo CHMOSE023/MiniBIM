@@ -87,6 +87,13 @@ namespace MiniBIM
         add("modify.typeProperties", N_("Type Properties"), N_("Edit the type of the selected elements, or of what the tool places"),
             [this] { EditType(); }, [this] { return CurrentTypeSubject().has_value(); });
         add("manage.materials", N_("Materials"), N_("The project's materials: their colours and patterns"), [this] { OpenMaterials(); });
+        add("manage.parameters", N_("Project Parameters"), N_("Values each element of chosen categories can hold, shown in Properties and schedules"),
+            [this] { OpenProjectParameters(); });
+        add("manage.objectStyles", N_("Object Styles"), N_("The pen each model category draws in, seen and cut"), [this] { OpenObjectStyles(); });
+        add("manage.lineWeights", N_("Line Weights"), N_("How wide each pen draws on paper, at each scale"), [this] { OpenLineWeights(); });
+        add("manage.lineStyles", N_("Line Styles"), N_("The project's line styles: pen, colour and line pattern"), [this] { OpenLineStyles(); });
+        add("manage.fillPatterns", N_("Fill Patterns"), N_("The project's fill patterns; import and export PAT files"), [this] { OpenFillPatterns(); });
+        add("manage.purge", N_("Purge Unused"), N_("Take out types, families and the rest that nothing uses"), [this] { OpenPurge(); });
         // ── 视图（移植自 BIMCraft 的视图选项卡）：可见性 / 图形、复制视图、裁剪 ─────────
         add("view.visibility", N_("Visibility/Graphics"), N_("What the view shows: hide or show categories; a plan's scale and detail level"),
             [this] { OpenVisibilityGraphics(); });
@@ -458,7 +465,9 @@ namespace MiniBIM
         using namespace MiniGUI;
         const std::string ext = ToUtf8(ToPath(suggestedName).extension());
         const std::string base = ToUtf8(ToPath(suggestedName).stem());
-        auto dialog = std::make_unique<Dialog>(kind == SaveKind::Ifc ? Tr("Export IFC") : Tr("Save As"));
+        auto dialog = std::make_unique<Dialog>(kind == SaveKind::Ifc            ? Tr("Export IFC")
+                                               : kind == SaveKind::FillPatterns ? Tr("Export Fill Patterns")
+                                                                                : Tr("Save As"));
         Dialog* dlg = dialog.get();
         Node* body = dlg->GetBody();
         LayoutStyle& bs = body->EditLayoutStyle();     // 留着对话框给内容区的边距
@@ -483,7 +492,7 @@ namespace MiniBIM
             t.erase(t.find_last_not_of(" \t") + 1);
             return t.substr(first);
         };
-        Button* ok = dlg->AddButton(kind == SaveKind::Ifc ? Tr("Export") : Tr("Save"), [this, dlg, name, kind, ext, trimmed, done = std::move(done)]
+        Button* ok = dlg->AddButton(kind == SaveKind::Project ? Tr("Save") : Tr("Export"), [this, dlg, name, kind, ext, trimmed, done = std::move(done)]
         {
             std::string n = trimmed(name->GetText());
             dlg->Close();

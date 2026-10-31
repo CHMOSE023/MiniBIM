@@ -393,6 +393,7 @@ namespace MiniBIM
     void Win32Window::PickFile(FileKind kind, std::function<void(const std::string&)> done)
     {
         const std::string path = ShowProjectDialog(kind == FileKind::Shortcuts      ? FileDialog::Shortcuts
+                                                 : kind == FileKind::FillPatterns   ? FileDialog::Pat
                                                  : kind == FileKind::ProjectOrRevit ? FileDialog::OpenRevit
                                                                                     : FileDialog::Open, {});
         if (!path.empty() && done)
@@ -401,12 +402,14 @@ namespace MiniBIM
 
     std::string Win32Window::ChooseSavePath(SaveKind kind, const std::string& suggestedName)
     {
-        return ShowProjectDialog(kind == SaveKind::Ifc ? FileDialog::SaveIfc : FileDialog::SaveProject, suggestedName);
+        return ShowProjectDialog(kind == SaveKind::Ifc            ? FileDialog::SaveIfc
+                                 : kind == SaveKind::FillPatterns ? FileDialog::SavePat
+                                                                  : FileDialog::SaveProject, suggestedName);
     }
 
     std::string Win32Window::ShowProjectDialog(FileDialog kind, const std::string& suggestedName)
     {
-        const bool save = kind == FileDialog::SaveProject || kind == FileDialog::SaveIfc;
+        const bool save = kind == FileDialog::SaveProject || kind == FileDialog::SaveIfc || kind == FileDialog::SavePat;
         // 筛选器：名称\0模式\0……\0\0；名称经 Tr 翻译
         std::wstring filter;
         auto add = [&](const std::string& label, const wchar_t* pattern)
@@ -422,6 +425,8 @@ namespace MiniBIM
             add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
         else if (kind == FileDialog::Shortcuts)
             add(Tr("Shortcuts file") + " (*.json;*.xml;*.txt;*.md)", L"*.json;*.xml;*.txt;*.md");
+        else if (kind == FileDialog::Pat || kind == FileDialog::SavePat)
+            add(Tr("Fill pattern file") + " (*.pat)", L"*.pat");
         else if (kind == FileDialog::OpenRevit)
         {
             add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", L"*.minibim;*.bimcraft;*.ifc;*.rvt");
@@ -452,7 +457,7 @@ namespace MiniBIM
         ofn.lpstrFilter = filter.c_str();
         ofn.lpstrFile   = buf.data();
         ofn.nMaxFile    = static_cast<DWORD>(buf.size());
-        ofn.lpstrDefExt = kind == FileDialog::SaveIfc ? L"ifc" : L"minibim";
+        ofn.lpstrDefExt = kind == FileDialog::SaveIfc ? L"ifc" : kind == FileDialog::SavePat ? L"pat" : L"minibim";
         ofn.Flags       = OFN_NOCHANGEDIR | OFN_EXPLORER | (save ? OFN_OVERWRITEPROMPT : (OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST));
         if (!(save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn)))
             return {};

@@ -7,6 +7,7 @@
 #include "Model/Json.h"
 #include "Model/Language.h"
 #include "Model/Library.h"
+#include "Model/Pens.h"
 #include "Model/Runs.h"
 #include "Model/Schedule.h"
 #include "Model/Curve.h"
@@ -282,6 +283,42 @@ namespace MiniBIM::Bim
     // 新项目的玻璃材质有多透明，百分数
     inline constexpr uint8_t GlassTransparency = 70;
 
+    // 项目参数存的值（BIMCraft 的 ParameterKind）：文字、数、长度（毫米）、是否
+    enum class ParameterKind
+    {
+        Text,
+        Number,
+        Length,
+        YesNo,
+    };
+
+    namespace ParameterKindOf
+    {
+        inline constexpr std::array<ParameterKind, 4> All = { ParameterKind::Text, ParameterKind::Number, ParameterKind::Length, ParameterKind::YesNo };
+        // 命令与文件里的写法：text、number、length、yesno
+        const char* Name(ParameterKind k);
+        std::optional<ParameterKind> Parse(std::string_view s);
+    }
+
+    // 项目参数（管理 > 项目参数）：它的类别的每个元素都可以有自己的一个这种值
+    struct ProjectParameter
+    {
+        ParameterKind            kind = ParameterKind::Text;
+        std::vector<std::string> categories;
+
+        // v 是它存的值：文字（最多 MaxText 个字）、有限的数、是否
+        bool Holds(const Json& v) const;
+        bool operator==(const ProjectParameter&) const = default;
+    };
+
+    // 项目最多的项目参数；项目参数能用于的类别（BIMCraft 还有楼梯、坡道、栏杆，MiniBIM 还没有）
+    inline constexpr size_t MaxProjectParameters = 256;
+    inline constexpr std::array<const char*, 21> ParameterCategories = {
+        "wall",       "floor",     "ceiling", "roof",  "door",     "window",          "room",
+        "column",     "component", "mass",    "structuralcolumn", "footing",  "beam",
+        "stripfooting", "pipe",    "conduit", "cabletray", "wire", "downconductor", "groundconductor", "cable",
+    };
+
     // 项目库的材质：着色视图里的颜色、平面和剖面里剖切面的图案、俯视楼板（仰视天花板）时表面的图案，
     // 以及三维视图里透过它的表面能看到身后多少（transparency，百分数：0 不透明到 100）。
     // BIMCraft 的材质还有填充样式名称与贴图，移植图纸、贴图时再加
@@ -403,6 +440,7 @@ namespace MiniBIM::Bim
         std::vector<Ring> openings;
         double            offset = 0.0;
         std::vector<SketchLine> sketch;
+        std::map<std::string, Json> params;
         bool operator==(const Ceiling&) const = default;
     };
 
@@ -413,6 +451,7 @@ namespace MiniBIM::Bim
         P2          point;
         std::string name;
         std::string number;
+        std::map<std::string, Json> params;
         bool operator==(const Room&) const = default;
     };
 
@@ -442,6 +481,7 @@ namespace MiniBIM::Bim
         std::optional<Guid> topLevel;
         double              height = 0.0;
         double              baseOffset = 0.0;
+        std::map<std::string, Json> params;
         bool operator==(const Column&) const = default;
     };
 
@@ -485,6 +525,7 @@ namespace MiniBIM::Bim
         std::optional<double> endOffset;
         Justify               justify = Justify::Centre;
         std::string           system;
+        std::map<std::string, Json> params;
         bool operator==(const Run&) const = default;
     };
 
@@ -900,6 +941,12 @@ namespace MiniBIM::Bim
         // 视图过滤器与视图样板，按名称
         std::map<std::string, ViewFilter>   viewFilters;
         std::map<std::string, ViewTemplate> viewTemplates;
+        // 项目参数，按名称（第 5f 步）
+        std::map<std::string, ProjectParameter> parameters;
+        // 线宽（管理 > 线宽）：设过之后才有，否则为项目单位起步的（LineWeightsOf）
+        std::optional<LineWeights> lineWeights;
+        // 对象样式（管理 > 对象样式）：与起步的不同的类别，按类别
+        std::map<std::string, ObjectStyle> objectStyles;
         Elements    elements;
         // 库的 ID 和 GUID：类型、材质
         Library     library;
@@ -1101,6 +1148,14 @@ namespace MiniBIM::Bim
         const Sheet* GetSheet(Guid key) const;
         // 视图 view 放在的视口；没放时为空（一个视图只放在一张图纸上）
         std::optional<Id> ViewportOf(Guid view) const;
+
+        // ── 管理（第 5f 步，Manage.cpp）──────────────────────────
+        // 项目的线宽：自己的，否则项目单位起步的
+        LineWeights LineWeightsOf() const;
+        // 类别的笔：项目自己的对象样式，否则起步的
+        ObjectStyle ObjectStyleOf(std::string_view category) const;
+        // 元素 e 能有的项目参数 name（它的类别在参数的类别里）；构件与族门窗的同名族参数优先，那时为空
+        const ProjectParameter* ParameterOf(const Element& e, const std::string& name) const;
         // 墙（含墙面）与楼板在平面上的外框；没有墙也没有楼板时为空
         std::optional<std::array<P2, 2>> BuildingBox() const;
         // at 在建筑的哪一侧：离建筑中心更远的那个方向
@@ -1190,12 +1245,16 @@ namespace MiniBIM::Bim
         bool CheckIds(std::string& error) const;
         // 注释的库条目（Annotate.cpp）与一个注释元素
         bool CheckStyles(std::string& error) const;
+        // 项目参数、线宽、对象样式（Manage.cpp）
+        bool CheckManage(std::string& error) const;
         bool CheckAnnotation(const std::string& who, const Element& e, std::string& error) const;
         // 族 f 的元素给的值是它的实例参数的：是实例参数、不由公式算出、材质在库里
         bool FamilyValuesOk(const std::string& who, const std::string& name, const Family& f, const std::map<std::string, Json>& params,
                             std::string& error) const;
         // 构件 e 自己在材质参数里写的材质
         std::vector<std::string> ComponentMaterials(const Element& e) const;
+        // 项目参数的值按 key 换的键（文件里是项目参数的 GUID）：key 返回空的不换
+        void RekeyParams(const std::function<std::optional<std::string>(const std::string&)>& key);
         // 构件和带族门窗的族实例参数值按 key 对 "族: 参数" 换的键（文件里是 GUID）；材质参数的值按 material 换
         void RekeyFamilyParams(const std::function<std::optional<std::string>(const std::string&, const std::string&)>& key,
                                const std::function<std::optional<std::string>(const std::string&)>& material);

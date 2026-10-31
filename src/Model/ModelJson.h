@@ -18,6 +18,13 @@ namespace MiniBIM::Bim
     Json ToJson(const std::map<std::string, Material>& materials);
     // 文字类型（文件里 text_types 的一项）
     Json ToJson(const TextType& t);
+    // 线型图案、线样式、填充图案与它的一族线（文件里 line_patterns、line_styles、fill_patterns 的一项）；读时严格
+    Json ToJson(const LinePattern& p);
+    bool FromJson(const Json& v, LinePattern& out, std::string& error);
+    Json ToJson(const LineStyle& s);
+    Json ToJson(const FillPattern& p);
+    Json ToJson(const HatchLine& l);
+    bool FromJson(const Json& v, HatchLine& out, std::string& error);
 
     // GUID：数（ID）或 GUID 字符串
     bool FromJson(const Json& v, Guid& out, std::string& error);

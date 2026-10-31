@@ -1781,6 +1781,40 @@ window {"at": [4000, 6000], "family": "Casement Window"})");
         }
     }
 
+    // 项目参数：每个元素一个属性集 Project Parameters，回来时种类与类别一样
+    void TestProjectParameters()
+    {
+        Session s;
+        const std::vector<Id> walls = House(s);
+        Run(s, "parameter", R"({"name": "Fire Rating", "categories": ["wall"]})");
+        Run(s, "parameter", R"({"name": "Cost", "kind": "number", "categories": ["column"]})");
+        Run(s, "parameter", R"({"name": "Clearance", "kind": "length", "categories": ["column"]})");
+        Run(s, "parameter", R"({"name": "Checked", "kind": "yesno", "categories": ["wall", "column"]})");
+        const Id col = Run(s, "column", R"({"at": [4000, 3000]})")["id"].get<Id>();
+        Run(s, "modify", Json{ { "id", walls[0] }, { "params", { { "Fire Rating", "2h" }, { "Checked", true } } } });
+        Run(s, "modify", Json{ { "id", col }, { "params", { { "Cost", 120.5 }, { "Clearance", 2400 }, { "Checked", false } } } });
+        const std::string f = Ifc::Export(s.GetModel());
+        Check(Occurrences(f, "'Project Parameters'") == 2 && Contains(f, "IFCTEXT('2h')") && Contains(f, "IFCLENGTHMEASURE(2400.") &&
+                  Contains(f, "IFCREAL(120.5") && Contains(f, "IFCBOOLEAN(.F.)") && !Dangling(f),
+              "项目参数：两个元素各一个属性集，值按种类写");
+        Ifc::Imported back;
+        Check(Import(f, back) && back.skipped.empty(), "项目参数：回来时没有略去的\n" + Skipped(back));
+        // 回来的参数：种类一样，类别是有值的元素的（没有值的 Checked 只在墙与柱上，正好一样）
+        Check(back.model.parameters == s.GetModel().parameters, "项目参数：回来时种类与类别一样");
+        std::map<std::string, std::vector<Json>> was, now;
+        for (const auto& [m, out] : { std::pair<const Model*, std::map<std::string, std::vector<Json>>*>{ &s.GetModel(), &was }, { &back.model, &now } })
+            for (const auto& [_, e] : m->elements.Items())
+                if (const auto* ps = e->Params(); ps && !ps->empty())
+                    (*out)[e->Category()].push_back(Json(*ps));
+        Check(was == now && was.size() == 2, "项目参数：元素的值回来时一样：" + Json(now).dump());
+        // 种类不对的与没有的类别略去
+        std::string odd = f;
+        odd.replace(odd.find("IFCTEXT('2h')"), 13, "IFCREAL(2.)");
+        Ifc::Imported i;
+        Check(Import(odd, i) && i.model.parameters.count("Fire Rating") && i.model.parameters.at("Fire Rating").kind == ParameterKind::Number,
+              "项目参数：种类按头一个值的");
+    }
+
 }
 
 int main()
@@ -1813,6 +1847,7 @@ int main()
     TestStructure();
     TestMep();
     TestMassing();
+    TestProjectParameters();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

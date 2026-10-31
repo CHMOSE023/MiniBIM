@@ -10,7 +10,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "New"
 msgstr ""
 
@@ -198,6 +198,42 @@ msgstr ""
 msgid "Crop View"
 msgstr ""
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Project Parameters"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Line Patterns"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Styles"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Fill Patterns"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Import Fill Patterns"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Export Fill Patterns"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purge Unused"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Weights"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Object Styles"
+msgstr ""
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Sheet"
 msgstr ""
@@ -222,11 +258,11 @@ msgstr ""
 msgid "Schedule"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "View Filter"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "View Template"
 msgstr ""
 
@@ -238,7 +274,7 @@ msgstr ""
 msgid "Edit Type"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Materials"
 msgstr ""
 
@@ -302,7 +338,7 @@ msgstr ""
 msgid "Split"
 msgstr ""
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "Delete"
 msgstr ""
 
@@ -378,7 +414,7 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
-#: src/Model/Schedule.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Family"
 msgstr ""
 
@@ -422,7 +458,7 @@ msgstr ""
 msgid "Operation"
 msgstr ""
 
-#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Name"
 msgstr ""
 
@@ -470,7 +506,7 @@ msgstr ""
 msgid "Elevation"
 msgstr ""
 
-#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Model/Schedule.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Line Style"
 msgstr ""
 
@@ -502,7 +538,7 @@ msgstr ""
 msgid "Nearest"
 msgstr ""
 
-#: src/Model/Snap.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Model/Snap.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Angle"
 msgstr ""
 
@@ -582,7 +618,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr ""
 
@@ -826,7 +862,7 @@ msgstr ""
 msgid "Function"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Material"
 msgstr ""
 
@@ -866,7 +902,7 @@ msgstr ""
 msgid "Materials and Finishes"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Color"
 msgstr ""
 
@@ -922,7 +958,7 @@ msgstr ""
 msgid "Visible"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Reset"
 msgstr ""
 
@@ -1080,6 +1116,30 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "The project's materials: their colours and patterns"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Values each element of chosen categories can hold, shown in Properties and schedules"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The pen each model category draws in, seen and cut"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "How wide each pen draws on paper, at each scale"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's line styles: pen, colour and line pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's fill patterns; import and export PAT files"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Take out types, families and the rest that nothing uses"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -1747,6 +1807,216 @@ msgstr ""
 msgid "Language: {0}"
 msgstr ""
 
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "0 (hairline)"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Types"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Families"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "View Filters"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "View Templates"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Family Type"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "{0} Type"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Parameters"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Parameter"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "A project parameter is a value each element of its categories can hold, shown in Properties and in schedules. Make one with New."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Type of Parameter"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Text"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Number"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Length"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Yes/No"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "What each pen draws on paper, in mm. The model's pens draw at the scale nearest a view's own; annotations' pens at any scale."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Scale"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "New scale 1 :"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Add"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Pen"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model at {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Annotation"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "The pen each category's lines draw in, in every plan and section, where it is seen and where a view cuts it. A view's Visibility/Graphics overrides them."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Category"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "object style"
+msgid "Projection"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "object style"
+msgid "Cut"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Weight"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Fill Pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Import..."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Imported {0} fill pattern."
+msgid_plural "Imported {0} fill patterns."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Left out {0} that MiniBIM can't use."
+msgid_plural "Left out {0} that MiniBIM can't use."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Export..."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Exported the fill patterns."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Pattern Type"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Drafting"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model patterns' lengths are mm in the building."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Drafting patterns' lengths are mm on paper, the same at any scale."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Solid fill"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Spacing"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "dashed"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Add Lines"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Takes out what nothing in the project uses, and then what that leaves unused. A category keeps one type, and a family one type."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Nothing of these is unused."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purge {0} Item"
+msgid_plural "Purge {0} Items"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purged {0} item."
+msgid_plural "Purged {0} items."
+msgstr[0] ""
+msgstr[1] ""
+
 #: apps/Common/src/GUI/Modify.cpp
 msgid "Could not move"
 msgstr ""
@@ -1889,10 +2159,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Sheets (all)"
-msgstr ""
-
-#: apps/Common/src/GUI/Panels.cpp
-msgid "Families"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -2458,14 +2724,6 @@ msgid "New Schedule"
 msgstr ""
 
 #: apps/Common/src/GUI/Schedules.cpp
-msgid "Category"
-msgstr ""
-
-#: apps/Common/src/GUI/Schedules.cpp
-msgid "View Filters"
-msgstr ""
-
-#: apps/Common/src/GUI/Schedules.cpp
 msgid "Filter {0}"
 msgstr ""
 
@@ -2474,15 +2732,7 @@ msgid "Make a filter with New, then choose its categories and rules."
 msgstr ""
 
 #: apps/Common/src/GUI/Schedules.cpp
-msgid "Categories"
-msgstr ""
-
-#: apps/Common/src/GUI/Schedules.cpp
 msgid "Rules: elements of these categories that meet every rule"
-msgstr ""
-
-#: apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
-msgid "Remove"
 msgstr ""
 
 #: apps/Common/src/GUI/Schedules.cpp
@@ -3453,6 +3703,10 @@ msgid "Shortcuts file"
 msgstr ""
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Fill pattern file"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"
 msgstr ""
 
@@ -3598,4 +3852,8 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Manage"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Clean Up"
 msgstr ""

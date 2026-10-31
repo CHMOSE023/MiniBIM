@@ -24,6 +24,8 @@ namespace MiniBIM::Bim::Ifc
         using Step::V;
 
         constexpr double kPi = 3.14159265358979323846;
+        // 读进来的项目参数值至多这么多个
+        constexpr size_t MaxParameterValues = 1000000;
 
         // ── 读参数 ──────────────────────────────────────────────
         const V* Arg(const Entity& e, size_t i) { return i < e.args.size() ? &e.args[i] : nullptr; }
@@ -3435,6 +3437,98 @@ namespace MiniBIM::Bim::Ifc
                 it->second.color        = shade.color;
                 it->second.transparency = shade.clear;
             }
+        // 项目参数：从写它们的属性集 `Project Parameters` 里来（MiniBIM 与 BIMCraft 都这样写）。每个参数的种类按它头一个值的，
+        // 类别是有它的值的元素的；至多一个项目能有的那么多，值至多 MaxParameterValues 个
+        {
+            std::set<std::string> over;
+            size_t values = 0;
+            bool full = false;
+            for (const uint64_t rid : named({ "IFCRELDEFINESBYPROPERTIES" }))
+            {
+                const Entity& rel = *e(rid);
+                const Entity* set = r.At(Arg(rel, 5));
+                if (!set || set->name != "IFCPROPERTYSET" || TextOf(Arg(*set, 2)) != std::string_view(ProjectParameters))
+                    continue;
+                for (const uint64_t pid : RefsOf(Arg(*set, 4)))
+                {
+                    const Entity* prop = e(pid);
+                    const auto pname = prop && prop->name == "IFCPROPERTYSINGLEVALUE" ? TextOf(Arg(*prop, 0)) : std::nullopt;
+                    const V* v = prop ? Arg(*prop, 2) : nullptr;
+                    if (!pname || !Fam::Nameable(*pname) || !v || v->kind != V::Kind::Typed || v->list.empty())
+                        continue;
+                    const std::string name(*pname);
+                    const V& inner = v->list.front();
+                    ParameterKind kind;
+                    Json value;
+                    if ((v->s == "IFCTEXT" || v->s == "IFCLABEL" || v->s == "IFCIDENTIFIER") && inner.kind == V::Kind::Str)
+                        kind = ParameterKind::Text, value = Clip(Text::Trim(inner.s));
+                    else if ((v->s == "IFCBOOLEAN" || v->s == "IFCLOGICAL") && inner.kind == V::Kind::Enum && (inner.s == "T" || inner.s == "F"))
+                        kind = ParameterKind::YesNo, value = inner.s == "T";
+                    else if (v->s == "IFCLENGTHMEASURE" || v->s == "IFCPOSITIVELENGTHMEASURE")
+                    {
+                        const auto x = RealOf(&inner);
+                        if (!x)
+                            continue;
+                        kind = ParameterKind::Length, value = std::round(*x * mm * 1e6) / 1e6;
+                    }
+                    else if (v->s == "IFCREAL" || v->s == "IFCINTEGER" || v->s == "IFCNUMERICMEASURE" || v->s == "IFCCOUNTMEASURE")
+                    {
+                        const auto x = RealOf(&inner);
+                        if (!x)
+                            continue;
+                        kind = ParameterKind::Number, value = *x;
+                    }
+                    else
+                        continue;
+                    for (const uint64_t step : RefsOf(Arg(rel, 4)))
+                    {
+                        const auto o = origin.find(step);
+                        Element* el = o != origin.end() ? m.elements.GetMut(o->second) : nullptr;
+                        auto* params = el ? el->ParamsMut() : nullptr;
+                        if (!params)
+                            continue;
+                        const std::string cat = el->Category();
+                        const auto have = m.parameters.find(name);
+                        bool theirs = false;
+                        if (const auto fo = el->FamilyOf())
+                            if (const auto f = m.families.find(fo->first); f != m.families.end())
+                                theirs = std::any_of(f->second.parameters.begin(), f->second.parameters.end(),
+                                                     [&](const Fam::Parameter& p) { return p.name == name; });
+                        const ProjectParameter p{ kind, { cat } };
+                        if (std::find(ParameterCategories.begin(), ParameterCategories.end(), cat) == ParameterCategories.end() ||
+                            Schedules::OwnField(cat, name) || theirs || (have != m.parameters.end() && have->second.kind != kind) || !p.Holds(value))
+                            continue;
+                        if (have == m.parameters.end() && m.parameters.size() >= MaxProjectParameters)
+                        {
+                            over.insert(name);
+                            continue;
+                        }
+                        if (values >= MaxParameterValues)
+                        {
+                            skipped.push_back("project parameter values past the " + std::to_string(MaxParameterValues) + " MiniBIM reads");
+                            full = true;
+                            break;
+                        }
+                        ++values;
+                        auto& cats = m.parameters.try_emplace(name, p).first->second.categories;
+                        if (std::find(cats.begin(), cats.end(), cat) == cats.end())
+                        {
+                            cats.push_back(cat);
+                            std::sort(cats.begin(), cats.end());
+                        }
+                        (*params)[name] = value;
+                    }
+                    if (full)
+                        break;
+                }
+                if (full)
+                    break;
+            }
+            if (!over.empty())
+                skipped.push_back(std::to_string(over.size()) + " project parameters: past the " + std::to_string(MaxProjectParameters) +
+                                  " a project holds");
+        }
+
         // 每个元素的 GUID 是建成它的东西的 GlobalId（是 GlobalId 时）；指向元素的都指向它
         std::map<Id, Guid> globals;
         for (const auto& [step, id] : origin)

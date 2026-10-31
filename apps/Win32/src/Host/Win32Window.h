@@ -74,7 +74,7 @@ namespace MiniBIM
 
         bool InitWindow(const wchar_t* title, int width, int height);
         // 打开或保存的文件对话框：打开项目、保存项目、导出 IFC
-        enum class FileDialog { Open, OpenRevit, SaveProject, SaveIfc, Shortcuts };
+        enum class FileDialog { Open, OpenRevit, SaveProject, SaveIfc, SavePat, Shortcuts, Pat };
         std::string ShowProjectDialog(FileDialog kind, const std::string& suggestedName);
         void UpdateDisplaySize();
         void WatchUiFile();

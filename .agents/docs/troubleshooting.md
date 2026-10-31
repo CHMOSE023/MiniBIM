@@ -91,6 +91,10 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
 - 原因：`assets/` 由 `apps/Win32/CMakeLists.txt` 的 POST_BUILD 复制到 exe 旁边，只在 `MiniBIMWin` 重新链接时才执行；只改 `.po` 不触发
 - 做法：`cp assets/i18n/*.po out/debug/MiniBIMWin/i18n/`（图标同理复制 `assets/icons/`），或改动任一源文件让它重新链接
 
+### 界面上有一句一直是英文，`extract_messages.py --untranslated` 却没列出它
+- 原因：`Tr` 的参数写成了几个相邻的字符串字面量（`Tr("…" "…")`，长句换行时容易这样写），`tools/extract_messages.py` 只认一个字面量，整句没进词典
+- 做法：写成一个字面量，再长也不拆（`AGENTS.md`："参数只写一个字符串字面量"），重新运行 `python tools/extract_messages.py` 并补译文
+
 ### `ModuleNotFoundError: No module named 'PIL'`（运行 `tools/make_icons.py`）
 - 原因：这台机器的 Pillow 装在用户目录的 site-packages 里，`python -I`（隔离模式）不看用户目录；或者确实没装
 - 做法：运行项目自己的脚本不加 `-I`；没装就 `pip install pillow`。`--check` 不需要 Pillow

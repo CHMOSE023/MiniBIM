@@ -235,6 +235,8 @@ namespace MiniBIM::Bim
         for (const auto& [f, fam] : families)
             for (const Fam::Parameter& p : fam.parameters)
                 out.emplace_back(Kind::Of(Kind::Tag::FamilyParameter), f + ": " + p.name);
+        for (const auto& [n, _] : parameters)
+            out.emplace_back(Kind::Of(Kind::Tag::Parameter), n);
         for (const auto& [n, _] : linePatterns)
             out.emplace_back(Kind::Of(Kind::Tag::LinePattern), n);
         for (const auto& [n, _] : lineStyles)
@@ -616,6 +618,7 @@ namespace MiniBIM::Bim
                 return std::nullopt;
             return e->second->name;
         };
+        RekeyParams([&](const std::string& k) { return name(Kind::Of(Kind::Tag::Parameter), k); });
         RekeyFamilyParams(
             [&](const std::string& family, const std::string& k) -> std::optional<std::string>
             {

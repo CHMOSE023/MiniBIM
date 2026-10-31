@@ -994,10 +994,10 @@ namespace MiniBIM::Bim
             if (category == "ceiling")
             {
                 Ceiling x;
-                if (!f.Allow({ "type", "level", "boundary", "openings", "offset", "sketch" }) || !f.SketchLines("sketch", x.sketch) ||
+                if (!f.Allow({ "type", "level", "boundary", "openings", "offset", "sketch", "params" }) || !f.SketchLines("sketch", x.sketch) ||
                     !f.String("type", x.typeName, true) ||
                     !f.Id("level", x.level, true) || !f.Points("boundary", x.boundary, true) || !f.Rings("openings", x.openings) ||
-                    !f.Number("offset", x.offset, true) || !f.Finish())
+                    !f.Number("offset", x.offset, true) || !ReadParams(f, x.params) || !f.Finish())
                     return false;
                 out = Element(std::move(x));
                 return true;
@@ -1005,8 +1005,8 @@ namespace MiniBIM::Bim
             if (category == "room")
             {
                 Room x;
-                if (!f.Allow({ "level", "point", "name", "number" }) || !f.Id("level", x.level, true) || !f.Point("point", x.point, true) ||
-                    !f.String("name", x.name, true) || !f.String("number", x.number, true) || !f.Finish())
+                if (!f.Allow({ "level", "point", "name", "number", "params" }) || !f.Id("level", x.level, true) || !f.Point("point", x.point, true) ||
+                    !f.String("name", x.name, true) || !f.String("number", x.number, true) || !ReadParams(f, x.params) || !f.Finish())
                     return false;
                 out = Element(std::move(x));
                 return true;
@@ -1081,10 +1081,10 @@ namespace MiniBIM::Bim
             if (category == "column" || category == "structuralcolumn" || category == "footing")
             {
                 Column c;
-                if (!f.Allow({ "type", "level", "at", "angle", "top_level", "height", "base_offset" }) || !f.String("type", c.typeName, true) ||
+                if (!f.Allow({ "type", "level", "at", "angle", "top_level", "height", "base_offset", "params" }) || !f.String("type", c.typeName, true) ||
                     !f.Id("level", c.level, true) || !f.Point("at", c.at, true) || !f.Number("angle", c.angle, false) ||
                     !f.OptId("top_level", c.topLevel) || !f.Number("height", c.height, false) || !f.Number("base_offset", c.baseOffset, false) ||
-                    !f.Finish())
+                    !ReadParams(f, c.params) || !f.Finish())
                     return false;
                 if (category == "column")
                     out = Element(std::move(c));
@@ -1259,11 +1259,11 @@ namespace MiniBIM::Bim
             if (IsRunCategory(category))
             {
                 Run r;
-                if (!f.Allow({ "type", "level", "start", "end", "offset", "end_offset", "justify", "system" }) || !f.String("type", r.typeName, true) ||
+                if (!f.Allow({ "type", "level", "start", "end", "offset", "end_offset", "justify", "system", "params" }) || !f.String("type", r.typeName, true) ||
                     !f.Id("level", r.level, true) || !f.Point("start", r.start, true) || !f.Point("end", r.end, true) ||
                     !f.Number("offset", r.offset, false) || !f.OptNumber("end_offset", r.endOffset) ||
                     !EnumName(f, "justify", r.justify, [](std::string_view s) { return JustifyOf::FromName(s); }, "top, centre, bottom") ||
-                    !f.String("system", r.system, false) || !f.Finish())
+                    !f.String("system", r.system, false) || !ReadParams(f, r.params) || !f.Finish())
                     return false;
                 out = *Element::OfRun(category, std::move(r));
                 return true;
@@ -1367,6 +1367,69 @@ namespace MiniBIM::Bim
                     return false;
                 out[it.key()] = std::move(t);
             }
+            return true;
+        }
+
+        // 笔：0 到 255 的整数（超出 16 的由 Model::Check 报出）
+        bool ReadPenReq(Fields& g, const char* key, uint8_t& out)
+        {
+            const Json* v = g.Raw(key);
+            if (!v)
+                return g.Missing(key);
+            if (!v->is_number_unsigned() || v->get<uint64_t>() > 255)
+                return g.Fail(std::string("`") + key + "`: a pen is a whole number, 0 (a hairline) to 16, not " + v->dump());
+            out = static_cast<uint8_t>(v->get<uint64_t>());
+            return true;
+        }
+
+        // 笔 1 到 16 的宽度
+        bool ReadRow(Fields& g, const Json& v, const std::string& what, PenRow& out)
+        {
+            if (!v.is_array() || v.size() != out.size())
+                return g.Fail(what + " is the 16 pens' widths, mm");
+            for (size_t i = 0; i < out.size(); ++i)
+            {
+                if (!v[i].is_number())
+                    return g.Fail(what + ": " + v[i].dump() + " is not a width");
+                out[i] = v[i].get<double>();
+            }
+            return true;
+        }
+
+        // 线宽：{model: [{scale, widths}, …], annotation: [16]}
+        bool ReadLineWeights(Fields& parent, std::optional<LineWeights>& out)
+        {
+            const Json* v = parent.Raw("line_weights");
+            if (!v)
+                return true;
+            Fields g(*v, "line_weights", parent.Path() + "/line_weights", parent.LeftOut(), parent.Error());
+            if (!g.IsObject())
+                return false;
+            LineWeights lw;
+            const Json* model = g.Raw("model");
+            if (!model)
+                return g.Missing("model");
+            if (!model->is_array())
+                return g.Fail("`model` is [{scale, widths}, …]");
+            for (size_t i = 0; i < model->size(); ++i)
+            {
+                Fields c((*model)[i], "line_weights model " + std::to_string(i), g.Path() + "/model/" + std::to_string(i), g.LeftOut(), g.Error());
+                ScalePens s;
+                if (!c.IsObject() || !c.Number("scale", s.scale, true))
+                    return false;
+                const Json* widths = c.Raw("widths");
+                if (!widths)
+                    return c.Missing("widths");
+                if (!ReadRow(c, *widths, "`widths`", s.widths) || !c.Finish())
+                    return false;
+                lw.model.push_back(s);
+            }
+            const Json* annotation = g.Raw("annotation");
+            if (!annotation)
+                return g.Missing("annotation");
+            if (!ReadRow(g, *annotation, "`annotation`", lw.annotation) || !g.Finish())
+                return false;
+            out = std::move(lw);
             return true;
         }
 
@@ -2245,6 +2308,8 @@ namespace MiniBIM::Bim
             j["offset"] = c->offset;
             if (!c->sketch.empty())
                 j["sketch"] = SketchJson(c->sketch);
+            if (!c->params.empty())
+                j["params"] = ParamsJson(c->params);
         }
         else if (const Room* r = e.As<Room>())
         {
@@ -2252,6 +2317,8 @@ namespace MiniBIM::Bim
             j["point"]  = ToJson(r->point);
             j["name"]   = r->name;
             j["number"] = r->number;
+            if (!r->params.empty())
+                j["params"] = ParamsJson(r->params);
         }
         else if (const Roof* r = e.As<Roof>())
         {
@@ -2329,6 +2396,8 @@ namespace MiniBIM::Bim
             j["top_level"]   = col->topLevel ? ToJson(*col->topLevel) : Json(nullptr);
             j["height"]      = col->height;
             j["base_offset"] = col->baseOffset;
+            if (!col->params.empty())
+                j["params"] = ParamsJson(col->params);
         }
         else if (const Run* r = e.AsRun())
         {
@@ -2342,6 +2411,8 @@ namespace MiniBIM::Bim
             j["justify"] = JustifyOf::Name(r->justify);
             if (!r->system.empty())
                 j["system"] = r->system;
+            if (!r->params.empty())
+                j["params"] = ParamsJson(r->params);
         }
         else if (const Component* c = e.As<Component>())
         {
@@ -2668,6 +2739,89 @@ namespace MiniBIM::Bim
         return y;
     }
 
+    Json ToJson(const LinePattern& p)
+    {
+        Json segs = Json::array();
+        for (const LineSegment& s : p.segments)
+            segs.push_back(SegmentJson(s));
+        return segs;
+    }
+
+    bool FromJson(const Json& v, LinePattern& out, std::string& error)
+    {
+        if (!v.is_array())
+        {
+            error = "a line pattern is a list of segments, not " + v.dump();
+            return false;
+        }
+        out.segments.clear();
+        for (const Json& sv : v)
+        {
+            LineSegment s;
+            if (!ReadSegment(sv, s, error))
+                return false;
+            out.segments.push_back(std::move(s));
+        }
+        return true;
+    }
+
+    Json ToJson(const LineStyle& s)
+    {
+        Json y{ { "pen", s.pen }, { "color", ColorJson(s.color) } };
+        if (s.pattern)
+            y["pattern"] = *s.pattern;
+        return y;
+    }
+
+    Json ToJson(const FillPattern& p)
+    {
+        Json y{ { "target", p.model ? "model" : "drafting" } };
+        if (!p.lines.empty())
+        {
+            Json lines = Json::array();
+            for (const HatchLine& l : p.lines)
+                lines.push_back(ToJson(l));
+            y["lines"] = std::move(lines);
+        }
+        return y;
+    }
+
+    Json ToJson(const HatchLine& l)
+    {
+        Json o{ { "angle", l.angle }, { "spacing", l.spacing } };
+        if (l.origin != P2{})
+            o["origin"] = ToJson(l.origin);
+        if (l.shift != 0.0)
+            o["shift"] = l.shift;
+        if (!l.dashes.empty())
+            o["dashes"] = l.dashes;
+        return o;
+    }
+
+    bool FromJson(const Json& v, HatchLine& out, std::string& error)
+    {
+        Fields h(v, "a line", "", nullptr, error);
+        HatchLine l;
+        if (!h.IsObject() || !h.Allow({ "angle", "origin", "shift", "spacing", "dashes" }) || !h.Number("angle", l.angle, true) ||
+            !h.Point("origin", l.origin, false) || !h.Number("shift", l.shift, false) || !h.Number("spacing", l.spacing, true))
+            return false;
+        if (const Json* d = h.Raw("dashes"))
+        {
+            if (!d->is_array())
+                return h.Fail("`dashes` must be a list of lengths");
+            for (const Json& x : *d)
+            {
+                if (!x.is_number())
+                    return h.Fail("`dashes` must be a list of lengths");
+                l.dashes.push_back(x.get<double>());
+            }
+        }
+        if (!h.Finish())
+            return false;
+        out = std::move(l);
+        return true;
+    }
+
     // ── 模型 ─────────────────────────────────────────────────────
     Json Model::ToJson() const
     {
@@ -2688,44 +2842,15 @@ namespace MiniBIM::Bim
         j["families"] = std::move(fams);
         Json lp = Json::object();
         for (const auto& [n, p] : linePatterns)
-        {
-            Json segs = Json::array();
-            for (const LineSegment& s : p.segments)
-                segs.push_back(SegmentJson(s));
-            lp[n] = std::move(segs);
-        }
+            lp[n] = Bim::ToJson(p);
         j["line_patterns"] = std::move(lp);
         Json ls = Json::object();
         for (const auto& [n, s] : lineStyles)
-        {
-            Json y{ { "pen", s.pen }, { "color", ColorJson(s.color) } };
-            if (s.pattern)
-                y["pattern"] = *s.pattern;
-            ls[n] = std::move(y);
-        }
+            ls[n] = Bim::ToJson(s);
         j["line_styles"] = std::move(ls);
         Json fp = Json::object();
         for (const auto& [n, p] : fillPatterns)
-        {
-            Json y{ { "target", p.model ? "model" : "drafting" } };
-            if (!p.lines.empty())
-            {
-                Json lines = Json::array();
-                for (const HatchLine& l : p.lines)
-                {
-                    Json o{ { "angle", l.angle }, { "spacing", l.spacing } };
-                    if (l.origin != P2{})
-                        o["origin"] = Bim::ToJson(l.origin);
-                    if (l.shift != 0.0)
-                        o["shift"] = l.shift;
-                    if (!l.dashes.empty())
-                        o["dashes"] = l.dashes;
-                    lines.push_back(std::move(o));
-                }
-                y["lines"] = std::move(lines);
-            }
-            fp[n] = std::move(y);
-        }
+            fp[n] = Bim::ToJson(p);
         j["fill_patterns"] = std::move(fp);
         Json rt = Json::object();
         for (const auto& [n, t] : regionTypes)
@@ -2758,6 +2883,27 @@ namespace MiniBIM::Bim
                 vt[n] = Bim::ToJson(x);
             j["view_templates"] = std::move(vt);
         }
+        if (!parameters.empty())
+        {
+            Json ps = Json::object();
+            for (const auto& [n, p] : parameters)
+                ps[n] = Json{ { "kind", ParameterKindOf::Name(p.kind) }, { "categories", p.categories } };
+            j["parameters"] = std::move(ps);
+        }
+        if (lineWeights)
+        {
+            Json model = Json::array();
+            for (const ScalePens& s : lineWeights->model)
+                model.push_back(Json{ { "scale", s.scale }, { "widths", s.widths } });
+            j["line_weights"] = Json{ { "model", std::move(model) }, { "annotation", lineWeights->annotation } };
+        }
+        if (!objectStyles.empty())
+        {
+            Json os = Json::object();
+            for (const auto& [c, s] : objectStyles)
+                os[c] = Json{ { "projection", s.projection }, { "cut", s.cut } };
+            j["object_styles"] = std::move(os);
+        }
         Json es = Json::object();
         for (const auto& [id, e] : elements.Items())
         {
@@ -2788,6 +2934,12 @@ namespace MiniBIM::Bim
         Model m = *this;
         m.SyncLibrary();
         const Library lib = m.library;
+        // 项目参数的值按参数的 GUID 存（族参数换过之后：同名的族参数优先）
+        m.RekeyParams([&](const std::string& n) -> std::optional<std::string>
+        {
+            const auto g = lib.GuidOf(Kind::Of(Kind::Tag::Parameter), n);
+            return g ? std::optional<std::string>(g->ToString()) : std::nullopt;
+        });
         // 族还用名称时：实例参数的值按参数的 GUID 存
         m.RekeyFamilyParams(
             [&](const std::string& family, const std::string& n) -> std::optional<std::string>
@@ -2988,6 +3140,34 @@ namespace MiniBIM::Bim
                 x.viewRange = r;
             }
             return true;
+        }))
+            return false;
+        if (!ReadNamed(f, "parameters", m.parameters, false, [](Fields& g, ProjectParameter& x)
+        {
+            std::string kind = "text";
+            if (!g.String("kind", kind, false))
+                return false;
+            const auto k = ParameterKindOf::Parse(kind);
+            if (!k)
+                return g.Fail("`kind`: unknown variant `" + kind + "`, expected one of text, number, length, yesno");
+            x.kind = *k;
+            const Json* c = g.Raw("categories");
+            if (!c)
+                return g.Missing("categories");
+            if (!c->is_array())
+                return g.Fail("`categories` must be a list of categories");
+            for (const Json& n : *c)
+            {
+                if (!n.is_string())
+                    return g.Fail("`categories`: " + n.dump() + " is not a category");
+                x.categories.push_back(n.get<std::string>());
+            }
+            return true;
+        }))
+            return false;
+        if (!ReadLineWeights(f, m.lineWeights) || !ReadNamed(f, "object_styles", m.objectStyles, false, [](Fields& g, ObjectStyle& x)
+        {
+            return ReadPenReq(g, "projection", x.projection) && ReadPenReq(g, "cut", x.cut);
         }))
             return false;
         if (m.language != Language::English && m.lineStyles == Lines::Styles(Language::English) &&
@@ -3206,7 +3386,7 @@ namespace MiniBIM::Bim
         }
         if (!notes.empty())
             m.SyncLibrary();
-        // 参数值里不是它的族的参数、也不是体量记号的（项目参数还没移植）略去
+        // 参数值里不是它的族的参数、不是体量记号、也不是它的类别的项目参数的略去
         std::vector<Id> withParams;
         for (const auto& [id, e] : m.elements.Items())
             if (e->Params() && !e->Params()->empty())
@@ -3221,7 +3401,8 @@ namespace MiniBIM::Bim
             {
                 const bool own = Massing::Reserved(it->first) ||
                                  (fam != m.families.end() && std::any_of(fam->second.parameters.begin(), fam->second.parameters.end(),
-                                                                         [&](const Fam::Parameter& p) { return p.name == it->first; }));
+                                                                         [&](const Fam::Parameter& p) { return p.name == it->first; })) ||
+                                 m.ParameterOf(*e, it->first);
                 if (own)
                 {
                     ++it;

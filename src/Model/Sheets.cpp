@@ -311,7 +311,7 @@ namespace MiniBIM::Bim::Render
         if (!paper)
             return d;
         // 纸自己的线（标题栏、视图标题、明细表的线）是注释，按项目默认的比例定宽；视图按各自的比例
-        d.weights = Weights::At(m.units, UnitsOf::DefaultScale(m.units));
+        d.weights = Weights::Of(m.LineWeightsOf(), UnitsOf::DefaultScale(m.units));
         d.k       = static_cast<float>(page.scale / Density);
         d.paper   = d.k;
         d.Own(m.elements.IdOf(sheet));

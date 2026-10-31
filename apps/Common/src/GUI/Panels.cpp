@@ -3,6 +3,7 @@
 #include "Commands/Commands.h"
 #include "Core/UIContext.h"
 #include "GUI/Parameters.h"
+#include "Model/Text.h"
 #include "I18n/Translator.h"
 #include "Style/Theme.hpp"
 #include "Widgets/Button.h"
@@ -477,6 +478,71 @@ namespace MiniBIM
                     break;
                 }
                 }
+            }
+        }
+        // ── 项目参数：它的类别的（构件的同名族参数除外），几个取值一样才显示；改时 modify {ids, params: {名称: 值}} ──
+        if (!m_selection.empty() && !category.empty())
+        {
+            Expander* g = nullptr;
+            const Bim::Element* first = m.elements.Get(ids.front());
+            for (const auto& [name, p] : m.parameters)
+            {
+                if (!first || !m.ParameterOf(*first, name))
+                    continue;
+                if (!g)
+                {
+                    const std::string group = "Project Parameters";
+                    g = grid->AddGroup(Tr("Project Parameters"), !m_collapsedGroups.contains(group));
+                    g->SetOnToggled([this, group](bool open) { open ? (void)m_collapsedGroups.erase(group) : (void)m_collapsedGroups.insert(group); });
+                }
+                const auto valueOf = [&](const Bim::Json& e) { return e.contains("params") && e["params"].contains(name) ? e["params"][name] : Bim::Json(nullptr); };
+                const Bim::Json one0 = valueOf(all.front());
+                const bool same = std::all_of(all.begin(), all.end(), [&](const Bim::Json& e) { return valueOf(e) == one0; });
+                const Bim::Json val = same ? one0 : Bim::Json(nullptr);
+                const auto set = [this, ids, name](Bim::Json to)
+                {
+                    m_platform->Post([this, ids, name, to]
+                    {
+                        RunCommand("modify", Bim::Json{ { "ids", ids }, { "params", { { name, to } } } }, N_("Could not change the parameter"));
+                        RefreshPanels();
+                    });
+                };
+                if (p.kind == Bim::ParameterKind::YesNo)
+                {
+                    auto* box = grid->AddProperty<CheckBox>(g, name, std::string(), val.is_boolean() && val.get<bool>());
+                    box->SetOnChanged([set](bool on) { set(on); });
+                    continue;
+                }
+                // 文字、数与长度：写着改，按 Enter 或离开时改一次；清空时去掉它的值
+                const Kind kind = p.kind == Bim::ParameterKind::Length ? Kind::Length : p.kind == Bim::ParameterKind::Number ? Kind::Number : Kind::Text;
+                const std::string shown = val.is_null() ? std::string() : Props::Shown(kind, val, units);
+                auto* box = grid->AddProperty<TextBox>(g, name);
+                box->SetText(shown);
+                auto typed = std::make_shared<std::string>(shown);
+                auto done  = std::make_shared<std::string>(shown);
+                auto commit = [this, kind, units, typed, done, set]
+                {
+                    if (*typed == *done)
+                        return;
+                    *done = *typed;
+                    Bim::Json to;
+                    std::string error;
+                    if (Bim::Text::Trim(*typed).empty())
+                        to = nullptr;
+                    else if (!Props::Parse(kind, *typed, units, to, error))
+                    {
+                        m_platform->Post([this, error]
+                        {
+                            MiniGUI::ShowMessageBox(*m_ui, Tr("Could not change the parameter"), error);
+                            RefreshPanels();
+                        });
+                        return;
+                    }
+                    set(to);
+                };
+                box->SetOnChanged([typed](const std::string& t) { *typed = t; });
+                box->SetOnSubmit([commit](const std::string&) { commit(); });
+                box->SetOnFocusChanged([commit](bool focused) { if (!focused) commit(); });
             }
         }
         // 四周的墙没有围合的房间

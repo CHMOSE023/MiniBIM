@@ -23,7 +23,7 @@ namespace MiniBIM::Bim::Render
         constexpr float Bubble = 11.0f;
 
         // 每支笔在 1 : 100 时纸上的宽度，毫米，笔 0（发丝线）起
-        constexpr std::array<double, 17> Widths = { 0.0, 0.10, 0.13, 0.15, 0.18, 0.20, 0.22, 0.25, 0.28, 0.30, 0.35, 0.40, 0.50, 0.70, 1.00, 1.40, 2.00 };
+        constexpr const std::array<double, 17>& Widths = Pens::Widths;
 
         // 注释在视图里画多大，乘它画的像素
         float AnnotationOf(double n, double scale) { return static_cast<float>(std::clamp(n * scale / Density, 0.1, 10.0)); }
@@ -33,14 +33,6 @@ namespace MiniBIM::Bim::Render
         {
             const double k = n * scale / Density;
             return std::isfinite(k) && k > 0.0 ? static_cast<float>(std::min(k, 1e6)) : 0.0f;
-        }
-
-        // 类别的笔：看到的、剖到的（BIMCraft styles.rs 的默认对象样式；项目自己的对象样式还没移植）
-        std::pair<uint8_t, uint8_t> StyleOf(const std::string& category)
-        {
-            if (category == "door" || category == "window")
-                return { Pen::Projection, Pen::Medium };
-            return { Pen::Projection, Pen::Cut };
         }
 
         // 柱、基础与 run 在平面上占的地方与它的底、顶（BIMCraft 的 stands）
@@ -869,28 +861,13 @@ namespace MiniBIM::Bim::Render
 
     double Pen::Mm() const { return n < Widths.size() ? Widths[n] : 0.0; }
 
-    Weights Weights::At(Units units, double n)
+    Weights Weights::At(Units units, double n) { return Of(LineWeights::Default(units), n); }
+
+    Weights Weights::Of(const LineWeights& lw, double n)
     {
-        const bool imperial = UnitsOf::Imperial(units);
-        const std::array<double, 6> scales = imperial ? std::array<double, 6>{ 12, 24, 48, 96, 192, 384 } : std::array<double, 6>{ 10, 20, 50, 100, 200, 500 };
-        const auto row = [](double k)
-        {
-            std::array<double, 17> r{};
-            for (size_t i = 1; i < r.size(); ++i)
-                r[i] = std::clamp(std::round(Widths[i] * k * 100.0) / 100.0, 0.01, 20.0);
-            return r;
-        };
-        // 最近的比例（按粗细几倍算；一样近取细的）
-        double best = scales[0];
-        for (const double s : scales)
-        {
-            const double off = std::abs(std::log(s / n)), bestOff = std::abs(std::log(best / n));
-            if (off < bestOff || (off == bestOff && s < best))
-                best = s;
-        }
         Weights w;
-        w.model      = row(std::pow(100.0 / best, 0.25));
-        w.annotation = row(1.0);
+        w.model      = lw.ModelAt(n);
+        w.annotation = lw.Annotation();
         return w;
     }
 
@@ -1253,8 +1230,8 @@ namespace MiniBIM::Bim::Render
             if (pens[i] != Pen::ByCategory)
                 continue;
             const Element* e = owners[i] ? m.elements.Get(*owners[i]) : nullptr;
-            const auto [projection, cut] = StyleOf(e ? e->Category() : "");
-            pens[i] = parts[i] == Part::Cut ? cut : projection;
+            const ObjectStyle st = m.ObjectStyleOf(e ? e->Category() : "");
+            pens[i] = parts[i] == Part::Cut ? st.cut : st.projection;
         }
     }
 
@@ -1406,7 +1383,7 @@ namespace MiniBIM::Bim::Render
         Drawing d(view);
         d.k       = AnnotationOf(n, view.scale);
         d.paper   = PaperOf(n, view.scale);
-        d.weights = Weights::At(m.units, n);
+        d.weights = Weights::Of(m.LineWeightsOf(), n);
         const PlanRange range = RangeOf(m, plan);
         // 剖切面以下、视图深度以上看得到顶面的楼板：轮廓与洞口的轮廓，坡楼板的坡度箭头
         for (const auto& [id, e] : items)
@@ -1873,7 +1850,7 @@ namespace MiniBIM::Bim::Render
         Drawing d(v);
         d.k       = AnnotationOf(n, v.scale);
         d.paper   = PaperOf(n, v.scale);
-        d.weights = Weights::At(m.units, n);
+        d.weights = Weights::Of(m.LineWeightsOf(), n);
         const Section* sv = m.GetSection(view);
         if (!sv)
             return d;

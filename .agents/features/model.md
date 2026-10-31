@@ -25,6 +25,9 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Massing.h` | `massing.rs` | 体量做出的元素的记号（`Massing::FloorMark`、`Massing::Face`）、按面重建（`Massing::Follow`）、放样的轮廓与三角形、竖直的面、放样的检查 |
 | `src/Model/Graphics.h` | `graphics.rs` | 视图的可见性 / 图形：`Override`（隐藏、看到的与剖到的线和填充、半色调、透明度）、`Graphics`（按类别、按元素的覆盖，比例、详细程度、视觉样式）、`Look`（落到各元素上的样子）、视图画的类别 `GraphicsOf::Drawn`；套用的过滤器 `Applied`、跟随的样板（`Graphics::Resolved`、`Graphics::ControlledBy`，样板控制的组 `Group`） |
 | `src/Model/Schedule.h` | `schedule.rs` | 明细表：字段（各类别自己的、族参数、计算公式）、过滤条件、排序、分组与总计，表格 `Schedules::TableOf`、内置的六张 `Schedules::Views`、`Schedules::ToCsv`；视图过滤器的规则也用它（`Schedules::Picks`） |
+| `src/Model/Manage.cpp` | `model.rs` 的项目参数、`pen.rs`、`styles.rs` | 管理：项目参数的种类与类别（`ProjectParameter::Holds`、`Model::ParameterOf`、`Model::RekeyParams`）、项目的线宽与对象样式（`Model::LineWeightsOf`、`Model::ObjectStyleOf`）、`Model::CheckManage` |
+| `src/Model/Pens.h` | `pen.rs`、`styles.rs` 的对象样式 | 笔 0–16 的宽度表、`LineWeights`（模型的笔按比例分列、注释的笔一列，`LineWeights::Default` 按单位）、`ObjectStyle` 与 `ObjectStyles::Default` |
+| `src/Model/Pat.h` | `fills.rs` 的 PAT | PAT 文件（`;%UNITS`、`;%TYPE=MODEL`）读成填充图案（`Pat::ReadText`，读不了的列出原因）、写出（`Pat::Write`，毫米） |
 | `src/Model/Sheets.cpp` | `sheet.rs` | 图纸：标题栏、视口的框（`Render::Frames`）与默认位置（`Render::SpotOn`）、明细表的表格，`Render::DrawSheet`（声明在 `Render.h`） |
 | `src/Model/Views.cpp` | `model.rs`、`graphics.rs` 的视图部分 | 平面视图与三维视图：`Model::PlanLevel`、`PlanSource`（相关视图跟父视图）、`ViewRangeOf`、`CropOf`、`ViewGraphics`、`ScaleOf`、`ViewName`、`FreeViewName`、`Default3D`、`LookOf`（类别覆盖 → 过滤器 → 元素覆盖）、`CheckFollowed` |
 | `src/Model/Styles.h` | `lines.rs`、`fills.rs`、`model.rs` 的 `TextType` | 注释的库条目：线型图案、线样式、填充图案、填充区域类型、文字类型，各语言的默认条目与检查 |
@@ -134,6 +137,15 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   剖到的由界面经 `Render::SheetCuts` 给）、明细表的表格（标题、列标题与合计用项目语言的词）与框下的视图标题（都归视口）；`Render::Frames` 是各视口的框与
   视图的取景（三维视图为相机平面上离 `Frame::middle` 的毫米），三维视图的样子与剖面看到的形体由界面画进框里。与 BIMCraft 不同：不按每毫米 5 像素画成图片再缩放。
   没移植的：图纸上的文字、详图线与填充区域，导出 PDF 与 PNG，标题栏族、修订、图纸的改名（要 `sheet` 命令的编辑）
+- 管理（5f，移植自 `model.rs` 的项目参数、`pen.rs`、`styles.rs`、`fills.rs` 的 PAT 与 `commands.rs` 的管理命令）：项目参数（`Model::parameters`，至多
+  `MaxProjectParameters` 个）有种类（文字、数、长度、是 / 否）与类别（`ParameterCategories` 的 21 个）；墙、楼板、屋顶、天花板、门窗、房间、柱、构件、体量、run 的
+  `params` 存它们的值（构件的同名族参数归族，`Model::ParameterOf` 返回空）。命令 `parameter`（改名时值、明细表的字段、排序、过滤与视图过滤器的规则跟着；
+  去掉类别或删除时那些元素的值也去掉；有值时不能换种类）；项目文件里值按参数的 GUID 存（`ToFile` 时 `Model::RekeyParams`，读时反过来）。
+  明细表的字段（`Schedules::Fields`）带类别的项目参数。线宽 `line_weights`（`Model::lineWeights` 没设时 `LineWeights::Default`，平面、剖面、图纸经
+  `Render::Weights::Of` 取笔宽）与对象样式 `object_styles`（`Model::objectStyles` 只存改过的类别，`Render` 的 ByCategory 用 `Model::ObjectStyleOf`，视图的覆盖优先）。
+  `line_pattern`、`line_style`、`fill_pattern` 新建、改、改名（用到的跟着）与删除（有东西用时拒绝）；`import_fill_patterns` / `export_fill_patterns` 读写 PAT。
+  `purge`（PU）在副本上反复清（`UnusedEntries`，至多 16 遍）类型、族、材质、过滤器、样板，`dry_run` 只列出；类别留一个类型、族留一个类型。
+  没移植的：图片（MiniBIM 还没有，`picture` 认但没有可清的）、楼梯坡道栏杆、组与 Linework
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
@@ -179,6 +191,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   样板的跟随、被控制的组被拒、样板改了跟着变、样板的视图范围、文件往返）与剖面（`TestSections`：剖面与四个立面的方向、名称（葡萄牙语、西班牙语）、
   重名被拒、镜像、文件往返、比例与图形、裁剪缩线，平面上的记号，剖面图的填充、标高与轴网）与图纸（`TestSheets`：编号、纸张、放视图的默认位置与比例、
   一个视图一张图纸、明细表与三维视图放上时建出来、挪视口、文件往返、删除的连带，图纸的标题栏与视口的框、拾取，明细表的大小，葡萄牙语的名称）
+  与管理（`TestManage`：对象样式与线宽的查、改、撤销、重置与平面的笔宽，项目参数的值、明细表、按 GUID 的项目文件、改名、类别、拒绝，
+  线型图案、线样式、填充图案的改名与删除，PAT 的读写与英寸，导入导出命令，清除未使用）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

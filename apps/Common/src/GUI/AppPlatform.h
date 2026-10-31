@@ -22,6 +22,7 @@ namespace MiniBIM
         Project,    // .minibim / .bimcraft / .ifc
         ProjectOrRevit, // 同上，再加 .rvt（宿主接上了 Revit 读取器时，MainFrame::SetRevitReader）
         Shortcuts,  // 快捷键文件：.json / .xml（Revit 导出的）/ .txt / .md
+        FillPatterns,   // 填充图案文件：.pat
     };
 
     // 要写的文件
@@ -29,6 +30,7 @@ namespace MiniBIM
     {
         Project,    // .minibim
         Ifc,        // .ifc（导出 IFC4）
+        FillPatterns,   // .pat（导出填充图案）
     };
 
     // 主窗口（MainFrame）依赖的平台服务，结构同 MiniCAD 的 AppPlatform。Win32 版（apps/Win32/src/Host/Win32Window）、

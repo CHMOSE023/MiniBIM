@@ -31,6 +31,9 @@ add_library(MiniBIM STATIC
     src/Model/Views.cpp
     src/Model/Schedule.cpp
     src/Model/Sheets.cpp
+    src/Model/Manage.cpp
+    src/Model/Pens.cpp
+    src/Model/Pat.cpp
     src/Model/Text.cpp
     src/Model/Units.cpp
     src/Model/Walls.cpp

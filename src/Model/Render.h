@@ -101,8 +101,10 @@ namespace MiniBIM::Bim::Render
         std::array<double, 17> model{};
         std::array<double, 17> annotation{};
 
-        // 1 : n 时的线宽：项目单位的默认线宽表（BIMCraft 的 LineWeights::default_for）在最近的比例上
+        // 1 : n 时的线宽：项目单位起步的线宽表（BIMCraft 的 LineWeights::default_for）在最近的比例上
         static Weights At(Units units, double n);
+        // 项目的线宽表 lw（Model::LineWeightsOf）在 1 : n 时
+        static Weights Of(const LineWeights& lw, double n);
         double Mm(uint8_t pen, bool isAnnotation) const;
     };
 

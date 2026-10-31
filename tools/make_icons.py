@@ -836,6 +836,56 @@ def _(i):
     i.circle(32, 42, 7, G, GF, w=3)
 
 
+@icon("ProjectParameters") # manage.parameters：项目参数（一张参数表：几行名称 | 值，加的那一行强调，旁边一个加号）
+def _(i):
+    i.rect(6, 8, 46, 56, G, w=3, r=3)
+    for y in (20, 32):
+        i.line([(12, y), (22, y)], G, 3); i.line([(28, y), (40, y)], G, 3)
+    i.line([(12, 44), (22, 44)], A, 3); i.line([(28, 44), (40, 44)], A, 3)
+    i.line([(52, 30), (52, 50)], A, 3.5); i.line([(42, 40), (62, 40)], A, 3.5)
+
+
+@icon("ObjectStyles")      # manage.objectStyles：对象样式（一段墙的剖面：粗的剖切线强调，细的看线灰色）
+def _(i):
+    i.rect(8, 14, 30, 50, A, AF, w=5)
+    i.line([(38, 14), (58, 14)], G, 2); i.line([(38, 50), (58, 50)], G, 2)
+    i.line([(38, 14), (38, 50)], G, 2); i.line([(58, 14), (58, 50)], G, 2)
+
+
+@icon("LineWeights")       # manage.lineWeights：线宽（由细到粗的四条横线，最粗的强调）
+def _(i):
+    for y, w in ((12, 1.5), (24, 3), (37, 5)):
+        i.line([(10, y), (54, y)], G, w)
+    i.line([(10, 52), (54, 52)], A, 8)
+
+
+@icon("LineStyles")        # manage.lineStyles：线样式（实线、虚线、点划线，点划线强调）
+def _(i):
+    i.line([(8, 14), (56, 14)], G, 3.5)
+    i.dashed([(8, 32), (56, 32)], G, 3.5, dash=8, gap=5)
+    for x0, x1 in ((8, 22), (30, 44), (52, 56)):
+        i.line([(x0, 50), (x1, 50)], A, 3.5)
+    for x in (26, 48):
+        i.dot(x, 50, 2)
+
+
+@icon("FillPatterns")      # manage.fillPatterns：填充图案（方框里的斜线填充，一条强调）
+def _(i):
+    i.rect(8, 8, 56, 56, G, w=3)
+    for k in range(-2, 4):
+        x0 = 8 + k * 14
+        pts = [(max(8, x0), 56 - max(0, 8 - x0)), (min(56, x0 + 48), 8 + max(0, x0 + 48 - 56))]
+        i.line(pts, A if k == 1 else G, 3 if k == 1 else 2)
+
+
+@icon("Purge")             # manage.purge：清除未使用（一把扫帚，扫出去的几个强调色的小方块）
+def _(i):
+    i.line([(50, 6), (30, 34)], G, 4)
+    i.poly([(22, 30), (38, 40), (30, 58), (8, 50)], G, GF, w=3)
+    i.line([(17, 42), (12, 54)], G, 2); i.line([(25, 45), (21, 56)], G, 2)
+    i.rect(44, 46, 50, 52, A, AF, w=2); i.rect(52, 36, 58, 42, A, AF, w=2)
+
+
 @icon("Properties")        # view.properties：特性面板（照 MiniCAD 的 PropertiesPanel：名称 | 值的几行）
 def _(i):
     i.rect(8, 8, 56, 56, G, w=3, r=4); i.d.rectangle(i.P([(8, 8), (56, 18)]), fill=AF)
