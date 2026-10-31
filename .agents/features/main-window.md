@@ -16,11 +16,16 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 - 启动：`GuiMain.cpp` 解析参数（项目文件、`--ui`、`--gpu`、`--lang`、`--run`）→ `Win32Window::Initialize` 建无边框窗口和图形设备（D3D12 → D3D11 → WARP）→ `MainFrame::Initialize`：
   选语言（`--lang` > 用户设置 > `AppPlatform::GetSystemLanguage`）、建 `UIContext`、注册命令、注册宿主面板、读界面描述文件；给了项目文件（`MainFrame::SetStartupFile`）就打开它，给了 `--run` 的界面命令（`MainFrame::AddStartupCommand`；看界面效果时用，
   如 `--run view.plan`）就打开示例房屋（`MainFrame::OpenSample`）后依次执行，都没有时显示开始页
-- 界面描述文件 `assets/ui/minibim_ui.json`（格式见 `src/UI/Widgets/UiLayout.h`）：菜单、快速访问工具栏、功能区与布局；宿主面板 `viewport`（`MiniGUI::ViewportHost`）、
-  `options`（选项栏，`Tools.cpp`）、`properties`、`browser`（`Panels.cpp`）、`statusbar`。停靠区的布局写在文件的 `dock` 里，用户改过的布局存进 settings.json（见下面"面板的停靠与浮动"）
-- 布局（移植自 BIMCraft 的 Layout 设置）：默认"浮动"，标题栏以下的功能区、选项栏、停靠面板（含视图）、状态栏都是圆角卡片，之间留 6 像素的缝露出窗口底色
+- 界面描述文件 `assets/ui/minibim_ui.json`（格式见 `src/UI/Widgets/UiLayout.h`）：菜单、快速访问工具栏、功能区与布局；宿主面板 `canvas`（视图，`MiniGUI::ViewportHost`）、
+  `viewport`（停靠区里视图的位置，`MainFrame::CreateViewArea`）、`options`（选项栏，`Tools.cpp`）、`properties`、`browser`（`Panels.cpp`）、`statusbar`。
+  停靠区的布局写在文件的 `dock` 里，用户改过的布局存进 settings.json（见下面"面板的停靠与浮动"）
+- 视图铺满（照 MiniCAD，BIMCraft 也是视图在下、其余浮在上面）：`canvas` 铺满标题栏以下，功能区、选项栏、停靠区、状态栏放在叠在它上面的一层（`"passThrough"`，空白处点击穿透到视图）；
+  停靠区是浮动的（`MiniGUI::DockSpace::SetFloating`），视图的位置 `viewport` 是没有标题栏的组，成了透明、点击穿透的"洞"，范围就是视图没被挡住的部分。
+  框住模型、整个平面时放进这块区域、以它的中心为中心：`MainFrame::UpdateFitInsets` 每次渲染前按"洞"与视口的差算出留边，交给 `OrbitCamera::SetFitInsets`
+  与平面的 `Bim::Render::Fit`（`MainFrame::RenderPlan`）；面板停在视图的哪一侧也按"洞"判断。留边变了（拖动面板）画面不动，下次框住时才用
+- 布局（移植自 BIMCraft 的 Layout 设置）：默认"浮动"，功能区、选项栏、停靠面板、状态栏是叠在视图上的圆角卡片，四周与之间留 6 像素的缝露出视图（三维的渐变底、平面的白纸）
   （界面描述文件里 `"card": true`、停靠区 `"gap": 6`，功能区本来就是卡片）；"紧凑"时 `MainFrame::ReloadUi` 让 `MiniGUI::UiLayout::SetVariant` 选用变体 `compact`，
-  各节点 `"variants": { "compact": { … } }` 去掉缝、方角贴边（`MiniGUI::Ribbon::SetCard`）。BIMCraft 卡片的阴影没有做（同 MiniCAD 的外观）
+  各节点 `"variants": { "compact": { … } }` 去掉缝、方角贴边（`MiniGUI::Ribbon::SetCard`，停靠区 gap 为 0 时是紧贴的方角面板）。BIMCraft 卡片的阴影没有做（同 MiniCAD 的外观）
 - 面板的停靠与浮动（`Palettes.cpp`，移植自 `dock.rs`）：拖标签停到别处、拖出停靠区或双击标签浮出成窗口、拖浮动窗口的标题栏停回去、双击标题栏回原处，
   都是 MiniGUI 的 `MiniGUI::DockSpace` 做的（浮动窗口是同一窗口里的 `MiniGUI::FloatingPanel` 弹层，不是独立的系统窗口）。右键面板的标签或浮动窗口的标题栏
   （`MiniGUI::DockSpace::SetOnPanelMenu`）弹出菜单（`MainFrame::ShowPanelMenu`）：停靠在左侧 / 右侧 / 底部（`MainFrame::DockPanelTo`：那一侧已有面板就排在最后一个后面，

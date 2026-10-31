@@ -118,7 +118,8 @@ namespace MiniBIM
 
         // ── 宿主面板，交给界面描述文件摆放（标题写英文原文，UiLayout 应用时翻译）──
         m_layout = std::make_unique<MiniGUI::UiLayout>(m_commands, m_platform->GetResourceDir() + "/icons");
-        m_layout->RegisterPanel("viewport",   CreateViewport(), N_("View"));
+        m_layout->RegisterPanel("canvas",     CreateViewport());
+        m_layout->RegisterPanel("viewport",   CreateViewArea(), N_("View"));
         m_layout->RegisterPanel("options",    CreateOptionsBar());
         m_layout->RegisterPanel("properties", CreateProperties(), N_("Properties"));
         m_layout->RegisterPanel("browser",    CreateBrowser(), N_("Project Browser"));
@@ -437,6 +438,36 @@ namespace MiniBIM
         return vp;
     }
 
+    // 停靠区里视图的位置（面板 "viewport"，没有标题栏、不能关）：浮动停靠区里是透明、点击穿透的"洞"，露出下面铺满的视口（"canvas"），
+    // 范围就是视口没被功能区、面板挡住的部分（UpdateFitInsets）；面板停在视图的哪一侧也按它判断（Palettes.cpp）
+    std::unique_ptr<MiniGUI::Node> MainFrame::CreateViewArea()
+    {
+        auto area = std::make_unique<MiniGUI::Node>();
+        area->SetHitTestVisible(false);
+        m_viewArea = area.get();
+        return area;
+    }
+
+    // 照 MiniCAD 的 UpdateFitInsets：框住模型（三维）、整个平面时放进没被挡住的区域，以它的中心为中心
+    void MainFrame::UpdateFitInsets(int pixelWidth, int pixelHeight)
+    {
+        for (double& inset : m_fitInsets)
+            inset = 0.0;
+        if (m_viewArea && m_viewArea->GetContext())
+        {
+            const MiniGUI::Rect vp = m_viewport->GetScreenBounds(), free = m_viewArea->GetScreenBounds();
+            if (free.Width() >= 50.0f && free.Height() >= 50.0f && vp.Width() >= 1.0f && vp.Height() >= 1.0f)
+            {
+                const double sx = pixelWidth / static_cast<double>(vp.Width()), sy = pixelHeight / static_cast<double>(vp.Height());
+                m_fitInsets[0] = std::max(0.0f, free.min.x - vp.min.x) * sx;
+                m_fitInsets[1] = std::max(0.0f, free.min.y - vp.min.y) * sy;
+                m_fitInsets[2] = std::max(0.0f, vp.max.x - free.max.x) * sx;
+                m_fitInsets[3] = std::max(0.0f, vp.max.y - free.max.y) * sy;
+            }
+        }
+        m_camera.SetFitInsets(m_fitInsets[0], m_fitInsets[1], m_fitInsets[2], m_fitInsets[3]);
+    }
+
     void MainFrame::HomeView()
     {
         // 主视图是三维的
@@ -528,6 +559,7 @@ namespace MiniBIM
         if (target.GetWidth() != pixelWidth || target.GetHeight() != pixelHeight)
             target.Resize(pixelWidth, pixelHeight);
         m_camera.SetViewportSize(pixelWidth, pixelHeight);
+        UpdateFitInsets(pixelWidth, pixelHeight);
         if (!m_cameraFitted && !m_scene.Empty())
         {
             m_camera.HomeView(m_scene.GetBounds());

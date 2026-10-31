@@ -6,7 +6,7 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 
 ## 概述
 
-主窗口的视口（面板 `viewport`）显示三维模型：`OrbitCamera`（`src/View/OrbitCamera.h`）给出视图投影矩阵，`MainFrame::RenderViewport` 用
+主窗口的视口（面板 `canvas`，铺满标题栏以下，见 main-window.md 的"视图铺满"）显示三维模型：`OrbitCamera`（`src/View/OrbitCamera.h`）给出视图投影矩阵，`MainFrame::RenderViewport` 用
 `IRenderer`（`src/Render/IRenderer.h`，D3D12 / D3D11、Linux 的 Vulkan / GLES3、网页的 WebGPU / WebGL2 实现在 `apps/Render`，都复制自 MiniCAD）画进离屏渲染目标，再作为纹理交给 `MiniGUI::ViewportHost` 显示。
 几何只经 `Solid::ISolidKernel`（SMLib）得到：模型（`MainFrame` 的 `Bim::Session`，`.agents/features/model.md`）由 `ModelScene`（`src/View/ModelScene.h`）
 建成实体，再离散成三角形与边线。
@@ -15,6 +15,9 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 
 - 相机：正交投影、绕目标环绕；世界坐标 Z 向上、单位毫米。方位角自 +X 逆时针，仰角限制在 ±89°。`OrbitCamera::HomeView` 是西南等轴测并框住模型，
   `OrbitCamera::ZoomAt` 缩放时光标下的点不动。`Mat4` 为行向量约定（P' = P · M），深度 [0, 1]
+- 留边（`OrbitCamera::SetFitInsets`）：视口上叠着功能区、面板时，`OrbitCamera::HomeView` / `OrbitCamera::ZoomToFit` 把模型放进没被挡住的区域，
+  并记下目标点在屏幕上的偏移（投影矩阵最后整体平移），所以环绕时模型仍绕自己的中心转；留边再变不挪动画面，下次框住时才用。
+  MiniCAD 相机的 SetFitInsets 挪的是目标点
 - 交互（`MainFrame::OnViewportPointer`）：左键拖动环绕，中键或右键拖动平移，Shift + 任意键拖动环绕，滚轮缩放。以后有了选择，左键要让给选择（照 Revit：Shift + 中键环绕）
 - 几何：`ModelScene::Build` 照 BIMCraft 的 `view3d.rs` 决定画什么、用什么颜色，但用 `Solid::ISolidKernel` 建实体（BIMCraft 自己拼三角形、软件光栅化，不移植）：
   - 墙：`Bim::Walls::Outline`（斜接好的平面轮廓）从底拉伸到顶，再 `Boolean` 减去每个门窗洞（沿墙从洞的一边到另一边、比墙面再出去 50 毫米的条带），
@@ -50,7 +53,7 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 
 ## 测试与排查
 
-- `ViewTests`（`tests/View/OrbitCameraTests.cpp`）：屏幕方向、框住包围盒、缩放与平移时点的屏幕位置
+- `ViewTests`（`tests/View/OrbitCameraTests.cpp`）：屏幕方向、框住包围盒（含留边）、缩放与平移时点的屏幕位置、有偏移时环绕与缩放
 - `SMLibSmokeTests`：SMLib 静态库能建模、布尔、求体积、离散化
 - `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗、天花板、屋顶、家具都建出来，范围（檐口到屋脊）对，墙在窗洞处扣掉，柱的范围与拾取；没有内核时不建
 - 画面不对时先用 skill `ui-check` 截图；换图形接口对比（`--gpu d3d11`、`--gpu warp`）

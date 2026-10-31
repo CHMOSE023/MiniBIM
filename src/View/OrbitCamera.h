@@ -25,6 +25,10 @@ namespace MiniBIM
         void HomeView(const AABB& bounds);
         // 方向不变，平移、缩放到刚好框住 bounds（四周留一点边）；bounds 为空时不动
         void ZoomToFit(const AABB& bounds);
+        // 框住范围时的留边（物理像素，左、上、右、下）：视口上叠着的功能区、面板等挡住的部分（浮动布局）。HomeView / ZoomToFit
+        // 把范围放进去掉留边后的区域，目标点画在那块区域的中心；之后环绕（仍绕目标点）、平移、缩放照常，留边再变也不挪动画面。
+        // 照 MiniCAD 的 Camera::SetFitInsets（那里挪的是目标点；这里环绕时模型要绕自己的中心转，所以挪的是投影）
+        void SetFitInsets(double left, double top, double right, double bottom);
 
         // 交互（像素增量）：环绕、平移，滚轮缩放时光标下的点不动（factor < 1 放大）
         void Orbit(double dxPixels, double dyPixels);
@@ -50,5 +54,8 @@ namespace MiniBIM
         double       m_depth      = 1.0e6;      // 目标前后各这么深的范围都画得出来（正交投影的近、远平面）
         int          m_width      = 1;
         int          m_height     = 1;
+        double       m_insets[4]  = { 0.0, 0.0, 0.0, 0.0 };    // 左、上、右、下
+        double       m_offsetX    = 0.0;        // 目标点在屏幕上相对视口中心的偏移（像素，向右、向下为正），框住范围时按留边定
+        double       m_offsetY    = 0.0;
     };
 }

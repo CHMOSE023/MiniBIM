@@ -112,6 +112,8 @@ namespace MiniBIM
         void InitUI();
         void RegisterCommands();                                  // MainCommands.cpp
         std::unique_ptr<MiniGUI::Node> CreateViewport();
+        std::unique_ptr<MiniGUI::Node> CreateViewArea();
+        void UpdateFitInsets(int pixelWidth, int pixelHeight);    // 视口被功能区、面板挡住的留边：框住模型、整个平面时用
         std::unique_ptr<MiniGUI::Node> CreateStatusBar();
         std::vector<MiniGUI::MenuItem> BuildLanguageMenu();
         // restore：重建后恢复用户的面板布局（换语言时）；界面描述文件改了时为 false，用文件里的布局
@@ -373,7 +375,9 @@ namespace MiniBIM
         std::unique_ptr<MiniGUI::UiLayout>  m_layout;
         MiniGUI::Node*                      m_appHost    = nullptr;  // m_uiHost 与开始页
         MiniGUI::Node*                      m_uiHost     = nullptr;
-        MiniGUI::ViewportHost*              m_viewport   = nullptr;
+        MiniGUI::ViewportHost*              m_viewport   = nullptr;   // 面板 "canvas"：铺满标题栏以下，其余的叠在它上面
+        MiniGUI::Node*                      m_viewArea   = nullptr;   // 面板 "viewport"：停靠区里视图的位置，透明的"洞"（没被挡住的部分）
+        double                              m_fitInsets[4] = { 0.0, 0.0, 0.0, 0.0 };   // 视口被挡住的留边（物理像素，左、上、右、下）
         MiniGUI::Label*                     m_statusHint = nullptr;
         MiniGUI::Label*                     m_statusInfo = nullptr;
 

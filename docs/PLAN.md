@@ -171,6 +171,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - MiniGUI：`ScrollView::OnLayout` 里内容超出视口不到 1 像素时不出滚动条（按内容定高的视图在 150% 缩放下，边对齐到设备像素后会矮一点）
 - MiniGUI：界面描述文件的节点属性 `card`（row / column / 宿主面板画成圆角带边框的卡片，功能区 false 时方角贴边）与 `variants`（`UiLayout::SetVariant` 选的变体覆盖节点属性），
   `Ribbon::SetCard`（MiniCAD 的功能区总是卡片）：设置里的布局浮动 / 紧凑用
+- MiniGUI：浮动停靠区不再隐含卡片样式（`DockSpace::IsCardStyle` 只看 gap > 0）：gap 为 0 的浮动停靠区是紧贴的方角面板，文档区照样是"洞"（紧凑布局用）
 - MiniGUI：`UIContext::UpdateHover` 在关掉提示之后才取树的版本号（修复：提示显示着时指针直接跳到相邻控件，新控件收不到 Enter、点了不触发；MiniCAD 也有这个问题）
 - `cmake/Render.cmake` 照 MiniCAD 分 Windows、Linux、网页三段；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`、`PostDelayed`，
   文件对话框同 MiniCAD 是异步的 `PickFile` 与 `ChooseSavePath`，但 `FileKind` / `SaveKind` 换成项目、IFC、快捷键文件（没有 DWG 的格式与版本）

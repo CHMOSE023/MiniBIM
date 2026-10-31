@@ -197,7 +197,17 @@ namespace MiniBIM
         const uint32_t w = static_cast<uint32_t>(std::max(pixelWidth, 1)), h = static_cast<uint32_t>(std::max(pixelHeight, 1));
         if (!m_planView)
         {
-            m_planView = Bim::Render::Fit(Bim::Render::PlanShows(m, *m_planLevel), w, h, Bim::UnitsOf::DefaultScale(m.units));
+            // 框住整个平面：放进没被功能区、面板挡住的区域（m_fitInsets；留边过大时按视口的 20% 算），以它的中心为中心
+            const double l = m_fitInsets[0], t = m_fitInsets[1];
+            const double fw = std::max(w - l - m_fitInsets[2], w * 0.2), fh = std::max(h - t - m_fitInsets[3], h * 0.2);
+            Bim::Render::View v = Bim::Render::Fit(Bim::Render::PlanShows(m, *m_planLevel), static_cast<uint32_t>(fw), static_cast<uint32_t>(fh),
+                                                   Bim::UnitsOf::DefaultScale(m.units));
+            // Fit 把范围的中心放在 (fw/2, fh/2)；整个视口以 (w/2, h/2) 为 (cx, cy)，挪到区域中心 (l + fw/2, t + fh/2)
+            v.width  = w;
+            v.height = h;
+            v.cx -= (l + fw / 2.0 - w / 2.0) / v.scale;
+            v.cy += (t + fh / 2.0 - h / 2.0) / v.scale;
+            m_planView  = v;
             m_planDirty = true;
         }
         if (m_planView->width != w || m_planView->height != h)
