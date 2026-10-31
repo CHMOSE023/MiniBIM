@@ -13,7 +13,6 @@
 #include "Rvt/Types.h"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <iterator>
 
@@ -347,18 +346,6 @@ namespace MiniBIM::Rvt
                     out.push_back(std::move(name));
             return out;
         }
-
-        // Rust 的 f64::total_cmp
-        bool TotalLess(double a, double b)
-        {
-            auto key = [](double v)
-            {
-                int64_t bits = std::bit_cast<int64_t>(v);
-                bits ^= static_cast<int64_t>(static_cast<uint64_t>(bits >> 63) >> 1);
-                return bits;
-            };
-            return key(a) < key(b);
-        }
     }
 
     std::vector<Count> Inventory::Counts() const
@@ -491,9 +478,9 @@ namespace MiniBIM::Rvt
         }
         std::stable_sort(inventory.levels.begin(), inventory.levels.end(), [](const Level& a, const Level& b)
         {
-            if (TotalLess(a.elevationFeet, b.elevationFeet))
+            if (Bytes::TotalLess(a.elevationFeet, b.elevationFeet))
                 return true;
-            if (TotalLess(b.elevationFeet, a.elevationFeet))
+            if (Bytes::TotalLess(b.elevationFeet, a.elevationFeet))
                 return false;
             return a.id < b.id;
         });

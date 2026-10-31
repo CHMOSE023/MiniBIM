@@ -25,8 +25,18 @@ if(MINIBIM_WITH_RVT)
         src/Rvt/Placement.cpp
         src/Rvt/Sketch.cpp
         src/Rvt/Inventory.cpp
+        # 导入（R5）：项目的元素读成 MiniBIM 的模型，各类元素一个文件，Import.cpp 把它们接起来
+        src/Rvt/Import.cpp
+        src/Rvt/Walls.cpp
+        src/Rvt/Floors.cpp
+        src/Rvt/Roofs.cpp
+        src/Rvt/Openings.cpp
+        src/Rvt/Columns.cpp
+        src/Rvt/Rooms.cpp
     )
     target_include_directories(MiniBIMRvt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    # 导入经核心库的模型与 Model::Check（读取器依赖核心库，反过来不行）
+    target_link_libraries(MiniBIMRvt PUBLIC MiniBIM)
     target_compile_definitions(MiniBIMRvt PUBLIC MINIBIM_WITH_RVT)
     if(MSVC)
         target_compile_options(MiniBIMRvt PRIVATE /utf-8 /W4)

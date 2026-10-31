@@ -55,7 +55,9 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 | `String::from_utf16`、`char::is_control`、`str::trim().is_empty()` | `Bytes::CodePointsAt`、`Bytes::IsControl`、`Bytes::IsBlank` | 照 Rust 的规则：不成对的代理是错，控制字符只算 Cc，空白按 Unicode 的 White_Space |
 | `buf.get(a..b) == Some(x)` | `Bytes::Matches` | 越界时为假，不读出界 |
 | `sort_by` / `sort_by_key`（稳定） | `std::stable_sort` | `std::sort` 不稳定，排好后取第一个的地方结果会变 |
-| `f64::total_cmp` | 自己写的全序比较（`src/Rvt/Inventory.cpp`） | NaN 与 −0 也有位置，不能直接用 `<` |
+| `f64::total_cmp` | `Bytes::TotalLess`（`src/Rvt/Bytes.h`） | NaN 与 −0 也有位置，不能直接用 `<` |
+| 迭代器的 `max_by_key` / `max_by`、`min_by_key` / `min_by` | 手写的循环 | 一样大时 `max_*` 取**最后一个**、`min_*` 取第一个；`std::max_element` 取第一个，结果会变 |
+| `f64` 的 `{}`（`format!`、`to_string`） | `Bim::Text::Shortest` | 最短的、读回来不变的写法，`1.0` 写成 `1`；不要用 `std::to_string`（固定六位小数） |
 
 ## 已定的事（用户在第 2a 步定的）
 

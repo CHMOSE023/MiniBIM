@@ -745,4 +745,6 @@ namespace MiniBIM::Bim
     uint64_t FreshUid();
     // p 到微米：本应精确的点去掉浮点误差（不写出 -0）
     P2 Micron(P2 p);
+    // Model::Check 的报错说的是哪个元素：关于元素的报错以它的类别与 ID 开头，`door 12: …`。导入用它略去违反规则的元素
+    std::optional<Id> Culprit(std::string_view error);
 }

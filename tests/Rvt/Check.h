@@ -36,4 +36,13 @@ namespace RvtTest
     void TestInventory();
     void TestDecoders();
     void TestSketch();
+
+    // 导入（R5）的测试组：ImportTests.cpp、FloorTests.cpp 与 OpeningTests.cpp
+    void TestImport();
+    void TestWalls();
+    void TestFloors();
+    void TestRoofs();
+    void TestOpenings();
+    void TestRooms();
+    void TestColumns();
 }

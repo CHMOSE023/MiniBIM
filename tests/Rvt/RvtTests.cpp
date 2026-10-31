@@ -819,6 +819,13 @@ int main()
     RvtTest::TestInventory();
     RvtTest::TestDecoders();
     RvtTest::TestSketch();
+    RvtTest::TestImport();
+    RvtTest::TestWalls();
+    RvtTest::TestFloors();
+    RvtTest::TestRoofs();
+    RvtTest::TestOpenings();
+    RvtTest::TestRooms();
+    RvtTest::TestColumns();
     TestFence();
     const int failed = RvtTest::g_failed;
     std::printf("\n%s：%d 项失败\n", failed == 0 ? "全部通过" : "有失败", failed);

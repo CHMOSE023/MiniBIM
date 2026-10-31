@@ -6,6 +6,7 @@
 #include "Model/Walls.h"
 #include "I18n/Translator.h"
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <set>
@@ -2444,5 +2445,20 @@ namespace MiniBIM::Bim
     {
         // + 0.0：文件里不写 -0
         return P2(std::round(p.x * 1e3) / 1e3 + 0.0, std::round(p.y * 1e3) / 1e3 + 0.0);
+    }
+
+    std::optional<Id> Culprit(std::string_view error)
+    {
+        const auto words = Text::SplitWhitespace(error);
+        if (words.size() < 2)
+            return std::nullopt;
+        std::string_view w = words[1];
+        while (!w.empty() && w.back() == ':')
+            w.remove_suffix(1);
+        Id id = 0;
+        const auto [end, ec] = std::from_chars(w.data(), w.data() + w.size(), id);
+        if (w.empty() || ec != std::errc() || end != w.data() + w.size())
+            return std::nullopt;
+        return id;
     }
 }

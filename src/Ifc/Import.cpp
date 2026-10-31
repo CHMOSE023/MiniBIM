@@ -6,7 +6,6 @@
 #include "Model/Text.h"
 #include "Model/Walls.h"
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <initializer_list>
 #include <map>
@@ -1924,22 +1923,6 @@ namespace MiniBIM::Bim::Ifc
             x.to   = round(c1 - c0);
             out = RoofRead{ {}, {}, openings, 0.0, {}, x, t, z };
             return true;
-        }
-
-        // Model::Check 的报错说的是哪个元素：关于元素的报错以它的类别与 ID 开头，`door 12: …`
-        std::optional<Id> Culprit(std::string_view error)
-        {
-            const auto words = Text::SplitWhitespace(error);
-            if (words.size() < 2)
-                return std::nullopt;
-            std::string_view w = words[1];
-            while (!w.empty() && w.back() == ':')
-                w.remove_suffix(1);
-            Id id = 0;
-            const auto [end, ec] = std::from_chars(w.data(), w.data() + w.size(), id);
-            if (w.empty() || ec != std::errc() || end != w.data() + w.size())
-                return std::nullopt;
-            return id;
         }
 
         uint64_t Fnv(std::string_view bytes)

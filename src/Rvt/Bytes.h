@@ -1,6 +1,7 @@
 // MiniBIM 为 Revit 读取器写的字节工具（代替 BIMCraft 用的 memchr 与 Rust 标准库的 UTF-16 解码），随 src/Rvt 以 Apache-2.0 发布，见 src/Rvt/NOTICE
 #pragma once
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -24,6 +25,17 @@ namespace MiniBIM::Rvt::Bytes
     std::optional<uint32_t> U32At(Span buf, size_t at);
     std::optional<uint64_t> U64At(Span buf, size_t at);
     std::optional<double>   F64At(Span buf, size_t at);
+    // 浮点数的全序，同 Rust 的 f64::total_cmp：a 排在 b 前面（-NaN < -∞ < … < -0 < +0 < … < +∞ < NaN）
+    inline bool TotalLess(double a, double b)
+    {
+        const auto key = [](double v)
+        {
+            int64_t bits = std::bit_cast<int64_t>(v);
+            bits ^= static_cast<int64_t>(static_cast<uint64_t>(bits >> 63) >> 1);
+            return bits;
+        };
+        return key(a) < key(b);
+    }
 
     // needle 在 hay 里从 from 起第一次出现的位置；没有时为 npos
     size_t Find(Span hay, Span needle, size_t from = 0);

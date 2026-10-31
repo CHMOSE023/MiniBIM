@@ -79,7 +79,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 
 - 照 BIMCraft 的规则：不让错误输入弄崩程序。参数里的数都查有限、在 `MaxCoord` 以内，列表有 `MaxPoints`、名称有 `MaxText` 的上限；
   `Session::Execute` 捕获异常当作命令失败（BIMCraft 的 `catch_unwind`）。`CommandTests` 的恶意参数扫描保证每条命令只拒绝、不出内部错误、不弄坏模型
-- 新的检查规则加在 `Model::Check`，错误信息以"类别 ID: "开头、说明要改什么；命令不必自己撤销
+- 新的检查规则加在 `Model::Check`，错误信息以"类别 ID: "开头、说明要改什么；命令不必自己撤销。
+  `Bim::Culprit` 从这样的报错取出元素的 ID：IFC 与 Revit 的导入据此逐个略去违反规则的元素，所以别的写法的报错会让整个导入失败
 - 核心的报错信息照 BIMCraft 写英文（给人和 AI 代理读），不经 `Tr`；界面弹窗的标题翻译。命令名称（撤销步骤的名称）用 `N_` 标记
 - 族的类型在 `Bim::Fam` 命名空间（`Fam::Kind` 是参数的种类，`Bim::Kind` 是库条目的种类；`Fam::Wall` 是墙厚参数名，`Bim::Wall` 是墙），
   在 `Bim` 里写族的代码时要带上 `Fam::`，不要 `using namespace Fam`
