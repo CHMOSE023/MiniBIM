@@ -246,6 +246,8 @@ namespace MiniBIM
         std::optional<Bim::Json> TopParams(const std::optional<std::optional<Bim::Guid>>& top, const std::string& height, std::string& error) const;
         // 构件工具放的族与类型：选的，否则第一个可载入族的第一个类型
         std::optional<std::pair<std::string, std::string>> Placing() const;
+        // 构件工具能放这一类的族吗：卫浴、电气等设备的按钮（m_toolOf 为设备的键）只放它的几类
+        bool PlacingFits(Bim::Fam::Category c) const;
 
         // ── 修改（Modify.cpp）：框选、Tab 切换、拖动、夹点、修改工具 ──────────
         // 光标下的元素：几个叠在一起时按 Tab 轮换
@@ -519,7 +521,7 @@ namespace MiniBIM
             std::map<std::string, std::string> openingFamilies;  // door / window → 族（选了项目自己的类型时没有）
             std::optional<std::pair<std::string, std::string>> component;
         } m_toolOpt;
-        const char*     m_toolOf = nullptr;                 // Stand、Run 工具放的类别
+        const char*     m_toolOf = nullptr;                 // Stand、Run 工具放的类别；构件工具放的设备（MEP 的按钮）
         MiniGUI::Node*  m_optionsBody = nullptr;
         // 修改工具的状态
         std::optional<Bim::P2>          m_rotateCentre;     // 旋转中心：选工具时为选择集的中心

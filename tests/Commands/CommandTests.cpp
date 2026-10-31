@@ -8,6 +8,7 @@
 #include "Model/Align.h"
 #include "Model/ModelJson.h"
 #include "Model/Render.h"
+#include "Model/Snap.h"
 #include "Model/Walls.h"
 #include <algorithm>
 #include <atomic>
@@ -2231,6 +2232,272 @@ namespace
             Check(d.Pick(d.view.ToPx(P2(2000, 0)), 4.0f) == below, "平面图：拾取梁");
         }
     }
+    // ── 卫浴、电气、防雷、数据（移植自 BIMCraft mep_tests.rs，f3bbb33）──────────
+    // 每类 run 的命令、快捷名、默认类型、是否圆的
+    struct MepCase
+    {
+        const char* category;
+        const char* command;
+        const char* alias;
+        const char* defaultType;
+        bool        round;
+    };
+    constexpr MepCase MepCases[] = {
+        { "pipe", "pipe", "PI", "PVC 50", true },
+        { "conduit", "conduit", "CN", "PVC 25", true },
+        { "cabletray", "cable_tray", "CT", "Perforated 100 x 50", false },
+        { "wire", "wire", "EW", "Wire 2.5", true },
+        { "downconductor", "down_conductor", "DC", "Steel 8", true },
+        { "groundconductor", "ground_conductor", "GC", "Copper 9", true },
+        { "cable", "cabling", "CB", "Cat6", true },
+    };
+
+    // 起步的设备族（英文名）、类别，以及它的形体在基点之上的范围（毫米：最低点可在的区间，最高点可在的区间）
+    struct MepFixture
+    {
+        const char*   family;
+        Fam::Category category;
+        double        base[2];
+        double        top[2];
+    };
+    const MepFixture MepFixtures[] = {
+        { "WC", Fam::Category::Plumbing, { 0, 0 }, { 700, 900 } },
+        { "Washbasin", Fam::Category::Plumbing, { 0, 0 }, { 800, 900 } },
+        { "Kitchen Sink", Fam::Category::Plumbing, { 0, 0 }, { 850, 1300 } },
+        { "Shower", Fam::Category::Plumbing, { 0, 0 }, { 2000, 2200 } },
+        { "Floor Drain", Fam::Category::Drain, { -100, 0 }, { 0, 0 } },
+        { "Elbow 90", Fam::Category::PipeFitting, { -100, -10 }, { 10, 100 } },
+        { "Tee", Fam::Category::PipeFitting, { -100, -10 }, { 10, 100 } },
+        { "Gate Valve", Fam::Category::PipeAccessory, { -100, -10 }, { 40, 300 } },
+        { "Distribution Board", Fam::Category::Equipment, { 1200, 1400 }, { 1700, 2300 } },
+        { "Ceiling Luminaire", Fam::Category::Lighting, { 2900, 3000 }, { 2950, 3050 } },
+        { "Recessed Luminaire", Fam::Category::Lighting, { 2900, 3000 }, { 2950, 3050 } },
+        { "Outlet", Fam::Category::Outlet, { 200, 2100 }, { 300, 2200 } },
+        { "Switch", Fam::Category::Switch, { 200, 1200 }, { 300, 1300 } },
+        { "Air Terminal", Fam::Category::AirTerminal, { -1, 1 }, { 400, 2100 } },
+        { "Earthing Electrode", Fam::Category::Earthing, { -3100, -2300 }, { 0, 0 } },
+        { "Inspection Box", Fam::Category::InspectionBox, { -350, -200 }, { 0, 0 } },
+        { "Data Outlet", Fam::Category::DataOutlet, { 200, 1200 }, { 300, 1300 } },
+        { "Voice Outlet", Fam::Category::VoiceOutlet, { 200, 1200 }, { 300, 1300 } },
+        { "Patch Panel", Fam::Category::PatchPanel, { 1400, 1600 }, { 1500, 1700 } },
+        { "Rack", Fam::Category::Rack, { -1, 1 }, { 1900, 2100 } },
+    };
+
+    // 平面上 id 的各项（没给 id 时所有的项）占的范围，模型毫米，到十分之一
+    std::array<double, 4> PlanExtent(const Render::Drawing& d, std::optional<Id> id)
+    {
+        double x0 = INFINITY, y0 = INFINITY, x1 = -INFINITY, y1 = -INFINITY;
+        const auto add = [&](Render::Px p)
+        {
+            const P2 q = d.view.ToMm(p);
+            x0 = std::min(x0, q.x);
+            y0 = std::min(y0, q.y);
+            x1 = std::max(x1, q.x);
+            y1 = std::max(y1, q.y);
+        };
+        for (size_t i = 0; i < d.prims.size(); ++i)
+        {
+            if (id && d.owners[i] != id)
+                continue;
+            for (const auto& ring : d.prims[i].rings)
+                for (const Render::Px p : ring)
+                    add(p);
+            for (const Render::Px p : d.prims[i].pts)
+                add(p);
+        }
+        const auto tenth = [](double v) { return std::round(v * 10.0) / 10.0 + 0.0; };
+        return { tenth(x0), tenth(y0), tenth(x1), tenth(y1) };
+    }
+
+    void TestMep()
+    {
+        for (const MepCase& c : MepCases)
+        {
+            const std::string of = std::string(c.category) + "：";
+            {
+                // 点与点之间一段一根，中心线在标高上
+                Session s;
+                const auto made = IdsOf(Run(s, c.command, R"({"points": [[0, 0], [6000, 0], [6000, 4000]]})"));
+                Check(made.size() == 2, of + "每段一根");
+                const Json e = made.empty() ? Json() : ElementOf(s, made[0]);
+                Check(e["category"] == c.category && e["type"] == c.defaultType && e["justify"] == "centre" && e["round"] == c.round,
+                      of + "类别、默认类型、居中、圆不圆：" + e.dump().substr(0, 200));
+                Check(e["length"] == 6000.0 && e["axis"] == Axis({ { 0, 0, 0 }, { 6000, 0, 0 } }), of + "长度与轴");
+                Check(made.size() == 2 && ElementOf(s, made[1])["length"] == 4000.0, of + "第二段");
+                const auto ring = IdsOf(Run(s, c.alias, R"({"points": [[0, 0], [1000, 0], [1000, 1000]], "closed": true})"));
+                Check(ring.size() == 3, of + "快捷名，闭合成一圈");
+                Check(Count(s, (std::string(c.category) + "s").c_str()) == 5, of + "按复数的类别数");
+            }
+            {
+                // 坡下去的排水管、所属系统；立管；modify 改高度与系统
+                Session s;
+                const auto r = IdsOf(Run(s, c.command,
+                                         R"({"points": [[0, 0], [6000, 0]], "offset": 2400, "end_offset": 2340, "system": "Esgoto", "level": "Level 1"})"));
+                const Json e = r.empty() ? Json() : ElementOf(s, r[0]);
+                Check(e["axis"] == Axis({ { 0, 0, 2400 }, { 6000, 0, 2340 } }) && e["system"] == "Esgoto", of + "两端的高度与系统");
+                const auto up = IdsOf(Run(s, c.command, R"({"points": [[500, 500], [500, 500]], "offset": 0, "end_offset": 3000})"));
+                const Json u = up.empty() ? Json() : ElementOf(s, up[0]);
+                Check(u["length"] == 3000.0 && u["axis"] == Axis({ { 500, 500, 0 }, { 500, 500, 3000 } }), of + "立管：同一点两个高度");
+                if (!up.empty())
+                {
+                    Run(s, "modify", Json{ { "id", up[0] }, { "offset", 100 }, { "system", "\xC3\x81gua fria" } });
+                    const Json m = ElementOf(s, up[0]);
+                    Check(m["axis"][0][2] == 100.0 && m["system"] == "\xC3\x81gua fria", of + "modify 改高度与系统");
+                }
+            }
+            {
+                // 做不成的被拒，模型不变
+                Session s;
+                const Json line = Json::array({ Pt(0, 0), Pt(3000, 0) });
+                Check(Contains(Fails(s, c.command, Json{ { "points", { Pt(0, 0), Pt(0, 0) } } }), "too short"), of + "太短");
+                Check(Contains(Fails(s, c.command, Json{ { "points", { Pt(0, 0) } } }), "at least 2"), of + "至少两点");
+                Check(Contains(Fails(s, c.command, Json{ { "points", line }, { "type", "Nope" } }), "type `Nope` doesn't exist"), of + "没有的类型");
+                Check(Contains(Fails(s, c.command, Json{ { "points", line }, { "justify", "sideways" } }), "justify"), of + "对齐写错");
+                Check(Contains(Fails(s, c.command, Json{ { "points", line }, { "offset", 1e300 } }), "offset"), of + "高度太大");
+                Check(Contains(Fails(s, c.command, Json{ { "points", line }, { "system", std::string(300, 'x') } }), "system"), of + "系统名太长");
+                Check(Contains(Fails(s, c.command, Json{ { "points", { Pt(0, 0), Pt(1000, 0), Pt(2000, 0) } }, { "end_offset", 100 } }), "end_offset"),
+                      of + "end_offset 只给一段");
+            }
+            {
+                // 类型：圆不圆、材质；改了处处跟着变
+                Session s;
+                const Json made = Run(s, "type", Json{ { "category", c.category }, { "name", "Mine" }, { "width", 75 }, { "depth", 75 },
+                                                       { "round", c.round }, { "material", "Metal" } });
+                Check(made["type"] == Json{ { "width", 75.0 }, { "depth", 75.0 }, { "round", c.round }, { "material", "Metal" } }, of + "新建类型");
+                const auto id = IdsOf(Run(s, c.command, R"({"points": [[0, 0], [3000, 0]], "type": "Mine"})"));
+                Run(s, "type", Json{ { "category", c.category }, { "name", "Mine" }, { "width", 90 } });
+                Check(!id.empty() && ElementOf(s, id[0])["width"] == 90.0, of + "改类型，用它的跟着变");
+                Check(Contains(Fails(s, "type", Json{ { "category", c.category }, { "name", "Odd" }, { "width", 50 }, { "depth", 50 },
+                                                     { "round", c.round }, { "material", "Unobtainium" } }),
+                               "library"),
+                      of + "材质要在库里");
+            }
+            {
+                // 移动、旋转、镜像、复制、删除
+                Session s;
+                const auto made = IdsOf(Run(s, c.command, R"({"points": [[0, 0], [4000, 0]], "offset": 2800, "end_offset": 3000})"));
+                if (made.empty())
+                    continue;
+                const Id a = made[0];
+                const auto axis = [&](Id id) { return ElementOf(s, id)["axis"]; };
+                const Json z0 = axis(a)[0][2], z1 = axis(a)[1][2];
+                Run(s, "move", Json{ { "ids", { a } }, { "by", Pt(1000, 500) } });
+                Check(axis(a)[0] == Json::array({ 1000.0, 500.0, z0 }), of + "移动，高度不变");
+                Run(s, "rotate", Json{ { "ids", { a } }, { "about", Pt(1000, 500) }, { "angle", 90 } });
+                const Json end = axis(a)[1];
+                Check(NearNum(end[0], 1000.0, 1e-6) && NearNum(end[1], 4500.0, 1e-6), of + "旋转：" + end.dump());
+                const auto m = IdsOf(Run(s, "mirror", Json{ { "ids", { a } }, { "axis", { Pt(0, 0), Pt(0, 1000) } }, { "copy", true } }));
+                const Json mirrored = m.empty() ? Json() : axis(m[0]);
+                Check(!m.empty() && mirrored[0][2] == z0 && mirrored[1][2] == z1, of + "镜像，各端的高度跟着各端");
+                Run(s, "copy", Json{ { "ids", { a } }, { "by", Pt(0, -2000) } });
+                Check(Count(s, c.category) == 3, of + "复制");
+                Run(s, "delete", Json{ { "ids", { a } } });
+                Run(s, "undo", Json::object());
+                Check(Count(s, c.category) == 3, of + "删除再撤销");
+            }
+            {
+                // 平面：剖切面穿过的剖开，上面的虚线，视图范围以上的不画；预览一样画
+                Session s;
+                const Id cut  = IdsOf(Run(s, c.command, R"({"points": [[0, 0], [6000, 0]], "offset": 1200})")).at(0);
+                const Id over = IdsOf(Run(s, c.command, R"({"points": [[0, 1000], [6000, 1000]], "offset": 2800})")).at(0);
+                const Id high = IdsOf(Run(s, c.command, R"({"points": [[0, 4000], [6000, 4000]], "offset": 6000})")).at(0);
+                const Model& m   = s.GetModel();
+                const Guid level = m.GuidOf(Id(100000));
+                const Render::View view{ 0.1, 3000.0, 0.0, 1000, 800 };
+                const Render::Drawing d = Render::Draw(m, level, view);
+                const double half = ElementOf(s, cut)["width"].get<double>() / 2.0;
+                const std::array<double, 4> want{ 0.0, -half, 6000.0, half };
+                Check(PlanExtent(d, cut) == want, of + "平面：剖开的范围");
+                bool poche = false, dashed = true, overSeen = false, highSeen = false;
+                for (size_t i = 0; i < d.prims.size(); ++i)
+                {
+                    const Render::Prim& p = d.prims[i];
+                    if (d.owners[i] == std::optional<Id>(cut))
+                        poche |= p.kind == Render::Prim::Kind::Fill && p.color == Render::Poche;
+                    if (d.owners[i] == std::optional<Id>(over))
+                    {
+                        overSeen = true;
+                        dashed &= p.kind == Render::Prim::Kind::Line && p.dash.has_value();
+                    }
+                    highSeen |= d.owners[i] == std::optional<Id>(high);
+                }
+                Check(poche, of + "平面：剖开的涂实");
+                Check(overSeen && dashed, of + "平面：剖切面以上的画虚线");
+                Check(!highSeen, of + "平面：视图范围以上的不画");
+                const Element* e = m.elements.Get(cut);
+                const Render::Drawing sketch = e ? Render::Sketch(m, level, view, *e) : Render::Drawing(view);
+                Check(!sketch.prims.empty() && PlanExtent(sketch, std::nullopt) == want, of + "预览一样画");
+            }
+            {
+                // 捕捉 run 的端点与中点
+                Session s;
+                Run(s, c.command, R"({"points": [[0, 0], [6000, 0]], "offset": 2400})");
+                const Model& m = s.GetModel();
+                const auto at  = [&](P2 p) { return Snap::At(m, m.GuidOf(Id(100000)), p, Snap::Reach{ 100.0, 60.0 }, {}, false, Snap::Snaps{}); };
+                const Snap::Found end = at(P2(6040, 30)), mid = at(P2(3040, 30));
+                Check(end.at == P2(6000, 0) && end.kind == Snap::Kind::Endpoint, of + "捕捉端点");
+                Check(mid.at == P2(3000, 0) && mid.kind == Snap::Kind::Midpoint, of + "捕捉中点");
+            }
+        }
+        {
+            // 七类 run 存了再打开一模一样
+            Session s;
+            for (const MepCase& c : MepCases)
+                Run(s, c.command, R"({"points": [[0, 0], [4000, 0]], "system": "S"})");
+            const std::string path = Temp("mep.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            std::error_code ec;
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+            Check(t.GetModel().ToJson() == s.GetModel().ToJson(), "MEP：存了再打开一模一样");
+        }
+        // 新项目各种语言都有各选项卡的起步设备，每个族都建得出
+        for (const Language l : LanguageOf::All)
+        {
+            const Model m = Model::New("x", l);
+            std::string error;
+            bool ok = m.Check(error);
+            for (const MepFixture& f : MepFixtures)
+            {
+                const auto it = m.families.find(LanguageOf::Word(l, f.family));
+                ok = ok && it != m.families.end() && it->second.category == f.category && !it->second.types.empty();
+            }
+            Check(ok, std::string("设备：") + LanguageOf::Code(l) + " 的项目有起步的设备族：" + error);
+        }
+        {
+            // 每个设备族的每个类型都有形体，立在它该在的高度
+            Session s;
+            for (const MepFixture& f : MepFixtures)
+            {
+                std::vector<std::string> types;
+                if (const auto it = s.GetModel().families.find(f.family); it != s.GetModel().families.end())
+                    for (const auto& [t, _] : it->second.types)
+                        types.push_back(t);
+                bool ok = !types.empty();
+                for (const std::string& t : types)
+                {
+                    const Json r = Run(s, "component", Json{ { "family", f.family }, { "type", t }, { "at", Pt(1000, 1000) } });
+                    const Element* e = r.is_null() ? nullptr : s.GetModel().elements.Get(r["id"].get<Id>());
+                    const Component* c = e ? e->As<Component>() : nullptr;
+                    const auto pieces = c ? s.GetModel().ComponentPieces(*c) : std::vector<Fam::Piece>{};
+                    double top = -INFINITY, bottom = INFINITY;
+                    for (const Fam::Piece& p : pieces)
+                    {
+                        top    = std::max(top, p.top);
+                        bottom = std::min(bottom, p.bottom);
+                    }
+                    const bool fits = !pieces.empty() && top >= f.top[0] - 1e-6 && top <= f.top[1] + 1e-6 && bottom >= f.base[0] - 1e-6 &&
+                                      bottom <= f.base[1] + 1e-6;
+                    if (!fits)
+                        std::printf("  %s %s：%g 到 %g\n", f.family, t.c_str(), bottom, top);
+                    ok = ok && fits;
+                }
+                Check(ok, std::string("设备：") + f.family + " 的每个类型都有形体，高度对");
+            }
+        }
+    }
+
 }
 
 int main()
@@ -2254,6 +2521,7 @@ int main()
     TestBimcraft0733();
     TestColumns();
     TestStructure();
+    TestMep();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

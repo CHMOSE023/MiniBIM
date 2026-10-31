@@ -114,6 +114,39 @@ namespace MiniBIM
             return nullptr;
         }
 
+        // 卫浴、电气、防雷、数据的设备：构件工具只放这几类的族（移植自 BIMCraft mep.rs 的 FIXTURES）
+        struct Fixture
+        {
+            const char*                           key;
+            std::initializer_list<Bim::Fam::Category> kinds;
+            const char*                           title;
+        };
+        using C = Bim::Fam::Category;
+        const Fixture Fixtures[] = {
+            { "plumbing", { C::Plumbing, C::Drain }, N_("Modify | Place Plumbing Fixture") },
+            { "fitting", { C::PipeFitting }, N_("Modify | Place Pipe Fitting") },
+            { "accessory", { C::PipeAccessory }, N_("Modify | Place Pipe Accessory") },
+            { "equipment", { C::Equipment }, N_("Modify | Place Electrical Equipment") },
+            { "device", { C::Outlet, C::Switch }, N_("Modify | Place Device") },
+            { "lighting", { C::Lighting }, N_("Modify | Place Lighting Fixture") },
+            { "airterminal", { C::AirTerminal }, N_("Modify | Place Air Terminal") },
+            { "earthing", { C::Earthing }, N_("Modify | Place Earthing Electrode") },
+            { "inspection", { C::InspectionBox }, N_("Modify | Place Inspection Box") },
+            { "dataoutlet", { C::DataOutlet }, N_("Modify | Place Data Outlet") },
+            { "voiceoutlet", { C::VoiceOutlet }, N_("Modify | Place Voice Outlet") },
+            { "rack", { C::Rack }, N_("Modify | Place Rack") },
+            { "patchpanel", { C::PatchPanel }, N_("Modify | Place Patch Panel") },
+        };
+
+        const Fixture* FixtureOf(const char* key)
+        {
+            if (key)
+                for (const Fixture& f : Fixtures)
+                    if (std::string_view(key) == f.key)
+                        return &f;
+            return nullptr;
+        }
+
         const std::pair<Bim::Justify, const char*> Justifications[] = {
             { Bim::Justify::Top, N_("Top") }, { Bim::Justify::Centre, N_("Centre") }, { Bim::Justify::Bottom, N_("Bottom") },
         };
@@ -133,7 +166,7 @@ namespace MiniBIM
         if (tool != Tool::Modify && m_sketch.has_value() != SketchTool(tool))
             return;
         m_tool = tool;
-        if (tool != Tool::Stand && tool != Tool::Run)
+        if (tool != Tool::Stand && tool != Tool::Run && tool != Tool::Component)
             m_toolOf = nullptr;
         if ((ToolCategory() || tool == Tool::Level) && !m_selection.empty())
             m_selection.clear();
@@ -400,12 +433,13 @@ namespace MiniBIM
             bar->AddChild<Button>(Tr("Boundary Line"), [this, of] { m_platform->Post([this, of] { StartSketch(of, 0, {}); }); });
         };
         for (const auto& [t, name] : names)
-            if (t == m_tool)
+            if (t == m_tool && !(t == Tool::Component && FixtureOf(m_toolOf)))
             {
                 bar->AddChild<Label>(Tr(name), 13.0f)->SetBold(true);
                 bar->AddChild<Separator>(true);
             }
-        if (const char* title = (m_tool == Tool::Stand || m_tool == Tool::Run) && m_toolOf ? PlaceTitle(m_toolOf) : nullptr)
+        const Fixture* fixture = m_tool == Tool::Component ? FixtureOf(m_toolOf) : nullptr;
+        if (const char* title = fixture ? fixture->title : (m_tool == Tool::Stand || m_tool == Tool::Run) && m_toolOf ? PlaceTitle(m_toolOf) : nullptr)
         {
             bar->AddChild<Label>(Tr(title), 13.0f)->SetBold(true);
             bar->AddChild<Separator>(true);
@@ -690,12 +724,21 @@ namespace MiniBIM
     {
         const Bim::Model& m = m_session.GetModel();
         if (m_toolOpt.component)
-            if (const auto f = m.families.find(m_toolOpt.component->first); f != m.families.end() && f->second.types.contains(m_toolOpt.component->second))
+            if (const auto f = m.families.find(m_toolOpt.component->first);
+                f != m.families.end() && PlacingFits(f->second.category) && f->second.types.contains(m_toolOpt.component->second))
                 return m_toolOpt.component;
         for (const auto& [name, f] : m.families)
-            if (!Bim::Fam::CategoryOf::Hosted(f.category) && !f.types.empty())
+            if (PlacingFits(f.category) && !f.types.empty())
                 return std::pair{ name, f.types.begin()->first };
         return std::nullopt;
+    }
+
+    bool MainFrame::PlacingFits(Bim::Fam::Category c) const
+    {
+        if (Bim::Fam::CategoryOf::Hosted(c))
+            return false;
+        const Fixture* f = m_tool == Tool::Component ? FixtureOf(m_toolOf) : nullptr;
+        return !f || std::find(f->kinds.begin(), f->kinds.end(), c) != f->kinds.end();
     }
 
     void MainFrame::PlacePoint(Bim::P2 p)

@@ -94,19 +94,19 @@ msgstr "Viga"
 msgid "Wall Footing"
 msgstr "Zapata corrida"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Pipe"
 msgstr "Tubería"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Conduit"
 msgstr "Conducto"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Cable Tray"
 msgstr "Bandeja portacables"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Wire"
 msgstr "Cable eléctrico"
 
@@ -118,7 +118,7 @@ msgstr "Bajante"
 msgid "Earthing Conductor"
 msgstr "Conductor de puesta a tierra"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
 msgid "Cabling"
 msgstr "Cableado"
 
@@ -917,6 +917,146 @@ msgstr "Zapata aislada (FI): haz clic donde va la zapata"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr "Zapata corrida (FW): haz clic en su inicio y su fin, o una cadena de clics, bajo un muro"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"
+msgstr "Tubería (PI): haz clic en su inicio y su fin; una cadena de clics crea una tubería por tramo"
+
+#: apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Plumbing"
+msgstr "Fontanería"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
+msgstr "Aparato sanitario (PX): un lavabo, un inodoro, un fregadero, una ducha o un sumidero, donde haces clic; Espacio lo gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Fitting"
+msgstr "Accesorio"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"
+msgstr "Accesorio de tubería (PF): un codo o una te, donde haces clic, a la altura de una tubería; Espacio lo gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Accessory"
+msgstr "Valvulería"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pipe Accessory (PA): a valve, where you click on a pipe's height; Space turns it"
+msgstr "Valvulería (PA): una válvula, donde haces clic, a la altura de una tubería; Espacio la gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Equipment"
+msgstr "Equipo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
+msgstr "Equipo eléctrico (EE): un cuadro de distribución, donde haces clic en el muro; Espacio lo gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Device"
+msgstr "Dispositivo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Device (DV): an outlet or a switch, where you click on the wall; Space turns it"
+msgstr "Dispositivo (DV): un enchufe o un interruptor, donde haces clic en el muro; Espacio lo gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Lighting"
+msgstr "Iluminación"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
+msgstr "Luminaria (LF): una luminaria, donde haces clic, colgada del forjado; Espacio la gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
+msgstr "Conducto (CN): haz clic en su inicio y su fin; una cadena de clics crea un conducto por tramo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
+msgstr "Bandeja portacables (CT): haz clic en su inicio y su fin; una cadena de clics crea una bandeja por tramo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
+msgstr "Cable eléctrico (EW): haz clic en su inicio y su fin; una cadena de clics crea un cable por tramo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Air Terminal"
+msgstr "Captador"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
+msgstr "Captador (AT): una punta captadora, donde haces clic en la cubierta; Espacio lo gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Down Lead"
+msgstr "Bajante"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"
+msgstr "Bajante (DC): haz clic en su inicio y su fin; el mismo punto dos veces y dos alturas lo levantan por un muro"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Electrode"
+msgstr "Electrodo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
+msgstr "Electrodo de tierra (EG): una pica clavada desde el nivel, donde haces clic; Espacio lo gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Inspection"
+msgstr "Arqueta"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
+msgstr "Arqueta de registro (IB): sobre un electrodo, a ras del nivel, donde haces clic; Espacio la gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Conductor"
+msgstr "Conductor"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
+msgstr "Conductor de puesta a tierra (GC): haz clic en su inicio y su fin; una cadena de clics crea el anillo o la malla, bajo el nivel"
+
+#: apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Data"
+msgstr "Datos"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
+msgstr "Toma de datos (DT): un punto de datos, donde haces clic en el muro; Espacio la gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Voice"
+msgstr "Voz"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
+msgstr "Toma de voz (VO): un punto de teléfono, donde haces clic en el muro; Espacio la gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rack"
+msgstr "Armario rack"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rack (RK): a floor rack, where you click; Space turns it"
+msgstr "Armario rack (RK): un rack de suelo, donde haces clic; Espacio lo gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Patch Panel"
+msgstr "Panel de parcheo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
+msgstr "Panel de parcheo (PN): un panel en el muro, donde haces clic; Espacio lo gira"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
+msgstr "Cableado (CB): haz clic en su inicio y su fin; una cadena de clics crea un cable por tramo"
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
@@ -2047,6 +2187,58 @@ msgid "Modify | Place Isolated Footing"
 msgstr "Modificar | Colocar zapata aislada"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Plumbing Fixture"
+msgstr "Modificar | Colocar aparato sanitario"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Pipe Fitting"
+msgstr "Modificar | Colocar accesorio de tubería"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Pipe Accessory"
+msgstr "Modificar | Colocar valvulería"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Electrical Equipment"
+msgstr "Modificar | Colocar equipo eléctrico"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Device"
+msgstr "Modificar | Colocar dispositivo"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Lighting Fixture"
+msgstr "Modificar | Colocar luminaria"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Air Terminal"
+msgstr "Modificar | Colocar captador"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Earthing Electrode"
+msgstr "Modificar | Colocar electrodo de tierra"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Inspection Box"
+msgstr "Modificar | Colocar arqueta de registro"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Data Outlet"
+msgstr "Modificar | Colocar toma de datos"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Voice Outlet"
+msgstr "Modificar | Colocar toma de voz"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Rack"
+msgstr "Modificar | Colocar armario rack"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Patch Panel"
+msgstr "Modificar | Colocar panel de parcheo"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click a sketch line to select it, Ctrl adds; drag a selected line's end to move it. Delete removes, Ctrl+Z steps back."
 msgstr "Haz clic en una línea de boceto para seleccionarla, Ctrl añade; arrastra el extremo de una línea seleccionada para moverlo. Supr elimina, Ctrl+Z deshace."
 
@@ -2505,6 +2697,34 @@ msgstr "Referencia"
 #: assets/ui/minibim_ui.json
 msgid "Foundation"
 msgstr "Cimentación"
+
+#: assets/ui/minibim_ui.json
+msgid "Plumbing & Piping"
+msgstr "Fontanería y tuberías"
+
+#: assets/ui/minibim_ui.json
+msgid "Electrical"
+msgstr "Electricidad"
+
+#: assets/ui/minibim_ui.json
+msgid "Conduit & Wire"
+msgstr "Conductos y cables"
+
+#: assets/ui/minibim_ui.json
+msgid "Lightning Protection"
+msgstr "Pararrayos"
+
+#: assets/ui/minibim_ui.json
+msgid "Capture & Descent"
+msgstr "Captación y bajada"
+
+#: assets/ui/minibim_ui.json
+msgid "Earthing"
+msgstr "Puesta a tierra"
+
+#: assets/ui/minibim_ui.json
+msgid "Outlets & Equipment"
+msgstr "Tomas y equipos"
 
 #: assets/ui/minibim_ui.json
 msgid "Mode"

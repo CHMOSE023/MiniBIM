@@ -1,4 +1,5 @@
 // 模型的三维场景（src/View/ModelScene）：示例房屋经 SMLib 建成实体、离散成三角形与边线
+#include "Commands/Commands.h"
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
 #include "Solid/SMLib/SMLibKernel.h"
@@ -160,6 +161,33 @@ namespace
         Check(Near(b.Min.z, -400.0, 1.0) && Near(b.Max.z, 3000.0, 1.0) && Near(b.Min.x, -150.0, 1.0) && Near(b.Max.x, 6000.0, 1.0),
               "三维场景：结构的范围");
     }
+    // 移植自 BIMCraft mep_tests.rs 的 the_3d_view_has_a_solid_for_a_run（f3bbb33）：每类 run 一个实体，圆的是圆的
+    void TestMep()
+    {
+        const std::pair<const char*, bool> cases[] = { { "pipe", true }, { "conduit", true }, { "cable_tray", false }, { "wire", true },
+                                                       { "down_conductor", true }, { "ground_conductor", true }, { "cabling", true } };
+        auto kernel = Solid::CreateSMLibKernel();
+        for (const auto& [command, round] : cases)
+        {
+            Bim::Session s;
+            Bim::Json out;
+            std::string error;
+            if (!s.Execute(command, Bim::Json::parse(R"({"points": [[0, 0], [6000, 0]], "offset": 2400})"), out, error))
+                std::printf("  %s：%s\n", command, error.c_str());
+            const Bim::Id id = out.is_object() ? out["ids"][0].get<Bim::Id>() : Bim::Id(0);
+            ModelScene scene;
+            const bool built = scene.Build(s.GetModel(), kernel.get(), error);
+            const Bim::Json e = Bim::ElementJson(s.GetModel(), id);
+            const double depth = e.value("depth", 0.0);
+            const AABB& b = scene.GetBounds();
+            const auto [first, last] = scene.RangeOf(id);
+            // 方的是一个盒子（12 个三角形），圆的围着一圈
+            const size_t tris = (last - first) / 3;
+            Check(built && scene.GetCounts().runs == 1 && Near(b.Min.z, 2400.0 - depth / 2.0, 0.5) && Near(b.Max.z, 2400.0 + depth / 2.0, 0.5) &&
+                      (round ? tris > 12 : tris == 12),
+                  std::string("三维场景：") + command + " 的实体，中心在 2400，" + (round ? "圆的" : "方的"));
+        }
+    }
 }
 
 int main()
@@ -169,6 +197,7 @@ int main()
     TestOpeningsAreCut();
     TestColumns();
     TestStructure();
+    TestMep();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

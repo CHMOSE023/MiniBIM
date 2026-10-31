@@ -94,10 +94,14 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   定位线、"链"在选项栏；门窗：单击墙，离那一段中点 10 像素内放正中；柱（`arch.column`，CL）：单击处立一根，高度同墙的选项栏（上一层或未连接时的高度，
   `MainFrame::TopParams`），预览经 `Render::Sketch`；构件：空格转 90°；屋顶、楼板建好后选中并回到修改；标高：选项栏输入高程"创建"。
   "结构"选项卡（移植自 `structure.rs`）：结构柱与独立基础是 `MainFrame::Tool::Stand`、梁与条形基础是 `MainFrame::Tool::Run`，类别在 `MainFrame::m_toolOf`
-  （`MainFrame::SetToolOf`，MEP 的选项卡同样只加按钮）；结构柱的高度同柱，独立基础的厚度与顶部偏移在选项栏；run 单击两端、"链"时接着放，
+  （`MainFrame::SetToolOf`）；结构柱的高度同柱，独立基础的厚度与顶部偏移在选项栏；run 单击两端、"链"时接着放，
   选项栏的对正与偏移每个 run 工具各记各的（`MainFrame::KeepRunOptions`），条形基础只有顶部偏移；预览经 `StoodOf`、`RunsOf` 做出命令会放的元素再 `Render::Sketch`。
   "楼板：结构"（`struct.floor`，SB）是楼板工具放 `structural` 的楼板（`ToolOptions::floorStructural`）。run 的特性有 Z 轴对正（`Props::Kind::Justification`）、
-  终点偏移（空时同起点）、系统；类型属性对话框对 run 的类型另有"圆形"与材质
+  终点偏移（空时同起点）、系统；类型属性对话框对 run 的类型另有"圆形"与材质。
+  "卫浴""电气""防雷""数据"选项卡（移植自 BIMCraft 界面的 `mep.rs`，命令 `mep.*`）：管道、线管、电缆桥架、导线、引下线、接地导体、综合布线是 Run 工具；
+  设备（卫浴装置、管件、管道附件、电气设备、装置、照明、接闪器、接地极、检查井、数据 / 语音插座、机柜、配线架）是构件工具，`m_toolOf` 为设备的键：
+  `MainFrame::PlacingFits` 只让它放那几类族（`Tools.cpp` 的 `Fixtures` 表，类型选择器与 `MainFrame::Placing` 都照它），选项栏的标题是设备的；
+  建筑的"构件"（`arch.component`）清掉 `m_toolOf`，放任何可载入族。设备与 run 的两字母快捷键在 `ShortcutsDialog.cpp` 的表里
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。
   没选东西时特性面板显示工具要放的"新建 …"，类型选择器选的是工具接下来放的类型（`ToolOptions::types`、门窗的族、构件的族与类型）
 - 草图模式（`SketchMode.cpp`，移植自界面的 `sketch.rs`）：`MainFrame::m_sketch` 有值时在草图里。入口是"修改 > 编辑边界"（`modify.editBoundary`，

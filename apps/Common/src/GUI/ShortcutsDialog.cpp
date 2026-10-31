@@ -29,7 +29,10 @@ namespace MiniBIM
             { "MD", "modify.select" },     { "MM", "modify.mirrorPick" }, { "DM", "modify.mirrorDraw" }, { "AL", "modify.align" },
             { "OF", "modify.offset" },     { "3D", "view.home" },         { "ZF", "view.zoomFit" },      { "ZE", "view.zoomFit" },
             { "ZA", "view.zoomFit" },      { "PP", "view.properties" },   { "VP", "view.properties" },   { "NP", "view.browser" },
-            { "KS", "file.shortcuts" },    { "SB", "struct.floor" },
+            { "KS", "file.shortcuts" },    { "SB", "struct.floor" },      { "PX", "mep.plumbing" },      { "PF", "mep.fitting" },
+            { "PA", "mep.accessory" },     { "EE", "mep.equipment" },     { "DV", "mep.device" },        { "LF", "mep.lighting" },
+            { "AT", "mep.airTerminal" },   { "EG", "mep.earthing" },      { "IB", "mep.inspection" },    { "DT", "mep.dataOutlet" },
+            { "VO", "mep.voiceOutlet" },   { "RK", "mep.rack" },          { "PN", "mep.patchPanel" },
         };
 
         // 模型命令（Bim::Command，它的 aliases 是快捷名）是哪个界面命令
@@ -39,7 +42,9 @@ namespace MiniBIM
             { "move", "modify.move" },   { "copy", "modify.copy" },        { "align", "modify.align" }, { "rotate", "modify.rotate" },
             { "corner", "modify.trim" }, { "split", "modify.split" },      { "delete", "edit.delete" },
             { "structural_column", "struct.column" }, { "beam", "struct.beam" }, { "footing", "struct.footing" },
-            { "strip_footing", "struct.wallFooting" },
+            { "strip_footing", "struct.wallFooting" }, { "pipe", "mep.pipe" }, { "conduit", "mep.conduit" }, { "cable_tray", "mep.cableTray" },
+            { "wire", "mep.wire" }, { "down_conductor", "mep.downConductor" }, { "ground_conductor", "mep.groundConductor" },
+            { "cabling", "mep.cabling" },
         };
 
         const char* ToolOf(std::string_view bimCommand)

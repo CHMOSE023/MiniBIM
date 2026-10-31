@@ -178,7 +178,7 @@ namespace MiniBIM
         std::vector<std::pair<std::string, std::string>> pairs;
         for (const auto& [name, f] : m.families)
         {
-            const bool fits = category == "component" ? !Bim::Fam::CategoryOf::Hosted(f.category)
+            const bool fits = category == "component" ? (placing ? PlacingFits(f.category) : !Bim::Fam::CategoryOf::Hosted(f.category))
                             : hosted && f.category == (category == "door" ? Bim::Fam::Category::Door : Bim::Fam::Category::Window);
             if (fits)
                 for (const auto& [type, _] : f.types)

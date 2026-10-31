@@ -120,7 +120,15 @@ namespace MiniBIM
         tool("arch.door", N_("Door"), N_("Door: click a wall"), Tool::Door);
         tool("arch.window", N_("Window"), N_("Window: click a wall"), Tool::Window);
         tool("arch.column", N_("Column"), N_("Column: click where it stands"), Tool::Column);
-        tool("arch.component", N_("Component"), N_("Component: a family's type, where you click; Space turns it"), Tool::Component);
+        // 构件：任何可载入族；卫浴、电气等选项卡的设备按钮是同一个工具，只放某几类的族（m_toolOf）
+        add("arch.component", N_("Component"), N_("Component: a family's type, where you click; Space turns it"),
+            [this]
+            {
+                const bool same = m_tool == Tool::Component && !m_toolOf;
+                m_toolOf = nullptr;
+                SetTool(same ? Tool::Modify : Tool::Component);
+            },
+            [this] { return !m_sketch; }, [this] { return m_tool == Tool::Component && !m_toolOf; });
         tool("arch.roof", N_("Roof"), N_("Roof by Footprint: click inside the walls to roof them, on the level above"), Tool::Roof);
         // 建筑的楼板与结构选项卡的结构楼板是同一个工具，放的楼板是否承重不同
         auto floorTool = [&](const char* id, const char* label, const char* tooltip, bool structural)
@@ -141,7 +149,7 @@ namespace MiniBIM
         tool("arch.grid", N_("Grid"), N_("Grid: click its two ends"), Tool::Grid);
 
         // ── 结构：结构柱、梁、结构楼板、独立基础、条形基础（移植自 BIMCraft structure.rs）──────
-        // 放一个类别的 Stand 或 Run 工具；之后 MEP 的选项卡加按钮即可，不加工具
+        // 放一个类别的 Stand 或 Run 工具，或只放某几类族的构件工具（设备）
         auto toolOf = [&](const char* id, const char* label, const char* tooltip, Tool t, const char* category)
         {
             add(id, label, tooltip, [this, t, category] { SetToolOf(t, category); }, [this] { return !m_sketch; },
@@ -152,6 +160,33 @@ namespace MiniBIM
         floorTool("struct.floor", N_("Floor"), N_("Floor: Structural (SB): click inside the walls to floor them with a slab that carries load"), true);
         toolOf("struct.footing", N_("Isolated"), N_("Isolated Footing (FI): click where the footing goes"), Tool::Stand, "footing");
         toolOf("struct.wallFooting", N_("Wall Footing"), N_("Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"), Tool::Run, "stripfooting");
+
+        // ── 卫浴、电气、防雷、数据：run 与设备（移植自 BIMCraft mep.rs）──────────
+        toolOf("mep.pipe", N_("Pipe"), N_("Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"), Tool::Run, "pipe");
+        toolOf("mep.plumbing", N_("Plumbing"), N_("Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"),
+               Tool::Component, "plumbing");
+        toolOf("mep.fitting", N_("Fitting"), N_("Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"), Tool::Component, "fitting");
+        toolOf("mep.accessory", N_("Accessory"), N_("Pipe Accessory (PA): a valve, where you click on a pipe's height; Space turns it"), Tool::Component, "accessory");
+        toolOf("mep.equipment", N_("Equipment"), N_("Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"),
+               Tool::Component, "equipment");
+        toolOf("mep.device", N_("Device"), N_("Device (DV): an outlet or a switch, where you click on the wall; Space turns it"), Tool::Component, "device");
+        toolOf("mep.lighting", N_("Lighting"), N_("Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"), Tool::Component, "lighting");
+        toolOf("mep.conduit", N_("Conduit"), N_("Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"), Tool::Run, "conduit");
+        toolOf("mep.cableTray", N_("Cable Tray"), N_("Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"), Tool::Run, "cabletray");
+        toolOf("mep.wire", N_("Wire"), N_("Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"), Tool::Run, "wire");
+        toolOf("mep.airTerminal", N_("Air Terminal"), N_("Air Terminal (AT): a captor, where you click on the roof; Space turns it"), Tool::Component, "airterminal");
+        toolOf("mep.downConductor", N_("Down Lead"), N_("Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"),
+               Tool::Run, "downconductor");
+        toolOf("mep.earthing", N_("Electrode"), N_("Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"), Tool::Component, "earthing");
+        toolOf("mep.inspection", N_("Inspection"), N_("Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"),
+               Tool::Component, "inspection");
+        toolOf("mep.groundConductor", N_("Conductor"), N_("Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"),
+               Tool::Run, "groundconductor");
+        toolOf("mep.dataOutlet", N_("Data"), N_("Data Outlet (DT): a data point, where you click on the wall; Space turns it"), Tool::Component, "dataoutlet");
+        toolOf("mep.voiceOutlet", N_("Voice"), N_("Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"), Tool::Component, "voiceoutlet");
+        toolOf("mep.rack", N_("Rack"), N_("Rack (RK): a floor rack, where you click; Space turns it"), Tool::Component, "rack");
+        toolOf("mep.patchPanel", N_("Patch Panel"), N_("Patch Panel (PN): a panel on the wall, where you click; Space turns it"), Tool::Component, "patchpanel");
+        toolOf("mep.cabling", N_("Cabling"), N_("Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"), Tool::Run, "cable");
 
         // ── 视图 ─────────────────────────────────────────────────
         add("view.3d", N_("3D View"), N_("Show the model in 3D"), [this] { ShowModel3D(); });

@@ -63,6 +63,26 @@
     "struct.floor":   { "icon": "StructuralFloor.png" },
     "struct.footing": { "icon": "Footing.png" },
     "struct.wallFooting": { "icon": "WallFooting.png" },
+    "mep.pipe":       { "icon": "Pipe.png" },
+    "mep.plumbing":   { "icon": "PlumbingFixture.png" },
+    "mep.fitting":    { "icon": "PipeFitting.png" },
+    "mep.accessory":  { "icon": "PipeAccessory.png" },
+    "mep.equipment":  { "icon": "ElectricalEquipment.png" },
+    "mep.device":     { "icon": "Device.png" },
+    "mep.lighting":   { "icon": "LightingFixture.png" },
+    "mep.conduit":    { "icon": "Conduit.png" },
+    "mep.cableTray":  { "icon": "CableTray.png" },
+    "mep.wire":       { "icon": "Wire.png" },
+    "mep.airTerminal": { "icon": "AirTerminal.png" },
+    "mep.downConductor": { "icon": "DownConductor.png" },
+    "mep.earthing":   { "icon": "EarthingElectrode.png" },
+    "mep.inspection": { "icon": "InspectionBox.png" },
+    "mep.groundConductor": { "icon": "GroundConductor.png" },
+    "mep.dataOutlet": { "icon": "DataOutlet.png" },
+    "mep.voiceOutlet": { "icon": "VoiceOutlet.png" },
+    "mep.rack":       { "icon": "Rack.png" },
+    "mep.patchPanel": { "icon": "PatchPanel.png" },
+    "mep.cabling":    { "icon": "Cabling.png" },
     "view.3d":        { "icon": "View3D.png" },
     "view.plan":      { "icon": "FloorPlan.png" },
     "view.levelUp":   { "icon": "LevelUp.png", "shortcut": "PageUp" },
@@ -105,6 +125,38 @@
             { "title": "Structure", "items": [ "struct.column", "struct.beam", "struct.floor" ] },
             { "title": "Foundation", "items": [ "struct.footing", "struct.wallFooting" ] },
             { "title": "Datum", "items": [ "arch.level", "arch.grid" ] }
+          ]
+        },
+        // 卫浴、电气、防雷、数据（BIMCraft 的四个专业选项卡；防雷与数据 Revit 没有）
+        {
+          "title": "Plumbing",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Plumbing & Piping", "items": [ "mep.pipe", "mep.plumbing", "mep.fitting", "mep.accessory" ] }
+          ]
+        },
+        {
+          "title": "Electrical",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Electrical", "items": [ "mep.equipment", "mep.device", "mep.lighting" ] },
+            { "title": "Conduit & Wire", "items": [ "mep.conduit", "mep.cableTray", "mep.wire" ] }
+          ]
+        },
+        {
+          "title": "Lightning Protection",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Capture & Descent", "items": [ "mep.airTerminal", "mep.downConductor" ] },
+            { "title": "Earthing", "items": [ "mep.earthing", "mep.inspection", "mep.groundConductor" ] }
+          ]
+        },
+        {
+          "title": "Data",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Outlets & Equipment", "items": [ "mep.dataOutlet", "mep.voiceOutlet", "mep.rack", "mep.patchPanel" ] },
+            { "title": "Cabling", "items": [ "mep.cableTray", "mep.cabling" ] }
           ]
         },
         {

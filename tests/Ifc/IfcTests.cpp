@@ -1471,6 +1471,259 @@ window {"at": [4000, 6000], "family": "Casement Window"})");
             Check(r && r->justify == Justify::Bottom && r->offset == 2500.0 && r->system == "Cold water", "导入：BIMCraft_Run 属性集的对齐与系统\n" + Skipped(i));
         }
     }
+    // ── 卫浴、电气、防雷、数据（移植自 BIMCraft mep_tests.rs 的 IFC 部分，f3bbb33）──────────
+    struct MepCase
+    {
+        const char* category;
+        const char* command;
+        const char* defaultType;
+        bool        round;
+        bool        alone;        // 光凭 IFC 类（与预定义类型）就认得出类别
+        const char* cls;
+        const char* predefined;
+    };
+    constexpr MepCase MepCases[] = {
+        { "pipe", "pipe", "PVC 50", true, true, "IFCPIPESEGMENT", ".RIGIDSEGMENT." },
+        { "conduit", "conduit", "PVC 25", true, true, "IFCCABLECARRIERSEGMENT", ".CONDUITSEGMENT." },
+        { "cabletray", "cable_tray", "Perforated 100 x 50", false, true, "IFCCABLECARRIERSEGMENT", ".CABLETRAYSEGMENT." },
+        { "wire", "wire", "Wire 2.5", true, true, "IFCCABLESEGMENT", ".CABLESEGMENT." },
+        { "downconductor", "down_conductor", "Steel 8", true, true, "IFCCABLESEGMENT", ".CONDUCTORSEGMENT." },
+        { "groundconductor", "ground_conductor", "Copper 9", true, false, "IFCCABLESEGMENT", ".CONDUCTORSEGMENT." },
+        { "cable", "cabling", "Cat6", true, false, "IFCCABLESEGMENT", ".CABLESEGMENT." },
+    };
+
+    // 文件里 `=ENTITY(` 的各行
+    std::vector<std::string> Entities(const std::string& f, const std::string& entity)
+    {
+        std::vector<std::string> out;
+        const std::string key = "=" + entity + "(";
+        for (size_t at = f.find(key); at != std::string::npos; at = f.find(key, at + 1))
+        {
+            const size_t from = f.rfind('\n', at) + 1;
+            out.push_back(f.substr(from, f.find('\n', at) - from));
+        }
+        return out;
+    }
+
+    bool EndsWith(const std::string& s, const std::string& tail) { return s.size() >= tail.size() && s.compare(s.size() - tail.size(), tail.size(), tail) == 0; }
+
+    // run 是什么、在哪里，到十分之一毫米，不论 ID：截面、所属系统、对齐线在两端的位置，哪头是起点由文件说了算
+    std::vector<std::string> DescribedRuns(const Model& m, std::string_view category)
+    {
+        const auto tenths = [](const Json& v)
+        {
+            char b[64];
+            std::snprintf(b, sizeof b, "%.1f", (v.is_number() ? v.get<double>() : NAN) + 0.0);
+            return std::string(b);
+        };
+        std::vector<std::string> out;
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            if (e->Category() != category)
+                continue;
+            const Json v  = ElementJson(m, id);
+            const Json z0 = v["offset"], z1 = v.contains("end_offset") && !v["end_offset"].is_null() ? v["end_offset"] : v["offset"];
+            std::string ends[2] = { tenths(v["start"][0]) + "," + tenths(v["start"][1]) + "," + tenths(z0),
+                                    tenths(v["end"][0]) + "," + tenths(v["end"][1]) + "," + tenths(z1) };
+            if (ends[1] < ends[0])
+                std::swap(ends[0], ends[1]);
+            out.push_back(tenths(v["width"]) + "x" + tenths(v["depth"]) + " round=" + v["round"].dump() + " length=" + tenths(v["length"]) +
+                          " justify=" + v["justify"].dump() + " system=" + v.value("system", Json()).dump() + " ends=" + ends[0] + "->" + ends[1]);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+
+    void TheMep(Session& s)
+    {
+        for (const MepCase& c : MepCases)
+        {
+            const char* cmd = c.command;
+            Run(s, cmd, R"({"points": [[0, 0], [6000, 0]], "offset": 2400, "system": "Cold water"})");
+            Run(s, cmd, R"({"points": [[0, 3000], [4000, 3000]], "offset": 2400, "end_offset": 2340, "justify": "top", "system": "Sewer"})");
+            Run(s, cmd, R"({"points": [[500, 5000], [3500, 4000]], "offset": 1000, "end_offset": 1900, "justify": "bottom"})");
+            // 往西画的，与朝北偏西的：光凭实体的点定不了它的方向
+            Run(s, cmd, R"({"points": [[6000, 6500], [0, 6500]], "offset": 2000, "system": "Cold water"})");
+            Run(s, cmd, R"({"points": [[7500, 500], [6500, 4500]], "offset": 2000, "justify": "top"})");
+            // 立管：从下往上的，与往下画的
+            Run(s, cmd, R"({"points": [[8000, 1000], [8000, 1000]], "offset": 0, "end_offset": 3000, "system": "Sewer"})");
+            Run(s, cmd, R"({"points": [[9000, 1000], [9000, 1000]], "offset": 3000, "end_offset": 500})");
+            Run(s, "type", Json{ { "category", c.category }, { "name", "Mine 75" }, { "width", 75 }, { "depth", 75 }, { "round", c.round }, { "material", "Metal" } });
+            Run(s, cmd, R"({"points": [[0, 8000], [3000, 8000]], "type": "Mine 75"})");
+        }
+    }
+
+    // 设备族、它的 IFC 类与预定义类型，类里没有它的位置时代理带的对象类型
+    struct MepFixture
+    {
+        const char*   family;
+        Fam::Category category;
+        const char*   cls;
+        const char*   predefined;
+        const char*   objectType;
+    };
+    const MepFixture MepFixtures[] = {
+        { "WC", Fam::Category::Plumbing, "IFCSANITARYTERMINAL", ".NOTDEFINED.", nullptr },
+        { "Washbasin", Fam::Category::Plumbing, "IFCSANITARYTERMINAL", ".NOTDEFINED.", nullptr },
+        { "Kitchen Sink", Fam::Category::Plumbing, "IFCSANITARYTERMINAL", ".NOTDEFINED.", nullptr },
+        { "Shower", Fam::Category::Plumbing, "IFCSANITARYTERMINAL", ".NOTDEFINED.", nullptr },
+        { "Floor Drain", Fam::Category::Drain, "IFCWASTETERMINAL", ".FLOORTRAP.", nullptr },
+        { "Elbow 90", Fam::Category::PipeFitting, "IFCPIPEFITTING", ".NOTDEFINED.", nullptr },
+        { "Tee", Fam::Category::PipeFitting, "IFCPIPEFITTING", ".NOTDEFINED.", nullptr },
+        { "Gate Valve", Fam::Category::PipeAccessory, "IFCVALVE", ".NOTDEFINED.", nullptr },
+        { "Distribution Board", Fam::Category::Equipment, "IFCELECTRICDISTRIBUTIONBOARD", ".DISTRIBUTIONBOARD.", nullptr },
+        { "Ceiling Luminaire", Fam::Category::Lighting, "IFCLIGHTFIXTURE", ".NOTDEFINED.", nullptr },
+        { "Recessed Luminaire", Fam::Category::Lighting, "IFCLIGHTFIXTURE", ".NOTDEFINED.", nullptr },
+        { "Outlet", Fam::Category::Outlet, "IFCOUTLET", ".POWEROUTLET.", nullptr },
+        { "Switch", Fam::Category::Switch, "IFCSWITCHINGDEVICE", ".TOGGLESWITCH.", nullptr },
+        { "Air Terminal", Fam::Category::AirTerminal, "IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", "LightningTerminal" },
+        { "Earthing Electrode", Fam::Category::Earthing, "IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", "EarthingRod" },
+        { "Inspection Box", Fam::Category::InspectionBox, "IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", "InspectionBox" },
+        { "Data Outlet", Fam::Category::DataOutlet, "IFCOUTLET", ".DATAOUTLET.", nullptr },
+        { "Voice Outlet", Fam::Category::VoiceOutlet, "IFCOUTLET", ".TELEPHONEOUTLET.", nullptr },
+        { "Patch Panel", Fam::Category::PatchPanel, "IFCCOMMUNICATIONSAPPLIANCE", ".NETWORKAPPLIANCE.", nullptr },
+        { "Rack", Fam::Category::Rack, "IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", "Rack" },
+    };
+
+    void TestMep()
+    {
+        for (const MepCase& c : MepCases)
+        {
+            const std::string of = std::string(c.category) + "：";
+            {
+                // 写成它的 IFC 类，沿轴拉伸，在系统里
+                Session s;
+                Run(s, c.command, R"({"points": [[0, 0], [3000, 0]], "offset": 0, "end_offset": 4000, "system": "Cold water"})");
+                Run(s, c.command, R"({"points": [[0, 1000], [3000, 1000]], "system": "Cold water"})");
+                Run(s, c.command, R"({"points": [[0, 2000], [3000, 2000]], "system": "Esgoto"})");
+                const std::string f = Ifc::Export(s.GetModel());
+                const auto lines    = Entities(f, c.cls);
+                Check(lines.size() == 3 && Contains(lines[0], std::string("'") + c.defaultType + "'") && EndsWith(lines[0], std::string(c.predefined) + ");") &&
+                          !Dangling(f),
+                      of + "导出：是 " + c.cls + (lines.empty() ? "" : "：" + lines[0]));
+                Check(Count(f, c.round ? "IFCCIRCLEPROFILEDEF" : "IFCRECTANGLEPROFILEDEF") == 3, of + "导出：圆的写圆的轮廓");
+                const auto solids = Entities(f, "IFCEXTRUDEDAREASOLID");
+                Check(Contains(f, "IFCDIRECTION((0.6,0.,0.8))") && !solids.empty() && EndsWith(solids[0], ",5000.);"), of + "导出：斜的沿它的轴，长 5000");
+                const auto systems = Entities(f, "IFCSYSTEM");
+                bool cold = false, sewer = false;
+                for (const std::string& l : systems)
+                {
+                    cold |= Contains(l, "'Cold water'");
+                    sewer |= Contains(l, "'Esgoto'");
+                }
+                Check(systems.size() == 2 && cold && sewer, of + "导出：两个系统");
+                const auto assigns = Entities(f, "IFCRELASSIGNSTOGROUP");
+                bool two = false;
+                for (const std::string& l : assigns)
+                    two |= Occurrences(l, "#") == 4;
+                Check(assigns.size() == 2 && two, of + "导出：两根与系统在一个关系里");
+                Run(s, c.command, R"({"points": [[0, 3000], [3000, 3000]]})");
+                Check(Count(Ifc::Export(s.GetModel()), "IFCSYSTEM") == 2, of + "导出：不在系统里的不写系统");
+            }
+            if (c.alone)
+            {
+                // 别的软件的文件：去掉 MiniBIM 的属性集，系统照样回来，对齐为居中
+                Session s;
+                Run(s, c.command, R"({"points": [[0, 0], [3000, 0]], "system": "Cold water"})");
+                std::string other;
+                const std::string f = Ifc::Export(s.GetModel());
+                size_t from = 0;
+                while (from < f.size())
+                {
+                    const size_t to = f.find('\n', from);
+                    const std::string line = f.substr(from, to == std::string::npos ? std::string::npos : to - from + 1);
+                    if (!Contains(line, Ifc::RunProperties))
+                        other += line;
+                    from = to == std::string::npos ? f.size() : to + 1;
+                }
+                Ifc::Imported i;
+                const auto runs = Import(other, i) ? Only(i.model, c.category) : std::vector<const Element*>{};
+                const MiniBIM::Bim::Run* r = runs.size() == 1 ? runs[0]->AsRun() : nullptr;
+                Check(r && r->system == "Cold water" && r->justify == Justify::Centre, of + "导入：别的软件写的系统，类认得出类别\n" + Skipped(i));
+            }
+            {
+                // 往下画的立管回来也是往上的
+                Session s;
+                Run(s, c.command, R"({"points": [[2000, 2000], [2000, 2000]], "offset": 3000, "end_offset": 500})");
+                Ifc::Imported i;
+                const auto runs = Import(Ifc::Export(s.GetModel()), i) ? Only(i.model, c.category) : std::vector<const Element*>{};
+                const MiniBIM::Bim::Run* r = runs.size() == 1 ? runs[0]->AsRun() : nullptr;
+                Check(r && r->offset == 500.0 && r->endOffset == std::optional<double>(3000.0), of + "导入：立管回来从下往上");
+            }
+        }
+        {
+            // 七类 run 回来，对齐与系统都在，类型带着材质
+            Session s;
+            TheMep(s);
+            Ifc::Imported i;
+            const bool ok = Import(Ifc::Export(s.GetModel()), i);
+            Check(ok && i.skipped.empty(), "导入：MEP 全部读回\n" + Skipped(i));
+            for (const MepCase& c : MepCases)
+            {
+                const auto before = DescribedRuns(s.GetModel(), c.category), after = DescribedRuns(i.model, c.category);
+                Check(before.size() == 8 && after == before, std::string("导入：") + c.category + " 回来一样\n  前：" + Join(before) + "\n  后：" + Join(after));
+                const auto runs = i.model.types.runs.find(c.category);
+                const bool mine = runs != i.model.types.runs.end() && runs->second.count("Mine 75") && runs->second.at("Mine 75").width == 75.0 &&
+                                  runs->second.at("Mine 75").round == c.round && runs->second.at("Mine 75").material == "Metal";
+                Check(mine, std::string("导入：") + c.category + " 的类型带着材质回来");
+            }
+            std::string error;
+            Check(i.model.Check(error), "导入：MEP 模型完好：" + error);
+        }
+        // 设备族的类别写成它的 IFC 类，读回来是同一个类别
+        for (const MepFixture& f : MepFixtures)
+        {
+            const auto ifc = Fam::CategoryOf::Ifc(f.category);
+            const std::string kind(std::string_view(f.predefined).substr(1, std::string_view(f.predefined).size() - 2));
+            const bool same = std::string_view(ifc.entity) == f.cls && std::string_view(ifc.kind) == f.predefined &&
+                              (ifc.objectType ? f.objectType && std::string_view(ifc.objectType) == f.objectType : !f.objectType);
+            const auto back = Fam::CategoryOf::FromIfc(f.cls, kind, f.objectType ? std::optional<std::string_view>(f.objectType) : std::nullopt);
+            Check(same && back == f.category, std::string("设备：") + f.family + " 的 IFC 类与读回的类别");
+        }
+        Check(!Fam::CategoryOf::FromIfc("IFCBEAM", std::nullopt, std::nullopt) &&
+                  Fam::CategoryOf::FromIfc("IFCBUILDINGELEMENTPROXY", std::nullopt, std::nullopt) == Fam::Category::Generic &&
+                  Fam::CategoryOf::FromIfc("IFCFURNISHINGELEMENT", std::nullopt, std::nullopt) == Fam::Category::Furniture,
+              "设备：没有族的类不是构件，说不出什么的代理是通用的");
+        Check(Fam::CategoryOf::FromIfc("IFCOUTLET", std::nullopt, std::nullopt) == Fam::Category::Outlet &&
+                  Fam::CategoryOf::FromIfc("IFCOUTLET", "NOTDEFINED", std::nullopt) == Fam::Category::Outlet &&
+                  Fam::CategoryOf::FromIfc("IFCOUTLET", "TELEPHONEOUTLET", std::nullopt) == Fam::Category::VoiceOutlet &&
+                  Fam::CategoryOf::FromIfc("IFCBUILDINGELEMENTPROXY", "USERDEFINED", "Sculpture") == Fam::Category::Generic,
+              "设备：插座默认电源插座，认不得的对象类型是通用的");
+        {
+            // 设备是它的类的 IFC 产品，回来在它类别的族里
+            Session s;
+            for (const MepFixture& f : MepFixtures)
+            {
+                const auto& fam = s.GetModel().families.at(f.family);
+                Run(s, "component", Json{ { "family", f.family }, { "type", fam.types.begin()->first }, { "at", Json::array({ 1000, 1000 }) } });
+            }
+            const std::string file = Ifc::Export(s.GetModel());
+            for (const MepFixture& f : MepFixtures)
+            {
+                std::vector<std::string> written;
+                for (const std::string& l : Entities(file, f.cls))
+                    if (Contains(l, std::string("'") + f.family + ":"))
+                        written.push_back(l);
+                const bool ok = written.size() == 1 && EndsWith(written[0], std::string(f.predefined) + ");") &&
+                                (!f.objectType || Contains(written[0], std::string(",'") + f.objectType + "',"));
+                Check(ok, std::string("设备：") + f.family + " 写成 " + f.cls + (written.empty() ? "" : "：" + written[0]));
+            }
+            Ifc::Imported i;
+            const bool ok = Import(file, i);
+            Check(ok && i.skipped.empty(), "设备：全部读回\n" + Skipped(i));
+            std::set<std::string> named, wanted;
+            for (const MepFixture& f : MepFixtures)
+            {
+                wanted.insert(f.family);
+                const auto it = i.model.families.find(f.family);
+                Check(it != i.model.families.end() && it->second.category == f.category, std::string("设备：") + f.family + " 回来，类别对");
+            }
+            for (const Element* e : Only(i.model, "component"))
+                named.insert(e->As<Component>()->family);
+            Check(Only(i.model, "component").size() == std::size(MepFixtures) && named == wanted, "设备：各在它原来的族里");
+        }
+    }
+
 }
 
 int main()
@@ -1501,6 +1754,7 @@ int main()
     TestRoomSeparators();
     TestColumns();
     TestStructure();
+    TestMep();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }
