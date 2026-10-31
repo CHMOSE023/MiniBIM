@@ -111,7 +111,7 @@ run_tests.bat
 ```
 
 It builds, runs `ctest` (translations, the camera, an SMLib smoke test) and checks that the translation catalogs are up to date
-(`tools/extract_messages.py --check`) and that every icon the interface uses is generated (`tools/make_icons.py --check`). GitHub Actions builds and tests the Windows version on every pull request to `main`, and
+(`tools/extract_messages.py --check`) and that every icon the interface uses is generated (`tools/make_icons.py --check`). GitHub Actions builds the Windows, Linux and web versions and runs the tests on every pull request to `main`, and
 packages and publishes a release when a `v*` tag is pushed (`.github/workflows/build.yml`).
 
 ### Languages

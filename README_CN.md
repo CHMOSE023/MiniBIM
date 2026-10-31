@@ -107,7 +107,7 @@ run_tests.bat
 
 编译后运行 `ctest`（多语言、相机、SMLib 冒烟测试），再检查词典是否需要更新（`tools/extract_messages.py --check`）、
 界面用到的图标是否都已生成（`tools/make_icons.py --check`）。
-GitHub Actions 在每个到 `main` 的 PR 上编译 Windows 版并运行测试，推送 `v*` 标签时打包并发布（`.github/workflows/build.yml`）。
+GitHub Actions 在每个到 `main` 的 PR 上编译 Windows 版、Linux 版和网页版并运行测试，推送 `v*` 标签时打包并发布（`.github/workflows/build.yml`）。
 
 ### 多语言
 

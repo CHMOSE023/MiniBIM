@@ -119,12 +119,12 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
 
 ### Windows 通过，Linux 任务编译失败
 - 原因：MSVC 会顺带包含很多标准库头文件（`<cstdlib>`、`<cstring>`……），GCC 不会；或用了 MSVC 独有的函数（`fopen_s`、`_dupenv_s`）
-- 做法：把用到的头文件写全；Windows 专有的调用放进 `#ifdef _WIN32`。Linux 任务只编核心库和测试，界面与渲染不编。
+- 做法：把用到的头文件写全；Windows 专有的调用放进 `#ifdef _WIN32`。Linux 任务连同界面（`apps/Common`）与 Linux 宿主一起编。
   lambda 里不要捕获结构化绑定（`auto [a, b] = …` 得到的名字）：较老的 GCC / Clang 不认，先复制成普通变量
 
-### Linux 任务 ctest 报找不到测试程序（Could not find executable）
-- 原因：新的测试程序登记在 `tests/CMakeLists.txt`（ctest 会跑），但没加进 `build.yml` Linux 任务的 `--target` 列表，没有编出来
-- 做法：把它加进那一行的目标列表（skill `test` 的说明里也提了）
+### 网页任务编译失败，桌面版和 Linux 都通过
+- 原因：Emscripten 没有线程（核心库在网页上不链接 pthread），或用了网页上没有的系统调用；`emdawnwebgpu` 端口包第一次要从 GitHub 下载
+- 做法：本机 `build_wasm.bat` 复现（emsdk 版本与 `build.yml` 的 `EMSDK_VERSION` 一致）；要线程的功能看 `AppPlatform::HasBackgroundThread`
 
 ### 词典检查失败（`Assets` 任务的 Check catalogs）
 - 原因：改了界面文字但没运行 `python tools/extract_messages.py`

@@ -96,10 +96,10 @@ MiniBIM → `src`（另有 `3rd/nlohmann/include`），MiniGUI → `src/UI`，�
 ## 验证改动
 
 用 `.agents/skills/test` 只编译、运行与改动相关的测试，不要每次跑 `run_tests.bat` 全量；全量测试交给 CI
-（`.github/workflows/build.yml`：到 main 的 PR 跑 `Windows (D3D12 / D3D11)`、`Linux (core + tests)`、`Assets`（词典与图标）三个任务；
-Linux 任务只编核心库和测试，移植来的核心代码要能在 GCC 上编译）。改了界面要实际运行看（skill `ui-check`，中英文都看）。
+（`.github/workflows/build.yml`：到 main 的 PR 跑 `Windows (D3D12 / D3D11)`、`Linux (Vulkan / GLES3)`、`Web (WebAssembly)`、`Assets`（词典与图标）四个任务；
+Linux 任务也跑全部测试，移植来的核心代码要能在 GCC 上编译）。改了界面要实际运行看（skill `ui-check`，中英文都看）。
 
 ## 发布
 
-推送 `v*` 标签后 CI 编译、测试、打包 `MiniBIM-<标签>-windows-x64.zip`，创建 GitHub Release。版本号只改根 `CMakeLists.txt` 的 `MINIBIM_VERSION`（三段或四段）。
+推送 `v*` 标签后 CI 编译、测试、打包 `MiniBIM-<标签>-windows-x64.zip`、`MiniBIM-<标签>-linux-x64.tar.gz`、`MiniBIM-<标签>-web.zip`，创建 GitHub Release。版本号只改根 `CMakeLists.txt` 的 `MINIBIM_VERSION`（三段或四段）。
 发布说明取自 `docs/release-notes/<标签>.md`，打标签前先写好（没有时只写一行默认说明）。

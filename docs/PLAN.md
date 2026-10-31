@@ -14,7 +14,7 @@ MiniBIM 把 [BIMCraft](https://github.com/IPedrax/BIMCraft)（Rust，约 13.7 �
 - 多语言：PO 词典 + `Tr` / `TrN` / `TrC`，MiniGUI 与界面描述文件同样翻译，运行时切换（[i18n.md](i18n.md)）；简体中文、英文、西班牙语、葡萄牙语
 - 图标：`tools/make_icons.py` 生成全部图标（照 MiniCAD 的同名脚本）：程序图标 `app.ico` / `app.png`，现有命令的图标
 - 测试：`I18nTests`、`ViewTests`、`SMLibSmokeTests`
-- CI 与发布：`.github/workflows/build.yml`（Windows 编译、测试、打包；Linux 编译核心库与测试；词典与图标检查；推送 `v*` 标签时发布）
+- CI 与发布：`.github/workflows/build.yml`（Windows 编译、测试、打包；Linux 编译核心库与测试；词典与图标检查；推送 `v*` 标签时发布；第 4 阶段加上 Linux 版与网页版）
 - AI 编程助手：`AGENTS.md` 与 `.agents/`（skill `test`、`ui-check`、`i18n`，功能指南，排错表），结构照 MiniCAD
 
 ## 第 2 阶段：模型核心（移植 `crates/core`）
@@ -120,7 +120,8 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   界面字体是自带的 Noto Sans SC 子集（`tools/make_web_font.py` 生成 `assets/fonts/NotoSansSC-UI.ttf`），自动保存的定时用 SDL 定时器
 - 4c ✅ 网页版（`apps/Web`，Emscripten，WebGPU / WebGL2，`build_wasm.bat`）：从 MiniCAD 复制宿主 `WebApp`、`apps/Render/WebGPU` 与 `cmake/Render.cmake` 的段落；
   打开读进内存文件系统，保存与导出 IFC 先问文件名再下载；核心库在网页上不链接 pthread，不自动保存，不记住设置与最近打开；SMLib 编入（8 MB 栈）
-- CI：照 MiniCAD 的 `build.yml` 加上网页版（Emscripten）与 Linux 版（SDL3）的编译、打包与发布，网页版部署
+- 4d ✅ CI：照 MiniCAD 的 `build.yml` 加上 Linux 版（SDL3 静态编译并缓存，`Linux (Vulkan / GLES3)`，也跑全部测试）与网页版（`Web (WebAssembly)`）的编译、打包，
+  标签构建时一起发布（`linux-x64.tar.gz`、`web.zip`）。网页版还没有部署到网站（要部署时照 MiniCAD 加 Cloudflare Pages 或 GitHub Pages 的一步）
 
 ## 与 MiniCAD 的差异
 
