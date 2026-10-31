@@ -133,6 +133,8 @@ GitHub Actions 在每个到 `main` 的 PR 上编译 Windows 版、Linux 版和�
 ### 许可
 
 MiniBIM 按 [MIT 许可证](LICENSE) 发布。第三方组件（SMLib 为 Apache-2.0）与移植来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+`src/Rvt/` 的 Revit 文件读取器（移植自 BIMCraft，其中一部分又移植自 rvt-rs）只有 Apache-2.0、不是 MIT；默认编入它的程序（开关 `MINIBIM_WITH_RVT`）
+附带它的许可原文与声明 `LICENSE-Rvt`、`NOTICE-Rvt`。
  
 ---
 

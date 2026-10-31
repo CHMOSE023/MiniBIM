@@ -1,7 +1,7 @@
 # 第三方声明
 
 MiniBIM 本身按 [MIT 许可证](LICENSE) 发布。下面是它包含或移植自的第三方代码与资源，以及各自的许可证。
-发布包里随可执行文件附带 `LICENSE`、本文件和 `LICENSE-SMLib`。
+发布包里随可执行文件附带 `LICENSE`、本文件、`LICENSE-SMLib`，以及 Revit 读取器的 `LICENSE-Rvt` 与 `NOTICE-Rvt`。
 
 ## MiniCAD
 
@@ -19,7 +19,7 @@ MiniBIM 计划把 [BIMCraft](https://github.com/IPedrax/BIMCraft)（Rust）的�
 （第 2 阶段起：`src/Model/`、`src/Commands/`、`src/View/ModelScene.*` 与对应的测试）。
 
 - 移植基准提交：`f3bbb33f3b8b6cc6f80b3bd6611e33c330cb448f`（2026-10-28）
-- 不移植 `crates/rvt`（Revit 文件读取器）：它只有 Apache-2.0 许可，含 rvt-rs 的代码，并且依赖对 Revit 格式的逆向分析
+- `crates/rvt`（Revit 文件读取器）**不在 MIT 之列**：它只有 Apache-2.0，见下面的"BIMCraft Revit 读取器"
 - 不使用 BIMCraft 的名称、标志与图标
 
 ```
@@ -109,6 +109,16 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 ```
+
+## BIMCraft Revit 读取器（Apache-2.0）
+
+`src/Rvt/`（目标 `MiniBIMRvt`，开关 `MINIBIM_WITH_RVT`）移植自 BIMCraft 的 `crates/rvt`（基准提交同上），它的一部分又移植自
+[rvt-rs](https://github.com/DrunkOnJava/rvt-rs)（提交 `b6086d41b9758fd9b92f42f0a47b8345b9c58056`）。这部分按 **Apache License 2.0** 使用，不是 MIT：
+
+- 版权：Copyright (c) 2026 IPedrax and the BIMCraft contributors；rvt-rs：Copyright 2026 Griffin Long
+- 许可证全文：`src/Rvt/LICENSE`（发布包里为 `LICENSE-Rvt`）；归属声明：`src/Rvt/NOTICE`（发布包里为 `NOTICE-Rvt`）
+- 改动：按 Apache-2.0 第 4(b) 条，每个文件开头写明移植自哪个文件、已改写为 C++
+- Revit 格式没有公开规范，读法的来源与风险见 BIMCraft 的 `docs/rvt-provenance.md`；MiniBIM 不附带任何 Autodesk 的文件、族、样板或图标
 
 ## SMLib（NVIDIA USD BRep）
 

@@ -15,7 +15,11 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 
 - 读 BIMCraft 根目录的 `CLAUDE.md`（模块地图）和 `crates/core/CLAUDE.md`（改动放在哪），以及要移植的模块对应的 `docs/areas/*.md`
 - 一次移植一个模块（或一组紧密相关的），连同它的测试；编译、测试通过再做下一个
-- 只看 BIMCraft 的 `crates/core`、`crates/ui-egui`、`crates/i18n`；不看、不移植 `crates/rvt`（只有 Apache-2.0，且依赖对 Revit 格式的逆向）
+- 只看 BIMCraft 的 `crates/core`、`crates/ui-egui`、`crates/i18n` 与 `crates/rvt`（2026-10-31 起移植，见 `docs/PLAN.md` 的"Revit 文件"）
+- `crates/rvt` 移植到 `src/Rvt/`，是 **Apache-2.0**：来源行写成
+  `// 移植自 BIMCraft crates/rvt/src/<文件>.rs（f3bbb33），Apache-2.0 许可（不是 MIT），已改写为 C++，见 src/Rvt/NOTICE`；
+  核心库不包含 `src/Rvt` 的头文件。只照 BIMCraft 仓库里 docs/rvt-provenance.md 列了来源的读法移植，不另外逆向；测试用合成的文件（`fixture.rs`、`project_fixture.rs`），
+  不把 Autodesk 的文件放进仓库
 
 ## 来源标注（许可要求）
 

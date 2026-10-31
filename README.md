@@ -140,7 +140,9 @@ works.
 ### License
 
 MiniBIM is released under the [MIT License](LICENSE). Third-party components (SMLib is Apache-2.0) and the code MiniBIM is
-ported from are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+ported from are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Revit file reader in `src/Rvt/` (ported from
+BIMCraft, which ported parts of it from rvt-rs) is Apache-2.0 only, not MIT; builds that include it (the default, `MINIBIM_WITH_RVT`)
+ship its licence and notice as `LICENSE-Rvt` and `NOTICE-Rvt`.
 
 ---
 

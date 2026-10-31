@@ -80,7 +80,10 @@ MiniBIM → `src`（另有 `3rd/nlohmann/include`），MiniGUI → `src/UI`，�
 ### 移植 BIMCraft
 - 移植一个有界面按钮的命令时，同时在 `tools/make_icons.py` 里给它画图标（不用 BIMCraft 的图标）
 - 每个含移植代码的源文件开头写一行来源：`// 移植自 BIMCraft crates/core/src/<文件>.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md`
-- 不移植 `crates/rvt`（只有 Apache-2.0，依赖对 Revit 格式的逆向）；不使用 BIMCraft 的名称、标志、图标
+- `crates/rvt`（Revit 文件读取器）移植到 `src/Rvt/`（目标 `MiniBIMRvt`，开关 `MINIBIM_WITH_RVT`）：**这部分是 Apache-2.0，不是 MIT**（含 rvt-rs 的代码）。
+  核心库（`src/Model`、`src/Commands`、`src/Ifc`）不依赖它；文件开头的来源行写 Apache-2.0 并说明改写过，许可原文与 NOTICE 在 `src/Rvt/`；
+  只照 BIMCraft 仓库里 docs/rvt-provenance.md 已列来源的读法移植，不自己去逆向 Revit 格式，不把 Autodesk 的文件放进仓库
+- 不使用 BIMCraft 的名称、标志、图标
 - 不抄 Autodesk 的内容（族、样板、图标、帮助文字）
 
 ### 路径与编码

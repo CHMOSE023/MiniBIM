@@ -1,0 +1,43 @@
+MiniBIM's Revit file reader (src/Rvt, target MiniBIMRvt)
+
+This directory is licensed under the Apache License, Version 2.0 (see LICENSE),
+not under the MIT License of the rest of MiniBIM.
+
+It is a C++ rewrite of BIMCraft's Revit file reader (crates/rvt, package
+bimcraft-rvt), https://github.com/IPedrax/BIMCraft, at commit
+f3bbb33f3b8b6cc6f80b3bd6611e33c330cb448f, which carries this notice:
+
+    BIMCraft's Revit file reader (bimcraft-rvt)
+    Copyright (c) 2026 IPedrax and the BIMCraft contributors
+
+    Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+==============================================================================
+Code ported from rvt-rs
+==============================================================================
+
+Parts of BIMCraft's reader are ported from rvt-rs, an open reader for Autodesk
+Revit files, https://github.com/DrunkOnJava/rvt-rs, which carries this notice:
+
+    rvt-rs: open reader for Autodesk Revit files
+    Copyright 2026 Griffin Long
+
+    Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The version BIMCraft ported from is commit
+b6086d41b9758fd9b92f42f0a47b8345b9c58056 (after the v0.6.1 tag). What was taken,
+and from which file, is listed module by module in BIMCraft's
+docs/rvt-provenance.md.
+
+==============================================================================
+Changes made in MiniBIM
+==============================================================================
+
+Every file in this directory was rewritten from BIMCraft's Rust into C++ for
+MiniBIM: it opens with a line naming the BIMCraft source file and commit and
+stating that it was rewritten. The Compound File and deflate readers that
+BIMCraft takes from the cfb and flate2 crates are written here from the public
+specifications (MS-CFB, RFC 1951, RFC 1952).
+
+Autodesk and Revit are trademarks of Autodesk, Inc. MiniBIM is not affiliated
+with Autodesk, and ships no Autodesk file, family, template or icon.

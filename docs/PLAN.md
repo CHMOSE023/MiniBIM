@@ -69,7 +69,9 @@ BIMCraft 的核心与界面分得很清楚：所有编辑都是 `commands.rs` �
 // 移植自 BIMCraft crates/core/src/walls.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 ```
 
-不移植：`crates/rvt`（Revit 读取器，只有 Apache-2.0，且依赖对 Revit 格式的逆向）、`crates/update`（自动更新，以后按 MiniCAD 的发布方式另做）。
+不移植：`crates/update`（自动更新，以后按 MiniCAD 的发布方式另做）。
+
+`crates/rvt`（Revit 读取器）起初定为不移植，2026-10-31 改为移植（见下面"Revit 文件"）。
 
 ## 第 3 阶段：界面（移植 `crates/ui-egui`）
 
@@ -114,6 +116,22 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - **3g 面板浮动（已完成，3a 漏移植的 `dock.rs` 部分）**：拖出浮动、拖回停靠沿用 MiniGUI 的停靠区；右键标签或浮动窗口标题栏的菜单
   （停靠在左侧 / 右侧 / 底部、浮动、关闭），布局存进 settings.json 并在启动时恢复，设置里"重置面板布局"。
   留到后面的：视图标签栏与视图浮动（`dock.rs` 的 `FloatView`：同时开几个视图、拖出成窗口、拖回标签栏，要先让视口能有多个）
+
+## Revit 文件（移植 `crates/rvt`）
+
+2026-10-31 定：照 BIMCraft 的隔离移植它的 Revit 读取器（`.rvt`、`.rfa`），并先把柱移植进核心，读进来的柱才有地方放。
+
+- **许可**：`crates/rvt` 只有 Apache-2.0（含 rvt-rs 的代码），移植过来的部分也是 Apache-2.0。放在 `src/Rvt/`（目标 `MiniBIMRvt`），
+  核心库不依赖它；开关 `MINIBIM_WITH_RVT` 默认开，桌面版、Linux 版、网页版的发行包都编入，并附 `src/Rvt/LICENSE`（发布包里为 `LICENSE-Rvt`）与 `src/Rvt/NOTICE`（`NOTICE-Rvt`）
+- **风险**：Revit 格式没有公开规范，读法来自 rvt-rs 与对样例文件的观察。BIMCraft 的 `docs/rvt-provenance.md` 写明没核实 rvt-rs 是否净室实现、
+  不对合法性下结论；这个风险由项目所有者承担。只移植那份文档已列来源的读法，不自己逆向，Autodesk 的文件不进仓库（测试用合成的文件）
+- **分段**：
+  - R1 柱（核心）：`Column`、`StructuralColumn` 与它们的类型、命令 `column`、`structural_column`、检查、项目文件
+  - R2 柱的三维、平面与 IFC 导出导入
+  - R3 rvt 底层：复合文档（MS-CFB）、gzip 与有界的 inflate、`BasicFileInfo`、`ProjectInformation` / `PartAtom`、预览图
+  - R4 rvt 记录：`Formats/Latest` 的类表、`ElemTable`、分区里的元素记录与类型记录、标高、元素数据、名称、类型与层、曲线、放置、草图
+  - R5 rvt 导入：墙、楼板与天花板、屋顶、门窗、房间、柱，读不了的列出原因
+  - R6 界面打开 `.rvt`（后台读、提示框）、Linux 版与网页版、CI 与发布包
 
 ## 第 4 阶段：平台
 

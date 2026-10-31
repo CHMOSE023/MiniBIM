@@ -48,6 +48,9 @@ include(cmake/SMLib.cmake)
 # ── MiniBIM（平台无关的核心库）───────────────────────────────────────
 include(cmake/MiniBIM.cmake)
 
+# ── Revit 文件读取器（Apache-2.0，可选，MINIBIM_WITH_RVT）────────────────
+include(cmake/Rvt.cmake)
+
 # ── 渲染后端（apps/Render：Windows 为 D3D12 / D3D11，Linux 为 Vulkan / GLES3，网页为 WebGPU / WebGL2）──
 include(cmake/Render.cmake)
 
