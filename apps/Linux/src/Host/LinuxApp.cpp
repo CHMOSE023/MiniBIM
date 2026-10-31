@@ -392,6 +392,20 @@ namespace MiniBIM
             m_main.RequestExit();           // 有未保存的改动时先询问
             break;
 
+        case SDL_EVENT_DROP_BEGIN:
+            m_drops.clear();
+            break;
+
+        case SDL_EVENT_DROP_FILE:
+            if (e.drop.data)
+                m_drops.emplace_back(e.drop.data);
+            break;
+
+        case SDL_EVENT_DROP_COMPLETE:
+            if (!m_drops.empty())
+                m_main.OpenFiles(std::exchange(m_drops, {}));
+            break;
+
         default:
             break;
         }

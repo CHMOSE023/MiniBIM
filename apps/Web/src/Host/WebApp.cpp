@@ -14,6 +14,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace MiniBIM
 {
@@ -103,6 +106,41 @@ namespace MiniBIM
         document.title = UTF8ToString(title);
     });
 
+    // 拖进页面的文件读进内存文件系统 /upload/drop-<次数>/<文件名>，都读完后一起交给 MainFrame::OpenFiles（路径、错误以换行分隔）
+    EM_JS(void, MiniBIMWeb_InstallDrop, (), {
+        let drops = 0;
+        const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+        window.addEventListener("dragover", (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+        });
+        window.addEventListener("drop", async (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            const files = Array.from(e.dataTransfer.files || []);
+            const directory = "/upload/drop-" + (++drops);
+            const paths = [];
+            const errors = [];
+            for (const file of files) {
+                try {
+                    const buf = await file.arrayBuffer();
+                    FS.mkdirTree(directory);
+                    const path = directory + "/" + file.name.replace(/[\\/]/g, "_");
+                    FS.writeFile(path, new Uint8Array(buf));
+                    paths.push(path);
+                } catch (err) {
+                    errors.push(file.name + ": " + String(err));
+                }
+            }
+            const p = stringToNewUTF8(paths.join("\n"));
+            const m = stringToNewUTF8(errors.join("\n"));
+            _MiniBIMWeb_OnFilesDropped(p, m);
+            _free(p);
+            _free(m);
+        });
+    });
+
     // 有未保存的改动时，关闭或刷新页面前让浏览器询问
     EM_JS(void, MiniBIMWeb_InstallUnloadGuard, (), {
         window.addEventListener("beforeunload", (e) => {
@@ -116,6 +154,12 @@ namespace MiniBIM
         {
             if (g_app)
                 g_app->OnFilePicked(requestId, path, error);
+        }
+
+        EMSCRIPTEN_KEEPALIVE void MiniBIMWeb_OnFilesDropped(const char* paths, const char* errors)
+        {
+            if (g_app)
+                g_app->OnFilesDropped(paths, errors);
         }
 
         EMSCRIPTEN_KEEPALIVE int MiniBIMWeb_HasUnsaved()
@@ -199,6 +243,7 @@ namespace MiniBIM
         });
         m_host.SetOnFrame([this] { m_main.RenderFrame(); });
         MiniBIMWeb_InstallUnloadGuard();
+        MiniBIMWeb_InstallDrop();
         m_host.RequestFrame();
         return true;
     }
@@ -295,6 +340,22 @@ namespace MiniBIM
             MiniGUI::ShowMessageBox(m_main.GetUI(), Tr("Could not read the file"), error, { Tr("OK") }, [](int) {});
         else if (done && path && *path)
             done(path);
+        m_host.RequestFrame();
+    }
+
+    void WebApp::OnFilesDropped(const char* paths, const char* errors)
+    {
+        if (errors && *errors)
+            MiniGUI::ShowMessageBox(m_main.GetUI(), Tr("Could not read the file"), errors, { Tr("OK") }, [](int) {});
+        std::vector<std::string> list;
+        std::string_view rest = paths ? paths : "";
+        while (!rest.empty())
+        {
+            const size_t end = rest.find('\n');
+            list.emplace_back(rest.substr(0, end));
+            rest = end == std::string_view::npos ? std::string_view{} : rest.substr(end + 1);
+        }
+        m_main.OpenFiles(list);
         m_host.RequestFrame();
     }
 

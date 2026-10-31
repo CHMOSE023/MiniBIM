@@ -99,6 +99,7 @@ namespace MiniBIM
         });
 
         WatchUiFile();
+        DragAcceptFiles(m_hwnd, TRUE);      // 拖进窗口的文件交给 MainFrame::OpenFiles
         ShowWindow(m_hwnd, SW_SHOW);
         return true;
     }
@@ -230,6 +231,24 @@ namespace MiniBIM
         case WM_CLOSE:
             m_main.RequestExit();
             return 0;
+
+        case WM_DROPFILES:
+        {
+            const HDROP drop = reinterpret_cast<HDROP>(wParam);
+            const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+            std::vector<std::string> paths;
+            paths.reserve(count);
+            for (UINT i = 0; i < count; ++i)
+            {
+                const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+                std::vector<wchar_t> path(static_cast<size_t>(length) + 1);
+                if (DragQueryFileW(drop, i, path.data(), length + 1))
+                    paths.push_back(ToUtf8(path.data()));
+            }
+            DragFinish(drop);
+            m_main.OpenFiles(paths);
+            return 0;
+        }
 
         case kMsgPosted:
         {

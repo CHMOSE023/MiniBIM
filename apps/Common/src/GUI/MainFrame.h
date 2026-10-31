@@ -2,6 +2,7 @@
 #include "Commands/Autosave.h"
 #include "Commands/Session.h"
 #include "GUI/AppPlatform.h"
+#include "GUI/OpenQueue.h"
 #include "GUI/Recent.h"
 #include "GUI/RevitReport.h"
 #include "GUI/Shortcuts.h"
@@ -84,6 +85,9 @@ namespace MiniBIM
         // 正在读 Revit 文件
         bool ImportingRevit() const { return m_revitJob.has_value(); }
         struct RevitRead;                       // 工作线程交给界面线程的结果（Revit.cpp）
+        // 系统要打开的文件（宿主收到拖进窗口的文件时调用）：同"打开"，先问未保存的改动；读 Revit 文件或有对话框时排队，
+        // 之后只开最后一个（OpenQueue）
+        void OpenFiles(const std::vector<std::string>& utf8Paths);
 
         // 平台对象必须比 MainFrame 活得久。尺寸为逻辑像素，pixelScale = 物理像素 / 逻辑像素
         bool Initialize(AppPlatform& platform, float width, float height, float pixelScale);
@@ -154,6 +158,8 @@ namespace MiniBIM
         // 文件 > Revit 导入报告：最后一次导入进来了什么、略去了什么与原因，项目还是那一个时才有
         bool HasRevitReport() const;
         void ShowRevitReport();
+        // 排队的文件（OpenFiles）：没在读 Revit 文件、没有对话框时打开最后一个；忙时 RenderFrame 末尾再安排
+        void TakeOpens();
 
         // 模型变了（命令、新建、打开）之后：重建三维场景，刷新标题与状态栏；换了项目时相机重新框住模型
         void OnModelChanged();
@@ -404,6 +410,8 @@ namespace MiniBIM
         std::optional<RevitReport::Report> m_revitReport;     // 最后一次导入的报告
         size_t m_revitResets = 0;                             // 报告说的是哪一个项目（Session::Resets）
         std::shared_ptr<const Bim::Model> m_revitModel;      // 读进来的那一份：模型还是它时状态栏说进来了多少
+        OpenQueue m_opens;                                    // 拖进窗口、还没打开的文件（OpenFiles）
+        bool m_opensPosted = false;                           // 已经安排了 TakeOpens
 
         struct AutosaveState
         {

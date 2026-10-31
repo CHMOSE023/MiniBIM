@@ -613,5 +613,11 @@ namespace MiniBIM
             m_revitJob->drawn = true;
             m_platform->Post([this] { ReadRevit(); });
         }
+        // 拖进来的文件等着 Revit 文件读完、对话框关掉：这一帧已经空下来了就打开
+        if (m_opens.Waiting() && !m_opensPosted && !ImportingRevit() && !m_ui->HasModal())
+        {
+            m_opensPosted = true;
+            m_platform->Post([this] { TakeOpens(); });
+        }
     }
 }

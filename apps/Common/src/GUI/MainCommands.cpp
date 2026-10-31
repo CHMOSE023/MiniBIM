@@ -217,6 +217,23 @@ namespace MiniBIM
         });
     }
 
+    void MainFrame::OpenFiles(const std::vector<std::string>& utf8Paths)
+    {
+        m_opens.Add(utf8Paths);
+        if (!m_platform || m_opensPosted || !m_opens.Waiting())
+            return;
+        m_opensPosted = true;
+        m_platform->Post([this] { TakeOpens(); });
+    }
+
+    void MainFrame::TakeOpens()
+    {
+        m_opensPosted = false;
+        const bool busy = ImportingRevit() || (m_ui && m_ui->HasModal());
+        if (const auto path = m_opens.Take(busy))
+            Guard([this, path = *path] { OpenPath(path); });
+    }
+
     bool MainFrame::OpenPath(const std::string& path)
     {
         // Revit 文件在后台读：读进来时才换掉项目；不进最近打开

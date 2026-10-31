@@ -1,9 +1,10 @@
-// 主窗口里不碰界面控件的部分（apps/Common/src/GUI/Parameters.*、Recent.*、RevitReport.*）：特性面板的参数表、值的写法与读法，
-// 项目浏览器的搜索，最近打开，Revit 导入的报告。
+// 主窗口里不碰界面控件的部分（apps/Common/src/GUI/Parameters.*、Recent.*、RevitReport.*、OpenQueue.h）：特性面板的参数表、值的写法与读法，
+// 项目浏览器的搜索，最近打开，Revit 导入的报告，拖进窗口的文件排队。
 // 移植自 BIMCraft crates/ui-egui/src/browser.rs、recent.rs、tests/revit.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Commands/Commands.h"
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
+#include "GUI/OpenQueue.h"
 #include "GUI/Parameters.h"
 #include "GUI/Recent.h"
 #include "GUI/RevitReport.h"
@@ -354,6 +355,23 @@ namespace
         const std::string clean = Text(Of("house.rvt", Survey({})));
         Check(Contains(clean, "Nothing was left out.") && !Contains(clean, "Noted"), "report text: nothing left out, nothing noted");
     }
+
+    // 系统要打开的文件（拖进窗口的）：读 Revit 文件或有对话框时等着，之后最后一个胜出，只开一次
+    void TestOpenQueue()
+    {
+        OpenQueue q;
+        Check(!q.Waiting() && !q.Take(false), "opens: nothing waiting, nothing taken");
+        q.Add({ "/projects/dropped.rvt" });
+        Check(q.Waiting() && q.Take(false) == std::optional<std::string>("/projects/dropped.rvt"), "opens: a dropped file opens like one the system asked for");
+        Check(!q.Waiting() && !q.Take(false), "opens: and only once");
+
+        q.Add({ "/projects/a.minibim" });
+        Check(!q.Take(true) && q.Waiting(), "opens: a Revit file being read holds the files that come meanwhile");
+        q.Add({ "/projects/b.ifc", "", "/projects/c.rvt" });
+        Check(q.Take(false) == std::optional<std::string>("/projects/c.rvt") && !q.Waiting(), "opens: once it is over the last one wins, the rest are dropped");
+        q.Add({ "", "" });
+        Check(!q.Waiting(), "opens: empty paths are not files");
+    }
 }
 
 int main()
@@ -367,6 +385,7 @@ int main()
     TestRecent();
     TestShortcuts();
     TestRevitReport();
+    TestOpenQueue();
     std::printf("\n%s：%d 项失败\n", g_failed ? "失败" : "全部通过", g_failed);
     return g_failed ? 1 : 0;
 }

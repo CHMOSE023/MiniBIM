@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Palettes.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, apps/Common/src/GUI/Revit.cpp, apps/Common/src/GUI/RevitReport.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Palettes.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, apps/Common/src/GUI/Revit.cpp, apps/Common/src/GUI/RevitReport.*, apps/Common/src/GUI/OpenQueue.h, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -118,7 +118,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   `AppPlatform::HasSaveDialog` 为 false（`MainFrame::AskSavePath` 问文件名），写到 `/download` 后 `AppPlatform::OnDocumentSaved` 下载；
   没有线程（不自动保存），`AppPlatform::GetUserDataDir` 为空（不记住设置与最近打开）；有未保存的改动时关闭标签页前浏览器询问（`MainFrame::HasUnsavedChanges`）。
   本机看效果：`build_wasm.bat serve`，或在内置浏览器里打开构建目录的 `index.html` 所在的本地服务器。
-  新加平台服务时三个宿主都要实现（Linux 版没有显示器时在 Xvfb 里运行、截图，见 `.agents/docs/troubleshooting.md`）打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径），有 Revit 读取器时还有 `.rvt`（`FileKind::ProjectOrRevit`）；
+  新加平台服务时三个宿主都要实现（Linux 版没有显示器时在 Xvfb 里运行、截图，见 `.agents/docs/troubleshooting.md`）打开可选 `.minibim`、`.bimcraft`、`.ifc`（IFC 作为新项目，没有路径），有 Revit 读取器时还有 `.rvt`（`FileKind::ProjectOrRevit`），这些文件也可以拖进窗口（`MainFrame::OpenFiles`）；
   保存只直接写回 `.minibim`：打开的是 BIMCraft 的 `.bimcraft` 或 IFC 时"保存"也走另存为，免得把略去了内容的项目写回原文件；
   打开时有略去的内容（项目文件的 `left_out`、IFC 的 `skipped`）会弹窗说几个。"导出 IFC…"（`file.exportIfc`）是 `save` 到 `.ifc`，不改项目的路径
 - Revit 文件（`Revit.cpp`，移植自 `revit.rs`；不碰控件的部分在 `RevitReport.h`，`AppTests` 测）：读取器由宿主接上（`MainFrame::SetRevitReader`，
@@ -129,6 +129,10 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   保存时问存成哪个 `.minibim`），状态栏说"已从 Revit 2024 打开：N 个图元，未导入 M 个"（`RevitReport::StatusLine`，模型还是那一份、没拿工具时）；
   导入有说明时弹出导入报告（`MainFrame::ShowRevitReport`：按类别进来了多少，未导入的与备注，元素 id 在下面，"复制报告"复制成纯文本 `RevitReport::Text`），
   之后在"文件 > Revit 导入报告"（`file.revitReport`，项目换了就灰掉）。启动参数给的 `.rvt` 先显示开始页，再在提示框下读
+- 拖进窗口的文件（R7，移植自 BIMCraft `lib.rs` 的 `opens`）：宿主收到后交给 `MainFrame::OpenFiles`（桌面版 `WM_DROPFILES`，Linux 版 SDL 的
+  `SDL_EVENT_DROP_FILE`，网页版在页面上放下时读进内存文件系统 `/upload/drop-<次数>/`）。文件排进 `OpenQueue`（`OpenQueue.h`，`AppTests` 测）：
+  没在读 Revit 文件、没有模态对话框时 `MainFrame::TakeOpens` 取最后一个，其余作废，经 `MainFrame::Guard` 先问未保存的改动再 `MainFrame::OpenPath`；
+  忙的时候等着，`MainFrame::RenderFrame` 末尾见到空下来了再安排。认不出的文件同"打开"一样报错
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）
 - 帧顺序（同 MiniCAD）：输入到达时立即改状态并 `RequestRender` → 消息队列空了收到 `WM_PAINT` → `MainFrame::RenderFrame`：`UIContext::Update` 布局 →
   `ViewportHost::RenderContent` 按最新尺寸渲染视口 → `AppPlatform::BeginUiPass` → `UIContext::Render` → `AppPlatform::EndUiPass`（呈现）
@@ -157,6 +161,6 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 - 界面效果：skill `ui-check`，中英文各截一张。对话框可以用 `-Run` 直接打开（如 `-Run arch.wall,modify.typeProperties`、`-Run manage.materials`）。截图脚本不能点视图，选中元素后的特性面板、工具的预览要靠手动看
   （或临时加几行在第一次画平面后选上元素、选工具、调 `MainFrame::ToolClick` 再截，截完删掉）
 - `AppTests`：参数表、值的写法与读法、搜索，以及示例房屋里每个元素的每个可写参数照面板的写法交给 `modify` 都被接受；
-  Revit 导入报告（`RevitReport`：认出 `.rvt`、数略去了几个、拆出 id、按类别计数、状态栏那一句、复制的纯文本）
+  Revit 导入报告（`RevitReport`：认出 `.rvt`、数略去了几个、拆出 id、按类别计数、状态栏那一句、复制的纯文本）；拖进窗口的文件排队（`OpenQueue`）
 - 界面描述文件写错：状态栏和控制台日志（`LOG_ERROR`）给出行列
 - 初始化失败（返回 2）：看控制台日志里的图形接口一行；`--gpu warp` 用软件设备排除显卡问题

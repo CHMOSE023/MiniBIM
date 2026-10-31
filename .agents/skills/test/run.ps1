@@ -38,7 +38,7 @@ $rules = @(
     @('^src/Solid/|^3rd/SMLib/|^cmake/SMLib',                   'SMLibSmokeTests', 'MiniBIMWin'),
     @('^src/UI/',                                               'MiniBIMWin', 'i18n'),
     @('^src/(Core|Render)/|^apps/Render/|^apps/Win32/',         'MiniBIMWin'),
-    @('^tests/App/|^apps/Common/src/GUI/Parameters',            'AppTests'),
+    @('^tests/App/|^apps/Common/src/GUI/(Parameters|OpenQueue)', 'AppTests'),
     @('^apps/Common/src/GUI/RevitReport',                       'AppTests', 'RvtTests'),
     @('^apps/Common/',                                          'MiniBIMWin', 'i18n'),
     @('^assets/ui/',                                            'MiniBIMWin', 'i18n', 'icons'),

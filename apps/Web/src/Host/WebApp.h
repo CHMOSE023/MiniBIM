@@ -40,6 +40,7 @@ namespace MiniBIM
 
         // 由 JavaScript 回调（内部使用）
         void OnFilePicked(int requestId, const char* path, const char* error);
+        void OnFilesDropped(const char* paths, const char* errors);     // 拖进页面的文件：换行分隔
         bool HasUnsavedChanges() const;
 
         // ── AppPlatform ─────────────────────────────────────────

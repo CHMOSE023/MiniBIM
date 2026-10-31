@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace MiniGUI
 {
@@ -95,6 +96,7 @@ namespace MiniBIM
         uint32_t    m_uiEvent = 0;      // SDL_RegisterEvents：data1 为 new 出来的 std::function<void()>（可为空，只唤醒）
         std::atomic<bool> m_redraw{ true };
         bool        m_running = false;
+        std::vector<std::string> m_drops;   // 拖进窗口的文件（SDL_EVENT_DROP_FILE 逐个到达，DROP_COMPLETE 时一起交给 MainFrame::OpenFiles）
 
         // 声明顺序即构造顺序，销毁时相反：输入层 → 界面（MainFrame）→ 内核 → 视口渲染目标 → 图形设备 → 窗口与 GL 上下文
         std::unique_ptr<IGraphicsDevice>       m_graphics;
