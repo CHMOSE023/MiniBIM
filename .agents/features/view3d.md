@@ -42,6 +42,8 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
   → 选中的元素（它的三角形 `ModelScene::RangeOf` 再画一遍，强调色，同样往相机挪一点）
 - 拾取：建场景时记下每个元素的三角形从哪个顶点起（按元素顺序），`ModelScene::Pick` 用射线与每个三角形求交（Möller–Trumbore），取最近的。
   三维视图里左键单击（没拖动）时，`MainFrame::OnViewportPointer` 把像素经 `OrbitCamera::GetViewProj` 的逆矩阵变到近平面，沿 `OrbitCamera::GetForward` 拾取
+- 剖面：`ModelScene::Cut` 用竖直剖切面截每个元素的三角形，截线按端点连成环（外圈逆时针、洞顺时针），得到各元素剖到的环（沿线、向上的毫米）；
+  线后（看的一侧、深度以内、裁剪了的在框里）的三角形与边裁好交给剖面视口画成消隐线。边的归属记在 `m_edgeOwners`，隐藏的元素经 `shows` 略去
 - 渲染目标尺寸变了后着色器资源会变，要重新登记成界面纹理（`AppPlatform::RegisterViewportTexture`，`MainFrame::RenderViewport` 末尾）
 
 ## 约束与坑

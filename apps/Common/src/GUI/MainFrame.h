@@ -201,6 +201,10 @@ namespace MiniBIM
         void ShowPlan(std::optional<Bim::Guid> level);
         // 显示平面视图 view（标高的另一个平面）
         void ShowPlanView(Bim::Guid view);
+        // 显示剖面或立面 view（PlanView.cpp）
+        void ShowSection(Bim::Guid view);
+        // 建筑还没有的立面（elevation 命令，不给参数）
+        void MakeElevations();
         // 正在显示的平面：平面视图，或标高自己的平面（m_planLevel 有值时才调）
         Bim::Guid PlanKey() const { return m_planOf.value_or(*m_planLevel); }
         // 上一层（by = 1）、下一层（by = -1）的平面
@@ -215,7 +219,7 @@ namespace MiniBIM
         enum class Tool { Modify, Wall, Door, Window, Column, Component, Roof, Floor, Ceiling, Room, Level, Grid, Stand, Run,
                           Move, Copy, Rotate, MirrorPick, MirrorDraw, Align, Trim, Split, Offset,
                           SketchLine, SketchRect, SketchPick, Mass,
-                          Dimension, Angular, Radial, Spot, Text, Tag, DetailLine, Measure };
+                          Dimension, Angular, Radial, Spot, Text, Tag, DetailLine, Measure, Section };
         // 改选择集的工具（移动、复制、旋转、镜像）要先选东西
         static bool NeedsSelection(Tool t) { return t == Tool::Move || t == Tool::Copy || t == Tool::Rotate || t == Tool::MirrorPick || t == Tool::MirrorDraw; }
         // 画草图线的工具（只在草图模式里）
@@ -361,6 +365,9 @@ namespace MiniBIM
         bool LeavingSketch();
         void RenderPlan(IRenderer& renderer, int pixelWidth, int pixelHeight);
         void OnPlanPointer(const MiniGUI::ViewportPointerEvent& e);
+        // 剖面与立面：剖到的与看到的由三维场景算（ModelScene::Cut），看到的形体按消隐画，上面是 Render::DrawSection 的显示列表
+        void RenderSection(IRenderer& renderer, int pixelWidth, int pixelHeight);
+        void OnSectionPointer(const MiniGUI::ViewportPointerEvent& e);
         // 平面的名称（标高名），以及选中的元素：状态栏用
         std::string PlanStatus() const;
 
@@ -507,6 +514,13 @@ namespace MiniBIM
         std::optional<Bim::Render::View> m_planView;         // 平面的比例与中心；空 = 下次画时框住整个平面
         std::unique_ptr<Bim::Render::Drawing> m_plan;        // 显示列表，按 m_planView 画的
         bool                             m_planDirty = true; // 模型或视图变了，要重画显示列表
+        std::optional<Bim::Guid>         m_sectionOf;        // 显示的剖面或立面；有它时 m_planLevel 为空
+        std::optional<Bim::Render::View> m_sectionView;      // 剖面的比例与中心（沿线、向上的毫米）；空 = 下次画时框住
+        std::unique_ptr<Bim::Render::Drawing> m_section;     // 剖面的显示列表
+        bool                             m_sectionDirty = true;
+        ModelScene::SectionCut           m_sectionCut;       // 剖到的与看到的
+        uint64_t                         m_sectionCutVersion = 0;   // 算它时的场景版本；0 = 要重算
+        double                           m_sectionFar = 1.0; // 看到的最远处离线多远（深度归一化用）
         std::vector<Bim::Id>             m_selection;        // 选中的元素（平面上单击、项目浏览器）
         bool                             m_planClick = false;// 左键按下后没拖动：松开时拾取
         MiniGUI::Vec2                    m_downPixel;

@@ -197,6 +197,14 @@ msgstr "视觉样式"
 msgid "Crop View"
 msgstr "裁剪视图"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Section"
+msgstr "剖面"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Elevation View"
+msgstr "立面视图"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Duplicate View"
 msgstr "复制视图"
@@ -1094,6 +1102,18 @@ msgid "Crop the plan to what it shows now, or uncrop it"
 msgstr "把平面裁到它现在显示的范围，或取消裁剪"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Section: click its two ends; it looks to the left of the line"
+msgstr "剖面：点它的两端；它看线的左边"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Elevations"
+msgstr "立面"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Elevations of the building's four sides, those it doesn't have yet"
+msgstr "建筑四个侧面的立面，还没有的那些"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Schedule/Quantities"
 msgstr "明细表/数量"
 
@@ -1648,6 +1668,10 @@ msgid "Interface description file:"
 msgstr "界面描述文件："
 
 #: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to pan, scroll to zoom; click what it cuts to select it"
+msgstr "拖动平移，滚轮缩放；点剖到的选中它"
+
+#: apps/Common/src/GUI/MainFrame.cpp
 msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
 msgstr "项目里还没有可以在三维中显示的东西；从“文件”菜单打开项目或示例房屋"
 
@@ -1772,6 +1796,14 @@ msgstr "新建{0}"
 msgid "Floor Plan: {0}"
 msgstr "楼层平面：{0}"
 
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Elevation: {0}"
+msgstr "立面：{0}"
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Section: {0}"
+msgstr "剖面：{0}"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Multiple Categories"
 msgstr "多个类别"
@@ -1811,6 +1843,10 @@ msgstr "楼层平面"
 #: apps/Common/src/GUI/Panels.cpp
 msgid "3D Views"
 msgstr "三维视图"
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Sections"
+msgstr "剖面"
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Schedules/Quantities"
@@ -2192,6 +2228,10 @@ msgstr "选中：{0} {1}"
 msgid "{0} element selected"
 msgid_plural "{0} elements selected"
 msgstr[0] "选中了 {0} 个元素"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not make the elevations"
+msgstr "无法创建立面"
 
 #: apps/Common/src/GUI/Recent.cpp
 msgid "Just now"
@@ -2900,6 +2940,14 @@ msgid "Click to enter the grid's end point."
 msgstr "单击输入轴网的终点。"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the section's start point."
+msgstr "单击输入剖面的起点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the section's end point; it looks to the left of the line."
+msgstr "单击输入剖面的终点；它看线的左边。"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click a base point to measure from."
 msgstr "单击一个基点作为测量起点。"
 
@@ -3140,6 +3188,10 @@ msgid "Modify | Measure"
 msgstr "修改 | 测量"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Section"
+msgstr "修改 | 剖面"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr "高度："
 
@@ -3266,6 +3318,10 @@ msgstr "无法建墙"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the grid"
 msgstr "无法放置轴网"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the section"
+msgstr "无法放置剖面"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the column"

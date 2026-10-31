@@ -198,6 +198,14 @@ msgstr "Estilo visual"
 msgid "Crop View"
 msgstr "Recortar vista"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Section"
+msgstr "Sección"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Elevation View"
+msgstr "Vista de alzado"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Duplicate View"
 msgstr "Duplicar vista"
@@ -1095,6 +1103,18 @@ msgid "Crop the plan to what it shows now, or uncrop it"
 msgstr "Recorta la planta a lo que muestra ahora, o quita el recorte"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Section: click its two ends; it looks to the left of the line"
+msgstr "Sección: haz clic en sus dos extremos; mira a la izquierda de la línea"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Elevations"
+msgstr "Alzados"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Elevations of the building's four sides, those it doesn't have yet"
+msgstr "Alzados de los cuatro lados del edificio, los que aún no tiene"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Schedule/Quantities"
 msgstr "Tablas"
 
@@ -1651,6 +1671,10 @@ msgid "Interface description file:"
 msgstr "Archivo de descripción de la interfaz:"
 
 #: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to pan, scroll to zoom; click what it cuts to select it"
+msgstr "Arrastra para desplazar, usa la rueda para hacer zoom; haz clic en lo que corta para seleccionarlo"
+
+#: apps/Common/src/GUI/MainFrame.cpp
 msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
 msgstr "El proyecto aún no tiene nada que mostrar en 3D; abre un proyecto o la casa de ejemplo desde el menú Archivo"
 
@@ -1779,6 +1803,14 @@ msgstr "Colocar: {0}"
 msgid "Floor Plan: {0}"
 msgstr "Planta: {0}"
 
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Elevation: {0}"
+msgstr "Alzado: {0}"
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Section: {0}"
+msgstr "Sección: {0}"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Multiple Categories"
 msgstr "Varias categorías"
@@ -1818,6 +1850,10 @@ msgstr "Plantas"
 #: apps/Common/src/GUI/Panels.cpp
 msgid "3D Views"
 msgstr "Vistas 3D"
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Sections"
+msgstr "Secciones"
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Schedules/Quantities"
@@ -2200,6 +2236,10 @@ msgid "{0} element selected"
 msgid_plural "{0} elements selected"
 msgstr[0] "{0} elemento seleccionado"
 msgstr[1] "{0} elementos seleccionados"
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not make the elevations"
+msgstr "No se pudieron crear los alzados"
 
 #: apps/Common/src/GUI/Recent.cpp
 msgid "Just now"
@@ -2917,6 +2957,14 @@ msgid "Click to enter the grid's end point."
 msgstr "Haz clic para indicar el punto final del eje."
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the section's start point."
+msgstr "Haz clic para indicar el punto inicial de la sección."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the section's end point; it looks to the left of the line."
+msgstr "Haz clic para indicar el punto final de la sección; mira a la izquierda de la línea."
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click a base point to measure from."
 msgstr "Haz clic en un punto base desde el que medir."
 
@@ -3157,6 +3205,10 @@ msgid "Modify | Measure"
 msgstr "Modificar | Medir"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Section"
+msgstr "Modificar | Sección"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr "Altura:"
 
@@ -3283,6 +3335,10 @@ msgstr "No se pudo construir el muro"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the grid"
 msgstr "No se pudo colocar el eje"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the section"
+msgstr "No se pudo colocar la sección"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the column"

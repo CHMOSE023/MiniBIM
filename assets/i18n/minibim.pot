@@ -198,6 +198,14 @@ msgstr ""
 msgid "Crop View"
 msgstr ""
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Section"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Elevation View"
+msgstr ""
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Duplicate View"
 msgstr ""
@@ -1095,6 +1103,18 @@ msgid "Crop the plan to what it shows now, or uncrop it"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Section: click its two ends; it looks to the left of the line"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Elevations"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Elevations of the building's four sides, those it doesn't have yet"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Schedule/Quantities"
 msgstr ""
 
@@ -1651,6 +1671,10 @@ msgid "Interface description file:"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to pan, scroll to zoom; click what it cuts to select it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
 msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
 msgstr ""
 
@@ -1779,6 +1803,14 @@ msgstr ""
 msgid "Floor Plan: {0}"
 msgstr ""
 
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Elevation: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Section: {0}"
+msgstr ""
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Multiple Categories"
 msgstr ""
@@ -1817,6 +1849,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Panels.cpp
 msgid "3D Views"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Sections"
 msgstr ""
 
 #: apps/Common/src/GUI/Panels.cpp
@@ -2200,6 +2236,10 @@ msgid "{0} element selected"
 msgid_plural "{0} elements selected"
 msgstr[0] ""
 msgstr[1] ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not make the elevations"
+msgstr ""
 
 #: apps/Common/src/GUI/Recent.cpp
 msgid "Just now"
@@ -2917,6 +2957,14 @@ msgid "Click to enter the grid's end point."
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the section's start point."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the section's end point; it looks to the left of the line."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Click a base point to measure from."
 msgstr ""
 
@@ -3157,6 +3205,10 @@ msgid "Modify | Measure"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Section"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr ""
 
@@ -3282,6 +3334,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the grid"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the section"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp

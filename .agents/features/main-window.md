@@ -117,6 +117,10 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   项目浏览器的"明细表/数量"列出六张内置的与项目建的明细表；界面还不能导出 CSV（要新的保存对话框种类，`schedule` 命令的 `path` 可以）。
   显示的平面是 `MainFrame::PlanKey`：标高的平面，或 `m_planOf` 指的平面视图（`MainFrame::ShowPlanView`）；绘制、注释工具与填充区域都用它。
   项目浏览器的楼层平面下列出各标高的平面视图，相关视图挂在父视图下；平面视图的特性面板是 `Props::PlanViewRows`
+  剖面与立面："创建"面板的剖面（`MainFrame::Tool::Section`，点两下执行 `section`，可输入长度）与建筑立面（`view.elevation`，`MainFrame::MakeElevations`）；
+  项目浏览器的"立面""剖面"双击打开（`MainFrame::ShowSection`，`m_sectionOf`）。剖面视口 `MainFrame::RenderSection`：模型变了时重算 `ModelScene::Cut`，
+  白色的面与往相机挪一点的边画成消隐线，上面盖 `Render::DrawSection` 的显示列表（剖到的、标高、轴网、名称）；`MainFrame::OnSectionPointer` 拖动平移、
+  滚轮缩放、单击剖到的选中它。可见性 / 图形对话框对剖面也有比例与详细程度
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。
   没选东西时特性面板显示工具要放的"新建 …"，类型选择器选的是工具接下来放的类型（`ToolOptions::types`、门窗的族、构件的族与类型）
 - 草图模式（`SketchMode.cpp`，移植自界面的 `sketch.rs`）：`MainFrame::m_sketch` 有值时在草图里。入口是"修改 > 编辑边界"（`modify.editBoundary`，

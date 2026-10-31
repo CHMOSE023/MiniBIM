@@ -122,6 +122,7 @@ namespace MiniBIM
         m_triangles.clear();
         m_edges.clear();
         m_owners.clear();
+        m_edgeOwners.clear();
         m_bounds = AABB::Empty();
         m_counts = {};
         if (!kernel)
@@ -232,6 +233,7 @@ namespace MiniBIM
                 continue;
             const Bim::Element& e = *ptr;
             m_owners.emplace_back(m_triangles.size(), id);
+            m_edgeOwners.emplace_back(m_edges.size(), id);
             bool ok = true;
             if (const Bim::Wall* w = e.As<Bim::Wall>())
             {
@@ -485,6 +487,243 @@ namespace MiniBIM
             }
         }
         return hit;
+    }
+
+    namespace
+    {
+        // 点在剖面里的坐标：沿线离起点、离线多远（看的方向为正）、高度
+        struct Local
+        {
+            double along, past, z;
+        };
+
+        // 凸多边形（各点的 Local）裁到 keep(p) >= 0 的一侧
+        std::vector<Local> ClipPoly(const std::vector<Local>& poly, const std::function<double(const Local&)>& keep)
+        {
+            std::vector<Local> out;
+            const size_t n = poly.size();
+            for (size_t i = 0; i < n; ++i)
+            {
+                const Local& a = poly[i];
+                const Local& b = poly[(i + 1) % n];
+                const double ka = keep(a), kb = keep(b);
+                if (ka >= 0.0)
+                    out.push_back(a);
+                if ((ka >= 0.0) != (kb >= 0.0))
+                {
+                    const double t = ka / (ka - kb);
+                    out.push_back(Local{ a.along + (b.along - a.along) * t, a.past + (b.past - a.past) * t, a.z + (b.z - a.z) * t });
+                }
+            }
+            return out;
+        }
+
+        // 一串首尾相接的线段连成环：每段的两端按 0.01 毫米认同一个点；连不回起点的丢掉
+        std::vector<Ring> Chain(const std::vector<std::pair<P2, P2>>& segs)
+        {
+            const auto key = [](P2 p) { return std::pair{ std::llround(p.x * 100.0), std::llround(p.y * 100.0) }; };
+            std::multimap<std::pair<long long, long long>, size_t> at;
+            for (size_t i = 0; i < segs.size(); ++i)
+            {
+                at.emplace(key(segs[i].first), i);
+                at.emplace(key(segs[i].second), i);
+            }
+            std::vector<bool> used(segs.size(), false);
+            std::vector<Ring> rings;
+            for (size_t s = 0; s < segs.size(); ++s)
+            {
+                if (used[s])
+                    continue;
+                used[s] = true;
+                Ring ring{ segs[s].first, segs[s].second };
+                const auto start = key(segs[s].first);
+                bool closed = false;
+                while (!closed)
+                {
+                    const auto here = key(ring.back());
+                    if (here == start)
+                    {
+                        closed = true;
+                        break;
+                    }
+                    std::optional<size_t> next;
+                    const auto [lo, hi] = at.equal_range(here);
+                    for (auto it = lo; it != hi && !next; ++it)
+                        if (!used[it->second])
+                            next = it->second;
+                    if (!next)
+                        break;
+                    used[*next] = true;
+                    ring.push_back(key(segs[*next].first) == here ? segs[*next].second : segs[*next].first);
+                }
+                ring.pop_back();  // 回到起点的那个点
+                if (closed && ring.size() >= 3 && std::abs(Bim::Geom::Area(ring)) > 1.0)
+                    rings.push_back(std::move(ring));
+            }
+            // 外圈逆时针、洞（套在奇数层里的）顺时针，一起按非零规则填时洞是空的
+            for (size_t i = 0; i < rings.size(); ++i)
+            {
+                int depth = 0;
+                for (size_t j = 0; j < rings.size(); ++j)
+                    if (i != j && std::abs(Bim::Geom::Area(rings[j])) > std::abs(Bim::Geom::Area(rings[i])) &&
+                        Bim::Geom::Contains(rings[j], rings[i].front()))
+                        ++depth;
+                const bool ccw = Bim::Geom::Area(rings[i]) > 0.0;
+                if (ccw != (depth % 2 == 0))
+                    std::reverse(rings[i].begin(), rings[i].end());
+            }
+            return rings;
+        }
+    }
+
+    ModelScene::SectionCut ModelScene::Cut(P2 start, P2 end, std::optional<double> depth, std::optional<std::array<double, 2>> crop,
+                                           const std::function<bool(Bim::Id)>& shows) const
+    {
+        SectionCut out;
+        const P2 u = (end - start).Unit(), n = u.Perp();
+        const double len = start.Dist(end);
+        const auto local = [&](float x, float y, float z)
+        {
+            const P2 d = P2{ x, y } - start;
+            return Local{ d.Dot(u), d.Dot(n), z };
+        };
+        const auto world = [&](const Local& l)
+        {
+            const P2 p = start + u * l.along + n * l.past;
+            return Point3{ p.x, p.y, l.z };
+        };
+        const auto grow = [&](double along, double z)
+        {
+            if (!out.any)
+            {
+                out.first = out.last = along;
+                out.lo = out.hi = z;
+                out.any = true;
+                return;
+            }
+            out.first = std::min(out.first, along);
+            out.last  = std::max(out.last, along);
+            out.lo    = std::min(out.lo, z);
+            out.hi    = std::max(out.hi, z);
+        };
+        // 看到的：线后、深度以内；裁剪了的再裁到起点与终点之间、底与顶之间
+        std::vector<std::function<double(const Local&)>> planes{ [](const Local& l) { return l.past; } };
+        if (depth)
+            planes.push_back([d = *depth](const Local& l) { return d - l.past; });
+        if (crop)
+        {
+            planes.push_back([](const Local& l) { return l.along; });
+            planes.push_back([len](const Local& l) { return len - l.along; });
+            planes.push_back([b = (*crop)[0]](const Local& l) { return l.z - b; });
+            planes.push_back([t = (*crop)[1]](const Local& l) { return t - l.z; });
+        }
+        const VertexColor white(1.0f, 1.0f, 1.0f, 1.0f);
+        for (size_t o = 0; o < m_owners.size(); ++o)
+        {
+            const Bim::Id id = m_owners[o].second;
+            if (!shows(id))
+                continue;
+            const size_t first = m_owners[o].first, last = o + 1 < m_owners.size() ? m_owners[o + 1].first : m_triangles.size();
+            std::vector<std::pair<P2, P2>> segs;
+            for (size_t i = first; i + 2 < last; i += 3)
+            {
+                std::array<Local, 3> t;
+                for (size_t j = 0; j < 3; ++j)
+                {
+                    const auto& p = m_triangles[i + j].pos;
+                    t[j] = local(p.x, p.y, p.z);
+                }
+                // 剖切面穿过的：两条边上的交点连成一段。落在面上的点当作在面后一点点，共面的三角形就不出线段
+                std::array<double, 3> d{};
+                for (size_t j = 0; j < 3; ++j)
+                    d[j] = std::abs(t[j].past) < 1e-6 ? 1e-6 : t[j].past;
+                std::vector<P2> hits;
+                for (size_t j = 0; j < 3; ++j)
+                {
+                    size_t a = j, b = (j + 1) % 3;
+                    if ((d[a] > 0.0) == (d[b] > 0.0))
+                        continue;
+                    // 两端按固定的顺序插值：相邻三角形的同一条边算出同一个点
+                    if (std::tie(t[b].along, t[b].z, t[b].past) < std::tie(t[a].along, t[a].z, t[a].past))
+                        std::swap(a, b);
+                    const double s = d[a] / (d[a] - d[b]);
+                    hits.push_back(P2{ t[a].along + (t[b].along - t[a].along) * s, t[a].z + (t[b].z - t[a].z) * s });
+                }
+                if (hits.size() == 2 && hits[0].Dist(hits[1]) > 1e-6)
+                    segs.emplace_back(hits[0], hits[1]);
+                // 看到的部分
+                std::vector<Local> poly(t.begin(), t.end());
+                for (const auto& keep : planes)
+                {
+                    poly = ClipPoly(poly, keep);
+                    if (poly.size() < 3)
+                        break;
+                }
+                if (poly.size() < 3)
+                    continue;
+                for (size_t k = 1; k + 1 < poly.size(); ++k)
+                    for (const Local* l : { &poly[0], &poly[k], &poly[k + 1] })
+                    {
+                        const Point3 w = world(*l);
+                        out.faces.push_back({ { static_cast<float>(w.x), static_cast<float>(w.y), static_cast<float>(w.z) }, white });
+                        grow(l->along, l->z);
+                    }
+            }
+            if (!segs.empty())
+            {
+                std::vector<Ring> rings = Chain(segs);
+                // 裁剪了的：剖到的环也只留起点到终点、底到顶之间的
+                if (crop)
+                    for (Ring& r : rings)
+                    {
+                        r = Bim::Geom::Clip(r, [](P2 q) { return q.x; });
+                        r = Bim::Geom::Clip(r, [len](P2 q) { return len - q.x; });
+                        r = Bim::Geom::Clip(r, [b = (*crop)[0]](P2 q) { return q.y - b; });
+                        r = Bim::Geom::Clip(r, [t = (*crop)[1]](P2 q) { return t - q.y; });
+                    }
+                std::erase_if(rings, [](const Ring& r) { return r.size() < 3; });
+                for (const Ring& r : rings)
+                    for (const P2& q : r)
+                        grow(q.x, q.y);
+                if (!rings.empty())
+                    out.cuts.emplace_back(id, std::move(rings));
+            }
+        }
+        // 看到的边，同样裁
+        for (size_t o = 0; o < m_edgeOwners.size(); ++o)
+        {
+            if (!shows(m_edgeOwners[o].second))
+                continue;
+            const size_t first = m_edgeOwners[o].first, last = o + 1 < m_edgeOwners.size() ? m_edgeOwners[o + 1].first : m_edges.size();
+            for (size_t i = first; i + 1 < last; i += 2)
+            {
+                const Point3& p = m_edges[i];
+                const Point3& q = m_edges[i + 1];
+                Local a = local(static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z));
+                Local b = local(static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z));
+                bool keep = true;
+                for (const auto& f : planes)
+                {
+                    const double ka = f(a), kb = f(b);
+                    if (ka < 0.0 && kb < 0.0)
+                    {
+                        keep = false;
+                        break;
+                    }
+                    const double s = ka / (ka - kb);
+                    const Local x{ a.along + (b.along - a.along) * s, a.past + (b.past - a.past) * s, a.z + (b.z - a.z) * s };
+                    if (ka < 0.0)
+                        a = x;
+                    else if (kb < 0.0)
+                        b = x;
+                }
+                if (!keep)
+                    continue;
+                out.edges.push_back(world(a));
+                out.edges.push_back(world(b));
+            }
+        }
+        return out;
     }
 
     std::pair<size_t, size_t> ModelScene::RangeOf(Bim::Id id) const

@@ -900,6 +900,26 @@ namespace MiniBIM::Bim
                 out = Element(std::move(v));
                 return true;
             }
+            if (category == "section" || category == "elevation")
+            {
+                Section v;
+                if (!f.Allow({ "name", "start", "end", "depth", "crop", "graphics" }) || !f.String("name", v.name, true) ||
+                    !f.Point("start", v.start, true) || !f.Point("end", v.end, true) || !f.OptNumber("depth", v.depth) || !ReadGraphics(f, v.graphics))
+                    return false;
+                if (const Json* c = f.Raw("crop"); c && !c->is_null())
+                {
+                    if (!c->is_array() || c->size() != 2 || !(*c)[0].is_number() || !(*c)[1].is_number())
+                        return f.Fail("`crop` is [bottom, top], heights in mm");
+                    v.crop = std::array<double, 2>{ (*c)[0].get<double>(), (*c)[1].get<double>() };
+                }
+                if (!f.Finish())
+                    return false;
+                if (category == "section")
+                    out = Element(std::move(v));
+                else
+                    out = Element(Elevation{ std::move(v) });
+                return true;
+            }
             if (category == "schedule")
             {
                 Schedule sc;
@@ -2068,6 +2088,18 @@ namespace MiniBIM::Bim
                 j["parent"] = ToJson(*v->parent);
             if (v->sectionBox)
                 j["section_box"] = true;
+        }
+        else if (const Section* sv = e.As<Section>() ? e.As<Section>() : e.As<Elevation>())
+        {
+            j["name"]  = sv->name;
+            j["start"] = ToJson(sv->start);
+            j["end"]   = ToJson(sv->end);
+            if (sv->depth)
+                j["depth"] = *sv->depth;
+            if (sv->crop)
+                j["crop"] = Json::array({ (*sv->crop)[0], (*sv->crop)[1] });
+            if (!sv->graphics.IsDefault())
+                j["graphics"] = ToJson(sv->graphics);
         }
         else if (const Schedule* sc = e.As<Schedule>())
         {

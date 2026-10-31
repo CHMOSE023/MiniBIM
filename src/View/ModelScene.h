@@ -2,8 +2,11 @@
 #pragma once
 #include "Core/GeomKernel/AABB.hpp"
 #include "Core/Math/Point3.hpp"
+#include "Model/Geom.h"
 #include "Model/Ids.h"
 #include "Render/VertexTypes.hpp"
+#include <array>
+#include <functional>
 #include <optional>
 #include <utility>
 #include <string>
@@ -52,10 +55,28 @@ namespace MiniBIM
         // 元素 id 的三角形在 GetTriangles() 里的顶点范围 [first, last)；没有时为空范围
         std::pair<size_t, size_t> RangeOf(Bim::Id id) const;
 
+        // 剖面或立面看到的（移植自 BIMCraft view3d.rs 的 cuts 与 cut_in，做法不同：用场景的三角形算）
+        struct SectionCut
+        {
+            // 剖到的：各元素的环（沿线离起点、向上的毫米），外圈逆时针、洞顺时针
+            std::vector<std::pair<Bim::Id, std::vector<Bim::Ring>>> cuts;
+            // 线后（深度以内）的三角形（白色）与边：画成消隐线
+            std::vector<Vertex_P3_C4> faces;
+            std::vector<Math::Point3> edges;
+            // 剖到的与看到的，沿线与高度的范围；什么也没有时 any 为假
+            double first = 0.0, last = 0.0, lo = 0.0, hi = 0.0;
+            bool   any   = false;
+        };
+        // start → end 的竖直剖切面，看线的左边：depth 为看到线后多远（没给时全部）；crop（底、顶）给了时只留沿线起点到终点、
+        // 高度在底与顶之间的。shows 认的元素才算
+        SectionCut Cut(Bim::P2 start, Bim::P2 end, std::optional<double> depth, std::optional<std::array<double, 2>> crop,
+                       const std::function<bool(Bim::Id)>& shows) const;
+
     private:
         std::vector<Vertex_P3_C4> m_triangles;
         std::vector<Math::Point3> m_edges;
         std::vector<std::pair<size_t, Bim::Id>> m_owners;   // 每个元素的三角形从 m_triangles 的哪个顶点起（按顺序，到下一个元素为止）
+        std::vector<std::pair<size_t, Bim::Id>> m_edgeOwners;   // 同上，边从 m_edges 的哪个点起
         AABB                      m_bounds = AABB::Empty();
         Counts                    m_counts;
     };

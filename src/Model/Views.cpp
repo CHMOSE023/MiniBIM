@@ -1,5 +1,8 @@
 // 移植自 BIMCraft crates/core/src/model.rs 与 graphics.rs（f3bbb33）的视图部分，MIT 许可，见 THIRD_PARTY_NOTICES.md
+#include "Model/Language.h"
 #include "Model/Model.h"
+#include "Model/Text.h"
+#include "Model/Walls.h"
 
 namespace MiniBIM::Bim
 {
@@ -82,6 +85,10 @@ namespace MiniBIM::Bim
                 g = &v->graphics;
             else if (auto* v3 = e->template As<View3D>())
                 g = &v3->graphics;
+            else if (auto* s = e->template As<Section>())
+                g = &s->graphics;
+            else if (auto* ev = e->template As<Elevation>())
+                g = &ev->graphics;
             return g;
         }
     }
@@ -115,7 +122,103 @@ namespace MiniBIM::Bim
             return &v3->name;
         if (const Schedule* sc = e->As<Schedule>())
             return &sc->name;
+        if (const Section* s = GetSection(id))
+            return &s->name;
         return nullptr;
+    }
+
+    const Section* Model::GetSection(Guid key) const
+    {
+        const Element* e = elements.Get(key);
+        if (!e)
+            return nullptr;
+        if (const Section* s = e->As<Section>())
+            return s;
+        return e->As<Bim::Elevation>();
+    }
+
+    std::optional<std::array<P2, 2>> Model::BuildingBox() const
+    {
+        std::optional<std::array<P2, 2>> box;
+        const auto add = [&](P2 p)
+        {
+            if (!box)
+                box = std::array<P2, 2>{ p, p };
+            else
+                box = std::array<P2, 2>{ P2{ std::min((*box)[0].x, p.x), std::min((*box)[0].y, p.y) },
+                                         P2{ std::max((*box)[1].x, p.x), std::max((*box)[1].y, p.y) } };
+        };
+        for (const auto& [id, e] : elements.Items())
+        {
+            if (e->As<Wall>())
+                for (const P2& p : Walls::Outline(*this, id))
+                    add(p);
+            else if (const Floor* f = e->As<Floor>())
+                for (const P2& p : f->boundary)
+                    add(p);
+        }
+        return box;
+    }
+
+    std::optional<Facing> Model::FacingFrom(P2 at) const
+    {
+        const auto box = BuildingBox();
+        if (!box)
+            return std::nullopt;
+        const P2 d = at - ((*box)[0] + (*box)[1]) * 0.5;
+        if (std::abs(d.x) > std::abs(d.y))
+            return d.x > 0.0 ? Facing::East : Facing::West;
+        return d.y > 0.0 ? Facing::North : Facing::South;
+    }
+
+    std::optional<std::pair<P2, P2>> Model::ElevationLine(Facing facing, std::optional<P2> through) const
+    {
+        const auto box = BuildingBox();
+        if (!box)
+            return std::nullopt;
+        const auto [lo, hi] = *box;
+        const P2 middle = (lo + hi) * 0.5, out = FacingOf::Out(facing), u = out.Perp();
+        const double reach = through ? (*through - middle).Dot(out) : std::abs((hi - lo).Dot(out)) / 2.0 + 3000.0;
+        const double half  = std::abs((hi - lo).Dot(u)) / 2.0 + 1000.0;
+        const P2 base = middle + out * reach;
+        return std::pair{ base - u * half, base + u * half };
+    }
+
+    namespace FacingOf
+    {
+        const char* Name(Facing f)
+        {
+            switch (f)
+            {
+            case Facing::North: return "North";
+            case Facing::South: return "South";
+            case Facing::East:  return "East";
+            case Facing::West:  return "West";
+            }
+            return "North";
+        }
+
+        std::optional<Facing> Parse(std::string_view s)
+        {
+            const std::string n = Text::AsciiLower(Text::Trim(std::string(s)));
+            for (const Facing f : All)
+                for (const Language l : LanguageOf::All)
+                    if (Text::AsciiLower(LanguageOf::Word(l, Name(f))) == n)
+                        return f;
+            return std::nullopt;
+        }
+
+        P2 Out(Facing f)
+        {
+            switch (f)
+            {
+            case Facing::North: return { 0.0, 1.0 };
+            case Facing::South: return { 0.0, -1.0 };
+            case Facing::East:  return { 1.0, 0.0 };
+            case Facing::West:  return { -1.0, 0.0 };
+            }
+            return { 0.0, 1.0 };
+        }
     }
 
     std::string Model::FreeViewName(const std::string& base, bool numbered) const

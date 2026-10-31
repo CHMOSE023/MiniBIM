@@ -105,6 +105,11 @@ namespace MiniBIM
             });
         add("view.crop", N_("Crop View"), N_("Crop the plan to what it shows now, or uncrop it"), [this] { ToggleCrop(); }, planShown,
             [this] { return m_planLevel && m_session.GetModel().CropOf(PlanKey()).has_value(); });
+        add("view.section", N_("Section"), N_("Section: click its two ends; it looks to the left of the line"),
+            [this] { SetTool(m_tool == Tool::Section ? Tool::Modify : Tool::Section); }, [this] { return !m_sketch.has_value(); },
+            [this] { return m_tool == Tool::Section; });
+        add("view.elevation", N_("Elevations"), N_("Elevations of the building's four sides, those it doesn't have yet"), [this] { MakeElevations(); },
+            [this] { return !m_sketch.has_value(); });
         add("view.schedule", N_("Schedule/Quantities"), N_("A new schedule: a table of the elements of a category, their fields as columns"),
             [this] { OpenNewSchedule(); });
         add("view.filters", N_("Filters"), N_("The project's view filters: the elements of some categories that meet rules, for views to hide or draw another way"),

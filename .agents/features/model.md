@@ -116,6 +116,15 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   打开或建，给 `fields` 等就改，回复表格；`path` 写 CSV（.xlsx 拒绝）。六张内置明细表（房间、门、窗、墙、楼板、标高）不存进模型，改了才建出元素，
   名称三种语言都认。字段：各类别自己的（`Schedules::OwnField`）、族参数、`formula`（族参数的公式，引用别的字段，循环报错）。
   没移植的：楼梯、坡道、栏杆的明细表，阶段与设计选项的字段，项目参数的字段（随 5f），导出 .xlsx
+- 剖面与立面（5e3，移植自 `model.rs`、`render.rs` 的 section 与 `view3d.rs` 的 cuts）：元素 `Section`（名称、起点、终点、深度、裁剪的底与顶、图形）与
+  `Elevation`（同 `Section`，名称不同的一种），看线的左边（`Section::Looking`）；`Model::GetSection` 两种都认，名称同别的视图、标高不重。
+  命令 `section`（CR）与 `elevation`（`facing`、`at` 时取 `Model::FacingFrom`，线由 `Model::ElevationLine` 放在 `Model::BuildingBox` 外 3 米、两端各伸出 1 米；
+  什么也不给时建还没有的四个，名称按项目语言 `FacingOf::Name`），`scale`、`detail`、`graphics`、`template` 也收它们；`crop` 给区域时线缩到区域的两边、
+  视图里的文字与高程点跟着挪回（`CropSection`），不给区域时裁到 `Render::SectionHeights`。移动、旋转、镜像改线（镜像时起点终点对调，仍看左边），`inspect` 报出 `length` 与 `looking`。
+  平面画剖面线（虚线、起点的旗与名称、终点的短线）与立面记号（圆、旗、名称，平面裁剪框外的不画）。剖面图 `Render::DrawSection`：剖到的（`Render::SectionCuts`，
+  由界面从三维场景算出，`ModelScene::Cut`）灰色填充与轮廓、标高（虚线，名称与高度写在右端外）、线穿过并在深度以内的轴网、视图名称；
+  `Render::SectionShows` 是适配视口用的范围。没移植的：剖面里的注释（文字、高程点、详图线）、复合墙的层线、剖到体量的线、剖面导出 PNG、拖动裁剪框；
+  三维场景不建默认三维视图隐藏的元素，剖面也就看不到它们
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
@@ -158,7 +167,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   被拒、类型、编辑、平面与捕捉，起步设备族在各语言里都有、每个类型的形体高度对）与体量（`TestMassing`：体量、体量楼层再跑与 prune、按面建模、
   `update_by_face`、放样）与注释（`TestAnnotations`：各注释命令、删除标高的连带、项目文件往返与平面、BIMCraft 旧文件的文字大小与别的视图里的注释、测量）与视图（`TestViews`：隐藏类别与元素、线与填充的覆盖、半色调、三维视图、比例与详细程度、复制视图三种方式、
   平面视图里的注释、相关视图、裁剪、删除的连带、项目文件往返）与明细表（`TestSchedules`：字段、计算、过滤、排序、分组、总计、内置的名称、CSV，过滤器的隐藏与覆盖，
-  样板的跟随、被控制的组被拒、样板改了跟着变、样板的视图范围、文件往返）
+  样板的跟随、被控制的组被拒、样板改了跟着变、样板的视图范围、文件往返）与剖面（`TestSections`：剖面与四个立面的方向、名称（葡萄牙语、西班牙语）、
+  重名被拒、镜像、文件往返、比例与图形、裁剪缩线，平面上的记号，剖面图的填充、标高与轴网）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

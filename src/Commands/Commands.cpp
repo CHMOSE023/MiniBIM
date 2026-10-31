@@ -2878,6 +2878,14 @@ namespace MiniBIM::Bim
                 g->start = f(g->start);
                 g->end   = f(g->end);
             }
+            else if (Section* sv = out.As<Section>() ? out.As<Section>() : out.As<Elevation>())
+            {
+                sv->start = f(sv->start);
+                sv->end   = f(sv->end);
+                // 镜像过去的仍看线的左边：反过来的那边
+                if (mo.mirror)
+                    std::swap(sv->start, sv->end);
+            }
             else if (Floor* fl = out.As<Floor>())
             {
                 for (P2& q : fl->boundary)
@@ -4141,12 +4149,12 @@ namespace MiniBIM::Bim
             return true;
         }
 
-        // 有比例与详细程度的视图：标高的平面、平面视图（MiniBIM 还没有剖面、立面）
+        // 有比例与详细程度的视图：标高的平面、平面视图、剖面、立面
         bool ScaledView(const char* c, const Model& m, const Json& p, Guid& out, std::string& error)
         {
             if (!AnyViewParam(c, m, p, out, error))
                 return false;
-            if (m.PlanLevel(out))
+            if (m.PlanLevel(out) || m.GetSection(out))
                 return true;
             return Fail(error, c, ViewTitle(m, out) + " isn't a plan, a section or an elevation; only those have one");
         }
@@ -4264,6 +4272,60 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // 裁剪剖面或立面：区域是沿线（离起点）与高度的两角，线缩到区域的两边；null 取消裁剪；没给时裁到模型的高度。
+        // 视图里的文字、高程点跟着模型不动（起点挪了多远，它们沿线就往回挪多远）
+        bool CropSection(Session& s, const Section& was, Guid view, const Json* region, Json& result, std::string& error)
+        {
+            const char* c = "crop";
+            const Model& m = s.GetModel();
+            // Params 只存参数的引用：参数要活得比它长
+            const Json params = region ? Json{ { "region", *region } } : Json::object();
+            Params P(c, params, error);
+            Section v = was;
+            double shift = 0.0;
+            if (region && !region->is_null())
+            {
+                std::vector<P2> pts;
+                if (!P.Points("region", pts))
+                    return false;
+                if (pts.size() != 2)
+                    return P.Fail("`region` is two corners, [[x, y], [x, y]]");
+                const P2 a = pts[0], b = pts[1];
+                if (!(a.x < b.x - Tol && a.y < b.y - Tol))
+                    return P.Fail("a crop region runs from its bottom left corner to its top right one (in a plan, south-west to north-east)");
+                const P2 u = (v.end - v.start).Unit();
+                const P2 from = v.start;
+                v.start = Micron(from + u * a.x);
+                v.end   = Micron(from + u * b.x);
+                v.crop  = std::array<double, 2>{ a.y, b.y };
+                shift   = a.x;
+            }
+            else if (region)
+                v.crop.reset();
+            else
+                v.crop = Render::SectionHeights(m, view);
+            Model& mm = s.ModelMut();
+            Element* e = mm.elements.GetMut(view);
+            if (Section* x = e->As<Section>())
+                *x = v;
+            else if (Elevation* x = e->As<Elevation>())
+                static_cast<Section&>(*x) = v;
+            for (const auto& [id, el] : mm.elements.Items())
+            {
+                Element* n = mm.elements.GetMut(id);
+                if (Note* t = n->As<Note>(); t && mm.Same(t->view, view))
+                {
+                    t->at.x -= shift;
+                    if (t->leader)
+                        t->leader->x -= shift;
+                }
+                else if (Spot* sp = n->As<Spot>(); sp && mm.Same(sp->view, view))
+                    sp->at.x -= shift;
+            }
+            result = Json{ { "view", *mm.elements.IdOf(view) }, { "crop", v.crop ? Json::array({ (*v.crop)[0], (*v.crop)[1] }) : Json(nullptr) } };
+            return true;
+        }
+
         bool CropCmd(Session& s, const Json& p, Json& result, std::string& error)
         {
             const char* c = "crop";
@@ -4274,10 +4336,12 @@ namespace MiniBIM::Bim
             Guid view;
             if (!AnyViewParam(c, m, p, view, error))
                 return false;
+            const Json* region = p.is_object() && p.contains("region") ? &p["region"] : nullptr;
+            if (const Section* sv = m.GetSection(view))
+                return CropSection(s, *sv, view, region, result, error);
             if (!m.PlanLevel(view))
                 return P.Fail(ViewTitle(m, view) + " isn't a plan, a section or an elevation; only those crop");
             std::optional<std::array<P2, 2>> crop;
-            const Json* region = p.is_object() && p.contains("region") ? &p["region"] : nullptr;
             if (region && !region->is_null())
             {
                 std::vector<P2> pts;
@@ -4309,6 +4373,105 @@ namespace MiniBIM::Bim
                 v->crop = crop;
             result = Json{ { "view", *mm.elements.IdOf(view) },
                            { "crop", crop ? Json::array({ ToJson((*crop)[0]), ToJson((*crop)[1]) }) : Json(nullptr) } };
+            return true;
+        }
+
+        // ── 剖面与立面（第 5e3 步，移植自 BIMCraft 的 section、elevation）──
+        bool SectionCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "section";
+            if (!Only(c, p, { "start", "end", "depth", "name" }, error))
+                return false;
+            Params P(c, p, error);
+            Section v;
+            std::optional<std::string> name;
+            if (!P.PointReq("start", v.start) || !P.PointReq("end", v.end) || !P.Num("depth", v.depth) || !P.String("name", name))
+                return false;
+            const Model& m = s.GetModel();
+            v.name = name ? *name : m.FreeViewName(LanguageOf::Word(m.language, "Section"), true);
+            const std::string made = v.name;
+            const Id id = s.ModelMut().Insert(Element(std::move(v)));
+            result = Json{ { "id", id }, { "name", made } };
+            return true;
+        }
+
+        bool ElevationCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "elevation";
+            if (!Only(c, p, { "facing", "at", "start", "end", "depth", "name" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<double> depth;
+            std::optional<std::string> name, facingName;
+            std::optional<P2> at, start, end;
+            if (!P.Num("depth", depth) || !P.String("name", name) || !P.String("facing", facingName) || !P.PointOpt("at", at) ||
+                !P.PointOpt("start", start) || !P.PointOpt("end", end))
+                return false;
+            std::optional<Facing> facing;
+            if (facingName)
+            {
+                facing = FacingOf::Parse(*facingName);
+                if (!facing)
+                    return P.Fail("`facing` is north, south, east or west, not `" + *facingName + "`");
+            }
+            const std::string nothing = "there are no walls or floors to look at; draw some, or give `start` and `end`";
+            std::vector<std::tuple<std::string, P2, P2>> lines;
+            if (start && end)
+                lines.emplace_back(name ? *name : m.FreeViewName(LanguageOf::Word(m.language, "Elevation"), true), *start, *end);
+            else if (!start && !end)
+            {
+                std::vector<Facing> sides;
+                if (facing)
+                    sides = { *facing };
+                else if (at)
+                {
+                    const auto f = m.FacingFrom(*at);
+                    if (!f)
+                        return P.Fail(nothing);
+                    sides = { *f };
+                }
+                else
+                {
+                    // 没给什么：还没有的建筑立面（按项目语言的名称认）
+                    for (const Facing f : FacingOf::All)
+                    {
+                        const std::string word = LanguageOf::Word(m.language, FacingOf::Name(f));
+                        bool there = false;
+                        for (const auto& [id, e] : m.elements.Items())
+                            if (const Elevation* ev = e->As<Elevation>(); ev && ev->name == word)
+                                there = true;
+                        if (!there)
+                            sides.push_back(f);
+                    }
+                    if (sides.empty())
+                        return P.Fail("the four building elevations are there already");
+                }
+                for (const Facing f : sides)
+                {
+                    const auto line = m.ElevationLine(f, at);
+                    if (!line)
+                        return P.Fail(nothing);
+                    lines.emplace_back(name ? *name : m.FreeViewName(LanguageOf::Word(m.language, FacingOf::Name(f)), false), line->first, line->second);
+                }
+            }
+            else
+                return P.Fail("give both `start` and `end`, or neither");
+            Model& mm = s.ModelMut();
+            std::vector<Id> made;
+            for (const auto& [n, a, b] : lines)
+            {
+                Elevation ev;
+                ev.name  = n;
+                ev.start = a;
+                ev.end   = b;
+                ev.depth = depth;
+                made.push_back(mm.Insert(Element(std::move(ev))));
+            }
+            if (made.size() == 1)
+                result = Json{ { "id", made[0] }, { "name", std::get<0>(lines[0]) } };
+            else
+                result = Json{ { "ids", made } };
             return true;
         }
 
@@ -4588,7 +4751,8 @@ namespace MiniBIM::Bim
                 for (const Id id : ids)
                 {
                     const Element* e = m.elements.Get(id);
-                    const Graphics* g = e && (e->As<Level>() || e->As<PlanView>() || e->As<View3D>()) ? m.ViewGraphics(m.GuidOf(id)) : nullptr;
+                    const Graphics* g = e && (e->As<Level>() || e->As<PlanView>() || e->As<View3D>() || e->As<Section>() || e->As<Elevation>())
+                                          ? m.ViewGraphics(m.GuidOf(id)) : nullptr;
                     if (g && g->templateName == name)
                         m.ViewGraphicsMut(m.GuidOf(id))->templateName.reset();
                 }
@@ -4704,7 +4868,7 @@ namespace MiniBIM::Bim
             result["controls"]   = std::move(controls);
             result["view_range"] = t.viewRange ? ToJson(Element(PlanView{ {}, {}, *t.viewRange }))["view_range"] : Json(nullptr);
             for (const auto& [id, e] : now.elements.Items())
-                if (e->As<Level>() || e->As<PlanView>() || e->As<View3D>())
+                if (e->As<Level>() || e->As<PlanView>() || e->As<View3D>() || e->As<Section>() || e->As<Elevation>())
                     if (const Graphics* g = now.ViewGraphics(now.GuidOf(id)); g && g->templateName == name && !(e->As<PlanView>() && e->As<PlanView>()->parent))
                         views.push_back(id);
             result["views"] = std::move(views);
@@ -5592,9 +5756,19 @@ namespace MiniBIM::Bim
               "without `style` it only says what the view has",
               VisualStyleCmd, true },
             { "crop", N_("Crop View"), {},
-              "{view, region?: [[x, y], [x, y]] | null} crops a plan to the region's south-west and north-east corners (plan mm); null uncrops "
-              "it; without a region, it crops to what the view shows now",
+              "{view, region?: [[x, y], [x, y]] | null} crops a plan to the region's south-west and north-east corners (plan mm), a section or "
+              "an elevation to its bottom-left and top-right corners (mm along its line from its start, and up), its line shortened to the "
+              "region's sides; null uncrops it; without a region, a plan crops to what it shows now, a section to the model's heights",
               CropCmd, true },
+            { "section", N_("Section"), { "CR" },
+              "{start: [x,y], end: [x,y], depth?, name?} a section view along the line, looking to its left (drawn west to east, it looks north): "
+              "it cuts the model at the line and sees `depth` mm past it, or everything. Named `Section 1`, `Section 2`… in the project's language",
+              SectionCmd, true },
+            { "elevation", N_("Elevation View"), {},
+              "{facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an elevation view of the building's side `facing` "
+              "(North shows the north side, looking south), from 3 m out, or through `at`; with `at` alone, of the side it's on; with `start` "
+              "and `end`, along that line, looking to its left; with none, the four not there yet",
+              ElevationCmd, true },
             { "duplicate_view", N_("Duplicate View"), { "DP" },
               "{view, mode?: duplicate|detailing|dependent, name?} a new plan view of a plan's level (a level's own plan, or a plan view): "
               "`duplicate` (the default) has the same view range, crop and graphics and no annotation of its own; `detailing` copies the "
@@ -5983,6 +6157,13 @@ namespace MiniBIM::Bim
                 v["elevation"] = z ? Json(Hundredth(*z)) : Json();
                 v["level"]     = levelId ? Json(*levelId) : Json();
             }
+        }
+        else if (const Section* sv = m.GetSection(m.GuidOf(id)))
+        {
+            const P2 l = sv->Looking();
+            v["length"]  = sv->start.Dist(sv->end);
+            // 加 0：不写 -0
+            v["looking"] = Json::array({ l.x + 0.0, l.y + 0.0 });
         }
         else if (const Room* r = e->As<Room>())
         {

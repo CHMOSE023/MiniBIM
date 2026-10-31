@@ -211,6 +211,54 @@ namespace
 
 }
 
+namespace
+{
+    // 剖面：沿 y = 3500 自西向东剖开示例房屋（看向北）
+    void TestSectionCut()
+    {
+        const Bim::Session s = Sample();
+        auto kernel = Solid::CreateSMLibKernel();
+        ModelScene scene;
+        std::string error;
+        scene.Build(s.GetModel(), kernel.get(), error);
+        const auto all = [](Bim::Id) { return true; };
+        const ModelScene::SectionCut c = scene.Cut({ -2000.0, 3500.0 }, { 12000.0, 3500.0 }, std::nullopt, std::nullopt, all);
+        // 西墙中心线在 x = 0、300 厚：离起点 1850 到 2150，从楼板顶（0）起
+        bool west = false;
+        for (const auto& [id, rings] : c.cuts)
+            for (const Bim::Ring& r : rings)
+            {
+                double lo = 1e300, hi = -1e300, bottom = 1e300, top = -1e300;
+                for (const Bim::P2& q : r)
+                {
+                    lo = std::min(lo, q.x);
+                    hi = std::max(hi, q.x);
+                    bottom = std::min(bottom, q.y);
+                    top = std::max(top, q.y);
+                }
+                if (Near(lo, 1850.0, 1.0) && Near(hi, 2150.0, 1.0) && top - bottom > 2500.0)
+                    west = west || std::string(s.GetModel().elements.Get(id)->Category()) == "wall";
+            }
+        Check(west, "剖面：剖到西墙，300 厚的一块");
+        Check(c.any && !c.faces.empty() && c.faces.size() % 3 == 0 && !c.edges.empty() && c.edges.size() % 2 == 0, "剖面：线后看到的面与边");
+        bool behind = true;
+        for (const Vertex_P3_C4& p : c.faces)
+            behind = behind && p.pos.y >= 3500.0 - 1e-3;
+        Check(behind, "剖面：看到的都在线后（北边）");
+        // 深度 10 毫米时几乎看不到什么；裁剪了的只留起点到终点、底到顶
+        const ModelScene::SectionCut shallow = scene.Cut({ -2000.0, 3500.0 }, { 12000.0, 3500.0 }, 10.0, std::nullopt, all);
+        Check(shallow.faces.size() < c.faces.size(), "剖面：深度以内的");
+        const ModelScene::SectionCut cropped = scene.Cut({ -2000.0, 3500.0 }, { 12000.0, 3500.0 }, std::nullopt, std::array<double, 2>{ 0.0, 1000.0 }, all);
+        bool inside = cropped.any;
+        for (const Vertex_P3_C4& p : cropped.faces)
+            inside = inside && p.pos.z >= -1e-3 && p.pos.z <= 1000.0 + 1e-3;
+        Check(inside && cropped.hi <= 1000.0 + 1e-3, "剖面：裁剪了的只留底与顶之间");
+        // 隐藏的元素不算
+        const ModelScene::SectionCut none = scene.Cut({ -2000.0, 3500.0 }, { 12000.0, 3500.0 }, std::nullopt, std::nullopt, [](Bim::Id) { return false; });
+        Check(!none.any && none.cuts.empty() && none.faces.empty(), "剖面：都隐藏时什么也没有");
+    }
+}
+
 int main()
 {
     TestNoKernel();
@@ -220,6 +268,7 @@ int main()
     TestStructure();
     TestMep();
     TestMassing();
+    TestSectionCut();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

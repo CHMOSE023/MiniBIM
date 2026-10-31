@@ -792,6 +792,66 @@ namespace MiniBIM::Bim::Render
                 d.Line(run, Pen::ByCategory, Ink, false);
         }
 
+        // 剖面或立面看的方向，屏幕上（y 向下）
+        Px LookingPx(const Section& v)
+        {
+            const P2 l = v.Looking();
+            return { static_cast<float>(l.x), static_cast<float>(-l.y) };
+        }
+
+        // 平面上的剖面线：虚线，起点一个指向看的方向的三角旗、名称在它后面，终点一小段短线
+        void SectionMark(Drawing& d, const Section& v)
+        {
+            const Px a = d.view.ToPx(v.start), b = d.view.ToPx(v.end);
+            d.Stroke({ a, b }, Pen::Medium, Ink, std::vector<float>{ 18.0f, 5.0f }, false);
+            const auto [lx, ly] = LookingPx(v);
+            const float len = std::max(std::hypot(b.first - a.first, b.second - a.second), 1e-3f);
+            const float ux = (b.first - a.first) / len, uy = (b.second - a.second) / len;
+            size_t from = d.prims.size();
+            Prim flag;
+            flag.kind  = Prim::Kind::Fill;
+            flag.color = Ink;
+            flag.rings = { { a, { a.first + ux * 12.0f, a.second + uy * 12.0f }, { a.first + lx * 12.0f, a.second + ly * 12.0f } } };
+            d.Push(std::move(flag));
+            const float back = Font::Width(v.name, 10.0f) / 2.0f + 8.0f;
+            d.Text(v.name, { a.first - ux * back, a.second - uy * back }, 10.0f, Ink);
+            d.Grow(from, a);
+            from = d.prims.size();
+            d.Stroke({ b, { b.first + lx * 9.0f, b.second + ly * 9.0f } }, Pen::Medium, Ink, std::nullopt, false);
+            d.Grow(from, b);
+        }
+
+        // 平面上的立面记号，在它的线的中点：一个圆圈，一面指向看的方向的三角旗，名称在背后
+        void ElevationMark(Drawing& d, const Section& v)
+        {
+            constexpr float R = 9.0f;
+            const Px c = d.view.ToPx(v.start + (v.end - v.start) * 0.5);
+            const size_t from = d.prims.size();
+            std::vector<Px> ring;
+            for (int i = 0; i < 32; ++i)
+            {
+                const double t = i * kPi / 16.0;
+                ring.emplace_back(c.first + R * static_cast<float>(std::cos(t)), c.second + R * static_cast<float>(std::sin(t)));
+            }
+            Prim disc;
+            disc.kind  = Prim::Kind::Fill;
+            disc.color = Paper;
+            disc.rings = { ring };
+            d.Push(std::move(disc));
+            d.Stroke(std::move(ring), Pen::Bubble, Ink, std::nullopt, true);
+            const auto [lx, ly] = LookingPx(v);
+            const Px side{ -ly * R * 0.8f, lx * R * 0.8f };
+            Prim flag;
+            flag.kind  = Prim::Kind::Fill;
+            flag.color = Ink;
+            flag.rings = { { { c.first + side.first, c.second + side.second }, { c.first + lx * (R + 7.0f), c.second + ly * (R + 7.0f) },
+                             { c.first - side.first, c.second - side.second } } };
+            d.Push(std::move(flag));
+            const float back = R + 6.0f + Font::Width(v.name, 10.0f) / 2.0f * std::abs(lx) + 6.0f * std::abs(ly);
+            d.Text(v.name, { c.first - lx * back, c.second - ly * back }, 10.0f, Ink);
+            d.Grow(from, c);
+        }
+
         // 不考虑族的门窗时的平面范围：level 平面的视图范围（高度）
         PlanRange RangeOf(const Model& m, Guid level) { return m.GetPlanRange(level); }
     }
@@ -1293,6 +1353,11 @@ namespace MiniBIM::Bim::Render
                     for (const P2& q : m.RoofOutline(*rf))
                         extent.push_back(q);
             }
+            else if (const Section* sv = m.GetSection(m.GuidOf(id)))
+            {
+                extent.push_back(sv->start);
+                extent.push_back(sv->end);
+            }
             // 这个平面里的注释
             else if (e->IsAnnotation() && m.AnnotationIn(*e, plan))
             {
@@ -1601,21 +1666,303 @@ namespace MiniBIM::Bim::Render
             else if (const Spot* sp = e->As<Spot>())
                 SpotMark(d, d.view.ToPx(sp->at), m.SpotValue(*sp), m.units);
         }
+        // 剖面线与立面记号：每个平面都画；立面的记号在裁剪框外时不画
+        const auto crop = m.CropOf(plan);
+        const auto inside = [&](P2 q)
+        {
+            return !crop || (q.x >= std::min((*crop)[0].x, (*crop)[1].x) && q.x <= std::max((*crop)[0].x, (*crop)[1].x) &&
+                             q.y >= std::min((*crop)[0].y, (*crop)[1].y) && q.y <= std::max((*crop)[0].y, (*crop)[1].y));
+        };
+        d.SetPart(Part::Projection);
+        for (const auto& [id, e] : items)
+        {
+            d.Own(id);
+            if (const Section* sv = e->As<Section>())
+                SectionMark(d, *sv);
+            else if (const Elevation* ev = e->As<Elevation>(); ev && inside(ev->start + (ev->end - ev->start) * 0.5))
+                ElevationMark(d, *ev);
+        }
         // 裁剪：轴网、房间与注释整个留着或不在，别的裁到框里
-        if (const auto crop = m.CropOf(plan))
+        if (crop)
         {
             const Px a = d.view.ToPx((*crop)[0]), b = d.view.ToPx((*crop)[1]);
             const Px lo{ std::min(a.first, b.first), std::min(a.second, b.second) }, hi{ std::max(a.first, b.first), std::max(a.second, b.second) };
             d.Crop(lo, hi, [&](std::optional<Id> o)
                    {
                        const Element* e = o ? m.elements.Get(*o) : nullptr;
-                       return e && (e->As<Room>() || e->As<Dimension>() || e->As<Tag>() || e->As<Note>() || e->As<Spot>());
+                       return e && (e->As<Room>() || e->As<Dimension>() || e->As<Tag>() || e->As<Note>() || e->As<Spot>() || e->As<Elevation>());
                    });
         }
         d.Own(std::nullopt);
         d.ByCategory(m);
         d.Dress(look);
         d.Weigh(m);
+        return d;
+    }
+
+    // ── 剖面与立面 ───────────────────────────────────────────────
+    namespace
+    {
+        // 剖面里的轴网从显示的最低、最高处再伸出多少，毫米
+        constexpr double GridPast = 600.0;
+
+        // 剖面或立面 v 看到的各标高，各从沿线哪到哪：标高的范围（没有时为建筑的外框）在线后（深度以内）的部分
+        std::vector<std::tuple<Id, double, double>> LevelSpans(const Model& m, const Section& v, const Look& look)
+        {
+            std::vector<std::tuple<Id, double, double>> out;
+            const P2 u = (v.end - v.start).Unit(), n = v.Looking();
+            const auto building = m.BuildingBox();
+            for (const auto& [id, l] : m.Levels())
+            {
+                if (!look.Shows(id))
+                    continue;
+                const auto box = l->extent ? l->extent : building;
+                if (!box)
+                {
+                    out.emplace_back(id, 0.0, v.start.Dist(v.end));
+                    continue;
+                }
+                const auto [lo, hi] = *box;
+                const P2 corners[] = { lo, P2{ hi.x, lo.y }, hi, P2{ lo.x, hi.y } };
+                double nearest = 1e300, farthest = -1e300, a = 1e300, b = -1e300;
+                for (const P2& q : corners)
+                {
+                    const double past = (q - v.start).Dot(n), along = (q - v.start).Dot(u);
+                    nearest  = std::min(nearest, past);
+                    farthest = std::max(farthest, past);
+                    a = std::min(a, along);
+                    b = std::max(b, along);
+                }
+                if (farthest < -Tol || (v.depth && nearest > *v.depth))
+                    continue;
+                out.emplace_back(id, a, b);
+            }
+            return out;
+        }
+
+        // 沿线从哪显示到哪：裁剪了的为起点到终点；否则为看到的模型、标高、轴网与线本身
+        std::pair<double, double> SpanOf(const Model& m, const Section& v, const Look& look, const Seen& seen)
+        {
+            const double len = v.start.Dist(v.end);
+            if (v.crop)
+                return { 0.0, len };
+            double lo = 0.0, hi = len;
+            if (seen.any)
+            {
+                lo = std::min(lo, seen.first);
+                hi = std::max(hi, seen.last);
+            }
+            for (const auto& [id, a, b] : LevelSpans(m, v, look))
+            {
+                lo = std::min(lo, a);
+                hi = std::max(hi, b);
+            }
+            const P2 u = (v.end - v.start).Unit();
+            for (const auto& [id, e] : m.elements.Items())
+                if (const Grid* g = e->As<Grid>(); g && look.Shows(id))
+                    if (const auto x = Geom::LineIntersection(v.start, v.end, g->start, g->end))
+                    {
+                        lo = std::min(lo, (*x - v.start).Dot(u));
+                        hi = std::max(hi, (*x - v.start).Dot(u));
+                    }
+            return { lo, hi };
+        }
+
+        // 显示的高度：裁剪的；否则为模型的与看到的
+        std::pair<double, double> HeightsOf(const Model& m, const Section& v, const Look& look, const Seen& seen)
+        {
+            if (v.crop)
+                return { (*v.crop)[0], (*v.crop)[1] };
+            auto [lo, hi] = ModelHeights(m, look);
+            if (seen.any)
+            {
+                lo = std::min(lo, seen.lo);
+                hi = std::max(hi, seen.hi);
+            }
+            return { lo, hi };
+        }
+
+        // 标高名称与高度里最宽的，像素（10 像素高的字），再加两边的空
+        float LevelNames(const Model& m)
+        {
+            float w = 0.0f;
+            for (const auto& [id, l] : m.Levels())
+                w = std::max({ w, Font::Width(l->name, 10.0f), Font::Width(UnitsOf::Length(m.units, l->elevation), 10.0f) });
+            return w + 12.0f;
+        }
+    }
+
+    std::pair<double, double> ModelHeights(const Model& m, const Look& look)
+    {
+        double lo = 1e300, hi = -1e300;
+        const auto add = [&](double z)
+        {
+            lo = std::min(lo, z);
+            hi = std::max(hi, z);
+        };
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            if (!look.Shows(id))
+                continue;
+            if (const Level* l = e->As<Level>())
+                add(l->elevation);
+            else if (const Wall* w = e->As<Wall>())
+            {
+                add(m.BaseZ(*w));
+                add(m.TopZ(*w));
+            }
+            else if (const Column* c = e->AsColumn())
+            {
+                const auto [a, b] = m.ColumnSpan(*c);
+                add(a);
+                add(b);
+            }
+            else if (const Mass* ms = e->As<Mass>())
+            {
+                const auto [a, b] = m.MassSpan(*ms);
+                add(a);
+                add(b);
+            }
+            else if (const Roof* r = e->As<Roof>())
+            {
+                std::vector<Slope> faces;
+                std::string why;
+                add(m.Elevation(r->level) + r->offset);
+                if (m.RoofFaces(*r, faces, why))
+                    for (const auto& [loops, p] : faces)
+                        for (const Ring& ring : loops)
+                            for (const P2& q : ring)
+                                add(p.At(q));
+            }
+            else if (const auto g = m.RunGeom(*e))
+            {
+                const auto [a, b] = g->ZSpan();
+                add(a);
+                add(b);
+            }
+        }
+        if (lo > hi)
+            return { 0.0, 3000.0 };
+        return { lo, hi };
+    }
+
+    std::array<double, 2> SectionHeights(const Model& m, Guid view)
+    {
+        const auto [lo, hi] = ModelHeights(m, m.LookOf(view));
+        return { lo - GridPast, hi + GridPast };
+    }
+
+    std::vector<P2> SectionShows(const Model& m, Guid view, const Seen& seen)
+    {
+        const Section* v = m.GetSection(view);
+        if (!v)
+            return {};
+        const Look look = m.LookOf(view);
+        const auto [first, last] = SpanOf(m, *v, look, seen);
+        const auto [lo, hi] = HeightsOf(m, *v, look, seen);
+        // 标高名称写在线的末端外：它们随比例放大，在模型里约是 n × 像素 / 每毫米像素 那么宽
+        const double n = m.ScaleOf(view), names = n * LevelNames(m) / Density;
+        // 底下还有轴网的圆圈与视图名称
+        const double below = n * (2.0 * Bubble + 30.0) / Density;
+        return { P2{ first, lo - GridPast - below }, P2{ last + names, hi + GridPast } };
+    }
+
+    Drawing DrawSection(const Model& m, Guid view, View v, const SectionCuts& cuts, const Seen& seen)
+    {
+        const double n = m.ScaleOf(view);
+        Drawing d(v);
+        d.k       = AnnotationOf(n, v.scale);
+        d.paper   = PaperOf(n, v.scale);
+        d.weights = Weights::At(m.units, n);
+        const Section* sv = m.GetSection(view);
+        if (!sv)
+            return d;
+        const Look look = m.LookOf(view);
+        const auto [first, last] = SpanOf(m, *sv, look, seen);
+        const auto [lo, hi] = HeightsOf(m, *sv, look, seen);
+        // 剖到的：同平面，先按颜色一起填，再每个元素一块，再描并集的边
+        std::vector<std::pair<Id, Ring>> outlines;
+        for (const auto& [id, rings] : cuts)
+            if (look.Shows(id))
+                for (const Ring& r : rings)
+                    outlines.emplace_back(id, r);
+        const auto cutFill = [&](Id id)
+        {
+            const Override* o = look.Paint(id);
+            if (!o)
+                return Poche;
+            const Rgb c = o->cut.fill ? Rgb{ (*o->cut.fill)[0], (*o->cut.fill)[1], (*o->cut.fill)[2] } : Poche;
+            return o->halftone ? Halftone(c) : c;
+        };
+        d.SetPart(Part::Cut);
+        d.Own(std::nullopt);
+        {
+            std::map<std::tuple<uint8_t, uint8_t, uint8_t>, std::vector<Ring>> byColour;
+            for (const auto& [id, o] : outlines)
+            {
+                const Rgb c = cutFill(id);
+                byColour[{ c.r, c.g, c.b }].push_back(o);
+            }
+            for (const auto& [c, rings] : byColour)
+                d.Fill(rings, Rgb{ std::get<0>(c), std::get<1>(c), std::get<2>(c) });
+        }
+        for (const auto& [id, o] : outlines)
+        {
+            d.Own(id);
+            d.Fill({ o }, Poche);
+        }
+        for (const auto& [id, runs] : CutEdges(outlines, 1.0 / d.view.scale))
+        {
+            d.Own(id);
+            for (const auto& run : runs)
+                InkCut(d, run);
+        }
+        d.Own(std::nullopt);
+        d.SetPart(Part::Projection);
+        if (sv->crop)
+            d.Crop(d.view.ToPx(P2{ first, hi }), d.view.ToPx(P2{ last, lo }), [](std::optional<Id>) { return false; });
+        // 各标高画在视图看到的那段上，名称与高度写在末端外
+        for (const auto& [level, a, b] : LevelSpans(m, *sv, look))
+        {
+            const Level* l = m.GetLevel(m.GuidOf(level));
+            // 没有自己范围的标高画到看到的最右边：名称不压在伸出墙外的基础、挑檐上
+            const double from = std::max(a, first), to = l && l->extent ? std::min(b, last) : last;
+            if (!l || from >= to || (sv->crop && !(l->elevation >= lo && l->elevation <= hi)))
+                continue;
+            d.Own(level);
+            const Px pa = d.view.ToPx(P2{ from, l->elevation }), pb = d.view.ToPx(P2{ to, l->elevation });
+            d.Stroke({ pa, pb }, Pen::Projection, Ink, std::vector<float>{ 12.0f, 4.0f }, false);
+            for (const auto& [text, dy] : { std::pair{ l->name, -8.0f }, std::pair{ UnitsOf::Length(m.units, l->elevation), 8.0f } })
+            {
+                const float h = d.PxOf(10.0f);
+                d.Text(text, { pb.first + d.PxOf(8.0f) + Font::Width(text, h) / 2.0f, pb.second + d.PxOf(dy) }, h, Ink);
+            }
+        }
+        // 线穿过、伸到线后（深度以内）的轴网
+        const P2 u = (sv->end - sv->start).Unit(), look2 = sv->Looking();
+        const auto past = [&](P2 q) { return (q - sv->start).Dot(look2); };
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            const Grid* g = e->As<Grid>();
+            if (!g || !look.Shows(id))
+                continue;
+            const auto x = Geom::LineIntersection(sv->start, sv->end, g->start, g->end);
+            if (!x || std::max(past(g->start), past(g->end)) < -Tol || (sv->depth && std::min(past(g->start), past(g->end)) > *sv->depth))
+                continue;
+            const double along = (*x - sv->start).Dot(u);
+            if (along < first || along > last)
+                continue;
+            d.Own(id);
+            GridOf(d, P2{ along, lo - GridPast }, P2{ along, hi + GridPast }, g->name);
+        }
+        d.Own(std::nullopt);
+        d.ByCategory(m);
+        d.Dress(look);
+        d.Weigh(m);
+        // 视图名称写在左下角，轴网的圆圈下面（随视图平移，视口四周可能被面板挡住）
+        const Px corner = d.view.ToPx(P2{ first, lo - GridPast });
+        const float h = d.PxOf(16.0f);
+        d.Text(sv->name, { corner.first + Font::Width(sv->name, h) / 2.0f, corner.second + d.PxOf(2.0f * Bubble + 20.0f) }, h, Ink);
         return d;
     }
 

@@ -170,6 +170,11 @@ namespace MiniBIM
                     heading = Format(Tr("Floor Plan: {0}"), { *name });
             }
         }
+        else if (m_sectionOf)
+        {
+            if (const std::string* name = m.ViewName(*m_sectionOf))
+                heading = m.elements.Get(*m_sectionOf)->As<Bim::Elevation>() ? Format(Tr("Elevation: {0}"), { *name }) : Format(Tr("Section: {0}"), { *name });
+        }
         else
             heading = "{3D}";
 
@@ -217,7 +222,7 @@ namespace MiniBIM
                 current.insert(*d);
         }
         const std::string family = placing             ? Tr(Props::CategoryName(category, false))
-                                 : m_selection.empty() ? (m_planLevel ? Tr("Floor Plan") : Tr("3D View"))
+                                 : m_selection.empty() ? (m_planLevel ? Tr("Floor Plan") : m_sectionOf ? (m.elements.Get(*m_sectionOf)->As<Bim::Elevation>() ? Tr("Elevation View") : Tr("Section")) : Tr("3D View"))
                                  : category.empty()    ? Tr("Multiple Categories")
                                                        : Tr(Props::CategoryName(category, false));
         m_propsBody->AddChild<Label>(family, 13.0f)->SetBold(true);
@@ -571,7 +576,21 @@ namespace MiniBIM
         }
         std::vector<Entry> views;
         views.push_back(group(Tr("Floor Plans"), true, std::move(plans)));
-        views.push_back(group(Tr("3D Views"), true, { Entry{ "{3D}", [this] { ShowModel3D(); }, !m_planLevel, false, {} } }));
+        views.push_back(group(Tr("3D Views"), true, { Entry{ "{3D}", [this] { ShowModel3D(); }, !m_planLevel && !m_sectionOf, false, {} } }));
+        // 剖面与立面，按元素顺序
+        std::vector<Entry> sections, elevations;
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            const Bim::Guid g = m.GuidOf(id);
+            if (const Bim::Section* sv = e->As<Bim::Section>())
+                sections.push_back(Entry{ sv->name, [this, g] { ShowSection(g); }, m_sectionOf && m.Same(*m_sectionOf, g), false, {} });
+            else if (const Bim::Elevation* ev = e->As<Bim::Elevation>())
+                elevations.push_back(Entry{ ev->name, [this, g] { ShowSection(g); }, m_sectionOf && m.Same(*m_sectionOf, g), false, {} });
+        }
+        if (!elevations.empty())
+            views.push_back(group(Tr("Elevations"), true, std::move(elevations)));
+        if (!sections.empty())
+            views.push_back(group(Tr("Sections"), true, std::move(sections)));
         // 明细表：每个项目都有的六个（项目改过的是它自己的），再是项目建的
         std::vector<Entry> schedules;
         for (const Bim::Schedules::Builtin& b : Bim::Schedules::Views)

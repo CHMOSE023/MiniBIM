@@ -448,6 +448,8 @@ namespace MiniBIM::Bim
             const char* operator()(const PlanView&) const { return "planview"; }
             const char* operator()(const View3D&) const { return "view3d"; }
             const char* operator()(const Schedule&) const { return "schedule"; }
+            const char* operator()(const Section&) const { return "section"; }
+            const char* operator()(const Elevation&) const { return "elevation"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -461,6 +463,8 @@ namespace MiniBIM::Bim
             void operator()(Grid&) const {}
             void operator()(View3D&) const {}
             void operator()(Schedule&) const {}
+            void operator()(Section&) const {}
+            void operator()(Elevation&) const {}
             void operator()(PlanView& v) const
             {
                 f(v.level);
@@ -2268,6 +2272,41 @@ namespace MiniBIM::Bim
                 if (!viewNames.insert(v3->name).second)
                 {
                     error = who + ": another view is already named `" + v3->name + "`";
+                    return false;
+                }
+            }
+            else if (const Section* sv = e.As<Section>() ? e.As<Section>() : e.As<Bim::Elevation>())
+            {
+                if (!TextOk(who, "name", sv->name, error))
+                    return false;
+                if (Text::Trim(sv->name).empty())
+                {
+                    error = who + ": a view needs a name";
+                    return false;
+                }
+                if (!Line(who, sv->start, sv->end, error))
+                    return false;
+                if (sv->depth && !Size(who + " depth", *sv->depth, error))
+                    return false;
+                if (sv->crop)
+                {
+                    const auto [bottom, top] = *sv->crop;
+                    if (!Coord(who + " crop", bottom, error) || !Coord(who + " crop", top, error))
+                        return false;
+                    if (bottom >= top - Tol)
+                    {
+                        error = who + ": its crop runs from a bottom up to a top above it, not from " + Num(bottom) + " to " + Num(top);
+                        return false;
+                    }
+                }
+                if (!sv->graphics.Check(*this, error))
+                {
+                    error = who + ": " + error;
+                    return false;
+                }
+                if (!viewNames.insert(sv->name).second)
+                {
+                    error = who + ": another view is already named `" + sv->name + "`";
                     return false;
                 }
             }

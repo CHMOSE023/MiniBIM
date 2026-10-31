@@ -128,6 +128,13 @@ namespace MiniBIM::Bim::LanguageOf
             { "Double Sliding", "De correr, duas folhas", "Corredera doble" },
             { "Folding", "Camarão", "Plegable" },
             { "Fixed", "Fixa", "Fija" },
+            // 第 5e3 步：剖面与立面的名称（model.rs 的 Facing）
+            { "Section", "Corte", "Sección" },
+            { "Elevation", "Elevação", "Alzado" },
+            { "North", "Norte", "Norte" },
+            { "South", "Sul", "Sur" },
+            { "East", "Leste", "Este" },
+            { "West", "Oeste", "Oeste" },
         };
     }
 

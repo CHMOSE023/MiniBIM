@@ -372,6 +372,8 @@ namespace MiniBIM
             m_statusHint->SetText(RevitReport::StatusLine(*m_revitReport));
         else if (m_planLevel || m_tool != Tool::Modify)
             m_statusHint->SetText(Tr(ToolPrompt()));
+        else if (m_sectionOf)
+            m_statusHint->SetText(Tr("Drag to pan, scroll to zoom; click what it cuts to select it"));
         else if (m_scene.Empty())
             m_statusHint->SetText(Tr("The project has nothing to show in 3D yet; open a project or the sample house from the File menu"));
         else
@@ -379,7 +381,7 @@ namespace MiniBIM
 
         const ModelScene::Counts& c = m_scene.GetCounts();
         std::string info;
-        if (m_planLevel)
+        if (m_planLevel || m_sectionOf)
             info = PlanStatus() + "    ";
         else if (!m_scene.Empty())
         {
@@ -480,7 +482,9 @@ namespace MiniBIM
 
     void MainFrame::ZoomToFit()
     {
-        if (m_planLevel)
+        if (m_sectionOf)
+            m_sectionView.reset();
+        else if (m_planLevel)
             m_planView.reset();
         else if (!m_scene.Empty())
             m_camera.ZoomToFit(m_scene.GetBounds());
@@ -490,6 +494,11 @@ namespace MiniBIM
     void MainFrame::OnViewportPointer(const MiniGUI::ViewportPointerEvent& e)
     {
         using namespace MiniGUI;
+        if (m_sectionOf)
+        {
+            OnSectionPointer(e);
+            return;
+        }
         if (m_planLevel)
         {
             OnPlanPointer(e);
@@ -579,7 +588,9 @@ namespace MiniBIM
         };
         renderer.Submit(bg, Math::Mat4::Identity(), PrimitiveType::Triangle, false);
 
-        if (m_planLevel)
+        if (m_sectionOf)
+            RenderSection(renderer, pixelWidth, pixelHeight);
+        else if (m_planLevel)
             RenderPlan(renderer, pixelWidth, pixelHeight);
         else if (!m_scene.Empty())
         {

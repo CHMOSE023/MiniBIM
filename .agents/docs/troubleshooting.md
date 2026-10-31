@@ -16,6 +16,10 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
   cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1 && cmake --build out/debug --target MiniBIMWin 2>&1'
   ```
 
+### `fatal error C1128: number of sections exceeded object file format limit`（`src/Commands/Commands.cpp`）
+- 原因：命令表与各命令的模板实例太多，一个 .obj 超过 COFF 的 65 535 个节
+- 做法：`cmake/MiniBIM.cmake` 给 MSVC 加了 `/bigobj`；别的大文件遇到时同样处理，不要把命令拆成更多零碎的文件来绕开
+
 ### 编译时打印 `'vswhere.exe' is not recognized as an internal or external command`
 - 原因：VS 18 的 `vcvars64.bat` 自己的脚本找不到 vswhere（它不在 `PATH` 里）
 - 做法：不用管，`cl` 照样配置好了，编译不受影响

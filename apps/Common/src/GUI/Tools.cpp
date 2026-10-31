@@ -292,6 +292,8 @@ namespace MiniBIM
         case Tool::Room:      return N_("Click inside walls to place a room; the outline shows the room you'd get.");
         case Tool::Level:     return N_("Type the new level's elevation in the Options Bar, then Create.");
         case Tool::Grid:      return m_toolPts.empty() ? N_("Click to enter the grid's start point.") : N_("Click to enter the grid's end point.");
+        case Tool::Section:   return m_toolPts.empty() ? N_("Click to enter the section's start point.")
+                                                       : N_("Click to enter the section's end point; it looks to the left of the line.");
         case Tool::Move:      return m_toolPts.empty() ? N_("Click a base point to measure from.") : N_("Click where the base point goes. Esc cancels.");
         case Tool::Copy:      return m_toolPts.empty() ? N_("Click a base point to measure from.") : N_("Click where the copy's base point goes. Esc cancels.");
         case Tool::Rotate:    return m_placeCentre || !m_rotateCentre ? N_("Click the centre of rotation.")
@@ -391,6 +393,7 @@ namespace MiniBIM
             { Tool::Radial, N_("Modify | Place Dimensions") }, { Tool::Spot, N_("Modify | Spot Elevation") },
             { Tool::Text, N_("Modify | Place Text") },       { Tool::Tag, N_("Modify | Tag") },
             { Tool::DetailLine, N_("Modify | Place Detail Lines") }, { Tool::Measure, N_("Modify | Measure") },
+            { Tool::Section, N_("Modify | Section") },
         };
         const std::string unit = Bim::UnitsOf::Name(m.units);
         // 高度：上面的某个标高（没选时上一层），或未连接时输入的高度（墙、柱）
@@ -866,6 +869,16 @@ namespace MiniBIM
                 RunCommand("grid", Bim::Json{ { "start", Pt(a) }, { "end", Pt(p) } }, N_("Could not place the grid"));
             }
             break;
+        case Tool::Section:
+            if (m_toolPts.empty())
+                m_toolPts.push_back(p);
+            else if (m_toolPts.front().Dist(p) > Bim::Tol)
+            {
+                const Bim::P2 a = m_toolPts.front();
+                m_toolPts.clear();
+                RunCommand("section", Bim::Json{ { "start", Pt(a) }, { "end", Pt(p) } }, N_("Could not place the section"));
+            }
+            break;
         case Tool::Column:
         {
             std::string error;
@@ -976,7 +989,7 @@ namespace MiniBIM
         m_typedLength.clear();
         switch (m_tool)
         {
-        case Tool::Wall: case Tool::Grid: case Tool::Run: case Tool::Mass: case Tool::DetailLine:
+        case Tool::Wall: case Tool::Grid: case Tool::Run: case Tool::Mass: case Tool::DetailLine: case Tool::Section:
             PlacePoint(SnapAt(pixel, m_toolPts, shift).at);
             return;
         // 测量的第二下从第一下量；量完的尺子不算起点
@@ -1147,7 +1160,7 @@ namespace MiniBIM
     {
         // 画了起点之后输入的是长度（Enter 时用）；空格转构件，不算
         if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid && m_tool != Tool::SketchLine && m_tool != Tool::Run && m_tool != Tool::Mass &&
-                                   m_tool != Tool::DetailLine) ||
+                                   m_tool != Tool::DetailLine && m_tool != Tool::Section) ||
             text == " " ||
             m_typedLength.size() > 40)
             return false;
@@ -1304,7 +1317,7 @@ namespace MiniBIM
             tip = !m_typedLength.empty() ? m_typedLength + " (Enter)" : (tip.empty() ? reading : tip + "    " + reading);
             break;
         }
-        case Tool::Wall: case Tool::Grid:
+        case Tool::Wall: case Tool::Grid: case Tool::Section:
         {
             const Bim::P2 next = marker(SnapAt(*m_hoverPixel, m_toolPts, m_hoverShift));
             if (!m_toolPts.empty())

@@ -57,7 +57,8 @@ endif()
 target_include_directories(MiniBIM SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/3rd/nlohmann/include)
 
 if(MSVC)
-    target_compile_options(MiniBIM PRIVATE /utf-8 /W4)
+    # 命令表一个文件（Commands.cpp）的节数超过默认的对象文件格式上限
+    target_compile_options(MiniBIM PRIVATE /utf-8 /W4 /bigobj)
 endif()
 
 # ── 三维实体内核的适配层（唯一包含 SMLib 头文件的地方）─────────────────

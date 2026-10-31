@@ -3087,6 +3087,118 @@ namespace
         Run(s, "door", R"({"at": [5000, 3000], "type": "Single 800 x 2100"})");
     }
 
+    // 剖面与立面（第 5e3 步，移植自 BIMCraft tests.rs 的 sections_and_elevations_are_views_along_a_line 与各语言的名称）
+    void TestSections()
+    {
+        const Id level1 = 100000;
+        {
+            Session s;
+            House(s);
+            // 自西向东画的剖面看向北：线的左边
+            const Id section = Run(s, "section", R"({"start": [-1000, 3000], "end": [9000, 3000]})")["id"].get<Id>();
+            Json e = ElementOf(s, section);
+            Check(e["name"] == "Section 1" && e["looking"] == Json::array({ 0.0, 1.0 }) && e["length"] == 10000.0, "剖面：自西向东画的看向北：" + e.dump());
+            // 建筑的四个立面，各在它那一侧的墙外，看向墙
+            const Json ids = Run(s, "elevation", Json::object())["ids"];
+            std::vector<std::string> names;
+            for (const Json& id : ids)
+                names.push_back(ElementOf(s, id.get<Id>())["name"].get<std::string>());
+            Check(names == std::vector<std::string>{ "North", "South", "East", "West" }, "立面：四个，按北、南、东、西");
+            const Json north = ElementOf(s, ids[0].get<Id>());
+            Check(north["looking"] == Json::array({ 0.0, -1.0 }) && north["start"][1].get<double>() > 6100.0, "立面：北立面看北侧，向南看：" + north.dump());
+            Check(Contains(Refused(s, "elevation", Json::object()), "already"), "立面：四个都有了时不再做");
+            // 点在房子南边的看向北
+            const Id south = Run(s, "elevation", R"({"at": [4000, -5000]})")["id"].get<Id>();
+            e = ElementOf(s, south);
+            Check(e["name"] == "South 2" && e["looking"] == Json::array({ 0.0, 1.0 }), "立面：点在房子南边的，看向北：" + e.dump());
+            Check(Contains(Refused(s, "elevation", R"({"facing": "up"})"), "north, south"), "立面：没有的方向");
+            Check(Contains(Refused(s, "elevation", R"({"start": [0, 0]})"), "neither"), "立面：起点终点要一起给");
+            // 视图的名称是它自己的：不能与别的视图、标高重
+            for (const char* name : { "North", "Level 1" })
+                Check(Contains(Refused(s, "section", Json{ { "start", { 0, 0 } }, { "end", { 1000, 0 } }, { "name", name } }), "named"),
+                      std::string("剖面：名称与别的视图重：") + name);
+            // 镜像过去的看镜像的那边
+            Run(s, "mirror", Json{ { "ids", { section } }, { "axis", { { 0, 0 }, { 1000, 0 } } } });
+            Check(ElementOf(s, section)["looking"] == Json::array({ 0.0, -1.0 }), "剖面：镜像后看向另一边");
+            // 项目文件往返
+            const std::string path = Temp("sections.minibim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            Check(ElementOf(t, section) == ElementOf(s, section) && ElementOf(t, south) == ElementOf(s, south), "剖面：项目文件往返");
+            // 删除：没有连带
+            Run(s, "delete", Json{ { "ids", { south } } });
+            Check(ElementOf(s, south).is_null(), "立面：可以删除");
+        }
+        {
+            // 名称随项目的语言；方向的名称哪种语言都认
+            Session s;
+            Run(s, "new", R"({"language": "pt"})");
+            House(s);
+            Check(Run(s, "section", R"({"start": [-1000, 3000], "end": [9000, 3000]})")["name"] == "Corte 1", "剖面：葡萄牙语的名称");
+            std::vector<std::string> names;
+            // 先存起来：范围 for 不延长 Run 返回的临时对象的寿命
+            const Json made = Run(s, "elevation", Json::object())["ids"];
+            for (const Json& id : made)
+                names.push_back(ElementOf(s, id.get<Id>())["name"].get<std::string>());
+            Check(names == std::vector<std::string>{ "Norte", "Sul", "Leste", "Oeste" }, "立面：葡萄牙语的名称");
+            Session es;
+            Run(es, "new", R"({"language": "es"})");
+            House(es);
+            Check(Run(es, "section", R"({"start": [-1000, 3000], "end": [9000, 3000]})")["name"] == "Sección 1", "剖面：西班牙语的名称");
+            Check(FacingOf::Parse("Sur") == Facing::South && FacingOf::Parse("leste") == Facing::East && FacingOf::Parse("West") == Facing::West &&
+                      !FacingOf::Parse("up"),
+                  "立面：方向的名称哪种语言都认");
+        }
+        {
+            // 剖面有比例、详细程度、图形与裁剪
+            Session s;
+            House(s);
+            const Id sec = Run(s, "section", R"({"start": [-1000, 3000], "end": [9000, 3000]})")["id"].get<Id>();
+            Check(Run(s, "scale", R"({"view": "Section 1", "scale": 50})")["scale"] == 50.0, "剖面：比例");
+            Check(Run(s, "detail", Json{ { "view", sec }, { "detail", "coarse" } })["detail"] == "coarse", "剖面：详细程度");
+            Check(Run(s, "graphics", R"({"view": "Section 1", "hide": ["walls"]})")["hidden"] == Json::array({ "wall" }), "剖面：隐藏类别");
+            // 不给区域：裁到模型的高度（上下各多出 600）
+            Json r = Run(s, "crop", R"({"view": "Section 1"})");
+            Check(r["crop"].is_array() && r["crop"][0].get<double>() < 0.0 && r["crop"][1].get<double>() > 3000.0, "剖面：裁到模型的高度：" + r.dump());
+            // 给区域：线缩到区域的两边
+            r = Run(s, "crop", Json{ { "view", sec }, { "region", { { 1000, -500 }, { 9000, 4000 } } } });
+            const Json e = ElementOf(s, sec);
+            Check(r["crop"] == Json::array({ -500.0, 4000.0 }) && e["start"] == Json::array({ 0.0, 3000.0 }) && e["end"] == Json::array({ 8000.0, 3000.0 }),
+                  "剖面：裁剪区域：" + e.dump());
+            Check(Contains(Refused(s, "crop", Json{ { "view", sec }, { "region", { { 9000, 4000 }, { 1000, -500 } } } }), "bottom left"),
+                  "剖面：裁剪区域要从左下到右上");
+            Check(Run(s, "crop", Json{ { "view", sec }, { "region", nullptr } })["crop"].is_null(), "剖面：取消裁剪");
+            Check(Contains(Refused(s, "visual_style", R"({"view": "Section 1", "style": "wireframe"})"), "3D view"), "剖面：没有视觉样式");
+        }
+        {
+            // 平面上的剖面线与立面记号；剖面画剖到的、标高、轴网
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Id grid = Run(s, "grid", R"({"start": [4000, -1000], "end": [4000, 7000]})")["id"].get<Id>();
+            const Id sec  = Run(s, "section", R"({"start": [-1000, 3000], "end": [9000, 3000]})")["id"].get<Id>();
+            const Id north = Run(s, "elevation", R"({"facing": "north"})")["id"].get<Id>();
+            Check(Has(Drawn(s, level1), sec) && Has(Drawn(s, level1), north), "剖面：平面上画剖面线与立面记号");
+            const Model& m = s.GetModel();
+            // 西墙（x = 0，厚 200）在线上离起点 1000 处
+            const Id west = walls[3];
+            const Render::SectionCuts cuts{ { west, { Ring{ { 900, 0 }, { 1100, 0 }, { 1100, 3000 }, { 900, 3000 } } } } };
+            const Render::Seen seen{ 900, 1100, 0, 3000, true };
+            const Guid g = m.GuidOf(sec);
+            const Render::View v = Render::Fit(Render::SectionShows(m, g, seen), 800, 600, m.ScaleOf(g));
+            Render::Drawing d = Render::DrawSection(m, g, v, cuts, seen);
+            Check(Has(d, west) && FillAt(d, P2{ 1000, 1500 }) == Render::Poche, "剖面：剖到的墙灰色填充");
+            Check(Has(d, level1) && Has(d, 100001), "剖面：画两个标高");
+            Check(Has(d, grid), "剖面：画线穿过的轴网");
+            Run(s, "graphics", Json{ { "view", sec }, { "hide", { "walls", "grids" } } });
+            d = Render::DrawSection(s.GetModel(), g, v, cuts, seen);
+            Check(!Has(d, west) && !Has(d, grid) && Has(d, level1), "剖面：隐藏的类别不画");
+            // 立面在平面裁剪框外时不画它的记号
+            Run(s, "crop", Json{ { "view", "Level 1" }, { "region", { { -500, -500 }, { 8500, 6500 } } } });
+            Check(!Has(Drawn(s, level1), north) && Has(Drawn(s, level1), sec), "立面：记号在平面裁剪框外时不画");
+        }
+    }
+
     void TestSchedules()
     {
         const Id level1 = 100000;
@@ -3586,6 +3698,7 @@ int main()
     TestAnnotations();
     TestViews();
     TestSchedules();
+    TestSections();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

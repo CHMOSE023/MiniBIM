@@ -167,4 +167,23 @@ namespace MiniBIM::Bim::Render
     // 还不在模型里的元素 e，照平面 plan 会画它的样子（各项归它，ID 是放进模型后会有的那个）：工具预览用（门窗、构件、屋顶……）。
     // 移植自 BIMCraft 的 render::sketch，做法不同：放进模型的一份副本里画整个平面，只留它的几项
     Drawing Sketch(const Model& m, Guid plan, View view, const Element& e);
+
+    // ── 剖面与立面（第 5e3 步，移植自 render.rs 的 section）────────
+    // 剖面或立面 view 的线剖到的，各元素的环（沿线离起点、向上的毫米）：界面由三维场景的三角形算出（ModelScene::Cut）
+    using SectionCuts = std::vector<std::pair<Id, std::vector<Ring>>>;
+    // 剖面看到的模型（剖到的与线后、深度以内的）沿线与高度的范围；什么也没看到时 any 为假
+    struct Seen
+    {
+        double first = 0.0, last = 0.0, lo = 0.0, hi = 0.0;
+        bool   any   = false;
+    };
+    // 标高与墙、柱、屋顶、体量、run 的高度，从最低到最高（look 隐藏的不算；什么也没有时为 0 到 3000）
+    std::pair<double, double> ModelHeights(const Model& m, const Look& look);
+    // crop 命令不给区域时剖面或立面裁到的底与顶：ModelHeights 再上下各多出轴网伸出的 600 毫米
+    std::array<double, 2> SectionHeights(const Model& m, Guid view);
+    // 剖面或立面 view 显示的范围（沿线、向上的毫米）的两角，右边留出标高名称的地方：适配视口用
+    std::vector<P2> SectionShows(const Model& m, Guid view, const Seen& seen);
+    // 剖面或立面 view 按 v 画的：剖到的灰色填充与轮廓（复合墙的层线、看到的形体由界面画）、标高（名称与高度写在线的末端外）、
+    // 线穿过的轴网、视图名称；裁剪了的裁到框里
+    Drawing DrawSection(const Model& m, Guid view, View v, const SectionCuts& cuts, const Seen& seen);
 }

@@ -944,8 +944,10 @@ namespace MiniBIM
         };
         auto d = std::make_shared<State>();
         const Bim::Model& m0 = m_session.GetModel();
-        d->view = m_planLevel ? Bim::ToJson(PlanKey()) : Bim::Json(Bim::View3D::DefaultName);
-        const std::string* name = m_planLevel ? m0.ViewName(PlanKey()) : nullptr;
+        // 有比例与详细程度的：平面、剖面、立面
+        const std::optional<Bim::Guid> scaled = m_planLevel ? std::optional<Bim::Guid>(PlanKey()) : m_sectionOf;
+        d->view = scaled ? Bim::ToJson(*scaled) : Bim::Json(Bim::View3D::DefaultName);
+        const std::string* name = scaled ? m0.ViewName(*scaled) : nullptr;
         auto dialog = std::make_unique<Dialog>(Format(Tr("Visibility/Graphics: {0}"), { name ? *name : std::string(Bim::View3D::DefaultName) }));
         d->dialog = dialog.get();
         auto build = std::make_shared<std::function<void()>>();
@@ -958,7 +960,7 @@ namespace MiniBIM
             rebuild();
         };
         const bool plan = m_planLevel.has_value();
-        *build = [this, d, run, plan]
+        *build = [this, d, run, plan, scaled]
         {
             const Bim::Model& m = m_session.GetModel();
             Node* body = d->dialog->GetBody();
@@ -970,8 +972,8 @@ namespace MiniBIM
 
             // 视图的图形：平面视图的是它自己的（相关视图的是父视图的，在父视图里改），三维的是默认三维视图的
             std::optional<Bim::Guid> key;
-            if (plan)
-                key = PlanKey();
+            if (scaled)
+                key = *scaled;
             else if (const auto id = m.Default3D())
                 key = m.GuidOf(*id);
             const Bim::Graphics* g = key ? m.ViewGraphics(*key) : nullptr;
@@ -1007,12 +1009,12 @@ namespace MiniBIM
                     row->AddChild<Label>(Tr("Greyed settings follow the template."), 12.0f, Theme::TextDim);
             }
 
-            if (plan)
+            if (scaled)
             {
                 Node* row = Row(body);
                 Caption(row, Tr("View Scale"), 110.0f);
                 row->AddChild<Label>("1 :", 13.0f);
-                auto* scale = Sized(row->AddChild<NumberBox>(m.ScaleOf(PlanKey()), 1.0, 100000.0, 10.0, 0), 100.0f);
+                auto* scale = Sized(row->AddChild<NumberBox>(m.ScaleOf(*scaled), 1.0, 100000.0, 10.0, 0), 100.0f);
                 scale->SetEnabled(!dependent && !controlled(Bim::Group::Scale));
                 scale->SetOnChanged([run](double v) { run("scale", Bim::Json{ { "scale", std::round(v) } }); });
 

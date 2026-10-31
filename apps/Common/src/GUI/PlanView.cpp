@@ -25,6 +25,7 @@ namespace MiniBIM
                 { "roof", N_("Roof") },     { "component", N_("Component") }, { "roomseparator", N_("Room Separator") },
                 { "mass", N_("Mass") },       { "dimension", N_("Dimension") }, { "text", N_("Text Note") },
                 { "spot", N_("Spot Elevation") }, { "tag", N_("Tag") }, { "line", N_("Detail Line") }, { "region", N_("Filled Region") },
+                { "section", N_("Section") }, { "elevation", N_("Elevation View") },
             };
             for (const auto& [c, label] : labels)
                 if (category == c)
@@ -107,6 +108,7 @@ namespace MiniBIM
             SetTool(Tool::Modify);
         m_planLevel.reset();
         m_planOf.reset();
+        m_sectionOf.reset();
         m_drag = Drag::None;
         UpdateTitle();
         UpdateStatus();
@@ -140,6 +142,7 @@ namespace MiniBIM
             m_planView.reset();
             m_toolPts.clear();      // 画了一半的不跟到别的标高
         }
+        m_sectionOf.reset();
         m_planDirty = true;
         m_drag = Drag::None;
         UpdateTitle();
@@ -164,6 +167,7 @@ namespace MiniBIM
             m_planOf    = m.GuidOf(view);
             m_planView.reset();
         }
+        m_sectionOf.reset();
         m_planDirty = true;
         m_drag = Drag::None;
         UpdateTitle();
@@ -222,6 +226,15 @@ namespace MiniBIM
         const Bim::Model& m = m_session.GetModel();
         // 删掉、撤销掉的元素离开选择集
         std::erase_if(m_selection, [&](Bim::Id id) { return !m.elements.Contains(id); });
+        if (m_sectionOf)
+        {
+            // 显示的剖面删掉了：回到三维视图
+            if (!m.GetSection(*m_sectionOf))
+                ShowModel3D();
+            m_sectionDirty      = true;
+            m_sectionCutVersion = 0;
+            return;
+        }
         if (!m_planLevel)
             return;
         if (!m.GetLevel(*m_planLevel))
@@ -248,8 +261,12 @@ namespace MiniBIM
     std::string MainFrame::PlanStatus() const
     {
         const Bim::Model& m = m_session.GetModel();
-        const std::string* name = m_planLevel ? m.ViewName(PlanKey()) : nullptr;
-        std::string out = name ? Format(Tr("Plan: {0}"), { *name }) : std::string();
+        const std::string* name = m_planLevel ? m.ViewName(PlanKey()) : m_sectionOf ? m.ViewName(*m_sectionOf) : nullptr;
+        const bool elevation = m_sectionOf && m.elements.Get(*m_sectionOf)->As<Bim::Elevation>();
+        std::string out = !name        ? std::string()
+                          : elevation  ? Format(Tr("Elevation: {0}"), { *name })
+                          : m_sectionOf ? Format(Tr("Section: {0}"), { *name })
+                                        : Format(Tr("Plan: {0}"), { *name });
         if (m_selection.size() == 1)
         {
             if (const Bim::Element* e = m.elements.Get(m_selection.front()))
@@ -343,6 +360,212 @@ namespace MiniBIM
         px.m[12] = -1.0;
         px.m[13] = 1.0;
         renderer.Submit(m_planVerts, px, PrimitiveType::Triangle, false);
+    }
+
+    void MainFrame::ShowSection(Bim::Guid view)
+    {
+        const Bim::Model& m = m_session.GetModel();
+        if (!m.GetSection(view) || LeavingSketch())
+            return;
+        if (m_tool != Tool::Modify)
+            SetTool(Tool::Modify);
+        if (!m_sectionOf || !m.Same(*m_sectionOf, view))
+        {
+            m_sectionOf = m.GuidOf(view);
+            m_sectionView.reset();
+        }
+        m_planLevel.reset();
+        m_planOf.reset();
+        m_sectionDirty      = true;
+        m_sectionCutVersion = 0;
+        m_drag = Drag::None;
+        UpdateTitle();
+        UpdateStatus();
+        RefreshPanels();
+        m_viewport->RequestRender();
+    }
+
+    void MainFrame::MakeElevations()
+    {
+        Bim::Json result;
+        if (!RunCommand("elevation", Bim::Json::object(), N_("Could not make the elevations"), &result))
+            return;
+        // 做出一个时显示它，几个时显示第一个
+        const Bim::Json id = result.contains("id") ? result["id"] : result.contains("ids") && !result["ids"].empty() ? result["ids"][0] : Bim::Json();
+        if (id.is_number_unsigned())
+            ShowSection(m_session.GetModel().GuidOf(id.get<Bim::Id>()));
+    }
+
+    void MainFrame::RenderSection(IRenderer& renderer, int pixelWidth, int pixelHeight)
+    {
+        const Bim::Model& m = m_session.GetModel();
+        const Bim::Section* sv = m_sectionOf ? m.GetSection(*m_sectionOf) : nullptr;
+        if (!sv)
+            return;
+        const Bim::Guid key = *m_sectionOf;
+        const uint32_t w = static_cast<uint32_t>(std::max(pixelWidth, 1)), h = static_cast<uint32_t>(std::max(pixelHeight, 1));
+        // 剖到的与看到的：场景或剖面变了时重算
+        if (m_sectionCutVersion != m_sceneVersion || m_sectionCutVersion == 0)
+        {
+            const Bim::Look look = m.LookOf(key);
+            m_sectionCut = m_scene.Cut(sv->start, sv->end, sv->depth, sv->crop, [&](Bim::Id id) { return look.Shows(id); });
+            m_sectionCutVersion = std::max<uint64_t>(m_sceneVersion, 1);
+            const Bim::P2 u = (sv->end - sv->start).Unit(), n = u.Perp();
+            m_sectionFar = 1.0;
+            for (const Vertex_P3_C4& p : m_sectionCut.faces)
+                m_sectionFar = std::max(m_sectionFar, (Bim::P2{ p.pos.x, p.pos.y } - sv->start).Dot(n));
+            m_sectionDirty = true;
+        }
+        const Bim::Render::Seen seen{ m_sectionCut.first, m_sectionCut.last, m_sectionCut.lo, m_sectionCut.hi, m_sectionCut.any };
+        if (!m_sectionView)
+        {
+            // 同平面：放进没被挡住的区域
+            const double l = m_fitInsets[0], t = m_fitInsets[1];
+            const double fw = std::max(w - l - m_fitInsets[2], w * 0.2), fh = std::max(h - t - m_fitInsets[3], h * 0.2);
+            Bim::Render::View v = Bim::Render::Fit(Bim::Render::SectionShows(m, key, seen), static_cast<uint32_t>(fw), static_cast<uint32_t>(fh), m.ScaleOf(key));
+            v.width  = w;
+            v.height = h;
+            v.cx -= (l + fw / 2.0 - w / 2.0) / v.scale;
+            v.cy += (t + fh / 2.0 - h / 2.0) / v.scale;
+            m_sectionView  = v;
+            m_sectionDirty = true;
+        }
+        if (m_sectionView->width != w || m_sectionView->height != h)
+        {
+            m_sectionView->width  = w;
+            m_sectionView->height = h;
+            m_sectionDirty = true;
+        }
+        if (m_sectionDirty || !m_section)
+        {
+            Bim::Render::SectionCuts cuts;
+            for (const auto& [id, rings] : m_sectionCut.cuts)
+                cuts.emplace_back(id, rings);
+            m_section = std::make_unique<Bim::Render::Drawing>(Bim::Render::DrawSection(m, key, *m_sectionView, cuts, seen));
+            m_sectionDirty = false;
+        }
+        const float fw = static_cast<float>(w), fh = static_cast<float>(h);
+        Math::Mat4 px = Math::Mat4::Identity();
+        px.m[0]  = 2.0 / fw;
+        px.m[5]  = -2.0 / fh;
+        px.m[12] = -1.0;
+        px.m[13] = 1.0;
+        // 白纸
+        m_planVerts.clear();
+        Triangle(m_planVerts, { 0.0f, 0.0f }, { fw, 0.0f }, { fw, fh }, ColorOf(Bim::Render::Paper));
+        Triangle(m_planVerts, { 0.0f, 0.0f }, { fw, fh }, { 0.0f, fh }, ColorOf(Bim::Render::Paper));
+        renderer.Submit(m_planVerts, px, PrimitiveType::Triangle, false);
+
+        // 看到的形体：白色的面挡住后面的边（消隐）。世界坐标到裁剪空间：沿线、向上随视图平移缩放，深度是离线多远
+        const Bim::Render::View& v = *m_sectionView;
+        const Bim::P2 u = (sv->end - sv->start).Unit(), n = u.Perp();
+        const double kx = v.scale * 2.0 / fw, ky = v.scale * 2.0 / fh, kz = 1.0 / (m_sectionFar * 1.01 + 1.0);
+        Math::Mat4 world = Math::Mat4::Identity();
+        world.m[0]  = kx * u.x;  world.m[1]  = 0.0; world.m[2]  = kz * n.x;
+        world.m[4]  = kx * u.y;  world.m[5]  = 0.0; world.m[6]  = kz * n.y;
+        world.m[8]  = 0.0;       world.m[9]  = ky;  world.m[10] = 0.0;
+        world.m[12] = -kx * (u.Dot(sv->start) + v.cx);
+        world.m[13] = -ky * v.cy;
+        world.m[14] = -kz * n.Dot(sv->start);
+        if (!m_sectionCut.faces.empty())
+            renderer.Submit(m_sectionCut.faces, world, PrimitiveType::Triangle, true);
+        // 边往看的人那边挪一点，免得与所在的面争深度
+        const double toward = std::max(1.0, m_sectionFar * 1e-3);
+        const VertexColor ink(0.18f, 0.18f, 0.20f, 1.0f);
+        m_edgeVerts.clear();
+        m_edgeVerts.reserve(m_sectionCut.edges.size());
+        for (const Math::Point3& p : m_sectionCut.edges)
+            m_edgeVerts.push_back({ { static_cast<float>(p.x - n.x * toward), static_cast<float>(p.y - n.y * toward), static_cast<float>(p.z) }, ink });
+        if (!m_edgeVerts.empty())
+            renderer.Submit(m_edgeVerts, world, PrimitiveType::Line, true);
+
+        // 剖到的、标高、轴网、名称：盖在上面
+        const VertexColor picked(0.0f, 0.47f, 0.84f, 1.0f);
+        m_planVerts.clear();
+        const Bim::Render::Drawing& d = *m_section;
+        for (size_t i = 0; i < d.prims.size(); ++i)
+        {
+            const Bim::Render::Prim& p = d.prims[i];
+            const bool selected = d.owners[i] && Selected(*d.owners[i]) && p.color != Bim::Render::Paper;
+            const VertexColor color = selected ? picked : ColorOf(p.color);
+            if (p.kind == Bim::Render::Prim::Kind::Fill)
+            {
+                for (const auto& ring : p.rings)
+                {
+                    Bim::Ring r;
+                    for (const auto& [x, y] : ring)
+                        r.emplace_back(x, -y);
+                    for (const auto& [a, b, c] : Bim::Geom::Triangulate(r))
+                        Triangle(m_planVerts, ring[a], ring[b], ring[c], color);
+                }
+            }
+            else
+                for (const auto& [a, b] : Dashes(p.pts, p.closed, p.dash))
+                    Segment(m_planVerts, a, b, std::max(p.width, 1.0f), color);
+        }
+        renderer.Submit(m_planVerts, px, PrimitiveType::Triangle, false);
+    }
+
+    void MainFrame::OnSectionPointer(const MiniGUI::ViewportPointerEvent& e)
+    {
+        using namespace MiniGUI;
+        if (!m_sectionView)
+            return;
+        Bim::Render::View& v = *m_sectionView;
+        switch (e.type)
+        {
+        case PointerEventType::Down:
+            if (m_drag == Drag::None)
+            {
+                m_lastPixel = e.pixel;
+                m_downPixel = e.pixel;
+                m_drag      = Drag::Pan;
+            }
+            break;
+        case PointerEventType::Up:
+            // 单击：选中光标下剖到的元素、标高或轴网（Ctrl 加进或拿出）
+            if (e.button == MouseButton::Left && std::hypot(e.pixel.x - m_downPixel.x, e.pixel.y - m_downPixel.y) <= 4.0f * m_dpiScale && m_section)
+            {
+                const std::optional<Bim::Id> hit = m_section->Pick({ e.pixel.x, e.pixel.y }, 6.0f * m_dpiScale);
+                const bool ctrl = (e.modifiers & static_cast<uint8_t>(ModifierKey::Ctrl)) != 0;
+                std::vector<Bim::Id> picked = ctrl ? m_selection : std::vector<Bim::Id>{};
+                if (hit)
+                {
+                    const auto at = std::find(picked.begin(), picked.end(), *hit);
+                    if (at == picked.end())
+                        picked.push_back(*hit);
+                    else
+                        picked.erase(at);
+                }
+                SetSelection(std::move(picked));
+            }
+            if (e.buttons == 0)
+                m_drag = Drag::None;
+            break;
+        case PointerEventType::Move:
+            if (m_drag == Drag::Pan)
+            {
+                v.cx -= (e.pixel.x - m_lastPixel.x) / v.scale;
+                v.cy += (e.pixel.y - m_lastPixel.y) / v.scale;
+                m_lastPixel    = e.pixel;
+                m_sectionDirty = true;
+                m_viewport->RequestRender();
+            }
+            break;
+        case PointerEventType::Wheel:
+            if (e.wheelDelta.y != 0.0f)
+            {
+                const Bim::P2 at = v.ToMm({ e.pixel.x, e.pixel.y });
+                v.scale = std::clamp(v.scale / std::pow(0.85, static_cast<double>(e.wheelDelta.y)), 1e-5, 50.0);
+                v.cx = at.x - (e.pixel.x - v.width / 2.0) / v.scale;
+                v.cy = at.y + (e.pixel.y - v.height / 2.0) / v.scale;
+                m_sectionDirty = true;
+                m_viewport->RequestRender();
+            }
+            break;
+        default:
+            break;
+        }
     }
 
     void MainFrame::OnPlanPointer(const MiniGUI::ViewportPointerEvent& e)

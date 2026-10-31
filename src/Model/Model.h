@@ -133,6 +133,47 @@ namespace MiniBIM::Bim
         bool operator==(const View3D&) const = default;
     };
 
+    // 剖面：沿 start → end 的线，看它的左边（自西向东画的看向北）：在线上剖开模型，看到线后 depth 毫米以内（没给时看到全部）。
+    // crop 是裁剪的底与顶的高度，裁剪了的沿线只显示 start 到 end
+    struct Section
+    {
+        std::string name;
+        P2          start;
+        P2          end;
+        std::optional<double> depth;
+        std::optional<std::array<double, 2>> crop;
+        Graphics    graphics;
+        // 看的方向：线的左边（单位向量）
+        P2 Looking() const { return (end - start).Unit().Perp(); }
+        bool operator==(const Section&) const = default;
+    };
+
+    // 立面：同剖面，只是另一个类别（平面上画成圆圈，项目浏览器另列）
+    struct Elevation : Section
+    {
+        bool operator==(const Elevation&) const = default;
+    };
+
+    // 立面看建筑的哪一侧：北立面看北侧，向南看
+    enum class Facing
+    {
+        North,
+        South,
+        East,
+        West,
+    };
+
+    namespace FacingOf
+    {
+        inline constexpr std::array<Facing, 4> All = { Facing::North, Facing::South, Facing::East, Facing::West };
+        // 英文名（项目语言的词见 LanguageOf::Word）
+        const char* Name(Facing f);
+        // 任何一种语言里的名称
+        std::optional<Facing> Parse(std::string_view s);
+        // 从建筑往这一侧去的方向
+        P2 Out(Facing f);
+    }
+
     struct Grid
     {
         std::string name;
@@ -634,7 +675,7 @@ namespace MiniBIM::Bim
     {
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
                                      Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass,
-                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D, Schedule>;
+                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D, Schedule, Section, Elevation>;
         Variant v;
 
         Element() = default;
@@ -1020,7 +1061,7 @@ namespace MiniBIM::Bim
         std::optional<std::array<P2, 2>> CropOf(Guid key) const;
         // 平面 key 的视图范围：相关视图的是父视图的
         ViewRange ViewRangeOf(Guid key) const;
-        // 视图的图形：标高的平面、平面视图（相关视图的是父视图的）、三维视图；别的元素为空
+        // 视图的图形：标高的平面、平面视图（相关视图的是父视图的）、三维视图、剖面、立面；别的元素为空
         const Graphics* ViewGraphics(Guid view) const;
         Graphics*       ViewGraphicsMut(Guid view);
         // 视图的比例 n（1 : n）：它的，没有时为项目单位的默认
@@ -1031,6 +1072,14 @@ namespace MiniBIM::Bim
         std::string FreeViewName(const std::string& base, bool numbered) const;
         // 默认三维视图 {3D}：已经建出来时
         std::optional<Id> Default3D() const;
+        // 剖面或立面 key；别的元素为空
+        const Section* GetSection(Guid key) const;
+        // 墙（含墙面）与楼板在平面上的外框；没有墙也没有楼板时为空
+        std::optional<std::array<P2, 2>> BuildingBox() const;
+        // at 在建筑的哪一侧：离建筑中心更远的那个方向
+        std::optional<Facing> FacingFrom(P2 at) const;
+        // 建筑 facing 一侧的立面线：离那一侧 3 米（或穿过 through），两头各多出 1 米，看向建筑
+        std::optional<std::pair<P2, P2>> ElevationLine(Facing facing, std::optional<P2> through) const;
         // 视图 view 的图形落到各元素上的样子：不是视图时什么也不改
         Look LookOf(Guid view) const;
         // 一个图形为 own 的视图的样子：样板控制的取样板的，类别的覆盖，再是套用的过滤器（从最后一个到第一个），再是元素自己的
