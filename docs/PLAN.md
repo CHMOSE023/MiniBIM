@@ -111,6 +111,9 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   合并 BIMCraft 的界面译文：新增西班牙语、葡萄牙语（原文相同的沿用 BIMCraft 的译文，其余新译，`Cut` 意思不同不沿用）。
   留到后面的：开始页卡片的项目缩略图、自动保存的文件锁（两个程序开同一个项目）、视口与平面视图跟着主题换颜色、BIMCraft 设置里的性能 / 图形 / 更新页、
   快捷键里 MiniBIM 还没有的动作（捕捉替代 SE、SM……，可见性 VV、临时隐藏 HH……）随那些功能再加；西语、葡语的新译文请母语者校对
+- **3g 面板浮动（已完成，3a 漏移植的 `dock.rs` 部分）**：拖出浮动、拖回停靠沿用 MiniGUI 的停靠区；右键标签或浮动窗口标题栏的菜单
+  （停靠在左侧 / 右侧 / 底部、浮动、关闭），布局存进 settings.json 并在启动时恢复，设置里"重置面板布局"。
+  留到后面的：视图标签栏与视图浮动（`dock.rs` 的 `FloatView`：同时开几个视图、拖出成窗口、拖回标签栏，要先让视口能有多个）
 
 ## 第 4 阶段：平台
 
@@ -141,6 +144,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   提示、面板标题；`Binding`、`NumberBox`、`ColorPicker`、`CommandConsole`、`CommandUI`、`Dialog`、`Ribbon`、`TabView`、`TextBox`、
   `TitleBar` 里写死的中文改成英文原文 + `Tr`（菜单文字去掉了助记符 `&`，不显示下划线和 `(X)`）；`Win32Fonts` 加了韩文回退字体
 - MiniGUI：`UIContext::SetUnhandledTextHandler`（没有节点要的文字交给宿主，两个字母的快捷键用）
+- MiniGUI：`DockSpace::SetOnPanelMenu`、`DockSpace::PanelMenuOfFloat`、`FloatingPanel::SetOnMenu`（右键标签或浮动窗口的标题栏，宿主弹出面板菜单）
 - `cmake/Render.cmake` 照 MiniCAD 分 Windows、Linux、网页三段；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`、`PostDelayed`，
   文件对话框同 MiniCAD 是异步的 `PickFile` 与 `ChooseSavePath`，但 `FileKind` / `SaveKind` 换成项目、IFC、快捷键文件（没有 DWG 的格式与版本）
 - 没有复制：MiniDWG、节点图、天正、CAD 实体 / 场景 / 编辑器（`src/Core/Entity`、`src/Scene`、`src/Document`、`src/Editor`、`src/Viewport`）

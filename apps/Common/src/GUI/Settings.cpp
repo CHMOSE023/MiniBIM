@@ -131,6 +131,12 @@ namespace MiniBIM
                     auto* box = content->AddChild<CheckBox>(Tr(name), PanelShown(panel));
                     box->SetOnChanged([this, panel](bool on) { if (on != PanelShown(panel)) TogglePanel(panel); });
                 }
+                // 特性在上、项目浏览器在下，靠左，同刚装好时
+                auto* reset = content->AddChild<Button>(Tr("Reset Palette Layout"), [this, rebuild]
+                {
+                    m_platform->Post([this, rebuild] { ResetPanelLayout(); rebuild(); });
+                });
+                reset->EditLayoutStyle().alignSelf = Align::Start;
             }
             else
             {

@@ -346,6 +346,17 @@ namespace MiniGUI
 
             case PointerEventType::Down:
             {
+                if (e.button == MouseButton::Right && m_dock->m_onPanelMenu && m_pressTab < 0)
+                {
+                    // 右键标签：宿主弹出这个面板的菜单（回调可能改布局、销毁本节点，之后不再访问成员）
+                    const int tab = TabAt(e.localPosition);
+                    if (tab < 0)
+                        return;
+                    e.handled = true;
+                    auto cb = m_dock->m_onPanelMenu;
+                    cb(m_leaf->panels[static_cast<size_t>(tab)], DockPos(e.position));
+                    return;
+                }
                 if (e.button != MouseButton::Left)
                     return;
                 const int tab = TabAt(e.localPosition);
@@ -583,6 +594,7 @@ namespace MiniGUI
             fp->SetOnClosed(nullptr);
             fp->SetOnClose(nullptr);
             fp->SetOnRedock(nullptr);
+            fp->SetOnMenu(nullptr);
             fp->SetOnMoved(nullptr);
             fp->SetOnMaximize(nullptr);
             fp->SetOnActivate(nullptr);
@@ -601,6 +613,7 @@ namespace MiniGUI
             DockSpace* d = &dock;
             fp->SetOnClose   ([d, id] { d->CloseFloat(id); });
             fp->SetOnRedock  ([d, id] { d->RedockFloat(id); });
+            fp->SetOnMenu    ([d, id](Vec2 pos) { d->PanelMenuOfFloat(id, pos); });
             fp->SetOnMoved   ([d]     { d->LayoutChanged(); });
             fp->SetOnMaximize([d, fp] { fp->SetMaximized(!fp->IsPanelMaximized()); d->LayoutChanged(); });   // 铺满窗口 / 还原
             fp->SetOnActivate([ctx, fp, d, id] { ctx->RaisePopup(fp); d->RaiseFloat(id); });
@@ -1506,6 +1519,19 @@ namespace MiniGUI
         DockToRemembered(id);
         ActivatePanel(id);
         LayoutChanged();
+    }
+
+    void DockSpace::PanelMenuOfFloat(const std::string& floatId, Vec2 windowPos)
+    {
+        const Float* f = FindFloatById(floatId);
+        if (!f || !f->root || !m_onPanelMenu || m_drag.active)
+            return;
+        const Tree* first = FirstLeaf(f->root.get());
+        if (first->panels.empty())
+            return;
+        const std::string id = first->panels[static_cast<size_t>(std::clamp(first->active, 0, static_cast<int>(first->panels.size()) - 1))];
+        auto cb = m_onPanelMenu;    // 复制再调用：回调可能改布局、关掉这个浮动窗口
+        cb(id, windowPos);
     }
 
     void DockSpace::RedockFloat(const std::string& floatId)

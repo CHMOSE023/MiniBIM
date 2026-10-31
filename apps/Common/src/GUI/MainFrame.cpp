@@ -143,7 +143,7 @@ namespace MiniBIM
         CreateStartPage();
     }
 
-    void MainFrame::ReloadUi()
+    void MainFrame::ReloadUi(bool restore)
     {
         m_uiFileTime = FileTime(m_uiPath);
         if (m_layout->ApplyFile(m_uiHost, m_uiPath))
@@ -151,6 +151,7 @@ namespace MiniBIM
             m_uiError.clear();
             for (const std::string& w : m_layout->GetWarnings())
                 LOG_WARN("界面描述文件：%s", w.c_str());
+            AttachDock(restore);
         }
         else
         {
@@ -175,7 +176,7 @@ namespace MiniBIM
     void MainFrame::CheckUiFileChanged()
     {
         if (FileTime(m_uiPath) != m_uiFileTime)
-            ReloadUi();
+            ReloadUi(false);    // 改的多半就是布局：用文件里的，不恢复用户的
     }
 
     void MainFrame::OnResize(float width, float height, float pixelScale)
@@ -274,6 +275,12 @@ namespace MiniBIM
             m_autosave.minutes = static_cast<int>(minutes);
         if (const MiniGUI::JsonValue& keys = doc["shortcuts"]; keys.IsObject())
             m_shortcuts.FromJson(Bim::Json::parse(keys.Dump(), nullptr, false));
+        if (const MiniGUI::JsonValue& dock = doc["dock"]; dock.IsObject())
+        {
+            m_dockLayout = dock;
+            for (const MiniGUI::JsonValue& id : doc["dock_panels"].GetArray())
+                m_dockPanels.push_back(id.AsString());
+        }
     }
 
     void MainFrame::SaveSettings() const
@@ -291,6 +298,14 @@ namespace MiniBIM
         MiniGUI::JsonError err;
         if (MiniGUI::ParseJson(m_shortcuts.ToJson().dump(), keys, err))
             doc.Set("shortcuts", std::move(keys));
+        if (m_dockLayout.IsObject())
+        {
+            doc.Set("dock", m_dockLayout);
+            MiniGUI::JsonValue panels = MiniGUI::JsonValue::MakeArray();
+            for (const std::string& id : m_dockPanels)
+                panels.Push(id);
+            doc.Set("dock_panels", std::move(panels));
+        }
         std::ofstream out(ToPath(path), std::ios::binary | std::ios::trunc);
         out << doc.Dump(2) << '\n';
         if (!out)

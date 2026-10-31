@@ -87,14 +87,17 @@ namespace MiniBIM
 
     bool MainFrame::PanelShown(const char* name) const
     {
-        MiniGUI::DockSpace* dock = m_layout ? m_layout->GetDock("main") : nullptr;
+        MiniGUI::DockSpace* dock = MainDock();
         return dock && dock->IsPanelVisible(name);
     }
 
     void MainFrame::TogglePanel(const char* name)
     {
-        if (MiniGUI::DockSpace* dock = m_layout ? m_layout->GetDock("main") : nullptr)
+        if (MiniGUI::DockSpace* dock = MainDock())
+        {
             dock->TogglePanel(name);
+            SavePanelLayout();
+        }
         m_commands.NotifyStateChanged();
     }
 

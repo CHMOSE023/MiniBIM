@@ -131,6 +131,10 @@ namespace MiniGUI
 
         // 用户操作（拖动停靠、关闭、调整尺寸、浮出、移动浮动窗口）改变布局后调用，宿主可借此保存布局
         void SetOnLayoutChanged(std::function<void()> cb) { m_onLayoutChanged = std::move(cb); }
+        // 右键面板的标签、或只有一个面板的浮动窗口的标题栏：宿主据此弹出这个面板的菜单（停靠到哪一侧、浮动、关闭）。
+        // windowPos 为本停靠区所在窗口的坐标；没有设置时右键不做什么
+        void SetOnPanelMenu(std::function<void(const std::string& panelId, Vec2 windowPos)> cb) { m_onPanelMenu = std::move(cb); }
+        void PanelMenuOfFloat(const std::string& floatId, Vec2 windowPos);     // 宿主转来：右键浮动窗口的标题栏（菜单给窗口里的当前面板）
 
         // ── 查询（测试与宿主使用）─────────────────────────────
         Rect      GetPanelRect(const std::string& id) const;  // 面板内容区（所在窗口的坐标：浮动面板为浮动窗口的坐标）；不可见时为空矩形
@@ -293,6 +297,7 @@ namespace MiniGUI
         int                                 m_nextFloat = 1;
         std::map<std::string, Panel>        m_panels;
         std::function<void()>               m_onLayoutChanged;
+        std::function<void(const std::string&, Vec2)> m_onPanelMenu;
         bool                                m_floating = false;
         bool                                m_quietLayout = false;      // 暂不通知布局变化（标签拖出浮出时，等松开再通知）
         IDockFloatHost*                     m_floatHost = nullptr;

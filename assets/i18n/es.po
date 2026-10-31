@@ -294,7 +294,7 @@ msgstr "Expandir la cinta (o doble clic en una ficha)"
 msgid "Search commands"
 msgstr "Buscar comandos"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "Cerrar"
 
@@ -1083,6 +1083,22 @@ msgstr "Desfase solo admite muros rectos."
 msgid "`{0}` is not a distance"
 msgstr "`{0}` no es una distancia"
 
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Left"
+msgstr "Acoplar a la izquierda"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Right"
+msgstr "Acoplar a la derecha"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Bottom"
+msgstr "Acoplar abajo"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Float"
+msgstr "Flotar"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Could not change the parameter"
 msgstr "No se pudo cambiar el parámetro"
@@ -1474,6 +1490,10 @@ msgstr "Idioma"
 #: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Palettes"
 msgstr "Paletas"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Reset Palette Layout"
+msgstr "Restablecer la disposición de las paletas"
 
 #: apps/Common/src/GUI/Settings.cpp
 msgid "Autosave in the background"

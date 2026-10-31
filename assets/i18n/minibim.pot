@@ -294,7 +294,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr ""
 
@@ -1083,6 +1083,22 @@ msgstr ""
 msgid "`{0}` is not a distance"
 msgstr ""
 
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Left"
+msgstr ""
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Right"
+msgstr ""
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Bottom"
+msgstr ""
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Float"
+msgstr ""
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Could not change the parameter"
 msgstr ""
@@ -1473,6 +1489,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Palettes"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Reset Palette Layout"
 msgstr ""
 
 #: apps/Common/src/GUI/Settings.cpp

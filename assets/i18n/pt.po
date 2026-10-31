@@ -294,7 +294,7 @@ msgstr "Expandir a faixa de opções (ou clique duplo em uma guia)"
 msgid "Search commands"
 msgstr "Pesquisar comandos"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "Fechar"
 
@@ -1083,6 +1083,22 @@ msgstr "Deslocamento aceita apenas paredes retas."
 msgid "`{0}` is not a distance"
 msgstr "`{0}` não é uma distância"
 
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Left"
+msgstr "Encaixar à esquerda"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Right"
+msgstr "Encaixar à direita"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Bottom"
+msgstr "Encaixar embaixo"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Float"
+msgstr "Flutuar"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Could not change the parameter"
 msgstr "Não foi possível alterar o parâmetro"
@@ -1474,6 +1490,10 @@ msgstr "Idioma"
 #: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Palettes"
 msgstr "Paletas"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Reset Palette Layout"
+msgstr "Redefinir a disposição das paletas"
 
 #: apps/Common/src/GUI/Settings.cpp
 msgid "Autosave in the background"

@@ -293,7 +293,7 @@ msgstr "展开功能区（双击选项卡也可以）"
 msgid "Search commands"
 msgstr "搜索命令"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "关闭"
 
@@ -1076,6 +1076,22 @@ msgstr "偏移只用于直墙。"
 msgid "`{0}` is not a distance"
 msgstr "“{0}”不是距离"
 
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Left"
+msgstr "停靠在左侧"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Right"
+msgstr "停靠在右侧"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Bottom"
+msgstr "停靠在底部"
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Float"
+msgstr "浮动"
+
 #: apps/Common/src/GUI/Panels.cpp
 msgid "Could not change the parameter"
 msgstr "无法修改参数"
@@ -1461,6 +1477,10 @@ msgstr "语言"
 #: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Palettes"
 msgstr "面板"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Reset Palette Layout"
+msgstr "重置面板布局"
 
 #: apps/Common/src/GUI/Settings.cpp
 msgid "Autosave in the background"

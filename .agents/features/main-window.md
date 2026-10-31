@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Palettes.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -17,7 +17,15 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   选语言（`--lang` > 用户设置 > `AppPlatform::GetSystemLanguage`）、建 `UIContext`、注册命令、注册宿主面板、读界面描述文件；给了项目文件（`MainFrame::SetStartupFile`）就打开它，给了 `--run` 的界面命令（`MainFrame::AddStartupCommand`；看界面效果时用，
   如 `--run view.plan`）就打开示例房屋（`MainFrame::OpenSample`）后依次执行，都没有时显示开始页
 - 界面描述文件 `assets/ui/minibim_ui.json`（格式见 `src/UI/Widgets/UiLayout.h`）：菜单、快速访问工具栏、功能区与布局；宿主面板 `viewport`（`MiniGUI::ViewportHost`）、
-  `options`（选项栏，`Tools.cpp`）、`properties`、`browser`（`Panels.cpp`）、`statusbar`。停靠区的布局写在文件的 `dock` 里，用户拖动后的布局还不保存（3f 的设置再做）
+  `options`（选项栏，`Tools.cpp`）、`properties`、`browser`（`Panels.cpp`）、`statusbar`。停靠区的布局写在文件的 `dock` 里，用户改过的布局存进 settings.json（见下面"面板的停靠与浮动"）
+- 面板的停靠与浮动（`Palettes.cpp`，移植自 `dock.rs`）：拖标签停到别处、拖出停靠区或双击标签浮出成窗口、拖浮动窗口的标题栏停回去、双击标题栏回原处，
+  都是 MiniGUI 的 `MiniGUI::DockSpace` 做的（浮动窗口是同一窗口里的 `MiniGUI::FloatingPanel` 弹层，不是独立的系统窗口）。右键面板的标签或浮动窗口的标题栏
+  （`MiniGUI::DockSpace::SetOnPanelMenu`）弹出菜单（`MainFrame::ShowPanelMenu`）：停靠在左侧 / 右侧 / 底部（`MainFrame::DockPanelTo`：那一侧已有面板就排在最后一个后面，
+  按右键处在视图的哪一侧判断面板现在停在哪里，已在那一侧的一项变灰）、浮动（`MainFrame::FloatPanelAt`，300×420）、关闭。
+  布局每次改动（`MiniGUI::DockSpace::SetOnLayoutChanged`、菜单、显示 / 隐藏面板）后由 `MainFrame::SavePanelLayout` 写进 settings.json 的 `dock`（`MiniGUI::DockSpace::SaveLayout` 的格式）
+  与 `dock_panels`（当时有的面板）；界面描述文件应用之后 `MainFrame::AttachDock` 记下文件里的布局，换语言重建时恢复用户的布局（`MainFrame::RestorePanelLayout`），
+  界面描述文件改了重新加载时用文件的。保存后新增了面板、或保存的布局里没有视图时回到文件的布局。设置里"重置面板布局"（`MainFrame::ResetPanelLayout`）回到文件的布局。
+  还没有：视图标签栏与视图浮动（BIMCraft 能同时开几个视图、把视图拖出成窗口），浮出成独立的系统窗口（MiniCAD 的 `FloatingPanelHost`，没复制）
   开发时读源码目录里的文件（宏 `MINIBIM_UI_SOURCE`），宿主监视它所在的目录，保存后 `MainFrame::CheckUiFileChanged` 重新加载；写错时保留原界面，状态栏显示原因
 - 命令：`MainCommands.cpp` 里注册为 `MiniGUI::Command`，名称和提示写英文原文并用 `N_` 标记，`MiniGUI::UiLayout` 每次应用时翻译；菜单只引用命令 ID。
   标题栏右侧的按钮执行 `window.minimize` / `window.maximize` / `window.close`，这三个命令必须有
@@ -37,7 +45,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   换项目或不保存就退出时（`MainFrame::RetireAutosave`）删掉。启动时（`MainFrame::EnableAutosave`，在打开启动的项目之后）找临时文件夹里的副本，打开项目时找它旁边的，
   找到了就问"恢复 / 放弃 / 稍后"（`MainFrame::ShowRecovery`）：恢复经 `recover` 命令打开成没保存的工作（`MainFrame::RecoverBackup`），之后接着写那份副本；
   还没决定的副本不覆盖、不删
-- 设置（`Settings.cpp`，移植自 `settings.rs`）：文件 > 设置（`file.settings`）弹出的对话框，左边各页：界面（主题深色 / 浅色 `MainFrame::ApplyTheme`、语言、两块面板）、
+- 设置（`Settings.cpp`，移植自 `settings.rs`）：文件 > 设置（`file.settings`）弹出的对话框，左边各页：界面（主题深色 / 浅色 `MainFrame::ApplyTheme`、语言、两块面板的显示与重置面板布局）、
   文件（自动保存开关与间隔）。改了马上生效并写 settings.json。主题只换 MiniGUI 的颜色，视口与平面视图不跟着换。BIMCraft 设置里的性能、图形、更新等页随那些功能再加
 - 两个字母的快捷键（`Shortcuts.h` 的 `Shortcuts` 管键表、不碰控件；`ShortcutsDialog.cpp`；移植自 `shortcuts.rs` 与 `lib.rs` 的 `SHORTCUTS`）：
   在视图上（或没有焦点时）打字母，最后两个凑成一个快捷键就执行它的界面命令（WA 墙、DR 门、ZF 缩放匹配……）。字母经
@@ -114,7 +122,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）
 - 帧顺序（同 MiniCAD）：输入到达时立即改状态并 `RequestRender` → 消息队列空了收到 `WM_PAINT` → `MainFrame::RenderFrame`：`UIContext::Update` 布局 →
   `ViewportHost::RenderContent` 按最新尺寸渲染视口 → `AppPlatform::BeginUiPass` → `UIContext::Render` → `AppPlatform::EndUiPass`（呈现）
-- 用户设置：`%LOCALAPPDATA%\MiniBIM\settings.json`（`AppPlatform::GetUserDataDir`），有 `language`（空 = 跟随系统）、`theme`（`dark` / `light`）、`autosave_minutes`、`shortcuts`；`MainFrame::LoadSettings` / `MainFrame::SaveSettings`
+- 用户设置：`%LOCALAPPDATA%\MiniBIM\settings.json`（`AppPlatform::GetUserDataDir`），有 `language`（空 = 跟随系统）、`theme`（`dark` / `light`）、`autosave_minutes`、`shortcuts`、`dock` 与 `dock_panels`（面板布局）；`MainFrame::LoadSettings` / `MainFrame::SaveSettings`
 
 ## 约束与坑
 

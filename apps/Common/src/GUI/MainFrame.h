@@ -11,6 +11,7 @@
 #include "View/ModelScene.h"
 #include "View/OrbitCamera.h"
 #include "Data/CommandRegistry.h"
+#include "Data/Json.h"
 #include "Render/IRenderBackend.h"
 #include "Widgets/Menu.h"
 #include <filesystem>
@@ -26,6 +27,8 @@
 namespace MiniGUI
 {
     class UIContext;
+    class DockSpace;
+    enum class DockSide;
     class Label;
     class Node;
     class TextBox;
@@ -96,7 +99,8 @@ namespace MiniBIM
         std::unique_ptr<MiniGUI::Node> CreateViewport();
         std::unique_ptr<MiniGUI::Node> CreateStatusBar();
         std::vector<MiniGUI::MenuItem> BuildLanguageMenu();
-        void ReloadUi();
+        // restore：重建后恢复用户的面板布局（换语言时）；界面描述文件改了时为 false，用文件里的布局
+        void ReloadUi(bool restore = true);
         void RetranslateUi();                                     // 切换语言后：重建界面描述生成的部分，刷新宿主自己的文字
         void UpdateTitle();
         void UpdateStatus();
@@ -141,6 +145,16 @@ namespace MiniBIM
         void EditParameter(const std::vector<Bim::Id>& ids, const std::string& key, Bim::Json value);
         void TogglePanel(const char* name);
         bool PanelShown(const char* name) const;
+
+        // ── 面板的停靠与浮动（Palettes.cpp）──────────────────────────
+        MiniGUI::DockSpace* MainDock() const;
+        void AttachDock(bool restore);              // 界面描述文件应用之后：记下默认布局、恢复用户的布局、接上回调
+        void ShowPanelMenu(const std::string& panel, MiniGUI::Vec2 at);   // 右键标签或浮动窗口的标题栏
+        void DockPanelTo(const std::string& panel, MiniGUI::DockSide side);
+        void FloatPanelAt(const std::string& panel, MiniGUI::Vec2 at);
+        void ResetPanelLayout();
+        void SavePanelLayout();                     // 布局变了：记下并写进 settings.json
+        void RestorePanelLayout();
 
         void RenderViewport(int pixelWidth, int pixelHeight);
         void OnViewportPointer(const MiniGUI::ViewportPointerEvent& e);
@@ -336,6 +350,9 @@ namespace MiniBIM
 
         std::string m_languageSetting;                        // 用户选的语言，空 = 跟随系统
         std::string m_themeSetting = "dark";                  // 界面主题：dark、light
+        MiniGUI::JsonValue       m_dockLayout;                // 用户的面板布局（settings.json 的 "dock"）；空 = 用界面描述文件的
+        std::vector<std::string> m_dockPanels;                // 保存布局时有的面板（"dock_panels"）：之后新增的面板据此识别
+        MiniGUI::JsonValue       m_dockDefault;               // 界面描述文件里的布局
         std::string m_languageOverride;
         std::vector<std::string> m_startupCommands;
         RecentFiles m_recent;
