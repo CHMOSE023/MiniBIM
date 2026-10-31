@@ -28,7 +28,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/ModelJson.h` | `model.rs`、`ids.rs`、`library.rs`、`lenient.rs` | 元素与项目文件的 JSON |
 | `src/Model/Walls.h` | `walls.rs` 与它的 index 子模块 | 墙的定位线、墙面、斜接封口、轮廓、棱柱、加速索引 |
 | `src/Commands/Session.h` | `engine.rs` | `Session`：执行命令、回滚、撤销 / 重做、脚本、事务 |
-| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 3e 步加了 `edit_boundary`、`sketch`，`floor`、`ceiling`、`roof` 收 `sketch`；第 3d 步加了 `rename_type`、`delete_type`；第 3c 步加了 `align`、`rotate`、`mirror`、`corner`、`split`（只认墙；详图线的部分随详图线移植）；第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`，第 2c 步加了 `family`、`component`，门窗可带 `family`；第 2e 步 `open`、`save` 读写 `.ifc`） |
+| `src/Commands/Commands.cpp` | `commands.rs` | 命令表 `Commands()` 与各命令（第 3f 步加了 `autosave`、`recover`；第 3e 步加了 `edit_boundary`、`sketch`，`floor`、`ceiling`、`roof` 收 `sketch`；第 3d 步加了 `rename_type`、`delete_type`；第 3c 步加了 `align`、`rotate`、`mirror`、`corner`、`split`（只认墙；详图线的部分随详图线移植）；第 2b 步加了 `roof`、`ceiling`、`room`、`room_separator`、`room_area`，第 2c 步加了 `family`、`component`，门窗可带 `family`；第 2e 步 `open`、`save` 读写 `.ifc`） |
+| `src/Commands/Autosave.h` | `autosave.rs` | 自动保存的工作线程 `Autosave::Worker`：按顺序写恢复副本（经 `autosave` 命令）、删、找（项目旁边的 `Autosave::BackupPath`，或临时文件夹里没保存过的），通知经回调叫界面线程来 `Worker::Poll`。没有 BIMCraft 的文件锁（两个窗口同时开着时可能都找到同一份） |
 | `src/Commands/Sample.h` | `sample.rs` | 示例房屋脚本（已移植命令能做的部分） |
 
 ## 入口与数据流

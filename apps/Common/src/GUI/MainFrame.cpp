@@ -88,6 +88,8 @@ namespace MiniBIM
             OnModelChanged();
             ShowStartPage(true, false);
         }
+        // 打开了要打开的之后再开始：之前的换项目不算（启动时找的副本按这一份文档算）
+        EnableAutosave();
         for (const std::string& id : m_startupCommands)
             if (!m_commands.Execute(id))
                 LOG_WARN("启动参数 --run：没有界面命令 %s", id.c_str());
@@ -187,7 +189,12 @@ namespace MiniBIM
     void MainFrame::RequestExit()
     {
         // 有没保存的改动时先问
-        Guard([this] { m_platform->Quit(); });
+        Guard([this]
+        {
+            // 保存过或说了不保存：这份文档的恢复副本不要了（工作线程在 MainFrame 销毁前做完）
+            RetireAutosave();
+            m_platform->Quit();
+        });
     }
 
     // =========================================================
@@ -256,6 +263,9 @@ namespace MiniBIM
             return;
         }
         m_languageSetting = doc["language"].AsString("");
+        const double minutes = doc["autosave_minutes"].AsNumber(m_autosave.minutes);
+        if (minutes >= 0 && minutes <= 120)
+            m_autosave.minutes = static_cast<int>(minutes);
     }
 
     void MainFrame::SaveSettings() const
@@ -267,6 +277,7 @@ namespace MiniBIM
         std::filesystem::create_directories(ToPath(path).parent_path(), ec);
         MiniGUI::JsonValue doc = MiniGUI::JsonValue::MakeObject();
         doc.Set("language", m_languageSetting);
+        doc.Set("autosave_minutes", static_cast<double>(m_autosave.minutes));
         std::ofstream out(ToPath(path), std::ios::binary | std::ios::trunc);
         out << doc.Dump(2) << '\n';
         if (!out)

@@ -583,6 +583,49 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // 恢复副本（自动保存，Autosave.h）：原子地写，留着项目的路径与撤销历史
+        bool AutosaveCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "autosave";
+            Params P(c, p, error);
+            std::optional<std::string> path;
+            if (!P.String("path", path))
+                return false;
+            if (!path)
+                return P.Fail("`path` is required");
+            if (s.Path() && *s.Path() == *path)
+                return P.Fail("the recovery file must differ from the saved project");
+            std::string text, why;
+            if (!s.GetModel().ToFile(text, why))
+                return P.Fail(why);
+            if (text.size() >= kMaxFile)
+                return P.Fail("the recovery snapshot exceeds the project file size limit");
+            if (!AtomicWrite(*path, text, why))
+                return P.Fail(why);
+            result = Json{ { "path", *path }, { "format", "project" } };
+            return true;
+        }
+
+        // 打开并检查一份恢复副本；之后保存存到 project，没有时（没保存过的项目）要另存
+        bool Recover(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "recover";
+            // 先读完参数再打开（打开会换掉会话）：参数不对时什么都不恢复
+            Params P(c, p, error);
+            std::optional<std::string> path, project;
+            if (!P.String("path", path) || !P.String("project", project))
+                return false;
+            if (!Open(s, Json{ { "path", path ? Json(*path) : Json() } }, result, error))
+            {
+                if (error.rfind("open:", 0) == 0)
+                    error = "recover:" + error.substr(5);
+                return false;
+            }
+            s.SetPath(project);
+            result["project"] = project ? Json(*project) : Json();
+            return true;
+        }
+
         // undo、redo 走几步：count，默认 1
         bool StepsParam(const char* c, const Json& p, size_t& out, std::string& error)
         {
@@ -3048,6 +3091,8 @@ namespace MiniBIM::Bim
         static const std::vector<Command> all = {
             { "new", N_("New"), {}, "{name?, language?: en|pt|es} an empty project with Level 1 (0) and Level 2 (3000), named in its language", New, false },
             { "open", N_("Open"), {}, "{path} a .minibim (or BIMCraft .bimcraft) project; what this version doesn't know of it is left out, listed in `left_out`. An .ifc (IFC2x3 or IFC4) comes in as a new project: what MiniBIM has no element for, or what breaks a rule, is listed in `skipped`", Open, false },
+            { "autosave", N_("Autosave"), {}, "{path} atomically write a recovery snapshot, keeping the project path and undo history", AutosaveCmd, false },
+            { "recover", N_("Recover"), {}, "{path, project?} open and validate a recovery snapshot; Save targets `project`, or asks for Save As without it", Recover, false },
             { "save", N_("Save"), {}, "{path?} saves the project (Save As with a path) as .minibim; the format is BIMCraft's, which opens it too. A path ending .ifc exports IFC4 and leaves the project's own path as it was", Save, false },
             { "undo", N_("Undo"), {}, "{count?} takes back the last `count` steps (1 by default)", Undo, false },
             { "redo", N_("Redo"), {}, "{count?} does again the last `count` steps undone (1 by default)", Redo, false },

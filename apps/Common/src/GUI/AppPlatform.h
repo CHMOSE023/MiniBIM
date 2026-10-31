@@ -62,6 +62,8 @@ namespace MiniBIM
         virtual bool OpenUrl(const std::string& url) { (void)url; return false; }
         // 在界面线程上稍后执行 fn：当前消息（包括正在进行的绘制）处理完之后
         virtual void Post(std::function<void()> fn) { fn(); }
+        // ms 毫秒以后在界面线程上执行 fn（自动保存的定时）；平台没有定时器时不执行
+        virtual void PostDelayed(unsigned ms, std::function<void()> fn) { (void)ms; (void)fn; }
 
         // ── 三维实体内核（SMLib）─────────────────────────────────
         // 构建时关掉内核（MINIBIM_WITH_SOLID=OFF）返回 nullptr

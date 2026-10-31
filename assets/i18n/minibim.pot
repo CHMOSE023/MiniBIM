@@ -18,6 +18,14 @@ msgstr ""
 msgid "Open"
 msgstr ""
 
+#: src/Commands/Commands.cpp
+msgid "Autosave"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Autosave.cpp
+msgid "Recover"
+msgstr ""
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Save"
 msgstr ""
@@ -332,6 +340,34 @@ msgstr ""
 
 #: src/View/ModelScene.cpp
 msgid "Some elements could not be modelled in 3D; see the log for which."
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Could not discard the recovery copy"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Untitled project"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Recovery copy found"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Discard"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Postpone"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Could not recover the project"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp

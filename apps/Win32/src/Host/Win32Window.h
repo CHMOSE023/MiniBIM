@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <map>
 #include <memory>
 #include <string>
 #include "GUI/AppPlatform.h"
@@ -65,6 +66,7 @@ namespace MiniBIM
         std::string GetSystemLanguage() const override;
         bool OpenUrl(const std::string& url) override;
         void Post(std::function<void()> fn) override;
+        void PostDelayed(unsigned ms, std::function<void()> fn) override;
 
     private:
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -81,6 +83,9 @@ namespace MiniBIM
         HWND   m_hwnd     = nullptr;
         float  m_dpiScale = 1.0f;
         HANDLE m_uiWatch  = nullptr;    // 界面描述文件所在目录的变化通知
+        // PostDelayed 的系统定时器：ID → 到时执行的函数（ID 从 kFirstDelayTimer 起，避开 Win32Input 的）
+        std::map<UINT_PTR, std::function<void()>> m_delayed;
+        UINT_PTR m_nextDelayed = 0;
 
         // 声明顺序即构造顺序，销毁时相反：输入层 → 界面（MainFrame）→ 窗口框架 → 视口渲染目标 → 图形设备
         std::unique_ptr<IGraphicsDevice>       m_graphics;

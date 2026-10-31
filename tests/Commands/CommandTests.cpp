@@ -1,6 +1,7 @@
 // 命令与会话（src/Commands）：像前端一样经命令驱动模型——撤销、脚本、事务、建模、编辑、项目文件，以及示例房屋。
 // 移植自 BIMCraft crates/core/src/tests.rs、sample.rs 的测试（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md。
 // 用到还没移植的命令（剖面、平面图、IFC、阶段……）与 view3d::tops_at 的断言先略去或改用模型的函数，移植那些时补回
+#include "Commands/Autosave.h"
 #include "Commands/Commands.h"
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
@@ -9,11 +10,14 @@
 #include "Model/Render.h"
 #include "Model/Walls.h"
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -1673,6 +1677,102 @@ grid {"start": [0, -2000], "end": [0, 8000]})", out, error))
     }
 }
 
+namespace
+{
+    // 自动保存：autosave、recover 两条命令，工作线程按顺序写、删、找
+    std::optional<Autosave::Notice> WaitNotice(Autosave::Worker& w)
+    {
+        for (int i = 0; i < 1000; ++i)
+        {
+            if (auto n = w.Poll())
+                return n;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return std::nullopt;
+    }
+
+    bool Exists(const std::string& path)
+    {
+        std::error_code ec;
+        return std::filesystem::exists(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+    }
+
+    void TestAutosave()
+    {
+        using namespace Autosave;
+        const std::string project = Temp("saved.minibim");
+        const std::string backup  = BackupPath(project);
+        Check(backup == project + ".autosave.minibim", "自动保存：副本在项目名后面接一段");
+        {
+            Session s;
+            House(s);
+            Run(s, "save", Json{ { "path", project } });
+            Check(Contains(Refused(s, "autosave", Json{ { "path", project } }), "must differ"), "自动保存：副本不能写在项目文件上");
+            const bool wrote = !Run(s, "autosave", Json{ { "path", backup } }).is_null();
+            const Json snap = s.GetModel().ToJson();
+            Check(wrote && s.Path() == project && s.CanUndo(), "自动保存：写副本不改项目的路径与撤销历史");
+            Run(s, "wall", R"({"start": [0, 8000], "end": [4000, 8000]})");
+
+            Session t;
+            const Json r = Run(t, "recover", Json{ { "path", backup }, { "project", project } });
+            Check(!r.is_null() && t.Path() == project && t.GetModel().ToJson() == snap, "自动保存：恢复出副本那一刻的模型，之后保存存回项目");
+            Session u;
+            Run(u, "recover", Json{ { "path", backup } });
+            Check(!u.Path().has_value(), "自动保存：没给项目时恢复的是没保存过的项目");
+            const Json before = t.GetModel().ToJson();
+            Check(!Refused(t, "recover", Json{ { "path", backup }, { "project", 5 } }).empty() && t.GetModel().ToJson() == before &&
+                      t.Path() == project, "自动保存：参数不对时什么都不恢复");
+        }
+
+        const std::string dir = Temp("autosave-dir");
+        std::error_code ec;
+        std::filesystem::remove_all(std::filesystem::path(std::u8string(dir.begin(), dir.end())), ec);
+        {
+            std::atomic<int> woke = 0;
+            Worker w(dir, [&] { ++woke; });
+            Session s;
+            House(s);
+            // 和找到的副本一样用 path 拼（Windows 上是反斜杠）
+            const std::filesystem::path up = std::filesystem::path(std::u8string(dir.begin(), dir.end())) / ("untitled-1" + std::string(Suffix));
+            const std::u8string u8 = up.u8string();
+            const std::string untitled(u8.begin(), u8.end());
+            const bool took = w.Save(untitled, s.Snapshot());
+            const bool refused = !w.Save(untitled, s.Snapshot());
+            const auto n = WaitNotice(w);
+            const auto* saved = n ? std::get_if<Saved>(&*n) : nullptr;
+            Check(took && refused && saved && saved->ok && saved->snapshot == s.Snapshot() && Exists(untitled) && !w.Busy() && woke >= 1,
+                  "自动保存：工作线程写快照（建临时文件夹），上一份没写完时不接下一份");
+
+            w.Discover(std::nullopt, 7);
+            const auto d = WaitNotice(w);
+            const auto* found = d ? std::get_if<Discovered>(&*d) : nullptr;
+            Check(found && found->generation == 7 && found->found == std::vector<Backup>{ { untitled, std::nullopt } },
+                  "自动保存：在临时文件夹里找到没保存过的项目的副本");
+            w.Discover(project, 8);
+            const auto e = WaitNotice(w);
+            const auto* near = e ? std::get_if<Discovered>(&*e) : nullptr;
+            Check(near && near->found == std::vector<Backup>{ { backup, project } }, "自动保存：项目旁边的副本");
+
+            w.Remove(untitled);
+            w.Remove(dir + "/missing" + Suffix);
+            const auto r1 = WaitNotice(w), r2 = WaitNotice(w);
+            const auto* a = r1 ? std::get_if<Removed>(&*r1) : nullptr;
+            const auto* b = r2 ? std::get_if<Removed>(&*r2) : nullptr;
+            w.Discover(std::nullopt, 9);
+            const auto f = WaitNotice(w);
+            const auto* none = f ? std::get_if<Discovered>(&*f) : nullptr;
+            Check(a && a->ok && b && b->ok && !Exists(untitled) && none && none->found.empty(), "自动保存：删掉副本，不在的也算删了");
+            // 析构时做完排着的事：最后排的删除不丢
+            w.Save(untitled, s.Snapshot());
+            w.Remove(untitled);
+        }
+        Check(!Exists(dir + "/untitled-1" + Suffix), "自动保存：关掉时做完排着的写与删");
+        std::filesystem::remove_all(std::filesystem::path(std::u8string(dir.begin(), dir.end())), ec);
+        std::filesystem::remove(std::filesystem::path(std::u8string(project.begin(), project.end())), ec);
+        std::filesystem::remove(std::filesystem::path(std::u8string(backup.begin(), backup.end())), ec);
+    }
+}
+
 int main()
 {
     // 不缓冲：崩溃时也看得到崩在哪一项之后
@@ -1689,6 +1789,7 @@ int main()
     TestModifyTools();
     TestTypeEntries();
     TestSketches();
+    TestAutosave();
     TestHostileParams();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;

@@ -24,6 +24,7 @@ namespace MiniBIM
     namespace
     {
         constexpr UINT kMsgPosted = WM_APP + 1;     // lParam：new 出来的 std::function<void()>（Post）
+        constexpr UINT_PTR kFirstDelayTimer = 0x4D420000;   // PostDelayed 的定时器 ID 从这里起
 
         std::wstring ToWide(const std::string& utf8)
         {
@@ -238,6 +239,19 @@ namespace MiniBIM
             return 0;
         }
 
+        case WM_TIMER:
+        {
+            const auto it = m_delayed.find(wParam);
+            if (it == m_delayed.end())
+                break;
+            KillTimer(hwnd, wParam);
+            const std::function<void()> fn = std::move(it->second);
+            m_delayed.erase(it);
+            if (fn)
+                fn();
+            return 0;
+        }
+
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
@@ -299,6 +313,13 @@ namespace MiniBIM
         auto* pending = new std::function<void()>(std::move(fn));
         if (!PostMessageW(m_hwnd, kMsgPosted, 0, reinterpret_cast<LPARAM>(pending)))
             delete pending;
+    }
+
+    void Win32Window::PostDelayed(unsigned ms, std::function<void()> fn)
+    {
+        const UINT_PTR id = kFirstDelayTimer + (m_nextDelayed++ & 0xFFFF);
+        if (SetTimer(m_hwnd, id, std::max<UINT>(ms, USER_TIMER_MINIMUM), nullptr))
+            m_delayed[id] = std::move(fn);
     }
 
     void Win32Window::BeginUiPass()

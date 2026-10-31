@@ -29,7 +29,8 @@ add_library(MiniBIM STATIC
     src/Ifc/Export.cpp
     src/Ifc/Import.cpp
     src/Ifc/Step.cpp
-    # 命令与会话（移植自 BIMCraft commands.rs、engine.rs、sample.rs）
+    # 命令与会话（移植自 BIMCraft commands.rs、engine.rs、sample.rs、autosave.rs）
+    src/Commands/Autosave.cpp
     src/Commands/Commands.cpp
     src/Commands/Session.cpp
     src/Commands/Sample.cpp
@@ -39,6 +40,9 @@ add_library(MiniBIM STATIC
 )
 
 target_include_directories(MiniBIM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# 自动保存的工作线程（Commands/Autosave.cpp）
+find_package(Threads REQUIRED)
+target_link_libraries(MiniBIM PUBLIC Threads::Threads)
 # nlohmann/json（3rd/nlohmann，MIT）：命令的参数与结果、项目文件
 target_include_directories(MiniBIM SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/3rd/nlohmann/include)
 

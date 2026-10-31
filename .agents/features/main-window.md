@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -31,6 +31,12 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   "回到 …"；右边"最近"：最近打开的文件排成卡片（文件名、文件夹 · 多久以前改的 `RecentFiles::Age`，文件不在了写"找不到文件"；单击打开，右键打开或从列表移除），
   一行几张按窗口宽度（`MainFrame::StartColumns`，变了时重建）；底栏是 GitHub 上的源代码与版本。`file.start`（快速访问工具栏第一个，Ctrl+D）
   在项目上叫出、再按回去（`MainFrame::ToggleStartPage`）；换了项目（新建、打开、示例房屋）时让给项目。卡片还没有项目的缩略图
+- 自动保存与恢复（`Autosave.cpp`，移植自界面的 `autosave.rs`；写文件的是核心的 `Bim::Autosave::Worker`）：有没保存的改动时每隔 `AutosaveState::minutes` 分钟
+  （默认 2，0 不保存，存在 settings.json 的 `autosave_minutes`）写一份恢复副本——保存过的项目写在它旁边（`<项目>.autosave.minibim`），没保存过的写在临时文件夹的
+  `MiniBIM/untitled-<GUID>.autosave.minibim`。定时经 `AppPlatform::PostDelayed`（Win32 用系统定时器）。保存成功后（`MainFrame::AutosaveSaved`）、
+  换项目或不保存就退出时（`MainFrame::RetireAutosave`）删掉。启动时（`MainFrame::EnableAutosave`，在打开启动的项目之后）找临时文件夹里的副本，打开项目时找它旁边的，
+  找到了就问"恢复 / 放弃 / 稍后"（`MainFrame::ShowRecovery`）：恢复经 `recover` 命令打开成没保存的工作（`MainFrame::RecoverBackup`），之后接着写那份副本；
+  还没决定的副本不覆盖、不删
 - 最近打开（`Recent.h` 的 `RecentFiles`，移植自 `recent.rs`）：文件菜单"最近打开"（动态子菜单 `recent`，`MainFrame::BuildRecentMenu`）列最后打开或保存的
   10 个项目与 IFC 文件，新的在前，同名的后面加文件夹；"清除最近打开的文件"。打开成功（`MainFrame::OpenPath`）、保存成功时 `MainFrame::NoteRecent`；
   打不开且文件已经不在了时从列表去掉。存在用户设置目录的 `recent.json`（`AppPlatform::GetUserDataDir`，空时不记），读不出、坏了、过大都当作空列表
@@ -88,7 +94,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）
 - 帧顺序（同 MiniCAD）：输入到达时立即改状态并 `RequestRender` → 消息队列空了收到 `WM_PAINT` → `MainFrame::RenderFrame`：`UIContext::Update` 布局 →
   `ViewportHost::RenderContent` 按最新尺寸渲染视口 → `AppPlatform::BeginUiPass` → `UIContext::Render` → `AppPlatform::EndUiPass`（呈现）
-- 用户设置：`%LOCALAPPDATA%\MiniBIM\settings.json`（`AppPlatform::GetUserDataDir`），现在只有 `language`（空 = 跟随系统）；`MainFrame::LoadSettings` / `MainFrame::SaveSettings`
+- 用户设置：`%LOCALAPPDATA%\MiniBIM\settings.json`（`AppPlatform::GetUserDataDir`），现在只有 `language`（空 = 跟随系统）、`autosave_minutes`；`MainFrame::LoadSettings` / `MainFrame::SaveSettings`
 
 ## 约束与坑
 

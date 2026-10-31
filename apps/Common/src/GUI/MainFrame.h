@@ -1,4 +1,5 @@
 #pragma once
+#include "Commands/Autosave.h"
 #include "Commands/Session.h"
 #include "GUI/AppPlatform.h"
 #include "GUI/Recent.h"
@@ -283,6 +284,23 @@ namespace MiniBIM
         // 右边一栏一行放几张卡片：窗口宽度变了、放的张数也变了时重建
         int StartColumns() const;
 
+        // ── 自动保存与恢复（Autosave.cpp；写文件的是核心的 Bim::Autosave::Worker）──────────
+        // 没保存的改动每隔几分钟写一份恢复副本：保存过的项目写在它旁边（<项目>.autosave.minibim），
+        // 没保存过的写在临时文件夹的 MiniBIM/ 里。保存后、不保存就关掉时删掉；启动或打开项目时找到了就问恢复、丢弃还是以后再说
+        void EnableAutosave();
+        // 换了项目（新建、打开、示例房屋）：上一个的副本删掉，新的写到哪里，找它旁边的副本
+        void AutosaveDocument();
+        // 保存成功之后：副本删掉，以后写到新路径旁边
+        void AutosaveSaved();
+        // 删掉这份文档的副本（关掉、换项目时；还在问要不要恢复的不删）
+        void RetireAutosave();
+        void ScheduleAutosave();
+        void AutosaveTick();
+        void PollAutosave();
+        void ShowRecovery();
+        void RecoverBackup(const Bim::Autosave::Backup& backup);
+        void SelectAutosaveDestination();
+
         AppPlatform* m_platform = nullptr;
         float        m_dpiScale = 1.0f;
 
@@ -309,6 +327,26 @@ namespace MiniBIM
         bool m_startOver  = false;
         int  m_startColumns = 0;
         std::string m_startupFile;                            // 启动参数给的项目文件：打开它，不显示开始页
+
+        struct AutosaveState
+        {
+            std::unique_ptr<Bim::Autosave::Worker> worker;
+            std::string root;                                 // 临时文件夹里的 MiniBIM/
+            std::string temporary;                            // 这份没保存过的文档的副本
+            std::optional<std::string> project;               // 副本属于哪个项目文件
+            std::optional<std::string> active;                // 现在往哪里写
+            int minutes = 2;                                  // 间隔（分钟），0 = 不自动保存（设置）
+            std::weak_ptr<const Bim::Model> snapshot;         // 最后写下（或正在写）的那一份
+            uint64_t generation = 0;                          // 换一次文档加一：之前的查找结果作废
+            int discovering = 0;                              // 还没回来的查找
+            std::vector<Bim::Autosave::Backup> candidates;    // 找到的、还没决定的副本（不覆盖、不删）
+            std::set<std::string> postponed;                  // 这次说了"以后再说"的
+            std::optional<std::string> deleting;              // 点了丢弃、正在删的
+            std::vector<std::string> retired;                 // 换了地方之后旧的副本：新的一份写好或保存后再删
+            bool asking = false;                              // 恢复的对话框开着
+            uint64_t timer = 0;                               // 定时器的代号：改了间隔时旧的作废
+        };
+        AutosaveState m_autosave;
 
         Bim::Session m_session;
         std::shared_ptr<const Bim::Model> m_savedModel;      // 最后打开、新建或保存的那一份：别的都是没保存的

@@ -17,6 +17,14 @@ msgstr "新建"
 msgid "Open"
 msgstr "打开"
 
+#: src/Commands/Commands.cpp
+msgid "Autosave"
+msgstr "自动保存"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Autosave.cpp
+msgid "Recover"
+msgstr "恢复"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Save"
 msgstr "保存"
@@ -332,6 +340,34 @@ msgstr "这个版本没有编入实体建模内核（MINIBIM_WITH_SOLID 关闭�
 #: src/View/ModelScene.cpp
 msgid "Some elements could not be modelled in 3D; see the log for which."
 msgstr "有些元素没能建成三维模型，详见日志。"
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Could not discard the recovery copy"
+msgstr "无法删除恢复副本"
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Untitled project"
+msgstr "未命名项目"
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
+msgstr "“恢复”把副本作为未保存的工作打开，“放弃”删掉它，“稍后”把它留到以后，不覆盖它。"
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Recovery copy found"
+msgstr "找到恢复副本"
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Discard"
+msgstr "放弃"
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Postpone"
+msgstr "稍后"
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Could not recover the project"
+msgstr "无法恢复项目"
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Structure"

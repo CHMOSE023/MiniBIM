@@ -257,6 +257,7 @@ namespace MiniBIM
         m_savedModel = m_session.Snapshot();
         if (const auto& saved = m_session.Path())
             NoteRecent(*saved);
+        AutosaveSaved();
         UpdateTitle();
         return true;
     }
@@ -360,9 +361,10 @@ namespace MiniBIM
                 SetTool(Tool::Modify);
             }
             m_savedModel   = m_session.Snapshot();
-            // 新建、打开了项目：开始页让给它
+            // 新建、打开了项目：开始页让给它；恢复副本跟着换
             if (m_startShown)
                 ShowStartPage(false, false);
+            AutosaveDocument();
         }
         OnPlanModelChanged();
         UpdateTitle();
