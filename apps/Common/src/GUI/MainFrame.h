@@ -1,6 +1,7 @@
 #pragma once
 #include "Commands/Session.h"
 #include "GUI/AppPlatform.h"
+#include "GUI/Recent.h"
 #include "Model/Align.h"
 #include "Model/Render.h"
 #include "Model/Sketch.h"
@@ -104,6 +105,8 @@ namespace MiniBIM
         void Guard(std::function<void()> then);
         void NewProject();
         void OpenProject();
+        // 打开一个文件（打开对话框选的、最近打开里的）：成功时记进最近打开，文件已经不在时从里面去掉
+        void OpenPath(const std::string& path);
         bool SaveProject(bool saveAs);
         void StepHistory(bool redo);
         void DeleteSelection();
@@ -262,6 +265,12 @@ namespace MiniBIM
         void SaveSettings() const;
         std::string SettingsPath() const;
 
+        // ── 最近打开（Recent.h，存在用户设置目录的 recent.json）──────────
+        // path 是刚打开或保存的文件：成为列表里最新的一项
+        void NoteRecent(const std::string& path);
+        void KeepRecent();
+        std::vector<MiniGUI::MenuItem> BuildRecentMenu();
+
         AppPlatform* m_platform = nullptr;
         float        m_dpiScale = 1.0f;
 
@@ -280,6 +289,8 @@ namespace MiniBIM
         std::string m_languageSetting;                        // 用户选的语言，空 = 跟随系统
         std::string m_languageOverride;
         std::vector<std::string> m_startupCommands;
+        RecentFiles m_recent;
+        std::string m_recentPath;                             // 空 = 不记（平台没有用户设置目录）
 
         Bim::Session m_session;
         std::shared_ptr<const Bim::Model> m_savedModel;      // 最后打开、新建或保存的那一份：别的都是没保存的

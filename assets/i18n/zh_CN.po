@@ -864,6 +864,10 @@ msgid "Could not save the project"
 msgstr "无法保存项目"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Clear Recent Files"
+msgstr "清除最近打开的文件"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not export IFC"
 msgstr "无法导出 IFC"
 
@@ -1760,6 +1764,10 @@ msgstr "所有文件"
 #: assets/ui/minibim_ui.json
 msgid "File"
 msgstr "文件"
+
+#: assets/ui/minibim_ui.json
+msgid "Open Recent"
+msgstr "最近打开"
 
 #: assets/ui/minibim_ui.json
 msgid "Language"

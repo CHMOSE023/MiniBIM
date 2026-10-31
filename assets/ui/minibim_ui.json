@@ -63,7 +63,8 @@
     "help.about":   { "icon": "About.png" }
   },
   "menus": [
-    { "title": "File", "items": [ "file.new", "file.open", "file.save", "file.saveAs", "file.exportIfc", "-", "file.sample", "-",
+    { "title": "File", "items": [ "file.new", "file.open", { "title": "Open Recent", "dynamic": "recent" }, "file.save", "file.saveAs",
+                                  "file.exportIfc", "-", "file.sample", "-",
                                   { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
     { "title": "Edit", "items": [ "edit.undo", "edit.redo", "-", "edit.delete", "modify.flip" ] },
     { "title": "View", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown", "-", "view.home", "view.zoomFit", "-",

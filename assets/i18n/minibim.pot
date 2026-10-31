@@ -867,6 +867,10 @@ msgid "Could not save the project"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Clear Recent Files"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not export IFC"
 msgstr ""
 
@@ -1767,6 +1771,10 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "File"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Open Recent"
 msgstr ""
 
 #: assets/ui/minibim_ui.json

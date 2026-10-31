@@ -26,6 +26,7 @@ add_library(MiniBIMApp STATIC
     src/GUI/SketchMode.cpp
     src/GUI/Dialogs.cpp
     src/GUI/Parameters.cpp
+    src/GUI/Recent.cpp
 )
 
 target_include_directories(MiniBIMApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${MINIBIM_VERSION_DIR})

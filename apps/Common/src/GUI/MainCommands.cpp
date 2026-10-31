@@ -195,11 +195,25 @@ namespace MiniBIM
     void MainFrame::OpenProject()
     {
         const std::string path = m_platform->PickProjectFile();
-        if (path.empty())
-            return;
+        if (!path.empty())
+            OpenPath(path);
+    }
+
+    void MainFrame::OpenPath(const std::string& path)
+    {
         Bim::Json r;
         if (!RunCommand("open", Bim::Json{ { "path", path } }, N_("Could not open the project"), &r))
+        {
+            // 打不开、而且已经不在了：从最近打开里去掉
+            std::error_code ec;
+            if (!m_recentPath.empty() && !std::filesystem::exists(ToPath(path), ec))
+            {
+                m_recent.Remove(path);
+                KeepRecent();
+            }
             return;
+        }
+        NoteRecent(path);
         // IFC 里 MiniBIM 还没有的元素、违反规则的略去了：说一声有几个（列表在命令的结果里）
         if (r.contains("skipped") && r["skipped"].is_array() && !r["skipped"].empty())
         {
@@ -238,8 +252,45 @@ namespace MiniBIM
         if (!RunCommand("save", params, N_("Could not save the project")))
             return false;
         m_savedModel = m_session.Snapshot();
+        if (const auto& saved = m_session.Path())
+            NoteRecent(*saved);
         UpdateTitle();
         return true;
+    }
+
+    // =========================================================
+    // 最近打开
+    // =========================================================
+    void MainFrame::NoteRecent(const std::string& path)
+    {
+        if (m_recentPath.empty())
+            return;
+        m_recent.Push(path);
+        KeepRecent();
+    }
+
+    void MainFrame::KeepRecent()
+    {
+        std::string error;
+        if (!m_recentPath.empty() && !m_recent.Save(m_recentPath, error))
+            LOG_WARN("最近打开：%s", error.c_str());
+    }
+
+    std::vector<MiniGUI::MenuItem> MainFrame::BuildRecentMenu()
+    {
+        using MiniGUI::MenuItem;
+        std::vector<MenuItem> items;
+        if (m_recent.Paths().empty())
+            return items;   // 空列表：菜单项显示为禁用
+        const std::vector<std::string> labels = m_recent.Labels();
+        for (size_t i = 0; i < labels.size(); ++i)
+        {
+            const std::string path = m_recent.Paths()[i];
+            items.emplace_back(labels[i], [this, path] { m_platform->Post([this, path] { Guard([this, path] { OpenPath(path); }); }); });
+        }
+        items.push_back(MenuItem::Separator());
+        items.emplace_back(Tr("Clear Recent Files"), [this] { m_recent.Clear(); KeepRecent(); });
+        return items;
     }
 
     void MainFrame::ExportIfc()

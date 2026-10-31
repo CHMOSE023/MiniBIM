@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -26,6 +26,9 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   `MainFrame::ExportIfc`、`MainFrame::OpenSample`）都走
   `MainFrame::RunCommand`（命令失败时弹出对话框，标题翻译、核心给的原因是英文），之后 `MainFrame::OnModelChanged` 重建三维场景、刷新标题与状态栏，
   换了项目时相机重新框住模型、清空选择集。标题栏显示保存过的文件名，否则显示项目名称；有没保存的改动时前面加 `*`
+- 最近打开（`Recent.h` 的 `RecentFiles`，移植自 `recent.rs`）：文件菜单"最近打开"（动态子菜单 `recent`，`MainFrame::BuildRecentMenu`）列最后打开或保存的
+  10 个项目与 IFC 文件，新的在前，同名的后面加文件夹；"清除最近打开的文件"。打开成功（`MainFrame::OpenPath`）、保存成功时 `MainFrame::NoteRecent`；
+  打不开且文件已经不在了时从列表去掉。存在用户设置目录的 `recent.json`（`AppPlatform::GetUserDataDir`，空时不记），读不出、坏了、过大都当作空列表
 - 没保存的改动：`MainFrame::Dirty` 比较当前模型与最后新建、打开、保存的那一份（快照指针，同 BIMCraft；撤销回到那一份时又算保存过的；导出 IFC 不算保存）。
   新建、打开、示例房屋、退出（含标题栏的关闭）都经 `MainFrame::Guard`：有改动时问保存、不保存、取消
 - 编辑：`edit.undo`（Ctrl+Z）、`edit.redo`（Ctrl+Y）走模型命令 `undo` / `redo`；`edit.delete`（Delete）删选择集，`modify.flip` 翻转其中的墙；

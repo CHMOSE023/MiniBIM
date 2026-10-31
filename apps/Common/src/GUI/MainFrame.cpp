@@ -65,6 +65,11 @@ namespace MiniBIM
         translator.SetCatalogDir(platform.GetResourceDir() + "/i18n");
         MiniGUI::SetTranslator([](std::string_view english) { return Tr(english); });
         LoadSettings();
+        if (const std::string dir = platform.GetUserDataDir(); !dir.empty())
+        {
+            m_recentPath = dir + "/recent.json";
+            m_recent     = RecentFiles::Load(m_recentPath);
+        }
         const std::string code = !m_languageOverride.empty() ? m_languageOverride
                                : !m_languageSetting.empty()  ? m_languageSetting
                                                              : platform.GetSystemLanguage();
@@ -100,6 +105,7 @@ namespace MiniBIM
         m_layout->RegisterPanel("browser",    CreateBrowser(), N_("Project Browser"));
         m_layout->RegisterPanel("statusbar",  CreateStatusBar());
         m_layout->SetDynamicMenuItems("languages", [this] { return BuildLanguageMenu(); });
+        m_layout->SetDynamicMenuItems("recent", [this] { return BuildRecentMenu(); });
 
         m_uiHost = m_ui->GetRoot()->AddChild<MiniGUI::Node>();
         MiniGUI::LayoutStyle hs;
