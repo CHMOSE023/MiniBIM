@@ -18,7 +18,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Family.h` | `family.rs` | 族（`Bim::Family` 与 `Bim::Fam` 里的参数、公式、形体、符号）：公式求值、参数取值、检查、扫掠与旋转出三角形 |
 | `src/Model/Csg.h` | `csg.rs` | 族的空心形体用的网格布尔运算（BSP，工作表不递归，`Csg::Meter` 限制花费） |
 | `src/Model/FamilyLibrary.cpp` | `family.rs` 的 library、`fixtures.rs` | 新项目带的 34 个族：家具 10、门窗 6、各专业的器具 18 |
-| `src/Model/Render.h` | `render.rs`、`pen.rs`、`styles.rs` 的平面部分 | 平面图的显示列表（像素里的填色环与折线）：墙的剖切填充与边线、门窗、房间标签、轴网、屋顶、楼板、构件；线宽（笔）；拾取 |
+| `src/Model/Render.h` | `render.rs`、`pen.rs`、`styles.rs` 的平面部分 | 平面图的显示列表（像素里的填色环与折线）：墙与柱的剖切填充与边线、门窗、房间标签、轴网、屋顶、楼板、构件；线宽（笔）；拾取 |
 | `src/Model/Align.h` | `align.rs`、`model.rs` 的 `reference_line` | 对齐：元素在平面上的直边与参照轴线（墙的中心线、两面、两端，门窗的中线与门框，轴网……），把一条线放到另一条上的刚体运动 |
 | `src/Model/Snap.h` | `snap.rs` | 捕捉：平面上点下的点落在哪（端点、中点、交点、圆心、垂足、墙中心线、角度引导线、最近的 10 毫米），标尺的读数与刻度 |
 | `src/Model/Sketch.h` | `sketch.rs` | 草图：零散的直线与圆弧（`SketchLine`）解成闭合的环、嵌套成轮廓与洞（`Sketch::Solve`、`Sketch::SolveOne`），解不出时列出每个问题（相交、重叠、分叉、开口、没有面积、几个外轮廓）与涉及的线 |
@@ -66,7 +66,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 - 柱（R1，为读 Revit 文件先移植）：`Column` 站在一个标高上，到 `topLevel`（命令不给 `height` 时为上一个标高）或 `height` 那么高（`Model::ColumnSpan`），
   截面是类型的矩形或圆（`ColumnType`，圆柱的进深即直径，`Model::ColumnOutline`）。`StructuralColumn` 是同样的柱，类别是 structuralcolumn、
   类型另有一张表（`Types::structuralColumn`，文件里 `structural_column`，没有时不写）。BIMCraft 的基础、梁、条形基础还没移植。
-  柱的三维、平面与 IFC 在 R2（`docs/PLAN.md` 的"Revit 文件"）；对齐给矩形柱的四边与十字轴线、捕捉给柱的中心
+  平面图里剖到的柱与墙一起填色、描并集的边，剖切面以下看到的画轮廓（`Render.cpp` 的 `Stands`）；三维见 `.agents/features/view3d.md`、IFC 见 `.agents/features/ifc.md`；
+  对齐给矩形柱的四边与十字轴线、捕捉给柱的中心。界面上还没有放柱的工具
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）

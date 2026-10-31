@@ -2014,6 +2014,32 @@ namespace
             std::string error;
             Check(Model::Read(old.dump(), m, left, error) && m.types.structuralColumn.empty() && m.Check(error), "柱：没有结构柱类型的旧文件能打开");
         }
+        {
+            // 移植自 BIMCraft render.rs 的 plans_cut_columns_draw_stairs_and_show_roofs_from_both_sides 的柱：剖到的柱填色，拾取得到
+            Session s;
+            House(s);
+            const Id c = Run(s, "column", R"({"at": [6000, 4000]})")["id"].get<Id>();
+            const Id r = Run(s, "column", R"({"at": [2000, 4000], "type": "Round 300"})")["id"].get<Id>();
+            const Model& m = s.GetModel();
+            const Render::Drawing d = Render::Plan(m, m.GuidOf(Id(100000)), 1200, 900);
+            const auto filled = [&](Id id)
+            {
+                for (size_t i = 0; i < d.prims.size(); ++i)
+                    if (d.owners[i] == std::optional<Id>(id) && d.prims[i].kind == Render::Prim::Kind::Fill && d.prims[i].color == Render::Poche)
+                        return true;
+                return false;
+            };
+            Check(filled(c) && filled(r), "平面图：剖到的柱填色");
+            Check(d.Pick(d.view.ToPx(P2(6200, 4000)), 4.0f) == c && d.Pick(d.view.ToPx(P2(2150, 4000)), 4.0f) == r, "平面图：拾取柱的边");
+            // 上一层的平面里它在剖切面以下：只有轮廓
+            const Render::Drawing up = Render::Plan(m, m.GuidOf(Id(100001)), 1200, 900);
+            bool line = false, fill = false;
+            for (size_t i = 0; i < up.prims.size(); ++i)
+                if (up.owners[i] == std::optional<Id>(c))
+                    (up.prims[i].kind == Render::Prim::Kind::Fill ? fill : line) = true;
+            Check(!fill, "平面图：上一层不剖到柱");
+            (void)line;
+        }
     }
 }
 

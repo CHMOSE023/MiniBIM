@@ -2500,6 +2500,76 @@ namespace MiniBIM::Bim::Ifc
             seen.insert(id);
         }
 
+        // 柱：横过它的截面与它立多高；承重的是结构柱（BIMCraft 还把不是条形的基础读成独立基础，基础随它移植）
+        for (const uint64_t id : named({ "IFCCOLUMN", "IFCCOLUMNSTANDARDCASE" }))
+        {
+            const Entity& c = *e(id);
+            const auto faces = r.Body(c);
+            const auto zs = SpanOf(faces, [](const P3& p) { return p[2]; });
+            if (!zs)
+            {
+                leave(id, "it has no body MiniBIM can read");
+                continue;
+            }
+            const auto [z0, z1] = *zs;
+            // 与它最长的轮廓边垂直：立着的面里一条水平的边（三角形拼的顶面还有对角线）
+            const Frame f = r.FrameOf(c);
+            std::pair<double, P2> along{ 0.0, P2(f.x[0], f.x[1]).Unit() };
+            for (const auto& face : faces)
+            {
+                if (face.size() < 2 || std::abs(Normal(face)[2]) >= 0.1)
+                    continue;
+                for (size_t i = 0; i < face.size(); ++i)
+                {
+                    const P3& p = face[i];
+                    const P3& q = face[(i + 1) % face.size()];
+                    const P2 d = r.Flat(q) - r.Flat(p);
+                    if (std::abs(p[2] - q[2]) < 0.5 && d.Length() > along.first + 1e-6)
+                        along = { d.Length(), d.Unit() };
+                }
+            }
+            const P2 u = along.second, v = u.Perp();
+            std::vector<P2> plan;
+            for (const auto& face : faces)
+                for (const P3& p : face)
+                    plan.push_back(r.Flat(p));
+            const auto su = SpanOver(plan, [&](const P2& p) { return p.Dot(u); });
+            const auto sv = SpanOver(plan, [&](const P2& p) { return p.Dot(v); });
+            if (!su || !sv)
+                continue;
+            const P2 at = u * ((su->first + su->second) / 2.0) + v * ((sv->first + sv->second) / 2.0);
+            const auto radii = SpanOver(plan, [&](const P2& p) { return p.Dist(at); });
+            // 圆的：角点多，离中心都一样远（正方形的四个角也一样远）
+            std::set<std::pair<int64_t, int64_t>> corners;
+            for (const P2& p : plan)
+                corners.emplace(static_cast<int64_t>(std::round(p.x * 2.0)), static_cast<int64_t>(std::round(p.y * 2.0)));
+            const bool round = corners.size() >= 12 && radii && radii->second > 0.0 && (radii->second - radii->first) / radii->second < 0.03;
+            const auto size = [](double x) { return std::round(x * 100.0) / 100.0; };
+            const double w = round ? size(2.0 * radii->second) : size(su->second - su->first);
+            const double d = round ? w : size(sv->second - sv->first);
+            if (!(w > 0.0) || !(d > 0.0))
+            {
+                leave(id, "it has no section MiniBIM can read");
+                continue;
+            }
+            const std::string base = label(id).value_or(round ? "Imported Round " + Num(w) : "Imported " + Num(w) + " x " + Num(d));
+            const bool structural = bearing.count(id) != 0;
+            auto& types = structural ? m.types.structuralColumn : m.types.column;
+            Column col;
+            col.typeName = KindOf(
+                types, base, [&](const ColumnType& k) { return k.round == round && std::abs(k.width - w) < 0.05 && std::abs(k.depth - d) < 0.05; },
+                ColumnType{ w, d, round });
+            col.level = levelFor(id, z0);
+            std::tie(col.topLevel, col.height) = topped(col.level, z0, z1);
+            col.height     = Round(col.height, 1000.0);
+            col.angle      = round ? 0.0 : Round(std::atan2(u.y, u.x) * 180.0 / kPi, 1e6) + 0.0;
+            col.at         = Micron(at);
+            col.baseOffset = Round(z0 - elevation(col.level), 1000.0) + 0.0;
+            const Id cid = structural ? m.Insert(StructuralColumn{ std::move(col) }) : m.Insert(std::move(col));
+            made(cid, id);
+            seen.insert(id);
+        }
+
         // 屋顶：平的，或矩形上的坡屋顶，按它朝上的面量
         for (const uint64_t id : roofs)
         {

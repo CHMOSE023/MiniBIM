@@ -767,6 +767,31 @@ namespace MiniBIM::Bim::Ifc
                 if (const auto relating = w.Relating(made, name))
                     w.Add("IFCRELASSOCIATESMATERIAL(" + w.GuidFor(kComponentMaterials, id) + ",$,$,$,(" + Ref(ent) + ")," + Ref(*relating) + ")");
             }
+            // 柱：截面（矩形或圆）从底向上拉伸；结构柱写成同样的柱，说它承重
+            else if (const Column* col = e.AsColumn())
+            {
+                const auto storey = storeyAt(col->level);
+                const ColumnType* t = m.ColumnTypeOf(e);
+                if (!storey || !t)
+                    continue;
+                const auto [bottom, top] = m.ColumnSpan(*col);
+                const uint64_t at = w.Place(storey, { col->at.x, col->at.y, col->baseOffset }, Heading(col->angle));
+                uint64_t profile = 0;
+                if (t->round)
+                {
+                    const uint64_t c      = w.Point(P2(0.0, 0.0));
+                    const uint64_t centre = w.Add("IFCAXIS2PLACEMENT2D(" + Ref(c) + ",$)");
+                    profile = w.Add("IFCCIRCLEPROFILEDEF(.AREA.,$," + Ref(centre) + "," + Real(t->width / 2.0) + ")");
+                }
+                else
+                    profile = w.Rectangle(P2(0.0, 0.0), P2(t->width, t->depth));
+                const uint64_t shape = w.Body(profile, 0.0, top - bottom, {});
+                const uint64_t ent = w.Add("IFCCOLUMN(" + w.GuidFor(kElement, id) + ",$," + S(col->typeName) + ",$," + S(col->typeName) + "," + Ref(at) + "," +
+                                           Ref(shape) + ",'" + std::to_string(id) + "',.COLUMN.)");
+                contained[m.GuidOf(col->level)].push_back(ent);
+                if (e.As<StructuralColumn>())
+                    w.LoadBearing(ent, "Pset_ColumnCommon", id);
+            }
             // 房间分隔线：沿它的线的虚拟元素，只围合房间
             else if (const RoomSeparator* rs = e.As<RoomSeparator>())
             {

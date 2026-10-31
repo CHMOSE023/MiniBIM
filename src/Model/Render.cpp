@@ -41,6 +41,22 @@ namespace MiniBIM::Bim::Render
             return { Pen::Projection, Pen::Cut };
         }
 
+        // 柱在平面上占的地方与它的底、顶（BIMCraft 的 stands；基础、梁随它们移植）
+        struct Stand
+        {
+            Ring   outline;
+            double bottom = 0.0, top = 0.0;
+        };
+
+        std::optional<Stand> Stands(const Model& m, const Element& e)
+        {
+            const Column* col = e.AsColumn();
+            if (!col)
+                return std::nullopt;
+            const auto [bottom, top] = m.ColumnSpan(*col);
+            return Stand{ m.ColumnOutline(e), bottom, top };
+        }
+
         // 注释的元素用注释的线宽：轴网、标高、房间的标签（BIMCraft 还有尺寸、标记、文字、高程点、剖面与立面的标记）
         bool Annotates(const Model& m, std::optional<Id> owner)
         {
@@ -630,6 +646,11 @@ namespace MiniBIM::Bim::Render
                     for (const P2& q : Walls::Outline(m, id, &index))
                         extent.push_back(q);
             }
+            else if (const auto st = Stands(m, *e))
+            {
+                if ((st->bottom <= r.cut && r.cut < st->top) || (r.depth < st->top && st->top <= r.cut))
+                    extent.insert(extent.end(), st->outline.begin(), st->outline.end());
+            }
             else if (const Floor* f = e->As<Floor>(); f && m.Same(f->level, level))
                 extent.insert(extent.end(), f->boundary.begin(), f->boundary.end());
             else if (const Ceiling* c = e->As<Ceiling>(); c && m.Same(c->level, level))
@@ -716,24 +737,28 @@ namespace MiniBIM::Bim::Render
                 ComponentOf(d, pieces);
             }
         }
-        // 剖切面以下看到的墙；低于视图范围底部的变淡
+        // 剖切面以下看到的墙与柱；低于视图范围底部的变淡
         for (const auto& [id, e] : m.elements.Items())
         {
             const Wall* w = e->As<Wall>();
-            if (!w)
+            const auto st = w ? std::nullopt : Stands(m, *e);
+            if (!w && !st)
                 continue;
-            const double top = m.TopZ(*w);
+            const double top = w ? m.TopZ(*w) : st->top;
             if (!(range.depth < top && top <= range.cut))
                 continue;
             d.Own(id);
-            d.Line(Walls::Outline(m, id, &index), Pen::ByCategory, top > range.bottom - Tol ? Ink : Faint, true);
+            d.Line(w ? Walls::Outline(m, id, &index) : st->outline, Pen::ByCategory, top > range.bottom - Tol ? Ink : Faint, true);
         }
         d.SetPart(Part::Cut);
+        // 剖到的墙与柱
         std::vector<std::pair<Id, Ring>> outlines;
         for (const auto& [id, e] : m.elements.Items())
             if (const Wall* w = e->As<Wall>(); w && m.Spans(*w, range.cut))
                 outlines.emplace_back(id, Walls::Outline(m, id, &index));
-        // 先填色再描轮廓；墙相接处只描并集的边（CutEdges）。所有墙先一起填一次，两块填色相接处不见缝
+            else if (const auto st = Stands(m, *e); st && st->bottom <= range.cut && range.cut < st->top)
+                outlines.emplace_back(id, st->outline);
+        // 先填色再描轮廓；墙与柱相接处只描并集的边（CutEdges）。剖到的先一起填一次，两块填色相接处不见缝
         d.Own(std::nullopt);
         {
             std::vector<Ring> rings;
@@ -741,7 +766,7 @@ namespace MiniBIM::Bim::Render
                 rings.push_back(o);
             d.Fill(rings, Poche);
         }
-        // 每面墙一块填色：一次奇偶填充里重叠的墙会相互抵消
+        // 每面墙、每根柱一块填色：一次奇偶填充里重叠的墙会相互抵消
         for (const auto& [id, o] : outlines)
         {
             d.Own(id);

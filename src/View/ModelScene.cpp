@@ -34,6 +34,8 @@ namespace MiniBIM
         constexpr Rgb kCeiling = { 244 / 255.0f, 242 / 255.0f, 236 / 255.0f };
         // 构件的形体用的材质库里没有时
         constexpr Rgb kComponent = { 214 / 255.0f, 204 / 255.0f, 188 / 255.0f };
+        // 结构柱（BIMCraft 的 STRUCTURE）；建筑柱同墙
+        constexpr Rgb kStructure = { 182 / 255.0f, 184 / 255.0f, 190 / 255.0f };
 
         // 门洞扣得比墙面再出去一点，免得布尔运算遇到重合的面
         constexpr double kPast = 50.0;
@@ -339,6 +341,15 @@ namespace MiniBIM
                 else
                     LOG_WARN("三维场景：roof %llu 没有坡面：%s", static_cast<unsigned long long>(id), why.c_str());
                 ++m_counts.roofs;
+            }
+            else if (const Bim::Column* col = e.AsColumn())
+            {
+                // 截面从底拉伸到顶
+                const auto [bottom, top] = m.ColumnSpan(*col);
+                const Solid::BodyPtr body = Prism(k, m.ColumnOutline(e), bottom, top - bottom);
+                if ((ok = body != nullptr))
+                    add(body, e.As<Bim::StructuralColumn>() ? kStructure : kWall);
+                ++m_counts.columns;
             }
             else if (const Bim::Component* c = e.As<Bim::Component>())
             {

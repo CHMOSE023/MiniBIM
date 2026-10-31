@@ -108,6 +108,27 @@ namespace
         };
         Check(built && cut.GetCounts().windows == 1 && wallFaceThere(plain) && !wallFaceThere(cut), "三维场景：墙在窗洞处扣掉");
     }
+
+    void TestColumns()
+    {
+        Bim::Session s;
+        Bim::Json out;
+        std::string error;
+        const bool placed = s.Execute("column", Bim::Json::parse(R"({"at": [0, 0]})"), out, error) &&
+                            s.Execute("structural_column", Bim::Json::parse(R"({"at": [5000, 0], "type": "Concrete Round 400", "height": 2000})"), out, error);
+        auto kernel = Solid::CreateSMLibKernel();
+        ModelScene scene;
+        const bool built = placed && scene.Build(s.GetModel(), kernel.get(), error);
+        if (!built)
+            std::printf("  %s\n", error.c_str());
+        const AABB& b = scene.GetBounds();
+        Check(built && scene.GetCounts().columns == 2 && Near(b.Min.x, -200.0, 1.0) && Near(b.Max.x, 5200.0, 1.0) && Near(b.Min.z, 0.0, 1.0) &&
+                  Near(b.Max.z, 3000.0, 1.0),
+              "三维场景：柱从底拉伸到顶，圆柱是圆的");
+        const auto hit = scene.Pick({ 5000.0, 0.0, 20000.0 }, { 0.0, 0.0, -1.0 });
+        const Bim::Element* e = hit ? s.GetModel().elements.Get(*hit) : nullptr;
+        Check(e && std::string(e->Category()) == "structuralcolumn", "三维场景：从上往下拾取到结构柱");
+    }
 }
 
 int main()
@@ -115,6 +136,7 @@ int main()
     TestNoKernel();
     TestSampleHouse();
     TestOpeningsAreCut();
+    TestColumns();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

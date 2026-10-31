@@ -558,7 +558,12 @@ door {"at": [4000, 6000]})");
         const Wall* w = walls.empty() ? nullptr : walls.front()->As<Wall>();
         Check(ok && w && w->start == P2(1000, 2000) && w->end == P2(1000, 7000) && i.model.Thickness(*w) == 200.0 && w->height == 2700.0 && !i.moved,
               "导入：三角网格的墙与拉伸体一样按几何量出");
-        Check(i.skipped == std::vector<std::string>{ "1 IFCCOLUMN: MiniBIM has no element for it" }, "导入：MiniBIM 还没有的元素（柱）略去并列出\n" + Skipped(i));
+        const auto columns = Only(i.model, "column");
+        const Column* c = columns.empty() ? nullptr : columns.front()->As<Column>();
+        const ColumnType* t = c ? i.model.ColumnTypeOf(*columns.front()) : nullptr;
+        Check(i.skipped.empty() && c && t && c->at == P2(3000, 4000) && c->angle == 90.0 && t->width == 500.0 && t->depth == 300.0 && !t->round &&
+                  c->height == 3000.0,
+              "导入：映射项取形状的柱与拉伸体一样量出截面与高度\n" + Skipped(i));
 
         Ifc::Imported far;
         Import(Meshes("500000000.,5000000000.,0."), far);
@@ -1271,6 +1276,37 @@ window {"at": [4000, 6000], "family": "Casement Window"})");
         std::sort(areas.begin(), areas.end());
         Check(areas == std::vector<double>{ 18.0, 30.0 }, "房间分隔线：回来后照样分开两个房间");
     }
+    // 移植自 BIMCraft ifc.rs 的 a_structural_elements_common_set_holds_both_what_it_carries_and_its_status（阶段的 Status 随阶段移植）
+    // 与 tests.rs 的 roofs_cover_the_walls_below_flat_or_pitched 里的柱；再导入回来
+    void TestColumns()
+    {
+        Session s;
+        Run(s, "structural_column", R"({"at": [0, 0]})");
+        Run(s, "column", R"({"at": [4000, 3000], "angle": 30, "type": "Rectangular 400 x 400"})");
+        Run(s, "column", R"({"at": [8000, 0], "type": "Round 300", "height": 2500, "base_offset": 200})");
+        const std::string f = Ifc::Export(s.GetModel());
+        Check(Count(f, "IFCCOLUMN") == 3 && Count(f, "IFCCIRCLEPROFILEDEF") == 1 && !Dangling(f), "导出：柱是 IFCCOLUMN，截面拉伸，圆柱用圆的轮廓");
+        Check(Count(f, "IFCPROPERTYSET") >= 1 && Contains(f, "'Pset_ColumnCommon'") && f.find("'Pset_ColumnCommon'") == f.rfind("'Pset_ColumnCommon'") &&
+                  Contains(f, "IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$)"),
+              "导出：结构柱的 Pset_ColumnCommon 说它承重，只一个");
+
+        Ifc::Imported i;
+        const bool ok = Import(f, i);
+        const auto plain = Only(i.model, "column"), structural = Only(i.model, "structuralcolumn");
+        Check(ok && i.skipped.empty() && plain.size() == 2 && structural.size() == 1, "导入：柱回来，承重的是结构柱\n" + Skipped(i));
+        bool turned = false, round = false;
+        for (const Element* e : plain)
+        {
+            const Column* c = e->AsColumn();
+            const ColumnType* t = i.model.ColumnTypeOf(*e);
+            if (!c || !t)
+                continue;
+            turned |= c->at == P2(4000, 3000) && std::abs(c->angle - 30.0) < 1e-6 && t->width == 400.0 && t->depth == 400.0 && c->topLevel && c->height == 3000.0;
+            round |= c->at == P2(8000, 0) && t->round && t->width == 300.0 && !c->topLevel && c->height == 2500.0 && c->baseOffset == 200.0;
+        }
+        Check(turned, "导入：转过的柱回来，转角、截面、到上一个标高都对");
+        Check(round, "导入：圆柱回来，直径、高度、底的偏移都对");
+    }
 }
 
 int main()
@@ -1299,6 +1335,7 @@ int main()
     TestTransparency();
     TestSliding();
     TestRoomSeparators();
+    TestColumns();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }
