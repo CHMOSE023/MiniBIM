@@ -618,7 +618,22 @@ namespace MiniBIM::Bim
             return std::nullopt;
         }
 
-        // 视图的图形：视图样板、过滤器、阶段、设计选项、Linework 与 CAD 图层还没移植，读文件时略去
+        // 套用的过滤器：{filter, hidden?, projection?, cut?, halftone?, transparency?}
+        bool ReadApplied(const Json& v, const std::string& who, const std::string& path, std::vector<std::string>* leftOut, std::string& error,
+                         Applied& out)
+        {
+            if (!v.is_object())
+                return (error = (who.empty() ? "" : who + ": ") + "expected {filter, hidden?, projection?, cut?, …}, got " + v.dump(), false);
+            const auto name = v.find("filter");
+            if (name == v.end() || !name->is_string())
+                return (error = (who.empty() ? "" : who + ": ") + "missing field `filter`", false);
+            out.filter = name->get<std::string>();
+            Json rest = v;
+            rest.erase("filter");
+            return ReadOverride(rest, who, path, leftOut, error, out.over);
+        }
+
+        // 视图的图形：Linework 与 CAD 图层还没移植，读文件时略去；阶段与设计选项原样留着
         bool ReadGraphics(Fields& f, Graphics& out)
         {
             const Json* v = f.Raw("graphics");
@@ -658,10 +673,124 @@ namespace MiniBIM::Bim
                     out.elements[*id] = std::move(o);
                 }
             }
-            if (!g.OptNumber("scale", out.scale) || !EnumName(g, "detail", out.detail, DetailKey, "coarse, medium, fine") ||
+            if (const Json* fs = g.Raw("filters"))
+            {
+                if (!fs->is_array())
+                    return g.Fail("`filters` must be a list of applied filters");
+                for (size_t i = 0; i < fs->size(); ++i)
+                {
+                    Applied a;
+                    if (!ReadApplied((*fs)[i], f.Who() + " graphics filter " + std::to_string(i), path + "/filters/" + std::to_string(i), f.LeftOut(),
+                                     f.Error(), a))
+                        return false;
+                    out.filters.push_back(std::move(a));
+                }
+            }
+            if (const Json* opts = g.Raw("options"))
+            {
+                if (!opts->is_object())
+                    return g.Fail("`options` must be {set: option}");
+                for (auto it = opts->begin(); it != opts->end(); ++it)
+                {
+                    if (!it->is_string())
+                        return g.Fail("`options`: `" + it.key() + "` must be an option's name");
+                    out.options[it.key()] = it->get<std::string>();
+                }
+            }
+            if (!g.OptString("template", out.templateName) || !g.OptString("phase", out.phase) || !g.OptString("phase_filter", out.phaseFilter) ||
+                !g.OptNumber("scale", out.scale) || !EnumName(g, "detail", out.detail, DetailKey, "coarse, medium, fine") ||
                 !EnumName(g, "style", out.style, StyleKey, "shaded, hidden_line, wireframe"))
                 return false;
             return g.Finish();
+        }
+
+        // 明细表的字段：{name, formula?, kind?, heading?, total?}
+        bool ReadField(Fields& f, Schedules::Field& out)
+        {
+            std::optional<std::string> kind;
+            if (!f.IsObject() || !f.String("name", out.name, true) || !f.OptString("formula", out.formula) || !f.OptString("kind", kind) ||
+                !f.OptString("heading", out.heading) || !f.Bool("total", out.total))
+                return false;
+            if (kind)
+            {
+                out.kind = Schedules::KindOf::Parse(*kind);
+                if (!out.kind)
+                    return f.Fail("`kind`: unknown variant `" + *kind + "`, expected one of text, number, length, area, yesno");
+            }
+            return f.Finish();
+        }
+
+        // 过滤器（明细表的与视图过滤器的规则）：{field, op, value?}
+        bool ReadFilter(Fields& f, Schedules::Filter& out)
+        {
+            std::string op;
+            if (!f.IsObject() || !f.String("field", out.field, true) || !f.String("op", op, true))
+                return false;
+            const auto parsed = Schedules::OpOf::Parse(op);
+            if (!parsed)
+                return f.Fail("`op`: unknown variant `" + op + "`, expected one of equals, not-equals, greater, greater-or-equal, less, "
+                              "less-or-equal, contains, not-contains, begins-with, not-begins-with, ends-with, not-ends-with, has-value, has-no-value");
+            out.op = *parsed;
+            const Json* v = f.Raw("value");
+            out.value = v ? *v : Json(nullptr);
+            return f.Finish();
+        }
+
+        bool ReadSort(Fields& f, Schedules::Sort& out)
+        {
+            return f.IsObject() && f.String("field", out.field, true) && f.Bool("descending", out.descending) && f.Finish();
+        }
+
+        // 一列东西：key 下的数组，每个用 read 读
+        template <class T, class ReadFn>
+        bool ReadList(Fields& parent, const char* key, std::vector<T>& out, ReadFn read)
+        {
+            const Json* v = parent.Raw(key);
+            out.clear();
+            if (!v)
+                return true;
+            if (!v->is_array())
+                return parent.Fail(std::string("`") + key + "` must be a list");
+            for (size_t i = 0; i < v->size(); ++i)
+            {
+                Fields f((*v)[i], parent.Who() + " " + key + " " + std::to_string(i), parent.Path() + "/" + key + "/" + std::to_string(i), parent.LeftOut(),
+                         parent.Error());
+                T t{};
+                if (!read(f, t))
+                    return false;
+                out.push_back(std::move(t));
+            }
+            return true;
+        }
+
+        Json FieldJson(const Schedules::Field& x)
+        {
+            Json j{ { "name", x.name } };
+            if (x.formula)
+                j["formula"] = *x.formula;
+            if (x.kind)
+                j["kind"] = Schedules::KindOf::Key(*x.kind);
+            if (x.heading)
+                j["heading"] = *x.heading;
+            if (x.total)
+                j["total"] = true;
+            return j;
+        }
+
+        Json FilterJson(const Schedules::Filter& x)
+        {
+            Json j{ { "field", x.field }, { "op", Schedules::OpOf::Key(x.op) } };
+            if (!x.value.is_null())
+                j["value"] = x.value;
+            return j;
+        }
+
+        Json SortJson(const Schedules::Sort& x)
+        {
+            Json j{ { "field", x.field } };
+            if (x.descending)
+                j["descending"] = true;
+            return j;
         }
 
         Json PatternFillJson(const PatternFill& p)
@@ -769,6 +898,16 @@ namespace MiniBIM::Bim
                 if (!f.Finish())
                     return false;
                 out = Element(std::move(v));
+                return true;
+            }
+            if (category == "schedule")
+            {
+                Schedule sc;
+                if (!f.Allow({ "name", "of", "fields", "filters", "sort", "grouped" }) || !f.String("name", sc.name, true) || !f.String("of", sc.of, true) ||
+                    !ReadList(f, "fields", sc.fields, ReadField) || !ReadList(f, "filters", sc.filters, ReadFilter) ||
+                    !ReadList(f, "sort", sc.sort, ReadSort) || !f.Bool("grouped", sc.grouped) || !f.Finish())
+                    return false;
+                out = Element(std::move(sc));
                 return true;
             }
             if (category == "grid")
@@ -1930,6 +2069,25 @@ namespace MiniBIM::Bim
             if (v->sectionBox)
                 j["section_box"] = true;
         }
+        else if (const Schedule* sc = e.As<Schedule>())
+        {
+            j["name"] = sc->name;
+            j["of"]   = sc->of;
+            const auto list = [&](const char* key, const auto& items, auto fn)
+            {
+                if (items.empty())
+                    return;
+                Json a = Json::array();
+                for (const auto& x : items)
+                    a.push_back(fn(x));
+                j[key] = std::move(a);
+            };
+            list("fields", sc->fields, FieldJson);
+            list("filters", sc->filters, FilterJson);
+            list("sort", sc->sort, SortJson);
+            if (sc->grouped)
+                j["grouped"] = true;
+        }
         else if (const View3D* v3 = e.As<View3D>())
         {
             j["name"]      = v3->name;
@@ -2242,15 +2400,38 @@ namespace MiniBIM::Bim
         return ReadOverride(v, "", "", nullptr, error, out);
     }
 
+    Json ToJson(const Applied& a)
+    {
+        Json j{ { "filter", a.filter } };
+        const Json o = ToJson(a.over);
+        for (auto it = o.begin(); it != o.end(); ++it)
+            j[it.key()] = it.value();
+        return j;
+    }
+
+    bool FromJson(const Json& v, Applied& out, std::string& error)
+    {
+        return ReadApplied(v, "", "", nullptr, error, out);
+    }
+
     Json ToJson(const Graphics& g)
     {
         Json j = Json::object();
+        if (g.templateName)
+            j["template"] = *g.templateName;
         if (!g.categories.empty())
         {
             Json c = Json::object();
             for (const auto& [name, o] : g.categories)
                 c[name] = ToJson(o);
             j["categories"] = std::move(c);
+        }
+        if (!g.filters.empty())
+        {
+            Json f = Json::array();
+            for (const Applied& a : g.filters)
+                f.push_back(ToJson(a));
+            j["filters"] = std::move(f);
         }
         if (!g.elements.empty())
         {
@@ -2259,12 +2440,72 @@ namespace MiniBIM::Bim
                 e[id.ToString()] = ToJson(o);
             j["elements"] = std::move(e);
         }
+        if (g.phase)
+            j["phase"] = *g.phase;
+        if (g.phaseFilter)
+            j["phase_filter"] = *g.phaseFilter;
+        if (!g.options.empty())
+        {
+            Json o = Json::object();
+            for (const auto& [set, option] : g.options)
+                o[set] = option;
+            j["options"] = std::move(o);
+        }
         if (g.scale)
             j["scale"] = *g.scale;
         if (g.detail != Detail::Fine)
             j["detail"] = Text::AsciiLower(DetailOf::Name(g.detail));
         if (g.style != VisualStyle::Shaded)
             j["style"] = VisualStyleOf::Key(g.style);
+        return j;
+    }
+
+    Json ToJson(const Schedules::Field& x) { return FieldJson(x); }
+    Json ToJson(const Schedules::Filter& x) { return FilterJson(x); }
+    Json ToJson(const Schedules::Sort& x) { return SortJson(x); }
+
+    bool FromJson(const Json& v, Schedules::Field& out, std::string& error)
+    {
+        Fields f(v, "", "", nullptr, error);
+        out = Schedules::Field{};
+        return ReadField(f, out);
+    }
+
+    bool FromJson(const Json& v, Schedules::Filter& out, std::string& error)
+    {
+        Fields f(v, "", "", nullptr, error);
+        out = Schedules::Filter{};
+        return ReadFilter(f, out);
+    }
+
+    bool FromJson(const Json& v, Schedules::Sort& out, std::string& error)
+    {
+        Fields f(v, "", "", nullptr, error);
+        out = Schedules::Sort{};
+        return ReadSort(f, out);
+    }
+
+    Json ToJson(const ViewFilter& x)
+    {
+        Json rules = Json::array();
+        for (const Schedules::Filter& r : x.rules)
+            rules.push_back(FilterJson(r));
+        Json j{ { "categories", x.categories } };
+        if (!x.rules.empty())
+            j["rules"] = std::move(rules);
+        return j;
+    }
+
+    Json ToJson(const ViewTemplate& x)
+    {
+        Json controls = Json::array();
+        for (const Group g : x.controls)
+            controls.push_back(GroupOf::Key(g));
+        Json j{ { "controls", std::move(controls) } };
+        if (!x.graphics.IsDefault())
+            j["graphics"] = ToJson(x.graphics);
+        if (x.viewRange)
+            j["view_range"] = ViewRangeJson(*x.viewRange);
         return j;
     }
 
@@ -2440,6 +2681,20 @@ namespace MiniBIM::Bim
         for (const auto& [n, t] : textTypes)
             tt[n] = Bim::ToJson(t);
         j["text_types"] = std::move(tt);
+        if (!viewFilters.empty())
+        {
+            Json vf = Json::object();
+            for (const auto& [n, x] : viewFilters)
+                vf[n] = Bim::ToJson(x);
+            j["view_filters"] = std::move(vf);
+        }
+        if (!viewTemplates.empty())
+        {
+            Json vt = Json::object();
+            for (const auto& [n, x] : viewTemplates)
+                vt[n] = Bim::ToJson(x);
+            j["view_templates"] = std::move(vt);
+        }
         Json es = Json::object();
         for (const auto& [id, e] : elements.Items())
         {
@@ -2629,6 +2884,48 @@ namespace MiniBIM::Bim
 
         // 注释的库条目；BIMCraft 第 6 版之前的文件没有线样式与线型图案：按项目的语言起名（有它们的文件按 GUID 记着图案，不会相等）
         if (!ReadStyles(f, m))
+            return false;
+        if (!ReadNamed(f, "view_filters", m.viewFilters, false, [](Fields& g, ViewFilter& x)
+        {
+            const Json* c = g.Raw("categories");
+            if (!c)
+                return g.Missing("categories");
+            if (!c->is_array())
+                return g.Fail("`categories` must be a list of categories");
+            for (const Json& n : *c)
+            {
+                if (!n.is_string())
+                    return g.Fail("`categories`: " + n.dump() + " is not a category");
+                x.categories.push_back(n.get<std::string>());
+            }
+            return ReadList(g, "rules", x.rules, ReadFilter);
+        }))
+            return false;
+        if (!ReadNamed(f, "view_templates", m.viewTemplates, false, [](Fields& g, ViewTemplate& x)
+        {
+            const Json* c = g.Raw("controls");
+            if (!c)
+                return g.Missing("controls");
+            if (!c->is_array())
+                return g.Fail("`controls` must be a list");
+            for (const Json& n : *c)
+            {
+                const auto group = n.is_string() ? GroupOf::Parse(n.get<std::string>()) : std::nullopt;
+                if (!group)
+                    return g.Fail("`controls`: unknown variant " + n.dump() + ", expected one of categories, filters, range, phase, options, scale, detail, style");
+                x.controls.insert(*group);
+            }
+            if (!ReadGraphics(g, x.graphics))
+                return false;
+            if (g.Raw("view_range"))
+            {
+                ViewRange r;
+                if (!ReadViewRange(g, r))
+                    return false;
+                x.viewRange = r;
+            }
+            return true;
+        }))
             return false;
         if (m.language != Language::English && m.lineStyles == Lines::Styles(Language::English) &&
             m.linePatterns == Lines::Patterns(Language::English))

@@ -447,6 +447,7 @@ namespace MiniBIM::Bim
             const char* operator()(const FilledRegion&) const { return "region"; }
             const char* operator()(const PlanView&) const { return "planview"; }
             const char* operator()(const View3D&) const { return "view3d"; }
+            const char* operator()(const Schedule&) const { return "schedule"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -459,6 +460,7 @@ namespace MiniBIM::Bim
             void operator()(Level&) const {}
             void operator()(Grid&) const {}
             void operator()(View3D&) const {}
+            void operator()(Schedule&) const {}
             void operator()(PlanView& v) const
             {
                 f(v.level);
@@ -2079,7 +2081,69 @@ namespace MiniBIM::Bim
             }
             return true;
         };
+        // 项目的视图过滤器与视图样板
+        if (viewFilters.size() > GraphicsOf::MaxFilters)
+        {
+            error = "the project has " + std::to_string(viewFilters.size()) + " view filters; it holds up to " + std::to_string(GraphicsOf::MaxFilters);
+            return false;
+        }
+        if (viewTemplates.size() > GraphicsOf::MaxTemplates)
+        {
+            error = "the project has " + std::to_string(viewTemplates.size()) + " view templates; it holds up to " +
+                    std::to_string(GraphicsOf::MaxTemplates);
+            return false;
+        }
+        const auto named = [&](const char* what, const std::string& n)
+        {
+            if (!Text::Trim(n).empty() && Text::CharCount(n) <= MaxText)
+                return true;
+            error = std::string(what) + " `" + n + "`: a name is 1 to " + std::to_string(MaxText) + " characters";
+            return false;
+        };
+        for (const auto& [n, f] : viewFilters)
+        {
+            if (!named("view filter", n))
+                return false;
+            const std::string who = "view filter `" + n + "`: ";
+            if (f.categories.empty())
+            {
+                std::string all;
+                for (const std::string& c : Schedules::Categories())
+                    all += (all.empty() ? "" : ", ") + c;
+                error = who + "it needs categories, one or more of: " + all;
+                return false;
+            }
+            for (const std::string& c : f.categories)
+                if (!Schedules::IsCategory(c))
+                {
+                    error = who + "`" + c + "` isn't a category filters pick from";
+                    return false;
+                }
+            if (!Schedules::CheckRules(*this, f.categories, f.rules, error))
+            {
+                error = who + error;
+                return false;
+            }
+        }
+        for (const auto& [n, t] : viewTemplates)
+        {
+            if (!named("view template", n))
+                return false;
+            const std::string who = "view template `" + n + "`: ";
+            if (t.graphics.templateName || !t.graphics.elements.empty())
+            {
+                error = who + "a template holds categories and filters; the elements and the template a view follows are its own";
+                return false;
+            }
+            if (!t.graphics.Check(*this, error) || (t.viewRange && !RangeOk("its", *t.viewRange, error)))
+            {
+                error = who + error;
+                return false;
+            }
+        }
         std::set<std::string> levelNames, gridNames, viewNames;
+        // 每个项目都有的明细表的类别：一个类别只有一个
+        std::set<std::string> twins;
         // 每面墙上的门窗，按沿墙的起点排序
         std::map<Guid, std::vector<HeldOpening>> spans;
         for (const auto& [id, ptr] : elements.Items())
@@ -2109,7 +2173,7 @@ namespace MiniBIM::Bim
                     error = who + ": another view is already named `" + l->name + "`";
                     return false;
                 }
-                if (!l->graphics.Check(fillPatterns, error))
+                if (!l->graphics.Check(*this, error))
                 {
                     error = who + ": " + error;
                     return false;
@@ -2143,7 +2207,7 @@ namespace MiniBIM::Bim
                     return false;
                 if (v->crop && !Crop(who, (*v->crop)[0], (*v->crop)[1], error))
                     return false;
-                if (!v->graphics.Check(fillPatterns, error))
+                if (!v->graphics.Check(*this, error))
                 {
                     error = who + ": " + error;
                     return false;
@@ -2192,7 +2256,7 @@ namespace MiniBIM::Bim
                     error = who + ": elevation " + Num(v3->elevation) + "° isn't between -89° and 89°";
                     return false;
                 }
-                if (!v3->graphics.Check(fillPatterns, error))
+                if (!v3->graphics.Check(*this, error))
                 {
                     error = who + ": " + error;
                     return false;
@@ -2204,6 +2268,31 @@ namespace MiniBIM::Bim
                 if (!viewNames.insert(v3->name).second)
                 {
                     error = who + ": another view is already named `" + v3->name + "`";
+                    return false;
+                }
+            }
+            else if (const Schedule* sc = e.As<Schedule>())
+            {
+                if (!TextOk(who, "name", sc->name, error))
+                    return false;
+                if (Text::Trim(sc->name).empty())
+                {
+                    error = who + ": a view needs a name";
+                    return false;
+                }
+                if (!Schedules::Check(*this, *sc, error))
+                {
+                    error = who + " (`" + sc->name + "`): " + error;
+                    return false;
+                }
+                if (const auto b = Schedules::BuiltinOf(&sc->name, nullptr); b && !twins.insert(b->category).second)
+                {
+                    error = who + " (`" + sc->name + "`): another schedule is already the " + b->category + "s' " + b->name + "; call it something else";
+                    return false;
+                }
+                if (!viewNames.insert(sc->name).second)
+                {
+                    error = who + ": another view is already named `" + sc->name + "`";
                     return false;
                 }
             }

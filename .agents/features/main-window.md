@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Palettes.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Annotate.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, apps/Common/src/GUI/Revit.cpp, apps/Common/src/GUI/RevitReport.*, apps/Common/src/GUI/OpenQueue.h, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Palettes.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Annotate.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Schedules.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, apps/Common/src/GUI/Revit.cpp, apps/Common/src/GUI/RevitReport.*, apps/Common/src/GUI/OpenQueue.h, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -110,8 +110,11 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   高程点、文字（选项栏输入文字、选文字类型）、按类别标记（单击有点可指的元素，选项栏可加引线，"全部标记"即 `MainFrame::TagAll`）；
   详图线同墙链（选项栏选线样式），测量两下一把尺子、读数在光标旁。填充区域与遮罩区域是草图模式（`SketchOf::Region`、`SketchOf::Masking`），
   完成时执行 `filled_region`（几个环用 `Sketch::Solve`），遮罩的用有 `masking` 的类型、不画边界线。注释的特性面板只读出它的平面与值，文字与标记的引线可改
-  "视图"选项卡（命令 `view.*`）："图形"面板的可见性 / 图形（`MainFrame::OpenVisibilityGraphics`，`Dialogs.cpp`：类别的勾选、平面的比例与详细程度，改了立即执行命令）
-  与裁剪视图（`MainFrame::ToggleCrop`）；"创建"面板的复制视图、带细节复制、复制为相关视图（`MainFrame::DuplicatePlan`，之后显示新的平面视图）。
+  "视图"选项卡（命令 `view.*`）："图形"面板的可见性 / 图形（`MainFrame::OpenVisibilityGraphics`，`Dialogs.cpp`：跟随的视图样板、类别的勾选、平面的比例与详细程度、
+  项目过滤器的套用与可见，样板控制的灰掉，改了立即执行命令）、视图过滤器（`MainFrame::OpenViewFilters`）、从当前视图创建样板（`MainFrame::OpenCreateTemplate`）
+  与裁剪视图（`MainFrame::ToggleCrop`）；"创建"面板的复制视图、带细节复制、复制为相关视图（`MainFrame::DuplicatePlan`，之后显示新的平面视图）
+  与明细表/数量（`MainFrame::OpenNewSchedule`，之后 `MainFrame::OpenSchedule` 显示表格，点行首选中它列出的元素；这三个对话框在 `Schedules.cpp`）。
+  项目浏览器的"明细表/数量"列出六张内置的与项目建的明细表；界面还不能导出 CSV（要新的保存对话框种类，`schedule` 命令的 `path` 可以）。
   显示的平面是 `MainFrame::PlanKey`：标高的平面，或 `m_planOf` 指的平面视图（`MainFrame::ShowPlanView`）；绘制、注释工具与填充区域都用它。
   项目浏览器的楼层平面下列出各标高的平面视图，相关视图挂在父视图下；平面视图的特性面板是 `Props::PlanViewRows`
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。

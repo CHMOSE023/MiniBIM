@@ -9,7 +9,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "New"
 msgstr "新建"
 
@@ -37,7 +37,7 @@ msgstr "撤销"
 msgid "Redo"
 msgstr "重做"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Level"
 msgstr "标高"
 
@@ -45,7 +45,7 @@ msgstr "标高"
 msgid "Grid"
 msgstr "轴网"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
 msgid "Wall"
 msgstr "墙"
 
@@ -121,11 +121,11 @@ msgstr "接地导体"
 msgid "Cabling"
 msgstr "综合布线"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Mass"
 msgstr "体量"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Mass Floors"
 msgstr "体量楼层"
 
@@ -149,7 +149,7 @@ msgstr "更新到面"
 msgid "Aligned Dimension"
 msgstr "对齐尺寸"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
 msgid "Text"
 msgstr "文字"
 
@@ -200,6 +200,18 @@ msgstr "裁剪视图"
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Duplicate View"
 msgstr "复制视图"
+
+#: src/Commands/Commands.cpp
+msgid "Schedule"
+msgstr "明细表"
+
+#: src/Commands/Commands.cpp
+msgid "View Filter"
+msgstr "视图过滤器"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "View Template"
+msgstr "视图样板"
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
@@ -273,7 +285,7 @@ msgstr "修剪/延伸为角"
 msgid "Split"
 msgstr "拆分"
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "Delete"
 msgstr "删除"
 
@@ -316,6 +328,138 @@ msgstr "核心面：外部"
 #: src/Model/Model.cpp
 msgid "Core Face: Interior"
 msgstr "核心面：内部"
+
+#: src/Model/Schedule.cpp
+msgid "Room Schedule"
+msgstr "房间明细表"
+
+#: src/Model/Schedule.cpp
+msgid "Door Schedule"
+msgstr "门明细表"
+
+#: src/Model/Schedule.cpp
+msgid "Window Schedule"
+msgstr "窗明细表"
+
+#: src/Model/Schedule.cpp
+msgid "Wall Schedule"
+msgstr "墙明细表"
+
+#: src/Model/Schedule.cpp
+msgid "Floor Schedule"
+msgstr "楼板明细表"
+
+#: src/Model/Schedule.cpp
+msgid "Level Schedule"
+msgstr "标高明细表"
+
+#: src/Model/Schedule.cpp
+msgid "Id"
+msgstr "ID"
+
+#: src/Model/Schedule.cpp
+msgid "Type"
+msgstr "类型"
+
+#: src/Model/Schedule.cpp
+msgid "Family"
+msgstr "族"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Area"
+msgstr "面积"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Width"
+msgstr "宽度"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Height"
+msgstr "高度"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Length"
+msgstr "长度"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Thickness"
+msgstr "厚度"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Depth"
+msgstr "深度"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "System"
+msgstr "系统"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Offset"
+msgstr "偏移"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Mark"
+msgstr "标记"
+
+#: src/Model/Schedule.cpp
+msgid "Operation"
+msgstr "开启方式"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Name"
+msgstr "名称"
+
+#: src/Model/Schedule.cpp
+msgid "Count"
+msgstr "计数"
+
+#: src/Model/Schedule.cpp
+msgid "Volume"
+msgstr "体积"
+
+#: src/Model/Schedule.cpp
+msgid "Diameter"
+msgstr "直径"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Number"
+msgstr "编号"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Perimeter"
+msgstr "周长"
+
+#: src/Model/Schedule.cpp
+msgid "Sill"
+msgstr "窗台高度"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Structural"
+msgstr "结构"
+
+#: src/Model/Schedule.cpp
+msgid "Slope"
+msgstr "坡度"
+
+#: src/Model/Schedule.cpp
+msgid "Plan Area"
+msgstr "投影面积"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Gross Floor Area"
+msgstr "总楼面面积"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Elevation"
+msgstr "高程"
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Line Style"
+msgstr "线样式"
+
+#: src/Model/Schedule.cpp
+msgid "Kind"
+msgstr "种类"
 
 #: src/Model/Snap.cpp
 msgid "Endpoint"
@@ -421,7 +565,7 @@ msgstr "展开功能区（双击选项卡也可以）"
 msgid "Search commands"
 msgstr "搜索命令"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "关闭"
 
@@ -586,32 +730,16 @@ msgid "Construction"
 msgstr "构造"
 
 #: apps/Common/src/GUI/Dialogs.cpp
-msgid "Width"
-msgstr "宽度"
-
-#: apps/Common/src/GUI/Dialogs.cpp
 msgid "Default Thickness"
 msgstr "默认厚度"
-
-#: apps/Common/src/GUI/Dialogs.cpp
-msgid "Height"
-msgstr "高度"
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Default Sill Height"
 msgstr "默认窗台高度"
 
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp
-msgid "Thickness"
-msgstr "厚度"
-
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Tile Size"
 msgstr "板块尺寸"
-
-#: apps/Common/src/GUI/Dialogs.cpp
-msgid "Depth"
-msgstr "深度"
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "{0}: `{1}` is not a length"
@@ -649,7 +777,7 @@ msgstr "重命名…"
 msgid "Name:"
 msgstr "名称："
 
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
 msgid "Create"
 msgstr "创建"
 
@@ -709,7 +837,7 @@ msgstr "插入层"
 msgid "Could not change the type"
 msgstr "无法修改类型"
 
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "Cancel"
 msgstr "取消"
 
@@ -720,10 +848,6 @@ msgstr "应用"
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Materials and Finishes"
 msgstr "材质和装饰"
-
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
-msgid "Name"
-msgstr "名称"
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Color"
@@ -750,6 +874,10 @@ msgid "A dependent view follows its parent's graphics: change them there."
 msgstr "相关视图跟着父视图的图形：请在父视图里改。"
 
 #: apps/Common/src/GUI/Dialogs.cpp
+msgid "Greyed settings follow the template."
+msgstr "灰掉的设置跟着样板。"
+
+#: apps/Common/src/GUI/Dialogs.cpp
 msgid "Coarse"
 msgstr "粗略"
 
@@ -768,6 +896,14 @@ msgstr "模型类别"
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Annotation Categories"
 msgstr "注释类别"
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Filters"
+msgstr "过滤器"
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Visible"
+msgstr "可见"
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Reset"
@@ -877,10 +1013,6 @@ msgstr "选择并修改元素"
 msgid "Align: pick a reference line, then what to line up with it"
 msgstr "对齐：先拾取参照线，再拾取要对齐到它的线"
 
-#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
-msgid "Offset"
-msgstr "偏移"
-
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Offset: pick a wall; a copy goes to the cursor's side"
 msgstr "偏移：拾取一面墙，副本放到光标那一侧"
@@ -960,6 +1092,26 @@ msgstr "相关视图：跟着这个平面的视图范围与图形，有自己的
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Crop the plan to what it shows now, or uncrop it"
 msgstr "把平面裁到它现在显示的范围，或取消裁剪"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Schedule/Quantities"
+msgstr "明细表/数量"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new schedule: a table of the elements of a category, their fields as columns"
+msgstr "新明细表：一个类别的元素列成表，字段作列"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's view filters: the elements of some categories that meet rules, for views to hide or draw another way"
+msgstr "项目的视图过滤器：某些类别里满足规则的元素，供视图隐藏或换一种画法"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Create Template"
+msgstr "创建样板"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A view template with this view's visibility/graphics, scale, detail level and view range"
+msgstr "带这个视图的可见性/图形、比例、详细程度与视图范围的视图样板"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Flip Wall"
@@ -1661,6 +1813,10 @@ msgid "3D Views"
 msgstr "三维视图"
 
 #: apps/Common/src/GUI/Panels.cpp
+msgid "Schedules/Quantities"
+msgstr "明细表/数量"
+
+#: apps/Common/src/GUI/Panels.cpp
 msgid "Views (all)"
 msgstr "视图（全部）"
 
@@ -1705,10 +1861,6 @@ msgid "Dimensions"
 msgstr "尺寸标注"
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Length"
-msgstr "长度"
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Radius"
 msgstr "半径"
 
@@ -1729,10 +1881,6 @@ msgid "Identity Data"
 msgstr "标识数据"
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Mark"
-msgstr "标记"
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Host Wall"
 msgstr "主体墙"
 
@@ -1749,18 +1897,6 @@ msgid "Sill Height"
 msgstr "窗台高度"
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Area"
-msgstr "面积"
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Perimeter"
-msgstr "周长"
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Number"
-msgstr "编号"
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Location"
 msgstr "位置"
 
@@ -1772,10 +1908,6 @@ msgstr "距标高的高度偏移"
 msgid "Slope (°)"
 msgstr "坡度（°）"
 
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Structural"
-msgstr "结构"
-
 #: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
 msgid "Graphics"
 msgstr "图形"
@@ -1783,10 +1915,6 @@ msgstr "图形"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Pattern Angle (°)"
 msgstr "图案角度（°）"
-
-#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
-msgid "Elevation"
-msgstr "高程"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Rotation (°)"
@@ -1817,16 +1945,8 @@ msgid "Z Justification"
 msgstr "Z 轴对正"
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "System"
-msgstr "系统"
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Volume (m³)"
 msgstr "体积 (m³)"
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Gross Floor Area"
-msgstr "总楼面面积"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Text Type"
@@ -1835,10 +1955,6 @@ msgstr "文字类型"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Leader Line"
 msgstr "引线"
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Line Style"
-msgstr "线样式"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Region Type"
@@ -2020,6 +2136,10 @@ msgstr "接地导体"
 msgid "Masses"
 msgstr "体量"
 
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Mass Floor"
+msgstr "体量楼层"
+
 #: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
 msgid "Dimension"
 msgstr "尺寸"
@@ -2155,6 +2275,135 @@ msgstr[0] "{0} 个图元"
 msgid "Opened from {0}: {1}, {2} left out."
 msgstr "已从 {0} 打开：{1}，未导入 {2} 个。"
 
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "equals"
+msgstr "等于"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not equal"
+msgstr "不等于"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is greater than"
+msgstr "大于"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is greater than or equal to"
+msgstr "大于或等于"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is less than"
+msgstr "小于"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is less than or equal to"
+msgstr "小于或等于"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "contains"
+msgstr "包含"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not contain"
+msgstr "不包含"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "begins with"
+msgstr "开头是"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not begin with"
+msgstr "开头不是"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "ends with"
+msgstr "结尾是"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not end with"
+msgstr "结尾不是"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "has a value"
+msgstr "有值"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "has no value"
+msgstr "没有值"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Schedule: {0}"
+msgstr "明细表：{0}"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "No rows yet: the {0} is empty."
+msgstr "还没有行：{0}是空的。"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Total"
+msgstr "总计"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Click a row's first cell to select what it lists."
+msgstr "点一行的第一格，选中它列出的元素。"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "{0} Schedule"
+msgstr "{0}明细表"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "New Schedule"
+msgstr "新建明细表"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Category"
+msgstr "类别"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "View Filters"
+msgstr "视图过滤器"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Filter {0}"
+msgstr "过滤器 {0}"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Make a filter with New, then choose its categories and rules."
+msgstr "用“新建”建一个过滤器，再选它的类别与规则。"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Categories"
+msgstr "类别"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Rules: elements of these categories that meet every rule"
+msgstr "规则：这些类别里满足每条规则的元素"
+
+#: apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr "删除"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Add Rule"
+msgstr "添加规则"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "It picks out {0} element."
+msgid_plural "It picks out {0} elements."
+msgstr[0] "这样挑出 {0} 个元素。"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "View Template {0}"
+msgstr "视图样板 {0}"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Create Template from Current View"
+msgstr "从当前视图创建样板"
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "A view template with {0}'s visibility/graphics, scale, detail level and view range."
+msgstr "带 {0} 的可见性/图形、比例、详细程度与视图范围的视图样板。"
+
 #: apps/Common/src/GUI/Settings.cpp
 msgid "User Interface"
 msgstr "界面"
@@ -2250,10 +2499,6 @@ msgstr "指定"
 #: apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Custom"
 msgstr "自定义"
-
-#: apps/Common/src/GUI/ShortcutsDialog.cpp
-msgid "Remove"
-msgstr "删除"
 
 #: apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "A shortcut is two letters or digits."

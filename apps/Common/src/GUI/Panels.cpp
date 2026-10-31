@@ -572,6 +572,21 @@ namespace MiniBIM
         std::vector<Entry> views;
         views.push_back(group(Tr("Floor Plans"), true, std::move(plans)));
         views.push_back(group(Tr("3D Views"), true, { Entry{ "{3D}", [this] { ShowModel3D(); }, !m_planLevel, false, {} } }));
+        // 明细表：每个项目都有的六个（项目改过的是它自己的），再是项目建的
+        std::vector<Entry> schedules;
+        for (const Bim::Schedules::Builtin& b : Bim::Schedules::Views)
+        {
+            const auto [id, sc] = Bim::Schedules::Standard(m, b.category);
+            const Bim::Json which = id ? Bim::Json{ { "name", sc.name } } : Bim::Json{ { "category", b.category } };
+            schedules.push_back(Entry{ sc.name, [this, which] { OpenSchedule(which); }, false, false, {} });
+        }
+        for (const auto& [id, e] : m.elements.Items())
+            if (const Bim::Schedule* sc = e->As<Bim::Schedule>(); sc && !Bim::Schedules::BuiltinOf(&sc->name, nullptr))
+            {
+                const Bim::Json which{ { "name", sc->name } };
+                schedules.push_back(Entry{ sc->name, [this, which] { OpenSchedule(which); }, false, false, {} });
+            }
+        views.push_back(group(Tr("Schedules/Quantities"), false, std::move(schedules)));
 
         // 族：系统族（墙、楼板……）的类型，再是可载入族的类型
         std::vector<Entry> families;

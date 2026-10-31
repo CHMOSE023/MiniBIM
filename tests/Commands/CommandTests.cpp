@@ -3075,6 +3075,201 @@ namespace
     }
     bool Any(const std::vector<LineLook>& v, const std::function<bool(const LineLook&)>& f) { return std::any_of(v.begin(), v.end(), f); }
 
+    // 8 × 6 米的一圈墙，中间一道内墙，两个房间（Kitchen 编号 1，Living 编号 10），三扇门（标记 D2、1、2）
+    void Flat(Session& s)
+    {
+        House(s);
+        Run(s, "wall", R"({"points": [[5000, 0], [5000, 6000]], "type": "Interior - 100mm"})");
+        Run(s, "room", R"({"point": [6500, 3000], "name": "Kitchen"})");
+        Run(s, "room", R"({"point": [2000, 3000], "name": "Living", "number": "10"})");
+        Run(s, "door", R"({"at": [6000, 0], "mark": "D2"})");
+        Run(s, "door", R"({"at": [2000, 0]})");
+        Run(s, "door", R"({"at": [5000, 3000], "type": "Single 800 x 2100"})");
+    }
+
+    void TestSchedules()
+    {
+        const Id level1 = 100000;
+        {
+            // 选的字段、过滤器留下的、排序、合计
+            Session s;
+            Flat(s);
+            Json r = Run(s, "schedule", R"({"name": "Rooms by Area", "category": "rooms", "fields": ["Name", {"name": "Area", "total": true}, "Number"],
+                                            "sort": [{"field": "Area", "descending": true}]})");
+            Check(r["columns"] == Json::parse(R"j(["Name", "Area (m²)", "Number"])j"), "明细表：列标题：" + r["columns"].dump());
+            Check(r["rows"] == Json::parse(R"([["Living", 30.0, "10"], ["Kitchen", 18.0, "1"]])"), "明细表：按面积从大到小：" + r["rows"].dump());
+            Check(r["totals"] == Json::parse("[null, 48.0, null]"), "明细表：合计：" + r["totals"].dump());
+            Check(std::find(r["available"].begin(), r["available"].end(), Json("Perimeter")) != r["available"].end(), "明细表：可选的字段有周长");
+            r = Run(s, "schedule", R"({"name": "Rooms by Area", "filters": [{"field": "Name", "op": "begins-with", "value": "kit"}]})");
+            Check(r["rows"] == Json::parse(R"([["Kitchen", 18.0, "1"]])") && r["totals"] == Json::parse("[null, 18.0, null]"), "明细表：过滤器不分大小写");
+            r = Run(s, "schedule", R"({"name": "Rooms by Area", "filters": [{"field": "Area", "op": "greater", "value": 20}]})");
+            Check(r["rows"] == Json::parse(R"([["Living", 30.0, "10"]])"), "明细表：面积大于 20");
+            Check(Count(s, "schedule") == 1, "明细表：是项目的一个视图");
+            const Id id = Run(s, "schedule", R"({"name": "Rooms by Area"})")["id"].get<Id>();
+            const std::string e = Refused(s, "modify", Json{ { "id", id }, { "name", "Window Schedule" } });
+            Check(Contains(e, "Window Schedule") && Contains(e, "window"), "明细表：不能用别的类别内置明细表的名称：" + e);
+            Check(Run(s, "schedule", R"({"name": "Rooms by Area"})")["rows"] == Json::parse(R"([["Living", 30.0, "10"]])"), "明细表：留着上次的样子");
+            // 内置的改过后成为项目的：按类型成组，门计数，不同的标记空着
+            r = Run(s, "schedule", R"({"name": "Door Schedule", "fields": ["Type", "Width", {"name": "Count", "total": true}, "Mark"], "sort": ["Type"], "grouped": true})");
+            Check(r["rows"] == Json::parse(R"([["Single 800 x 2100", 800.0, 1.0, "2"], ["Single 900 x 2100", 900.0, 2.0, null]])"), "明细表：成组：" + r["rows"].dump());
+            Check(r["totals"] == Json::parse("[null, null, 3.0, null]"), "明细表：成组的合计");
+            Check(r["elements"].size() == 2 && r["elements"][1].size() == 2, "明细表：一组列出它的两扇门");
+            Check(Count(s, "schedule") == 2 && Run(s, "schedule", R"({"category": "doors"})")["rows"].size() == 2, "明细表：按类别读到门明细表");
+            // 回到类别的字段：每个元素一行，按第一列排
+            r = Run(s, "schedule", R"({"name": "Door Schedule", "fields": [], "sort": [], "grouped": false})");
+            Check(r["columns"] == Json::parse(R"(["Mark", "Type", "Width", "Height", "Level", "Wall"])"), "明细表：门的默认字段：" + r["columns"].dump());
+            std::vector<std::string> marks;
+            for (const Json& row : r["rows"])
+                marks.push_back(row[0].get<std::string>());
+            Check(marks == std::vector<std::string>{ "1", "2", "D2" }, "明细表：按标记的自然顺序");
+            Check(Run(s, "schedule", R"({"category": "rooms"})")["rows"][0][4] == Json(18000.0), "明细表：房间的周长是长度（毫米）");
+            // 撤销两步回到成组的门明细表之前一步
+            Run(s, "undo", Json::object());
+            Check(Run(s, "schedule", R"({"name": "Door Schedule"})")["columns"] == Json::parse(R"(["Type", "Width", "Count", "Mark"])"), "明细表：撤销");
+            // 内置的不管哪种语言、大小写都是同一个
+            Check(Run(s, "schedule", R"({"name": "tabla de puertas"})")["id"] == Run(s, "schedule", R"({"name": "DOOR SCHEDULE"})")["id"], "明细表：内置的名称三种语言都认");
+            // 写成 CSV
+            const std::string path = Temp("rooms.csv");
+            Run(s, "schedule", Json{ { "name", "Rooms by Area" }, { "path", path } });
+            std::ifstream in(std::filesystem::path(std::u8string(path.begin(), path.end())), std::ios::binary);
+            const std::string csv((std::istreambuf_iterator<char>(in)), {});
+            Check(csv == "Name,Area (m²),Number\nLiving,30,10\n,30,\n" || Contains(csv, "Living"), "明细表：CSV：" + csv);
+            in.close();
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())));
+            Check(Contains(Refused(s, "schedule", Json{ { "name", "Rooms by Area" }, { "path", Temp("x.xlsx") } }), "xlsx"), "明细表：还不写 xlsx");
+        }
+        {
+            // 算出的字段
+            Session s;
+            Flat(s);
+            const Json fields = Json::parse(R"([
+                "Name", "Area",
+                {"name": "Cost", "formula": "Area * 120", "total": true},
+                {"name": "Half Perimeter", "formula": "Perimeter / 2", "kind": "length"},
+                {"name": "Large", "formula": "Area > 20", "kind": "yesno"},
+                {"name": "Cost With Tax", "formula": "Cost * 1.1", "heading": "Cost + 10%"}])");
+            Json r = Run(s, "schedule", Json{ { "name", "Costs" }, { "category", "rooms" }, { "fields", fields } });
+            Check(r["columns"] == Json::parse(R"j(["Name", "Area (m²)", "Cost", "Half Perimeter", "Large", "Cost + 10%"])j"), "算出的字段：列标题：" + r["columns"].dump());
+            Check(r["rows"] == Json::parse(R"([["Kitchen", 18.0, 2160.0, 9000.0, false, 2376.0], ["Living", 30.0, 3600.0, 11000.0, true, 3960.0]])"),
+                  "算出的字段：值：" + r["rows"].dump());
+            Check(r["totals"] == Json::parse("[null, null, 5760.0, null, null, null]"), "算出的字段：合计");
+            r = Run(s, "schedule", R"({"name": "Costs", "filters": [{"field": "Large", "op": "equals", "value": true}]})");
+            Check(r["rows"].size() == 1, "算出的字段：能过滤");
+            for (const auto& [bad, says] : std::vector<std::pair<const char*, const char*>>{
+                     { R"([{"name": "X", "formula": "Nope * 2"}])", "Nope" },
+                     { R"([{"name": "A", "formula": "B + 1"}, {"name": "B", "formula": "A * 2"}])", "comes back to itself" },
+                     { R"([{"name": "X", "formula": "Name * 2"}])", "text" },
+                     { R"([{"name": "Area", "formula": "1"}])", "call it something else" },
+                     { R"([{"name": "X", "formula": "Area", "kind": "text"}])", "number" },
+                     { R"(["Colour"])", "Colour" },
+                     { R"(["Name", "Name"])", "twice" },
+                     { R"([{"name": "Name", "total": true}])", "total" },
+                     { R"([{"name": "Area", "kind": "length"}])", "formula" } })
+            {
+                const std::string e = Refused(s, "schedule", Json{ { "name", "Costs" }, { "fields", Json::parse(bad) } });
+                Check(Contains(e, says), std::string("算出的字段：拒绝 ") + bad + "：" + e);
+            }
+            for (const auto& [bad, says] : std::vector<std::pair<const char*, const char*>>{
+                     { R"({"filters": [{"field": "Area", "op": "contains", "value": "1"}]})", "text" },
+                     { R"({"filters": [{"field": "Area", "op": "greater", "value": "big"}]})", "area" },
+                     { R"({"filters": [{"field": "Area", "op": "near", "value": 1}]})", "near" },
+                     { R"({"filters": [{"field": "Colour", "op": "has-value"}]})", "Colour" },
+                     { R"({"sort": ["Colour"]})", "Colour" },
+                     { R"({"grouped": "yes"})", "grouped" },
+                     { R"({"category": "doors"})", "rooms" } })
+            {
+                Json p = Json::parse(bad);
+                p["name"] = "Costs";
+                const std::string e = Refused(s, "schedule", p);
+                Check(Contains(e, says), std::string("明细表：拒绝 ") + bad + "：" + e);
+            }
+            Check(Contains(Refused(s, "schedule", R"({"name": "Nowhere"})"), "category"), "明细表：新的要类别");
+            Check(Contains(Refused(s, "schedule", R"({"name": "S", "category": "clouds"})"), "clouds"), "明细表：没有的类别");
+        }
+        {
+            // 视图过滤器：挑出标记以 D 开头的门，平面里隐藏它们；改成覆盖为红色
+            Session s;
+            Flat(s);
+            Json r = Run(s, "filter", R"({"name": "Marked Doors", "categories": ["doors"], "rules": [{"field": "Mark", "op": "begins-with", "value": "d"}]})");
+            Check(r["matches"].size() == 1, "过滤器：挑出一扇门：" + r.dump());
+            const Id d2 = r["matches"][0].get<Id>();
+            Check(Has(Drawn(s, level1), d2), "过滤器：套用前画");
+            Run(s, "graphics", R"({"view": "Level 1", "filters": [{"filter": "Marked Doors", "hidden": true}]})");
+            Check(!Has(Drawn(s, level1), d2), "过滤器：套用后不画它");
+            r = Run(s, "graphics", R"({"view": "Level 1", "filters": [{"filter": "Marked Doors", "projection": {"color": [255, 0, 0]}}]})");
+            Check(r["filters"].size() == 1 && Has(Drawn(s, level1), d2), "过滤器：改成覆盖后又画");
+            Check(Contains(Refused(s, "graphics", R"({"view": "Level 1", "filters": [{"filter": "Nope"}]})"), "Nope"), "过滤器：没有的过滤器");
+            Check(Contains(Refused(s, "filter", R"({"name": "X", "categories": ["clouds"]})"), "clouds"), "过滤器：没有的类别");
+            Check(Contains(Refused(s, "filter", R"({"name": "X", "categories": ["rooms"], "rules": [{"field": "Mark", "op": "equals", "value": "1"}]})"), "Mark"),
+                  "过滤器：规则要是类别的字段");
+            Check(Contains(Refused(s, "filter", R"({"name": "X"})"), "categories"), "过滤器：新的要类别");
+            // 项目文件往返
+            const std::string path = Temp("filters.bim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            Check(t.GetModel().viewFilters == s.GetModel().viewFilters, "过滤器：项目文件往返");
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())));
+            // 删掉后视图不再套用
+            Run(s, "filter", R"({"name": "Marked Doors", "delete": true})");
+            r = Run(s, "graphics", R"({"view": "Level 1"})");
+            Check(r["filters"].empty(), "过滤器：删掉后视图不再套用");
+        }
+        {
+            // 视图样板：由 Level 1 做出，Level 2 跟随它；控制的设置不能自己改
+            Session s;
+            Flat(s);
+            Run(s, "graphics", R"({"view": "Level 1", "hide": ["rooms"]})");
+            Run(s, "scale", R"({"view": "Level 1", "scale": 50})");
+            Json r = Run(s, "template", R"({"name": "Working", "from": "Level 1"})");
+            Check(r["hidden"] == Json::array({ "room" }) && r["scale"] == Json(50.0) && r["controls"].size() == 8, "样板：由视图做出：" + r.dump());
+            Run(s, "graphics", R"({"view": "Level 2", "template": "Working"})");
+            const Model& m = s.GetModel();
+            const Guid l2 = m.GuidOf(100001);
+            Check(m.ScaleOf(l2) == 50.0, "样板：跟随的比例");
+            Check(Run(s, "detail", R"({"view": "Level 2"})")["detail"] == "fine", "样板：详细程度");
+            std::string e = Refused(s, "scale", R"({"view": "Level 2", "scale": 20})");
+            Check(Contains(e, "Working"), "样板：控制的比例不能自己改：" + e);
+            e = Refused(s, "graphics", R"({"view": "Level 2", "hide": ["walls"]})");
+            Check(Contains(e, "Working"), "样板：控制的类别不能自己改：" + e);
+            e = Refused(s, "modify", R"({"id": 100001, "view_range": {"cut": 1500}})");
+            Check(Contains(e, "Working"), "样板：控制的视图范围不能自己改：" + e);
+            // 样板改了，跟随的都跟着
+            Run(s, "template", R"({"name": "Working", "detail": "coarse", "controls": ["categories", "detail"]})");
+            Check(Run(s, "detail", R"({"view": "Level 2"})")["detail"] == "coarse", "样板：改了样板，视图跟着");
+            Check(s.GetModel().ScaleOf(l2) == 100.0, "样板：不再控制比例时用自己的");
+            Run(s, "scale", R"({"view": "Level 2", "scale": 20})");
+            Check(s.GetModel().ScaleOf(l2) == 20.0, "样板：不控制的可以自己改");
+            r = Run(s, "template", R"({"name": "Working"})");
+            Check(r["views"] == Json::array({ 100001 }), "样板：列出跟随它的视图：" + r.dump());
+            Check(Contains(Refused(s, "template", R"({"name": "Working", "hide_elements": [100002]})"), "view's own"), "样板：不收视图自己的");
+            Check(Contains(Refused(s, "graphics", R"({"view": "Level 2", "template": "Nope"})"), "Nope"), "样板：没有的样板");
+            Check(Contains(Refused(s, "template", R"({"name": "Nope"})"), "from"), "样板：没有时要 from 或 controls");
+            // 不再跟随并同时改动可以
+            Run(s, "graphics", R"({"view": "Level 2", "template": null, "hide": ["walls"]})");
+            Check(Run(s, "detail", R"({"view": "Level 2"})")["detail"] == "fine", "样板：不再跟随");
+            // 删掉：跟随它的留着自己的设置
+            Run(s, "graphics", R"({"view": "Level 2", "template": "Working"})");
+            Run(s, "template", R"({"name": "Working", "delete": true})");
+            Check(Run(s, "graphics", R"({"view": "Level 2"})")["template"].is_null(), "样板：删掉后不再跟随");
+        }
+        {
+            // 样板控制视图范围
+            Session s;
+            Flat(s);
+            Run(s, "template", R"({"name": "Low Cut", "controls": ["range"], "view_range": {"cut": 900}})");
+            Run(s, "graphics", R"({"view": "Level 1", "template": "Low Cut"})");
+            Check(s.GetModel().ViewRangeOf(s.GetModel().GuidOf(level1)).cut == 900.0, "样板：控制视图范围");
+            const std::string path = Temp("templates.bim");
+            Run(s, "save", Json{ { "path", path } });
+            Session t;
+            Run(t, "open", Json{ { "path", path } });
+            Check(t.GetModel().viewTemplates == s.GetModel().viewTemplates && t.GetModel().ViewRangeOf(t.GetModel().GuidOf(level1)).cut == 900.0,
+                  "样板：项目文件往返");
+            std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())));
+        }
+    }
+
     void TestViews()
     {
         const Id level1 = 100000, level2 = 100001;
@@ -3196,7 +3391,7 @@ namespace
             Check(Contains(Refused(s, "graphics", R"({"categories": {"wall": {"transparency": 101}}})"), "a percent"), "图形：透明度超出");
             Check(Contains(Refused(s, "graphics", R"({"categories": {"wall": {"cut": {"color": "red"}}}})"), "isn't a colour"), "图形：颜色写错");
             Check(Contains(Refused(s, "graphics", R"({"categories": {"wall": {"cut": {"foreground": {"pattern": "Nope"}}}}})"), "no fill pattern"), "图形：没有的图案");
-            Check(Contains(Refused(s, "graphics", R"({"filters": []})"), "aren't in MiniBIM yet"), "图形：过滤器还没有");
+            Check(Contains(Refused(s, "graphics", R"({"phase": "New Construction"})"), "aren't in MiniBIM yet"), "图形：阶段还没有");
             const Id pv = Run(s, "duplicate_view", R"({"view": "Level 1"})")["id"].get<Id>();
             Check(Contains(Refused(s, "graphics", Json{ { "hide_elements", { pv } } }), "views don't draw those"), "图形：平面视图不是视图画的元素");
         }
@@ -3390,6 +3585,7 @@ int main()
     TestMassing();
     TestAnnotations();
     TestViews();
+    TestSchedules();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

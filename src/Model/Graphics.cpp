@@ -1,8 +1,10 @@
 // 移植自 BIMCraft crates/core/src/graphics.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Model/Graphics.h"
+#include "Model/Model.h"
 #include "Model/Text.h"
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 namespace MiniBIM::Bim
 {
@@ -156,11 +158,68 @@ namespace MiniBIM::Bim
         return it != categories.end() && it->second.hidden;
     }
 
-    bool Graphics::Check(const std::map<std::string, FillPattern>& patterns, std::string& error) const
+    Graphics Graphics::Resolved(const Model& m) const
     {
+        Graphics g = *this;
+        if (!templateName)
+            return g;
+        const auto t = m.viewTemplates.find(*templateName);
+        if (t == m.viewTemplates.end())
+            return g;
+        const auto controls = [&](Group x) { return t->second.controls.count(x) != 0; };
+        const Graphics& tg = t->second.graphics;
+        if (controls(Group::Categories))
+            g.categories = tg.categories;
+        if (controls(Group::Filters))
+            g.filters = tg.filters;
+        if (controls(Group::Phase))
+        {
+            g.phase       = tg.phase;
+            g.phaseFilter = tg.phaseFilter;
+        }
+        if (controls(Group::Options))
+            g.options = tg.options;
+        if (controls(Group::Scale))
+            g.scale = tg.scale;
+        if (controls(Group::Detail))
+            g.detail = tg.detail;
+        if (controls(Group::Style))
+            g.style = tg.style;
+        return g;
+    }
+
+    const std::string* Graphics::ControlledBy(const Model& m, Group group) const
+    {
+        if (!templateName)
+            return nullptr;
+        const auto t = m.viewTemplates.find(*templateName);
+        return t != m.viewTemplates.end() && t->second.controls.count(group) ? &*templateName : nullptr;
+    }
+
+    namespace
+    {
+        // " (there are: a, b)"，没有时为空
+        template <typename Map>
+        std::string Known(const Map& map)
+        {
+            std::string out;
+            for (const auto& [name, _] : map)
+                out += (out.empty() ? " (there are: " : ", ") + name;
+            return out.empty() ? out : out + ")";
+        }
+    }
+
+    bool Graphics::Check(const Model& m, std::string& error) const
+    {
+        const auto& patterns = m.fillPatterns;
         if (categories.size() > GraphicsOf::MaxEntries || elements.size() > GraphicsOf::MaxEntries)
         {
             error = "it has more than " + std::to_string(GraphicsOf::MaxEntries) + " overrides";
+            return false;
+        }
+        if (filters.size() > GraphicsOf::MaxApplied)
+        {
+            error = "it applies " + std::to_string(filters.size()) + " filters; a view applies up to " + std::to_string(GraphicsOf::MaxApplied);
             return false;
         }
         for (const auto& [c, o] : categories)
@@ -193,6 +252,27 @@ namespace MiniBIM::Bim
         for (const auto& [id, o] : elements)
             if (!patternsOk(o))
                 return false;
+        std::set<std::string> seen;
+        for (const Applied& a : filters)
+        {
+            if (!m.viewFilters.count(a.filter))
+            {
+                error = "there's no view filter `" + a.filter + "`" + Known(m.viewFilters);
+                return false;
+            }
+            if (!seen.insert(a.filter).second)
+            {
+                error = "filter `" + a.filter + "` is applied twice";
+                return false;
+            }
+            if (!a.over.Check("filter `" + a.filter + "`", error) || !patternsOk(a.over))
+                return false;
+        }
+        if (templateName && !m.viewTemplates.count(*templateName))
+        {
+            error = "there's no view template `" + *templateName + "`" + Known(m.viewTemplates);
+            return false;
+        }
         if (scale && !(*scale >= GraphicsOf::MinScale && *scale <= GraphicsOf::MaxScale))
         {
             error = "its scale 1 : " + Text::Shortest(*scale) + " isn't between 1 : " + Text::Shortest(GraphicsOf::MinScale) + " and 1 : " +
@@ -200,6 +280,33 @@ namespace MiniBIM::Bim
             return false;
         }
         return true;
+    }
+
+    namespace GroupOf
+    {
+        const char* Key(Group g)
+        {
+            switch (g)
+            {
+            case Group::Categories: return "categories";
+            case Group::Filters:    return "filters";
+            case Group::Range:      return "range";
+            case Group::Phase:      return "phase";
+            case Group::Options:    return "options";
+            case Group::Scale:      return "scale";
+            case Group::Detail:     return "detail";
+            case Group::Style:      return "style";
+            }
+            return "categories";
+        }
+
+        std::optional<Group> Parse(std::string_view s)
+        {
+            for (const Group g : All)
+                if (s == Key(g))
+                    return g;
+            return std::nullopt;
+        }
     }
 
     namespace GraphicsOf

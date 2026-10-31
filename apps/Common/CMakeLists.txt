@@ -27,6 +27,7 @@ add_library(MiniBIMApp STATIC
     src/GUI/Modify.cpp
     src/GUI/SketchMode.cpp
     src/GUI/Dialogs.cpp
+    src/GUI/Schedules.cpp
     src/GUI/Parameters.cpp
     src/GUI/Recent.cpp
     src/GUI/Revit.cpp

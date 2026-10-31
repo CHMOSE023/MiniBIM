@@ -23,8 +23,9 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Snap.h` | `snap.rs` | 捕捉：平面上点下的点落在哪（端点、中点、交点、圆心、垂足、墙中心线、角度引导线、最近的 10 毫米），标尺的读数与刻度 |
 | `src/Model/Sketch.h` | `sketch.rs` | 草图：零散的直线与圆弧（`SketchLine`）解成闭合的环、嵌套成轮廓与洞（`Sketch::Solve`、`Sketch::SolveOne`），解不出时列出每个问题（相交、重叠、分叉、开口、没有面积、几个外轮廓）与涉及的线 |
 | `src/Model/Massing.h` | `massing.rs` | 体量做出的元素的记号（`Massing::FloorMark`、`Massing::Face`）、按面重建（`Massing::Follow`）、放样的轮廓与三角形、竖直的面、放样的检查 |
-| `src/Model/Graphics.h` | `graphics.rs` | 视图的可见性 / 图形：`Override`（隐藏、看到的与剖到的线和填充、半色调、透明度）、`Graphics`（按类别、按元素的覆盖，比例、详细程度、视觉样式）、`Look`（落到各元素上的样子）、视图画的类别 `GraphicsOf::Drawn` |
-| `src/Model/Views.cpp` | `model.rs`、`graphics.rs` 的视图部分 | 平面视图与三维视图：`Model::PlanLevel`、`PlanSource`（相关视图跟父视图）、`ViewRangeOf`、`CropOf`、`ViewGraphics`、`ScaleOf`、`ViewName`、`FreeViewName`、`Default3D`、`LookOf` |
+| `src/Model/Graphics.h` | `graphics.rs` | 视图的可见性 / 图形：`Override`（隐藏、看到的与剖到的线和填充、半色调、透明度）、`Graphics`（按类别、按元素的覆盖，比例、详细程度、视觉样式）、`Look`（落到各元素上的样子）、视图画的类别 `GraphicsOf::Drawn`；套用的过滤器 `Applied`、跟随的样板（`Graphics::Resolved`、`Graphics::ControlledBy`，样板控制的组 `Group`） |
+| `src/Model/Schedule.h` | `schedule.rs` | 明细表：字段（各类别自己的、族参数、计算公式）、过滤条件、排序、分组与总计，表格 `Schedules::TableOf`、内置的六张 `Schedules::Views`、`Schedules::ToCsv`；视图过滤器的规则也用它（`Schedules::Picks`） |
+| `src/Model/Views.cpp` | `model.rs`、`graphics.rs` 的视图部分 | 平面视图与三维视图：`Model::PlanLevel`、`PlanSource`（相关视图跟父视图）、`ViewRangeOf`、`CropOf`、`ViewGraphics`、`ScaleOf`、`ViewName`、`FreeViewName`、`Default3D`、`LookOf`（类别覆盖 → 过滤器 → 元素覆盖）、`CheckFollowed` |
 | `src/Model/Styles.h` | `lines.rs`、`fills.rs`、`model.rs` 的 `TextType` | 注释的库条目：线型图案、线样式、填充图案、填充区域类型、文字类型，各语言的默认条目与检查 |
 | `src/Model/Curve.h` | `curves.rs` | 详图线的曲线：多段线（每段直线或圆弧）与圆；长度、映射、检查（椭圆与样条没有移植，读文件时略去那条线） |
 | `src/Model/Annotate.cpp` | `model.rs`、`render.rs` 的注释部分 | 注释在哪个平面、标记写什么、尺寸量到的线与值、高程点读谁、元素在平面上的点（`Model::Anchor`） |
@@ -100,14 +101,21 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   `ReferenceNear`、`ArcNear`（`Commands.h`）是 `dimension` 把点认成参照的办法，界面的尺寸工具也用
 - 视图（5e1，移植自 `graphics.rs`、`model.rs` 的视图部分）：标高的平面、`PlanView`（平面视图：标高、名称、视图范围、裁剪、图形，相关视图有 `parent`）与 `View3D`
   （三维视图；默认的 `{3D}` 在第一次改它的图形或视觉样式时建出来）各有 `Graphics`。视图名称在标高、平面视图、三维视图里不重，平面视图不能用标高的名称。
-  命令 `graphics`（VV：hide / show、hide_elements / show_elements、categories / elements 的覆盖合并、reset；视图样板、过滤器、阶段、设计选项与 CAD 图层还没有，给了就报错）、
+  命令 `graphics`（VV：hide / show、hide_elements / show_elements、categories / elements 的覆盖合并、reset、template、filters；阶段、设计选项与 CAD 图层还没有，给了就报错）、
   `scale`、`detail`、`visual_style`、`crop`（不给区域时裁到显示的四周留 1 米）、`duplicate_view`（DP：duplicate、detailing 复制注释、dependent）。
   要标高的命令也收平面视图（`PlanParam`：标高与平面视图），尺寸、标记、文字、高程点、详图线、填充区域画进那个平面视图；相关视图不能自己改图形、比例、详细程度。
   删除连带：标高带走它的平面视图，父视图带走相关视图，视图带走它里面的注释。
   平面（`Render::Draw` 收平面键）：视图隐藏的元素不画（门窗、房间边界照旧按模型），`Drawing::Dress` 照覆盖改线色、笔、虚实、填充、半色调，剖到的合并填充按覆盖颜色分组，
   粗略详细程度不画复合墙的层线，比例取 `Model::ScaleOf`；有裁剪时 `Drawing::Crop` 裁掉框外的（房间、尺寸、标记、文字、高程点整个留着）。
   三维视图 `ModelScene` 不建默认三维视图隐藏的元素；三维里的覆盖颜色、透明度与视觉样式记在文件里，还不画。
-  读文件时图形的视图样板、过滤器、阶段、设计选项、Linework、CAD 图层略去（随 5e2、5g）
+  读文件时图形的阶段、设计选项、Linework、CAD 图层略去（随 5g 以后）
+- 视图样板、视图过滤器与明细表（5e2，移植自 `graphics.rs`、`schedule.rs`）：`Model::viewFilters`（`ViewFilter`：类别与规则，规则是明细表的 `Schedules::Filter`）、
+  `Model::viewTemplates`（`ViewTemplate`：控制的组、图形、视图范围）。命令 `filter`（建、改、`delete`）、`template`（`from` 一个视图建，或给出各组；`delete` 时跟随的视图带走样板的设置）、
+  `graphics {template}` 跟随或不跟随，`graphics {filters}` 换套用的过滤器列表；样板控制的组视图自己不能改（`graphics`、`scale`、`detail`、`visual_style`、改 `view_range` 都被拒，
+  `Model::CheckFollowed`），读时用 `Graphics::Resolved`。明细表是元素 `Schedule`（名称、类别、字段、过滤、排序、分组），命令 `schedule` 按 `name` 或 `category`
+  打开或建，给 `fields` 等就改，回复表格；`path` 写 CSV（.xlsx 拒绝）。六张内置明细表（房间、门、窗、墙、楼板、标高）不存进模型，改了才建出元素，
+  名称三种语言都认。字段：各类别自己的（`Schedules::OwnField`）、族参数、`formula`（族参数的公式，引用别的字段，循环报错）。
+  没移植的：楼梯、坡道、栏杆的明细表，阶段与设计选项的字段，项目参数的字段（随 5f），导出 .xlsx
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
@@ -149,7 +157,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   项目文件（含打开 BIMCraft 文件时略去的内容）、示例房屋、恶意参数扫描，结构（`TestStructure`）与 MEP（`TestMep`：七类 run 的命令、
   被拒、类型、编辑、平面与捕捉，起步设备族在各语言里都有、每个类型的形体高度对）与体量（`TestMassing`：体量、体量楼层再跑与 prune、按面建模、
   `update_by_face`、放样）与注释（`TestAnnotations`：各注释命令、删除标高的连带、项目文件往返与平面、BIMCraft 旧文件的文字大小与别的视图里的注释、测量）与视图（`TestViews`：隐藏类别与元素、线与填充的覆盖、半色调、三维视图、比例与详细程度、复制视图三种方式、
-  平面视图里的注释、相关视图、裁剪、删除的连带、项目文件往返）
+  平面视图里的注释、相关视图、裁剪、删除的连带、项目文件往返）与明细表（`TestSchedules`：字段、计算、过滤、排序、分组、总计、内置的名称、CSV，过滤器的隐藏与覆盖，
+  样板的跟随、被控制的组被拒、样板改了跟着变、样板的视图范围、文件往返）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

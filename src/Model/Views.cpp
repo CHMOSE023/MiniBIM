@@ -53,11 +53,19 @@ namespace MiniBIM::Bim
         const Element* e = elements.Get(PlanSource(key));
         if (!e)
             return ViewRange{};
+        const ViewRange* range = nullptr;
+        const Graphics*  g     = nullptr;
         if (const Level* l = e->As<Level>())
-            return l->viewRange;
-        if (const PlanView* v = e->As<PlanView>())
-            return v->viewRange;
-        return ViewRange{};
+            range = &l->viewRange, g = &l->graphics;
+        else if (const PlanView* v = e->As<PlanView>())
+            range = &v->viewRange, g = &v->graphics;
+        else
+            return ViewRange{};
+        // 跟随的样板控制视图范围时取样板的
+        if (g->ControlledBy(*this, Group::Range))
+            if (const auto& t = viewTemplates.at(*g->templateName); t.viewRange)
+                return *t.viewRange;
+        return *range;
     }
 
     namespace
@@ -91,7 +99,7 @@ namespace MiniBIM::Bim
     double Model::ScaleOf(Guid view) const
     {
         const Graphics* g = ViewGraphics(view);
-        return g ? g->ScaleN(units) : UnitsOf::DefaultScale(units);
+        return g ? g->Resolved(*this).ScaleN(units) : UnitsOf::DefaultScale(units);
     }
 
     const std::string* Model::ViewName(Guid id) const
@@ -105,6 +113,8 @@ namespace MiniBIM::Bim
             return &v->name;
         if (const View3D* v3 = e->As<View3D>())
             return &v3->name;
+        if (const Schedule* sc = e->As<Schedule>())
+            return &sc->name;
         return nullptr;
     }
 
@@ -132,29 +142,70 @@ namespace MiniBIM::Bim
 
     Look Model::LookOf(Guid view) const
     {
-        Look look;
         const Graphics* g = ViewGraphics(view);
-        if (!g)
+        return g ? LookWith(*g) : Look{};
+    }
+
+    Look Model::LookWith(const Graphics& own) const
+    {
+        const Graphics g = own.Resolved(*this);
+        Look look;
+        look.style = g.style;
+        if (g.categories.empty() && g.filters.empty() && g.elements.empty())
             return look;
-        look.style = g->style;
-        if (g->categories.empty() && g->elements.empty())
-            return look;
+        // 套用的每个过滤器，以及它挑出的元素
+        std::vector<std::pair<const Applied*, std::set<Id>>> applied;
+        for (const Applied& a : g.filters)
+            if (const auto f = viewFilters.find(a.filter); f != viewFilters.end())
+                applied.emplace_back(&a, Schedules::Picks(*this, f->second.categories, f->second.rules));
         for (const auto& [id, e] : elements.Items())
         {
             const char* cat = e->Category();
             if (!GraphicsOf::Drawn(cat))
                 continue;
-            // 类别的，再是元素自己的
-            const auto c = g->categories.find(cat);
-            Override over = c == g->categories.end() ? Override{} : c->second;
-            if (const auto own = g->elements.find(GuidOf(id)); own != g->elements.end())
-                over = own->second.Over(over);
+            // 类别的，再是各过滤器的（从最后一个到第一个，第一个的最后盖上），再是元素自己的
+            const auto c = g.categories.find(cat);
+            Override over = c == g.categories.end() ? Override{} : c->second;
+            for (auto a = applied.rbegin(); a != applied.rend(); ++a)
+                if (a->second.count(id))
+                    over = a->first->over.Over(over);
+            if (const auto mine = g.elements.find(GuidOf(id)); mine != g.elements.end())
+                over = mine->second.Over(over);
             if (over.hidden)
                 look.hidden.insert(id);
             else if (!over.Empty())
                 look.paint.emplace(id, std::move(over));
         }
         return look;
+    }
+
+    bool Model::CheckFollowed(const Element& old, const Element& now, std::string& error) const
+    {
+        const Graphics* a = GraphicsIn(&old);
+        const Graphics* b = GraphicsIn(&now);
+        if (!a || !b || !b->templateName)
+            return true;
+        const auto t = viewTemplates.find(*b->templateName);
+        if (t == viewTemplates.end())
+            return true;
+        const auto follows = [&](Group group, bool same, const char* label)
+        {
+            if (!t->second.controls.count(group) || same)
+                return true;
+            error = std::string("its ") + label + " follow view template `" + t->first + "`; change the template, or unfollow it (`template: null`)";
+            return false;
+        };
+        const ViewRange* ra = nullptr;
+        const ViewRange* rb = nullptr;
+        if (const Level* x = old.As<Level>(); x && now.As<Level>())
+            ra = &x->viewRange, rb = &now.As<Level>()->viewRange;
+        if (const PlanView* x = old.As<PlanView>(); x && now.As<PlanView>())
+            ra = &x->viewRange, rb = &now.As<PlanView>()->viewRange;
+        return follows(Group::Categories, a->categories == b->categories, "categories") && follows(Group::Filters, a->filters == b->filters, "filters") &&
+               follows(Group::Phase, a->phase == b->phase && a->phaseFilter == b->phaseFilter, "phase and phase filter") &&
+               follows(Group::Options, a->options == b->options, "design options") && follows(Group::Scale, a->scale == b->scale, "scale") &&
+               follows(Group::Detail, a->detail == b->detail, "detail level") && follows(Group::Style, a->style == b->style, "visual style") &&
+               (!ra || follows(Group::Range, *ra == *rb, "view range"));
     }
 
     Look Model::LookOf3D() const

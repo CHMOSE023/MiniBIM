@@ -397,7 +397,7 @@ namespace MiniBIM::Props
             { "wire", N_("Wire"), N_("Wires") },           { "cable", N_("Cable"), N_("Cables") },
             { "downconductor", N_("Down Conductor"), N_("Down Conductors") },
             { "groundconductor", N_("Earthing Conductor"), N_("Earthing Conductors") },
-            { "mass", N_("Mass"), N_("Masses") },
+            { "mass", N_("Mass"), N_("Masses") },           { "massfloor", N_("Mass Floor"), N_("Mass Floors") },
             { "dimension", N_("Dimension"), N_("Dimensions") }, { "text", N_("Text Note"), N_("Text Notes") },
             { "spot", N_("Spot Elevation"), N_("Spot Elevations") }, { "tag", N_("Tag"), N_("Tags") },
             { "line", N_("Detail Line"), N_("Detail Lines") }, { "region", N_("Filled Region"), N_("Filled Regions") },

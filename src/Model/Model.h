@@ -8,6 +8,7 @@
 #include "Model/Language.h"
 #include "Model/Library.h"
 #include "Model/Runs.h"
+#include "Model/Schedule.h"
 #include "Model/Curve.h"
 #include "Model/Styles.h"
 #include "Model/Units.h"
@@ -101,6 +102,23 @@ namespace MiniBIM::Bim
         P3   max{};
         bool on = true;
         bool operator==(const SectionBox&) const = default;
+    };
+
+    // 视图过滤器，同 Revit 的参数过滤器：它的类别里每条规则（明细表过滤器的：字段、比较、值）都成立的元素，给视图隐藏或另画
+    struct ViewFilter
+    {
+        std::vector<std::string>       categories;
+        std::vector<Schedules::Filter> rules;
+        bool operator==(const ViewFilter&) const = default;
+    };
+
+    // 视图样板：一个名称下的设置，视图跟随它时 controls 里的那几组取它的
+    struct ViewTemplate
+    {
+        std::set<Group>          controls;
+        Graphics                 graphics;
+        std::optional<ViewRange> viewRange;
+        bool operator==(const ViewTemplate&) const = default;
     };
 
     // 三维视图：从正东逆时针 azimuth 度、向上 elevation 度看过去。默认三维视图 {3D} 在它的图形第一次改动时建出来
@@ -616,7 +634,7 @@ namespace MiniBIM::Bim
     {
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
                                      Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass,
-                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D>;
+                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D, Schedule>;
         Variant v;
 
         Element() = default;
@@ -815,6 +833,9 @@ namespace MiniBIM::Bim
         std::map<std::string, FillPattern> fillPatterns = Fills::Patterns(Language::English);
         std::map<std::string, RegionType>  regionTypes  = Fills::RegionTypes(Language::English);
         std::map<std::string, TextType>    textTypes    = TextTypes::Defaults(Language::English);
+        // 视图过滤器与视图样板，按名称
+        std::map<std::string, ViewFilter>   viewFilters;
+        std::map<std::string, ViewTemplate> viewTemplates;
         Elements    elements;
         // 库的 ID 和 GUID：类型、材质
         Library     library;
@@ -1012,6 +1033,10 @@ namespace MiniBIM::Bim
         std::optional<Id> Default3D() const;
         // 视图 view 的图形落到各元素上的样子：不是视图时什么也不改
         Look LookOf(Guid view) const;
+        // 一个图形为 own 的视图的样子：样板控制的取样板的，类别的覆盖，再是套用的过滤器（从最后一个到第一个），再是元素自己的
+        Look LookWith(const Graphics& own) const;
+        // 把视图 old 改成 new 时，没有改 new 跟随的样板控制的设置（同时不再跟随并改动可以）
+        bool CheckFollowed(const Element& old, const Element& now, std::string& error) const;
         // 默认三维视图的样子（还没有它时什么也不改）
         Look LookOf3D() const;
 

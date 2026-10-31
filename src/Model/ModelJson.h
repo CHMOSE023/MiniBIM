@@ -29,6 +29,19 @@ namespace MiniBIM::Bim
     Json ToJson(const Override& o);
     bool FromJson(const Json& v, Override& out, std::string& error);
     Json ToJson(const Graphics& g);
+    // 视图套用的过滤器：{filter, 覆盖的各项}
+    Json ToJson(const Applied& a);
+    bool FromJson(const Json& v, Applied& out, std::string& error);
+    // 视图过滤器与视图样板（项目文件的 view_filters、view_templates）
+    Json ToJson(const ViewFilter& x);
+    Json ToJson(const ViewTemplate& x);
+    // 明细表的字段、过滤器（也是视图过滤器的规则）、排序字段，写法同 BIMCraft 的 schedule.rs；读时严格
+    Json ToJson(const Schedules::Field& x);
+    Json ToJson(const Schedules::Filter& x);
+    Json ToJson(const Schedules::Sort& x);
+    bool FromJson(const Json& v, Schedules::Field& out, std::string& error);
+    bool FromJson(const Json& v, Schedules::Filter& out, std::string& error);
+    bool FromJson(const Json& v, Schedules::Sort& out, std::string& error);
     // 族：字段与写法同 BIMCraft 的 family.rs；读时严格
     Json ToJson(const Family& f);
     bool FromJson(const Json& v, Family& out, std::string& error);

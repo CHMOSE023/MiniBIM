@@ -10,11 +10,14 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <vector>
 
-// 可见性 / 图形，同 Revit：一个视图（标高的平面、平面视图、三维视图）按类别、按元素隐藏或改画法（颜色、线宽、虚线、填充、半色调），
-// 另有视图比例与详细程度。视图样板、过滤器、阶段、设计选项、CAD 图层与 Linework 随后面的步骤移植（读文件时略去）
+// 可见性 / 图形，同 Revit：一个视图（标高的平面、平面视图、三维视图）按类别、按项目的视图过滤器、按元素隐藏或改画法
+//（颜色、线宽、虚线、填充、半色调），另有视图比例与详细程度，以及它跟随的视图样板。阶段、设计选项、CAD 图层与 Linework 随后面的步骤移植（读文件时略去）
 namespace MiniBIM::Bim
 {
+    struct Model;
+
     // 视图画剖到的东西画多细：粗略（一块填充，门窗只有洞口）、中等（复合层与层间的线，门扇、开启线、玻璃）、精细（再加层的图案）
     enum class Detail
     {
@@ -100,11 +103,48 @@ namespace MiniBIM::Bim
         bool operator==(const Override&) const = default;
     };
 
-    // 视图的可见性与图形：按类别（类别名）与按元素（GUID）的覆盖，比例（1 : scale，没有时为项目单位的默认），详细程度，三维的视觉样式
+    // 视图套用的一个过滤器：过滤器的名称与它挑出的元素的覆盖
+    struct Applied
+    {
+        std::string filter;
+        Override    over;
+        bool operator==(const Applied&) const = default;
+    };
+
+    // 视图样板能控制的一组设置
+    enum class Group
+    {
+        Categories,     // 类别的覆盖与隐藏
+        Filters,        // 套用的过滤器
+        Range,          // 平面的视图范围
+        Phase,          // 显示的阶段与阶段过滤器（MiniBIM 还没有阶段，记着写回文件）
+        Options,        // 显示的设计选项（同上）
+        Scale,          // 平面、剖面、立面的比例
+        Detail,         // 平面、剖面、立面的详细程度
+        Style,          // 三维视图的视觉样式
+    };
+
+    namespace GroupOf
+    {
+        inline constexpr std::array<Group, 8> All = { Group::Categories, Group::Filters, Group::Range, Group::Phase,
+                                                      Group::Options,    Group::Scale,   Group::Detail, Group::Style };
+        // 文件与命令里的写法：categories、filters、range……
+        const char* Key(Group g);
+        std::optional<Group> Parse(std::string_view s);
+    }
+
+    // 视图的可见性与图形：跟随的视图样板，按类别（类别名）、按套用的过滤器与按元素（GUID）的覆盖，
+    // 比例（1 : scale，没有时为项目单位的默认），详细程度，三维的视觉样式
     struct Graphics
     {
+        std::optional<std::string>      templateName;
         std::map<std::string, Override> categories;
+        std::vector<Applied>            filters;
         std::map<Guid, Override>        elements;
+        // 阶段与设计选项还没有移植：读进来原样写回
+        std::optional<std::string>         phase;
+        std::optional<std::string>         phaseFilter;
+        std::map<std::string, std::string> options;
         std::optional<double>           scale;
         Detail                          detail = Detail::Fine;
         VisualStyle                     style  = VisualStyle::Shaded;
@@ -113,8 +153,12 @@ namespace MiniBIM::Bim
         // 视图的比例 n（1 : n）：自己的，否则项目单位的默认（1 : 100，或 1/8" = 1'-0"）
         double ScaleN(Units units) const;
         bool Hides(std::string_view category) const;
-        // 类别都是视图画的、覆盖在范围内、比例在范围内、图案存在
-        bool Check(const std::map<std::string, FillPattern>& patterns, std::string& error) const;
+        // 起作用的设置：自己的，样板控制的那几组取样板的
+        Graphics Resolved(const Model& m) const;
+        // 它跟随的、控制 group 的视图样板的名称：这一组设置不能由视图自己改
+        const std::string* ControlledBy(const Model& m, Group group) const;
+        // 类别都是视图画的、覆盖在范围内、比例在范围内、图案、过滤器与样板都存在
+        bool Check(const Model& m, std::string& error) const;
         bool operator==(const Graphics&) const = default;
     };
 
@@ -137,6 +181,10 @@ namespace MiniBIM::Bim
     namespace GraphicsOf
     {
         inline constexpr size_t MaxEntries = 100000;
+        // 一个视图最多套用几个过滤器；项目最多几个视图过滤器、几个视图样板
+        inline constexpr size_t MaxApplied   = 32;
+        inline constexpr size_t MaxFilters   = 64;
+        inline constexpr size_t MaxTemplates = 64;
         inline constexpr double MinScale   = 1.0;
         inline constexpr double MaxScale   = 100000.0;
         // 平面、剖面、三维视图画的类别（能隐藏、覆盖的）：模型的，再是注释的

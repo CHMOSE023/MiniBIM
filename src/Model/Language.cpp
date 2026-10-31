@@ -115,6 +115,19 @@ namespace MiniBIM::Bim::LanguageOf
             { "Masking", "Máscara", "Máscara" },
             { "Copy", "Cópia", "Copia" },
             { "Dependent", "Dependente", "Dependiente" },
+            // 第 5e2 步：内置明细表的名称与开启方式（schedule.rs）
+            { "Room Schedule", "Tabela de ambientes", "Tabla de habitaciones" },
+            { "Door Schedule", "Tabela de portas", "Tabla de puertas" },
+            { "Window Schedule", "Tabela de janelas", "Tabla de ventanas" },
+            { "Wall Schedule", "Tabela de paredes", "Tabla de muros" },
+            { "Floor Schedule", "Tabela de pisos", "Tabla de pisos" },
+            { "Level Schedule", "Tabela de níveis", "Tabla de niveles" },
+            { "Swing", "De abrir", "Batiente" },
+            { "Double Swing", "De abrir, duas folhas", "Batiente doble" },
+            { "Sliding", "De correr", "Corredera" },
+            { "Double Sliding", "De correr, duas folhas", "Corredera doble" },
+            { "Folding", "Camarão", "Plegable" },
+            { "Fixed", "Fixa", "Fija" },
         };
     }
 

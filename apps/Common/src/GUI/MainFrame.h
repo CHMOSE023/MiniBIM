@@ -314,6 +314,12 @@ namespace MiniBIM
         void DuplicatePlan(const char* mode);
         // 正在显示的平面裁剪了就取消，否则裁到它现在显示的
         void ToggleCrop();
+        // ── 明细表、视图过滤器、视图样板（Schedules.cpp）───────────────
+        // 打开明细表：which 是 schedule 命令认的 {name} 或 {category}
+        void OpenSchedule(const Bim::Json& which);
+        void OpenNewSchedule();
+        void OpenViewFilters();
+        void OpenCreateTemplate();
         // 执行模型命令，失败时不弹窗，原因放进 error（对话框里显示）
         bool RunQuiet(const char* id, const Bim::Json& params, std::string& error, Bim::Json* result = nullptr);
 

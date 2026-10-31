@@ -10,7 +10,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "New"
 msgstr ""
 
@@ -38,7 +38,7 @@ msgstr ""
 msgid "Redo"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Level"
 msgstr ""
 
@@ -46,7 +46,7 @@ msgstr ""
 msgid "Grid"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
 msgid "Wall"
 msgstr ""
 
@@ -122,11 +122,11 @@ msgstr ""
 msgid "Cabling"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Mass"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Mass Floors"
 msgstr ""
 
@@ -150,7 +150,7 @@ msgstr ""
 msgid "Aligned Dimension"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
 msgid "Text"
 msgstr ""
 
@@ -200,6 +200,18 @@ msgstr ""
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Duplicate View"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Schedule"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "View Filter"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "View Template"
 msgstr ""
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
@@ -274,7 +286,7 @@ msgstr ""
 msgid "Split"
 msgstr ""
 
-#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "Delete"
 msgstr ""
 
@@ -316,6 +328,138 @@ msgstr ""
 
 #: src/Model/Model.cpp
 msgid "Core Face: Interior"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Room Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Door Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Window Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Wall Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Floor Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Level Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Id"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Type"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Family"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Area"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Width"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Height"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Length"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Thickness"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Depth"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "System"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Offset"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Mark"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Operation"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Name"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Count"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Volume"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Diameter"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Number"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Perimeter"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Sill"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Structural"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Slope"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Plan Area"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Gross Floor Area"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Elevation"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Line Style"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Kind"
 msgstr ""
 
 #: src/Model/Snap.cpp
@@ -422,7 +566,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr ""
 
@@ -587,31 +731,15 @@ msgid "Construction"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
-msgid "Width"
-msgstr ""
-
-#: apps/Common/src/GUI/Dialogs.cpp
 msgid "Default Thickness"
-msgstr ""
-
-#: apps/Common/src/GUI/Dialogs.cpp
-msgid "Height"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Default Sill Height"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp
-msgid "Thickness"
-msgstr ""
-
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Tile Size"
-msgstr ""
-
-#: apps/Common/src/GUI/Dialogs.cpp
-msgid "Depth"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
@@ -650,7 +778,7 @@ msgstr ""
 msgid "Name:"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
 msgid "Create"
 msgstr ""
 
@@ -710,7 +838,7 @@ msgstr ""
 msgid "Could not change the type"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
 msgid "Cancel"
 msgstr ""
 
@@ -720,10 +848,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Materials and Finishes"
-msgstr ""
-
-#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
-msgid "Name"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
@@ -751,6 +875,10 @@ msgid "A dependent view follows its parent's graphics: change them there."
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
+msgid "Greyed settings follow the template."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
 msgid "Coarse"
 msgstr ""
 
@@ -768,6 +896,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
 msgid "Annotation Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Filters"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Visible"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
@@ -878,10 +1014,6 @@ msgstr ""
 msgid "Align: pick a reference line, then what to line up with it"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
-msgid "Offset"
-msgstr ""
-
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Offset: pick a wall; a copy goes to the cursor's side"
 msgstr ""
@@ -960,6 +1092,26 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Crop the plan to what it shows now, or uncrop it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Schedule/Quantities"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new schedule: a table of the elements of a category, their fields as columns"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's view filters: the elements of some categories that meet rules, for views to hide or draw another way"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Create Template"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A view template with this view's visibility/graphics, scale, detail level and view range"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -1668,6 +1820,10 @@ msgid "3D Views"
 msgstr ""
 
 #: apps/Common/src/GUI/Panels.cpp
+msgid "Schedules/Quantities"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
 msgid "Views (all)"
 msgstr ""
 
@@ -1712,10 +1868,6 @@ msgid "Dimensions"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Length"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Radius"
 msgstr ""
 
@@ -1736,10 +1888,6 @@ msgid "Identity Data"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Mark"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Host Wall"
 msgstr ""
 
@@ -1756,18 +1904,6 @@ msgid "Sill Height"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Area"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Perimeter"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Number"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Location"
 msgstr ""
 
@@ -1779,20 +1915,12 @@ msgstr ""
 msgid "Slope (°)"
 msgstr ""
 
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Structural"
-msgstr ""
-
 #: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
 msgid "Graphics"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Pattern Angle (°)"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
-msgid "Elevation"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -1824,15 +1952,7 @@ msgid "Z Justification"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "System"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Volume (m³)"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Gross Floor Area"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -1841,10 +1961,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Leader Line"
-msgstr ""
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "Line Style"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -2027,6 +2143,10 @@ msgstr ""
 msgid "Masses"
 msgstr ""
 
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Mass Floor"
+msgstr ""
+
 #: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
 msgid "Dimension"
 msgstr ""
@@ -2169,6 +2289,136 @@ msgstr[1] ""
 msgid "Opened from {0}: {1}, {2} left out."
 msgstr ""
 
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "equals"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not equal"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is greater than"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is greater than or equal to"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is less than"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is less than or equal to"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "contains"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not contain"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "begins with"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not begin with"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "ends with"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not end with"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "has a value"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "has no value"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Schedule: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "No rows yet: the {0} is empty."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Total"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Click a row's first cell to select what it lists."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "{0} Schedule"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "New Schedule"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Category"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "View Filters"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Filter {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Make a filter with New, then choose its categories and rules."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Rules: elements of these categories that meet every rule"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Add Rule"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "It picks out {0} element."
+msgid_plural "It picks out {0} elements."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "View Template {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Create Template from Current View"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "A view template with {0}'s visibility/graphics, scale, detail level and view range."
+msgstr ""
+
 #: apps/Common/src/GUI/Settings.cpp
 msgid "User Interface"
 msgstr ""
@@ -2263,10 +2513,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Custom"
-msgstr ""
-
-#: apps/Common/src/GUI/ShortcutsDialog.cpp
-msgid "Remove"
 msgstr ""
 
 #: apps/Common/src/GUI/ShortcutsDialog.cpp

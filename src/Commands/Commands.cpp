@@ -2793,6 +2793,8 @@ namespace MiniBIM::Bim
                         why.erase(0, 9);
                     return Fail(error, c, "element " + std::to_string(id) + ": " + why);
                 }
+                if (!m.CheckFollowed(*e, e2, why))
+                    return Fail(error, c, "element " + std::to_string(id) + ": " + why);
                 // 换了定位线的墙留在原处：定位线横移
                 const Wall* old = e->As<Wall>();
                 Wall* w = e2.As<Wall>();
@@ -3936,8 +3938,13 @@ namespace MiniBIM::Bim
                         hiddenEls.push_back(*id);
                     els[std::to_string(*id)] = ToJson(o);
                 }
-            return Json{ { "hidden", std::move(hidden) },
+            Json filters = Json::array();
+            for (const Applied& a : g.filters)
+                filters.push_back(ToJson(a));
+            return Json{ { "template", g.templateName ? Json(*g.templateName) : Json(nullptr) },
+                         { "hidden", std::move(hidden) },
                          { "categories", std::move(cats) },
+                         { "filters", std::move(filters) },
                          { "hidden_elements", std::move(hiddenEls) },
                          { "elements", std::move(els) },
                          { "scale", g.scale ? Json(*g.scale) : Json(nullptr) },
@@ -3945,43 +3952,39 @@ namespace MiniBIM::Bim
                          { "visual_style", VisualStyleOf::Key(g.style) } };
         }
 
-        bool GraphicsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        // p 要对图形 g 做的改动：隐藏与显示类别和元素、覆盖、套用的过滤器、跟随的样板。样板（ofTemplate）只有类别与过滤器
+        bool EditGraphics(const char* c, const Model& m, const Json& p, Graphics& g, bool ofTemplate, std::string& error)
         {
-            const char* c = "graphics";
-            if (!Only(c, p, { "view", "level", "hide", "show", "hide_elements", "show_elements", "categories", "elements", "reset", "filters", "phase",
-                              "phase_filter", "options", "layers", "template" }, error))
-                return false;
-            for (const char* k : { "filters", "phase", "phase_filter", "options", "layers", "template" })
-                if (!Absent(p, k))
-                    return Fail(error, c, std::string("`") + k + "`: view filters, view templates, phases, design options and CAD layers aren't in MiniBIM yet");
-            const Model& m = s.GetModel();
+            const auto given = [&](const char* k) { return !Absent(p, k); };
+            for (const char* k : { "phase", "phase_filter", "options", "layers" })
+                if (given(k))
+                    return Fail(error, c, std::string("`") + k + "`: phases, design options and CAD layers aren't in MiniBIM yet");
+            if (ofTemplate)
+                for (const char* k : { "hide_elements", "show_elements", "elements", "template" })
+                    if (given(k) || (std::string_view(k) == "template" && p.contains("template")))
+                        return Fail(error, c, std::string("`") + k + "` is a view's own; a template holds categories, filters, a phase and design options");
+            // 这次改完之后跟随的样板：给了的（null 为不再跟随），否则原来的
+            std::optional<std::string> templateThen = g.templateName;
+            if (const auto it = p.find("template"); it != p.end())
+            {
+                if (it->is_null())
+                    templateThen.reset();
+                else if (it->is_string())
+                    templateThen = it->get<std::string>();
+                else
+                    return Fail(error, c, "`template` is a view template's name, or null, not " + Show(*it));
+            }
+            const auto controlled = templateThen ? m.viewTemplates.find(*templateThen) : m.viewTemplates.end();
             Params P(c, p, error);
-            // 默认三维视图在第一次改动它时建出来；只问它、什么也不改时不建
-            std::optional<Guid> view;
-            if (Is3D(p))
-            {
-                if (const auto id = m.Default3D())
-                    view = m.GuidOf(*id);
-            }
-            else
-            {
-                Guid g;
-                if (!AnyViewParam(c, m, p, g, error))
-                    return false;
-                view = g;
-            }
-            Graphics was;
-            if (view)
-            {
-                const Graphics* g = m.ViewGraphics(*view);
-                if (!g)
-                    return P.Fail(ViewTitle(m, *view) + " isn't a plan, a section, an elevation or a 3D view");
-                was = *g;
-            }
-            Graphics g = was;
             bool reset = false;
             if (!P.Flag("reset", reset))
                 return false;
+            if (!reset && controlled != m.viewTemplates.end())
+                for (const auto& [touches, group, what] : { std::tuple{ given("hide") || given("show") || given("categories"), Group::Categories, "categories" },
+                                                            std::tuple{ given("filters"), Group::Filters, "filters" } })
+                    if (touches && controlled->second.controls.count(group))
+                        return Fail(error, c, std::string("its ") + what + " follow view template `" + *templateThen +
+                                                  "`; change the template, or `template: null` to stop following it");
             if (reset)
                 g = Graphics{};
             std::vector<std::string> hide, show;
@@ -4049,12 +4052,66 @@ namespace MiniBIM::Bim
                         g.elements[id] = std::move(over);
                 }
             }
+            if (const Json* fs = Get(p, "filters"); fs && !fs->is_null())
+            {
+                if (!fs->is_array() || fs->size() > GraphicsOf::MaxApplied)
+                    return P.Fail("`filters` is [{filter, hidden?, projection?, cut?, …}, …] (up to " + std::to_string(GraphicsOf::MaxApplied) + "), not " +
+                                  Show(*fs));
+                std::vector<Applied> list;
+                for (const Json& f : *fs)
+                {
+                    Applied a;
+                    std::string why;
+                    if (!FromJson(f, a, why))
+                        return P.Fail("filter " + Show(f) + ": " + why);
+                    list.push_back(std::move(a));
+                }
+                g.filters = std::move(list);
+            }
+            if (p.contains("template"))
+                g.templateName = templateThen;
+            return true;
+        }
+
+        bool GraphicsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "graphics";
+            if (!Only(c, p, { "view", "level", "hide", "show", "hide_elements", "show_elements", "categories", "elements", "reset", "filters", "phase",
+                              "phase_filter", "options", "layers", "template" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            // 默认三维视图在第一次改动它时建出来；只问它、什么也不改时不建
+            std::optional<Guid> view;
+            if (Is3D(p))
+            {
+                if (const auto id = m.Default3D())
+                    view = m.GuidOf(*id);
+            }
+            else
+            {
+                Guid g;
+                if (!AnyViewParam(c, m, p, g, error))
+                    return false;
+                view = g;
+            }
+            Graphics was;
+            if (view)
+            {
+                const Graphics* g = m.ViewGraphics(*view);
+                if (!g)
+                    return P.Fail(ViewTitle(m, *view) + " isn't a plan, a section, an elevation or a 3D view");
+                was = *g;
+            }
+            Graphics g = was;
+            if (!EditGraphics(c, m, p, g, false, error))
+                return false;
             if (g != was)
             {
                 if (view && !NotDependent(c, m, *view, "graphics", error))
                     return false;
                 std::string why;
-                if (!g.Check(m.fillPatterns, why))
+                if (!g.Check(m, why))
                     return P.Fail(why);
                 Model& mm = s.ModelMut();
                 if (!view)
@@ -4070,6 +4127,17 @@ namespace MiniBIM::Bim
             result["view"] = view ? Json(*now.elements.IdOf(*view)) : Json(nullptr);
             const std::string* name = view ? now.ViewName(*view) : nullptr;
             result["name"] = name ? *name : std::string(View3D::DefaultName);
+            return true;
+        }
+
+        // 视图能自己设 group 的那组设置吗：相关视图跟父视图，跟随的样板控制它时由样板设
+        bool OwnToSet(const char* c, const Model& m, Guid view, Group group, const char* what, std::string& error)
+        {
+            if (!NotDependent(c, m, view, what, error))
+                return false;
+            const Graphics* g = m.ViewGraphics(view);
+            if (const std::string* t = g ? g->ControlledBy(m, group) : nullptr)
+                return Fail(error, c, std::string("its ") + what + " follow view template `" + *t + "`; change the template, or `template: null` to stop following it");
             return true;
         }
 
@@ -4108,7 +4176,7 @@ namespace MiniBIM::Bim
                 if (!v->is_number() || !(v->get<double>() >= GraphicsOf::MinScale && v->get<double>() <= GraphicsOf::MaxScale))
                     return Fail(error, c, "`scale` is the n of 1 : n, from 1 to 100000, not " + Show(*v) +
                                               (v->is_null() ? ": a view always has a scale (1 : 100, or 1/8\" = 1'-0\" in feet and inches, until it is given one)" : ""));
-                if (!NotDependent(c, s.GetModel(), view, "scale", error))
+                if (!OwnToSet(c, s.GetModel(), view, Group::Scale, "scale", error))
                     return false;
                 const double n = v->get<double>();
                 ChangeGraphics(s, view, [&](Graphics& g) { g.scale = n; });
@@ -4131,7 +4199,7 @@ namespace MiniBIM::Bim
                 const auto d = v->is_string() ? DetailOf::Parse(v->get<std::string>()) : std::nullopt;
                 if (!d)
                     return Fail(error, c, "`detail` is coarse, medium or fine, not " + Show(*v));
-                if (!NotDependent(c, s.GetModel(), view, "detail level", error))
+                if (!OwnToSet(c, s.GetModel(), view, Group::Detail, "detail level", error))
                     return false;
                 ChangeGraphics(s, view, [&](Graphics& g) { g.detail = *d; });
             }
@@ -4139,7 +4207,7 @@ namespace MiniBIM::Bim
             const Graphics* g = m.ViewGraphics(view);
             result = Json{ { "view", *m.elements.IdOf(view) },
                            { "name", *m.ViewName(view) },
-                           { "detail", Text::AsciiLower(DetailOf::Name(g ? g->detail : Detail::Fine)) } };
+                           { "detail", Text::AsciiLower(DetailOf::Name(g ? g->Resolved(m).detail : Detail::Fine)) } };
             return true;
         }
 
@@ -4176,10 +4244,12 @@ namespace MiniBIM::Bim
             const auto has = [&](const Model& mm)
             {
                 const Graphics* g = view ? mm.ViewGraphics(*view) : nullptr;
-                return g ? g->style : VisualStyle::Shaded;
+                return g ? g->Resolved(mm).style : VisualStyle::Shaded;
             };
             if (style && *style != has(m))
             {
+                if (view && !OwnToSet(c, m, *view, Group::Style, "visual style", error))
+                    return false;
                 if (!view)
                 {
                     Model& mm = s.ModelMut();
@@ -4243,6 +4313,404 @@ namespace MiniBIM::Bim
         }
 
         // Revit 的复制视图，平面的：同一标高的一个新平面视图
+        // ── 明细表、视图过滤器与视图样板（第 5e2 步，移植自 BIMCraft 的 schedule 与 graphics）────
+        // key 给的一列：每项是对象，或只是名称（写成 {by: 名称}）；给了时整个替换
+        bool NamedList(const char* c, const Json& p, const char* key, const char* by, std::optional<Json>& out, std::string& error)
+        {
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            if (!v->is_array())
+                return Fail(error, c, "`" + std::string(key) + "` is a list, not " + Show(*v));
+            Json list = Json::array();
+            for (const Json& x : *v)
+                list.push_back(x.is_string() ? Json{ { by, x } } : x);
+            out = std::move(list);
+            return true;
+        }
+
+        template <class T>
+        bool ReadEach(const char* c, const char* key, const Json& list, std::vector<T>& out, std::string& error)
+        {
+            out.clear();
+            for (const Json& x : list)
+            {
+                T t;
+                std::string why;
+                if (!FromJson(x, t, why))
+                    return Fail(error, c, "`" + std::string(key) + "`: " + why);
+                out.push_back(std::move(t));
+            }
+            return true;
+        }
+
+        bool ScheduleCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "schedule";
+            if (!Only(c, p, { "name", "category", "fields", "filters", "sort", "grouped", "path" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            std::optional<std::string> name, cat, path;
+            if (!P.String("name", name) || !P.String("category", cat) || !P.String("path", path))
+                return false;
+            if (name)
+            {
+                name = std::string(Text::Trim(*name));
+                if (name->empty())
+                    name.reset();
+            }
+            if (cat)
+            {
+                const std::string k = NormalizeCategory(*cat);
+                if (!Schedules::IsCategory(k))
+                {
+                    std::string all;
+                    for (const std::string& x : Schedules::Categories())
+                        all += (all.empty() ? "" : ", ") + x;
+                    return P.Fail("`" + *cat + "` isn't a category schedules are of; there are: " + all);
+                }
+                cat = k;
+            }
+            const auto builtin = Schedules::BuiltinOf(name ? &*name : nullptr, cat ? &*cat : nullptr);
+            std::optional<Id> found = name ? Schedules::Named(m, *name) : std::nullopt;
+            if (!found && builtin)
+                found = Schedules::Named(m, builtin->name);
+            Schedule sc;
+            if (found)
+            {
+                const Schedule* had = m.elements.Get(*found)->As<Schedule>();
+                if (!had)
+                    return P.Fail("element " + std::to_string(*found) + " isn't a schedule");
+                sc = *had;
+            }
+            else if (builtin)
+            {
+                sc.name = LanguageOf::Word(m.language, builtin->name);
+                sc.of   = builtin->category;
+            }
+            else if (name && cat)
+            {
+                sc.name = *name;
+                sc.of   = *cat;
+            }
+            else if (name)
+                return P.Fail("there's no schedule `" + *name + "`; a new one needs `category` too");
+            else if (cat)
+                sc.of = *cat;
+            else
+                return P.Fail("`name` or `category` is required");
+            if (cat && *cat != NormalizeCategory(sc.of))
+                return P.Fail("`" + sc.name + "` schedules " + sc.of + "s, not " + *cat + "s; make another for those");
+            // 给了的各项整个替换：字段或排序字段可以只写名称
+            bool changed = false;
+            std::optional<Json> fields, filters, sort;
+            if (!NamedList(c, p, "fields", "name", fields, error) || !NamedList(c, p, "filters", "field", filters, error) ||
+                !NamedList(c, p, "sort", "field", sort, error))
+                return false;
+            if (fields && (changed = true, !ReadEach(c, "fields", *fields, sc.fields, error)))
+                return false;
+            if (filters && (changed = true, !ReadEach(c, "filters", *filters, sc.filters, error)))
+                return false;
+            if (sort && (changed = true, !ReadEach(c, "sort", *sort, sc.sort, error)))
+                return false;
+            if (const Json* g = Get(p, "grouped"); g && !g->is_null())
+            {
+                if (!g->is_boolean())
+                    return P.Fail("`grouped` is true or false, not " + Show(*g));
+                sc.grouped = g->get<bool>();
+                changed    = true;
+            }
+            // 新的不管给了什么都建出来
+            changed = changed || (!found && !builtin);
+            std::optional<Id> id = found;
+            if (changed && found)
+                s.ModelMut().elements.Insert(*found, Element(Schedule(sc)));
+            else if (changed && !sc.name.empty())
+                id = s.ModelMut().Insert(Element(Schedule(sc)));
+            const Model& now = s.GetModel();
+            // 先要成立才做表；文件只写模型留下的
+            std::string why;
+            if (!Schedules::Check(now, sc, why))
+                return P.Fail(why);
+            Schedules::Table t;
+            if (!Schedules::TableOf(now, sc, t, why))
+                return P.Fail(why);
+            if (path)
+            {
+                if (changed && !now.Check(why))
+                    return P.Fail(why);
+                if (Text::EndsWith(Text::AsciiLower(*path), ".xlsx"))
+                    return P.Fail("`path`: .xlsx workbooks aren't in MiniBIM yet; give a .csv path");
+                std::ofstream out(ToPath(*path), std::ios::binary | std::ios::trunc);
+                const std::string csv = Schedules::ToCsv(t);
+                if (!out || !out.write(csv.data(), static_cast<std::streamsize>(csv.size())))
+                    return P.Fail(*path + ": could not write it");
+            }
+            Json columns = Json::array(), rows = Json::array(), ids = Json::array(), available = Json::array();
+            for (const Schedules::Column& col : t.columns)
+                columns.push_back(Schedules::Heading(Units::Millimetres, col));
+            for (const auto& r : t.rows)
+                rows.push_back(r);
+            for (const auto& r : t.ids)
+                ids.push_back(r);
+            for (const auto& [n, _] : Schedules::Fields(now, NormalizeCategory(sc.of)))
+                available.push_back(n);
+            result = Json{ { "id", id ? Json(*id) : Json(nullptr) }, { "name", sc.name },          { "category", NormalizeCategory(sc.of) },
+                           { "columns", std::move(columns) },         { "rows", std::move(rows) }, { "elements", std::move(ids) },
+                           { "available", std::move(available) } };
+            if (t.totals)
+                result["totals"] = *t.totals;
+            return true;
+        }
+
+        bool FilterCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "filter";
+            if (!Only(c, p, { "name", "categories", "rules", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given;
+            if (!P.String("name", given))
+                return false;
+            const std::string name = given ? std::string(Text::Trim(*given)) : std::string();
+            if (name.empty())
+                return P.Fail("`name` is required");
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                Model& m = s.ModelMut();
+                if (!m.viewFilters.erase(name))
+                    return P.Fail("there's no view filter `" + name + "`");
+                // 视图与样板不再套用它
+                std::vector<Id> ids;
+                for (const auto& [id, e] : m.elements.Items())
+                    ids.push_back(id);
+                const auto drop = [&](Graphics& g) { std::erase_if(g.filters, [&](const Applied& a) { return a.filter == name; }); };
+                for (const Id id : ids)
+                    if (Graphics* g = m.ViewGraphicsMut(m.GuidOf(id)); g && std::any_of(g->filters.begin(), g->filters.end(), [&](const Applied& a) { return a.filter == name; }))
+                        drop(*g);
+                for (auto& [_, t] : m.viewTemplates)
+                    drop(t.graphics);
+                result = Json{ { "name", name }, { "deleted", true } };
+                return true;
+            }
+            const Model& m = s.GetModel();
+            const auto wasIt = m.viewFilters.find(name);
+            const std::optional<ViewFilter> was = wasIt == m.viewFilters.end() ? std::nullopt : std::optional<ViewFilter>(wasIt->second);
+            ViewFilter f = was.value_or(ViewFilter{});
+            if (const Json* cats = Get(p, "categories"); !cats || cats->is_null())
+            {
+                if (!was)
+                    return P.Fail("a new filter needs `categories`, [\"walls\", \"doors\"…]");
+            }
+            else
+            {
+                if (!cats->is_array() || cats->size() > 32)
+                    return P.Fail("`categories` is a list of categories, [\"walls\", \"doors\"…], not " + Show(*cats));
+                f.categories.clear();
+                for (const Json& v : *cats)
+                {
+                    if (!v.is_string())
+                        return P.Fail("`categories`: " + Show(v) + " is not a category");
+                    const std::string k = NormalizeCategory(v.get<std::string>());
+                    if (!Schedules::IsCategory(k))
+                    {
+                        std::string all;
+                        for (const std::string& x : Schedules::Categories())
+                            all += (all.empty() ? "" : ", ") + x;
+                        return P.Fail("`" + v.get<std::string>() + "` isn't a category filters pick from; there are: " + all);
+                    }
+                    f.categories.push_back(k);
+                }
+                std::sort(f.categories.begin(), f.categories.end());
+                f.categories.erase(std::unique(f.categories.begin(), f.categories.end()), f.categories.end());
+            }
+            if (const Json* rules = Get(p, "rules"); rules && !rules->is_null())
+            {
+                if (!rules->is_array() || rules->size() > Schedules::MaxFields)
+                    return P.Fail("`rules` is [{field, op, value}, …] (up to " + std::to_string(Schedules::MaxFields) + "), not " + Show(*rules));
+                f.rules.clear();
+                for (const Json& r : *rules)
+                {
+                    Schedules::Filter x;
+                    std::string why;
+                    if (!FromJson(r, x, why))
+                        return P.Fail("rule " + Show(r) + ": " + why);
+                    f.rules.push_back(std::move(x));
+                }
+            }
+            if (was != f)
+            {
+                // 在这里就拒绝，报错带上命令名
+                std::string why;
+                if (!Schedules::CheckRules(m, f.categories, f.rules, why))
+                    return P.Fail(why);
+                s.ModelMut().viewFilters[name] = f;
+            }
+            Json matches = Json::array();
+            for (const Id id : Schedules::Picks(s.GetModel(), f.categories, f.rules))
+                matches.push_back(id);
+            Json rules = Json::array();
+            for (const auto& r : f.rules)
+                rules.push_back(ToJson(r));
+            result = Json{ { "name", name }, { "categories", f.categories }, { "rules", std::move(rules) }, { "matches", std::move(matches) } };
+            return true;
+        }
+
+        bool TemplateCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "template";
+            if (!Only(c, p, { "name", "from", "controls", "view_range", "hide", "show", "categories", "filters", "reset", "hide_elements", "show_elements",
+                              "elements", "phase", "phase_filter", "options", "scale", "detail", "visual_style", "delete", "template", "layers" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given;
+            if (!P.String("name", given))
+                return false;
+            const std::string name = given ? std::string(Text::Trim(*given)) : std::string();
+            if (name.empty())
+                return P.Fail("`name` is required");
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                Model& m = s.ModelMut();
+                if (!m.viewTemplates.erase(name))
+                    return P.Fail("there's no view template `" + name + "`");
+                // 跟随它的视图留着自己的设置，不再跟随
+                std::vector<Id> ids;
+                for (const auto& [id, e] : m.elements.Items())
+                    ids.push_back(id);
+                for (const Id id : ids)
+                {
+                    const Element* e = m.elements.Get(id);
+                    const Graphics* g = e && (e->As<Level>() || e->As<PlanView>() || e->As<View3D>()) ? m.ViewGraphics(m.GuidOf(id)) : nullptr;
+                    if (g && g->templateName == name)
+                        m.ViewGraphicsMut(m.GuidOf(id))->templateName.reset();
+                }
+                result = Json{ { "name", name }, { "deleted", true } };
+                return true;
+            }
+            const Model& m = s.GetModel();
+            const auto wasIt = m.viewTemplates.find(name);
+            const std::optional<ViewTemplate> was = wasIt == m.viewTemplates.end() ? std::nullopt : std::optional<ViewTemplate>(wasIt->second);
+            bool makes = p.contains("template");
+            for (const char* k : { "from", "controls", "view_range", "hide", "show", "categories", "filters", "reset", "hide_elements", "show_elements", "elements",
+                                   "phase", "phase_filter", "options", "scale", "detail", "visual_style", "layers" })
+                makes = makes || !Absent(p, k);
+            if (!was && !makes)
+            {
+                std::string there;
+                for (const auto& [n, _] : m.viewTemplates)
+                    there += (there.empty() ? " (there are: " : ", ") + n;
+                return P.Fail("there's no view template `" + name + "`; make one with `from` (a view), or `controls`" + (there.empty() ? "" : there + ")"));
+            }
+            ViewTemplate t;
+            if (was)
+                t = *was;
+            else
+                t.controls = std::set<Group>(GroupOf::All.begin(), GroupOf::All.end());
+            // 由视图做出：它现在的图形与平面的视图范围
+            if (!Absent(p, "from"))
+            {
+                Guid view;
+                if (!AnyViewParam(c, m, Json{ { "view", p["from"] } }, view, error))
+                    return false;
+                const Graphics* own = m.ViewGraphics(view);
+                if (!own)
+                    return P.Fail(ViewTitle(m, view) + " isn't a plan, a section, an elevation or a 3D view; templates are made from those");
+                const Graphics r = own->Resolved(m);
+                t.graphics             = Graphics{};
+                t.graphics.categories  = r.categories;
+                t.graphics.filters     = r.filters;
+                t.graphics.phase       = r.phase;
+                t.graphics.phaseFilter = r.phaseFilter;
+                t.graphics.options     = r.options;
+                t.graphics.scale       = r.scale;
+                t.graphics.detail      = r.detail;
+                t.graphics.style       = r.style;
+                t.viewRange.reset();
+                if (m.PlanLevel(view))
+                    t.viewRange = m.ViewRangeOf(view);
+            }
+            if (const Json* v = Get(p, "controls"); v && !v->is_null())
+            {
+                if (!v->is_array())
+                    return P.Fail("`controls` is a list of what it controls: categories, filters, range, phase, options, scale, detail, style");
+                t.controls.clear();
+                for (const Json& x : *v)
+                {
+                    const auto g = x.is_string() ? GroupOf::Parse(x.get<std::string>()) : std::nullopt;
+                    if (!g)
+                        return P.Fail("`controls` is a list of what it controls: categories, filters, range, phase, options, scale, detail, style: unknown " +
+                                      Show(x));
+                    t.controls.insert(*g);
+                }
+            }
+            if (const Json* v = Get(p, "view_range"); v && !v->is_null())
+            {
+                if (!v->is_object())
+                    return P.Fail("`view_range` is {top?, cut?, bottom?, depth?} in mm, not " + Show(*v));
+                // 合并进它的范围：借一个平面视图读写
+                PlanView pv;
+                pv.viewRange = t.viewRange.value_or(ViewRange{});
+                Json now = ToJson(Element(pv));
+                Merge(now["view_range"], *v);
+                Element e;
+                std::string why;
+                if (!FromJson(now, e, why))
+                    return P.Fail("`view_range`: " + why);
+                t.viewRange = e.As<PlanView>()->viewRange;
+            }
+            if (!EditGraphics(c, m, p, t.graphics, true, error))
+                return false;
+            if (const Json* v = Get(p, "scale"); v)
+            {
+                if (!v->is_number() || !(v->get<double>() >= GraphicsOf::MinScale && v->get<double>() <= GraphicsOf::MaxScale))
+                    return P.Fail("`scale` is the n of 1 : n, from 1 to 100000, not " + Show(*v));
+                t.graphics.scale = v->get<double>();
+            }
+            if (const Json* v = Get(p, "detail"); v && !v->is_null())
+            {
+                const auto d = v->is_string() ? DetailOf::Parse(v->get<std::string>()) : std::nullopt;
+                if (!d)
+                    return P.Fail("`detail` is coarse, medium or fine, not " + Show(*v));
+                t.graphics.detail = *d;
+            }
+            if (const Json* v = Get(p, "visual_style"); v && !v->is_null())
+            {
+                const auto st = v->is_string() ? VisualStyleOf::Parse(v->get<std::string>()) : std::nullopt;
+                if (!st)
+                    return P.Fail("`visual_style` is shaded, hidden_line or wireframe, not " + Show(*v));
+                t.graphics.style = *st;
+            }
+            if (was != t)
+            {
+                std::string why;
+                if (!t.graphics.Check(m, why))
+                    return P.Fail(why);
+                s.ModelMut().viewTemplates[name] = t;
+            }
+            const Model& now = s.GetModel();
+            result = GraphicsReply(now, t.graphics);
+            result["name"] = name;
+            Json controls = Json::array(), views = Json::array();
+            for (const Group g : t.controls)
+                controls.push_back(GroupOf::Key(g));
+            result["controls"]   = std::move(controls);
+            result["view_range"] = t.viewRange ? ToJson(Element(PlanView{ {}, {}, *t.viewRange }))["view_range"] : Json(nullptr);
+            for (const auto& [id, e] : now.elements.Items())
+                if (e->As<Level>() || e->As<PlanView>() || e->As<View3D>())
+                    if (const Graphics* g = now.ViewGraphics(now.GuidOf(id)); g && g->templateName == name && !(e->As<PlanView>() && e->As<PlanView>()->parent))
+                        views.push_back(id);
+            result["views"] = std::move(views);
+            return true;
+        }
+
         bool DuplicateViewCmd(Session& s, const Json& p, Json& result, std::string& error)
         {
             const char* c = "duplicate_view";
@@ -5134,6 +5602,38 @@ namespace MiniBIM::Bim
               "and detail, has a crop of its own and shows its parent's annotation as well as its own. Named `name`, else `<view> Copy 1` "
               "(`<view> Dependent 1`). Commands that take a level take a plan view too, and what is dimensioned, tagged or noted there is in it",
               DuplicateViewCmd, true },
+            { "schedule", N_("Schedule"), {},
+              "{name?, category?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, and its table: "
+              "columns, rows, the `elements` each row lists, and totals (and a .csv file with a path). A new one needs `name` and `category`: rooms, "
+              "doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, pipes, conduits, cable "
+              "trays, cables, down conductors, earthing conductors, wires, components, masses, mass floors or levels; `category` alone reads its own "
+              "(Room Schedule, Door Schedule, Window Schedule, Wall Schedule, Floor Schedule, Level Schedule, each the project's once changed). "
+              "`fields`: its columns, in order, each a field's name (`available` lists them: its category's own, Count, a component's family's "
+              "parameters) or {name, formula?, kind?: number|length|area|yesno, heading?, total?}; with a formula, a calculated field worked out "
+              "from the row's other fields as a family's formulas are (lengths in mm, areas in m²; `Area * 120`); `total` sums it in a totals row. "
+              "`filters`: [{field, op: equals|not-equals|greater|greater-or-equal|less|less-or-equal|contains|not-contains|begins-with|"
+              "not-begins-with|ends-with|not-ends-with|has-value|has-no-value, value}, …], the elements all of them keep (text in any case, "
+              "numbers as the schedule shows them, an unset yes or no as no). `sort`: [field or {field, descending?}, …], in turn (its first "
+              "column unless it says); `grouped`, a row for each set of the sort fields' values: Count and totals summed, and a field whose "
+              "values differ left empty. Each one given replaces the last; `fields: []` goes back to its category's",
+              ScheduleCmd, true },
+            { "filter", N_("View Filter"), {},
+              "{name, categories?: [category, …], rules?: [{field, op, value}, …], delete?: true} a view filter, as Revit's parameter filters "
+              "are: the elements of its categories (any a schedule can be of: walls, doors, rooms, components…) that hold every rule, a "
+              "schedule filter's (`field` of the category, `op` as a schedule's, `value`), and every element of them without rules. A view "
+              "applies it with `graphics {filters}`, hiding what it picks out or drawing it another way. Gone, views stop applying it. Replies "
+              "with the filter and the ids it picks out; `name` alone reads one",
+              FilterCmd, true },
+            { "template", N_("View Template"), {},
+              "{name, from?: a level's, plan view's or 3D view's name or id, controls?: [categories, filters, range, phase, options, scale, "
+              "detail, style], view_range?: {top?, cut?, bottom?, depth?}, scale?: 1 | … | 100000, detail?: coarse | medium | fine, "
+              "visual_style?: shaded | hidden_line | wireframe, hide?, show?, categories?, filters?, reset?, delete?: true} a view template, "
+              "as Revit's: settings under a name for views to follow with `graphics {template}`. `from` takes a view's categories (hidden and "
+              "overridden), filters and, a plan's, view range, its scale, detail level and visual style; `controls` is what views following it "
+              "get from it (all eight unless it says) and cannot change for themselves. `hide`, `show`, `categories`, `filters`, `scale`, "
+              "`detail`, `visual_style` and `reset` change it as they change a view; `view_range` merges into its range. Changed, every view "
+              "following it follows. Gone, they keep their own settings. `name` alone reads one",
+              TemplateCmd, true },
             { "roof", N_("Roof"), {},
               "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, extrusion?, "
               "openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its base `offset` mm above it. "

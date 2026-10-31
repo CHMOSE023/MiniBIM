@@ -113,6 +113,9 @@
     "view.duplicate":  { "icon": "DuplicateView.png" },
     "view.detailing":  { "icon": "DuplicateDetailing.png" },
     "view.dependent":  { "icon": "DependentView.png" },
+    "view.schedule":   { "icon": "Schedule.png" },
+    "view.filters":    { "icon": "ViewFilters.png" },
+    "view.template":   { "icon": "ViewTemplate.png" },
     "help.about":   { "icon": "About.png" }
   },
   "menus": [
@@ -220,8 +223,8 @@
         {
           "title": "View",
           "panels": [
-            { "title": "Graphics", "items": [ "view.visibility", "view.crop" ] },
-            { "title": "Create", "items": [ "view.3d", "view.plan", "view.duplicate", "view.detailing", "view.dependent", "view.levelUp", "view.levelDown" ] },
+            { "title": "Graphics", "items": [ "view.visibility", "view.filters", "view.template", "view.crop" ] },
+            { "title": "Create", "items": [ "view.3d", "view.plan", "view.duplicate", "view.detailing", "view.dependent", "view.schedule", "view.levelUp", "view.levelDown" ] },
             { "title": "Navigate", "items": [ "view.home", "view.zoomFit" ] },
             { "title": "Palettes", "items": [ "view.properties", "view.browser" ] }
           ]

@@ -975,12 +975,37 @@ namespace MiniBIM
             else if (const auto id = m.Default3D())
                 key = m.GuidOf(*id);
             const Bim::Graphics* g = key ? m.ViewGraphics(*key) : nullptr;
-            const Bim::Graphics none;
-            const Bim::Graphics& now = g ? *g : none;
+            const Bim::Graphics own = g ? *g : Bim::Graphics{};
+            // 显示起作用的设置：跟随的样板控制的那几组是样板的
+            const Bim::Graphics now = own.Resolved(m);
+            const auto controlled = [&](Bim::Group x) { return own.ControlledBy(m, x) != nullptr; };
             const Bim::PlanView* pv = plan ? m.GetPlanView(PlanKey()) : nullptr;
             const bool dependent = pv && pv->parent;
             if (dependent)
                 body->AddChild<Label>(Tr("A dependent view follows its parent's graphics: change them there."), 12.0f, Theme::TextDim)->SetWrap(true);
+
+            // 跟随的视图样板：无，或项目的一个
+            {
+                Node* row = Row(body);
+                Caption(row, Tr("View Template"), 110.0f);
+                std::vector<std::string> names{ Tr("(none)") };
+                int at = 0;
+                for (const auto& [n, _] : m.viewTemplates)
+                {
+                    if (own.templateName == n)
+                        at = static_cast<int>(names.size());
+                    names.push_back(n);
+                }
+                auto* t = Sized(row->AddChild<ComboBox>(names, at), 220.0f);
+                t->SetEnabled(!dependent);
+                t->SetOnChanged([run, names](int i)
+                {
+                    if (i >= 0)
+                        run("graphics", Bim::Json{ { "template", i == 0 ? Bim::Json(nullptr) : Bim::Json(names[i]) } });
+                });
+                if (own.templateName)
+                    row->AddChild<Label>(Tr("Greyed settings follow the template."), 12.0f, Theme::TextDim);
+            }
 
             if (plan)
             {
@@ -988,14 +1013,14 @@ namespace MiniBIM
                 Caption(row, Tr("View Scale"), 110.0f);
                 row->AddChild<Label>("1 :", 13.0f);
                 auto* scale = Sized(row->AddChild<NumberBox>(m.ScaleOf(PlanKey()), 1.0, 100000.0, 10.0, 0), 100.0f);
-                scale->SetEnabled(!dependent);
+                scale->SetEnabled(!dependent && !controlled(Bim::Group::Scale));
                 scale->SetOnChanged([run](double v) { run("scale", Bim::Json{ { "scale", std::round(v) } }); });
 
                 row = Row(body);
                 Caption(row, Tr("Detail Level"), 110.0f);
                 const std::vector<std::string> levels{ Tr("Coarse"), Tr("Medium"), Tr("Fine") };
                 auto* detail = Sized(row->AddChild<ComboBox>(levels, static_cast<int>(now.detail)), 140.0f);
-                detail->SetEnabled(!dependent);
+                detail->SetEnabled(!dependent && !controlled(Bim::Group::Detail));
                 detail->SetOnChanged([run](int i)
                 {
                     static const char* keys[] = { "coarse", "medium", "fine" };
@@ -1031,7 +1056,7 @@ namespace MiniBIM
             auto box = [&](Node* parent, const char* c)
             {
                 auto* cb = parent->AddChild<CheckBox>(Tr(Props::CategoryName(c, true)), !now.Hides(c));
-                cb->SetEnabled(!dependent);
+                cb->SetEnabled(!dependent && !controlled(Bim::Group::Categories));
                 const std::string cat = c;
                 cb->SetOnChanged([run, cat](bool on) { run("graphics", Bim::Json{ { on ? "show" : "hide", Bim::Json::array({ cat }) } }); });
             };
@@ -1039,6 +1064,41 @@ namespace MiniBIM
                 box(i < half ? left : right, model[i]);
             for (const char* c : annotation)
                 box(notes, c);
+
+            // 项目的视图过滤器：套用（勾上），套用时可见还是隐藏它挑出的
+            if (!m.viewFilters.empty())
+            {
+                body->AddChild<Label>(Tr("Filters"), 13.0f, Theme::TextDim);
+                const bool filtersFree = !dependent && !controlled(Bim::Group::Filters);
+                for (const auto& [name, _] : m.viewFilters)
+                {
+                    const auto it = std::find_if(now.filters.begin(), now.filters.end(), [&](const Bim::Applied& a) { return a.filter == name; });
+                    Node* row = Row(body, 12.0f);
+                    auto* applied = Sized(row->AddChild<CheckBox>(name, it != now.filters.end()), 220.0f);
+                    applied->SetEnabled(filtersFree);
+                    auto* visible = row->AddChild<CheckBox>(Tr("Visible"), it == now.filters.end() || !it->over.hidden);
+                    visible->SetEnabled(filtersFree && it != now.filters.end());
+                    // 改完的整个列表交给 graphics {filters}
+                    const auto send = [run, list = now.filters, n = name](bool on, bool shown)
+                    {
+                        std::vector<Bim::Applied> next = list;
+                        const auto at = std::find_if(next.begin(), next.end(), [&](const Bim::Applied& a) { return a.filter == n; });
+                        if (!on && at != next.end())
+                            next.erase(at);
+                        else if (on && at == next.end())
+                            next.push_back(Bim::Applied{ n, Bim::Override{ !shown } });
+                        else if (on)
+                            at->over.hidden = !shown;
+                        Bim::Json a = Bim::Json::array();
+                        for (const Bim::Applied& x : next)
+                            a.push_back(Bim::ToJson(x));
+                        run("graphics", Bim::Json{ { "filters", a } });
+                    };
+                    const bool shownNow = it == now.filters.end() || !it->over.hidden;
+                    applied->SetOnChanged([send, shownNow](bool on) { send(on, shownNow); });
+                    visible->SetOnChanged([send](bool shown) { send(true, shown); });
+                }
+            }
 
             if (!d->error.empty())
                 body->AddChild<Label>(d->error, 12.0f, Theme::Danger)->SetWrap(true);
