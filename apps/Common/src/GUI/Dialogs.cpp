@@ -11,6 +11,7 @@
 #include "Widgets/Controls.h"
 #include "Widgets/Dialog.h"
 #include "Widgets/Label.h"
+#include "Widgets/NumberBox.h"
 #include "Widgets/PropertyGrid.h"
 #include "Widgets/TextBox.h"
 #include "Core/Log.h"
@@ -838,6 +839,16 @@ namespace MiniBIM
                 {
                     run(Bim::Json{ { "name", d->picked }, { "color", Bim::Json::array({ v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF }) } }, std::nullopt);
                 });
+
+                // 三维视图里透过它能看到身后多少，百分数
+                row = Row(body);
+                Caption(row, Tr("Transparency"), 110.0f);
+                auto* clear = Sized(row->AddChild<NumberBox>(mat->second.transparency, 0.0, 100.0, 10.0, 0), 80.0f);
+                clear->SetOnChanged([d, run](double v)
+                {
+                    run(Bim::Json{ { "name", d->picked }, { "transparency", static_cast<int>(std::lround(v)) } }, std::nullopt);
+                });
+                row->AddChild<Label>("%", 13.0f);
 
                 std::vector<std::string> patterns;
                 for (const auto& [_, n] : Patterns)

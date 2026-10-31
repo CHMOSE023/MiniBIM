@@ -1297,6 +1297,9 @@ namespace MiniBIM::Bim
                         taken.push_back(x->number);
                 r.number = NextNumber(taken);
             }
+            if (const auto wall = m.WallHolding(r, m.roomArea))
+                return P.Fail("[" + Num(point.x) + ", " + Num(point.y) + "] lies inside wall " + m.Shown(*wall) +
+                              "; place a room in the space between walls, not in a wall");
             const auto region = m.RoomRegion(r);
             if (!region)
                 return P.Fail("[" + Num(point.x) + ", " + Num(point.y) + "] isn't enclosed by walls on " + LevelName(m, level) +
@@ -2014,6 +2017,13 @@ namespace MiniBIM::Bim
                 if (!colour)
                     return P.Fail("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not " + Show(v));
                 mat.color = *colour;
+            }
+            if (!P.Absent("transparency"))
+            {
+                const Json& v = *Get(p, "transparency");
+                if (!v.is_number_integer() || v.get<int64_t>() < 0 || v.get<int64_t>() > 100)
+                    return P.Fail("`transparency` is a whole percent, 0 to 100, not " + Show(v));
+                mat.transparency = static_cast<uint8_t>(v.get<int64_t>());
             }
             for (const auto& [key, slot] : { std::pair{ "cut", &mat.cut }, std::pair{ "surface", &mat.surface } })
             {
@@ -2971,6 +2981,8 @@ namespace MiniBIM::Bim
                 for (auto it = p.begin(); it != p.end(); ++it)
                     if (it.key() != "at")
                         return P.Fail("`" + it.key() + "` isn't one of its parameters: at");
+            if (p.is_object() && p.contains("at") && !p["at"].is_null() && !p["at"].is_string())
+                return P.Fail("`at` is centre or finish");
             std::optional<std::string> name;
             if (!P.String("at", name))
                 return false;
@@ -3035,6 +3047,7 @@ namespace MiniBIM::Bim
             result = Json{ { "name", m.name },
                            { "units", "mm" },
                            { "project_units", UnitsOf::Name(m.units) },
+                           { "room_area", m.roomArea == RoomArea::Finish ? "finish" : "centre" },
                            { "language", LanguageOf::Code(m.language) },
                            { "path", s.Path() ? Json(*s.Path()) : Json(nullptr) },
                            { "levels", levels },

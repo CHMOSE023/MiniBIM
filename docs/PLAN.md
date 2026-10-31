@@ -3,7 +3,7 @@
 MiniBIM 把 [BIMCraft](https://github.com/IPedrax/BIMCraft)（Rust，约 13.7 万行）移植为 C++20，界面、渲染、构建、代码风格沿用
 [MiniCAD](https://github.com/CHMOSE023/MiniCAD)，几何内核用 SMLib。许可与来源见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 
-基准：BIMCraft `f3bbb33`（2026-10-28），MiniCAD `0bd1687`（2026-10-29）。
+基准：BIMCraft `f3bbb33`（2026-10-28，已同步 `0733fd4` 的部分修复，见下面"同步 BIMCraft 新版"），MiniCAD `0bd1687`（2026-10-29）。
 
 ## 第 1 阶段：骨架（已完成）
 
@@ -122,6 +122,15 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   打开读进内存文件系统，保存与导出 IFC 先问文件名再下载；核心库在网页上不链接 pthread，不自动保存，不记住设置与最近打开；SMLib 编入（8 MB 栈）
 - 4d ✅ CI：照 MiniCAD 的 `build.yml` 加上 Linux 版（SDL3 静态编译并缓存，`Linux (Vulkan / GLES3)`，也跑全部测试）与网页版（`Web (WebAssembly)`）的编译、打包，
   标签构建时一起发布（`linux-x64.tar.gz`、`web.zip`）。网页版还没有部署到网站（要部署时照 MiniCAD 加 Cloudflare Pages 或 GitHub Pages 的一步）
+
+## 同步 BIMCraft 新版
+
+- `0733fd4`（2026-10-29）：文件格式升到 11（第 10 版的尺寸标注、第 11 版的项目语言 sv / cs / fr 读入时略去并列出，语言按英语）；
+  画到墙面的房间分隔线在中心线量时也分开房间（BIMCraft #149）；在墙面量时房间的点不能在墙体里，`inspect` 报出 `room_area`；
+  材质的透明度（`Material::transparency`，新项目的玻璃 70，`material` 命令、检查、材质对话框、IFC 导出与读回；三维还不画半透明）；
+  单线字的 Æ；IFC 导入里不属于楼梯的平台板读成楼板。
+  没同步的：新的项目语言与界面语言（暂不移植）、IFC 导入的标记与别的程序的属性集（要项目参数）、尺寸标注、三维透视、对齐辅助线、
+  技术标准、钢筋与配筋、天花板平面里的梁、巴西规范的计算；DWG 导入以后用 MiniCAD 的 MiniDWG（移植自 ACadSharp，MIT），不用 BIMCraft 的 acadrust
 
 ## 与 MiniCAD 的差异
 

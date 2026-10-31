@@ -1312,6 +1312,8 @@ namespace MiniBIM::Bim
             y["color"]   = Json::array({ x.color[0], x.color[1], x.color[2] });
             y["cut"]     = PatternOf::Name(x.cut);
             y["surface"] = PatternOf::Name(x.surface);
+            if (x.transparency != 0)
+                y["transparency"] = x.transparency;
             mats[n] = std::move(y);
         }
         return mats;
@@ -1440,14 +1442,23 @@ namespace MiniBIM::Bim
             m.uid = static_cast<uint64_t>(uid);
         else
             return f.Fail("`uid` must be a whole number");
+        // 文件格式 11 的项目语言里还没移植的（BIMCraft 的瑞典语、捷克语、法语）：宽松读时按英语，记为略去
+        bool otherLanguage = false;
+        if (const auto it = v.find("language"); it != v.end() && it->is_string() && f.LeftOut())
+            if (const std::string code = it->get<std::string>(); code == "sv" || code == "cs" || code == "fr")
+            {
+                otherLanguage = true;
+                f.Raw("language");
+                f.LeftOut()->push_back("/language");
+            }
         if (!EnumName(f, "units", m.units, [](std::string_view s) { return UnitsOf::FromName(s); }, "mm, cm, m, in, ft, ft-in") ||
-            !EnumName(f, "language", m.language, [](std::string_view s) -> std::optional<Language>
+            (!otherLanguage && !EnumName(f, "language", m.language, [](std::string_view s) -> std::optional<Language>
             {
                 for (Language l : LanguageOf::All)
                     if (s == LanguageOf::Code(l))
                         return l;
                 return std::nullopt;
-            }, "en, pt, es") ||
+            }, "en, pt, es")) ||
             !EnumName(f, "room_area", m.roomArea, [](std::string_view s) -> std::optional<RoomArea>
             {
                 if (s == "centre") return RoomArea::Centre;
@@ -1496,6 +1507,14 @@ namespace MiniBIM::Bim
                 if (!byte || *byte > 255)
                     return g.Fail("`color` must be [r, g, b], each 0 to 255");
                 x.color[i] = static_cast<uint8_t>(*byte);
+            }
+            // 没有 transparency 的（BIMCraft 第 8 版之前的文件）读成不透明
+            if (const Json* t = g.Raw("transparency"))
+            {
+                const auto whole = AsWhole(*t);
+                if (!whole || *whole > 255)
+                    return g.Fail("`transparency` must be a whole percent");
+                x.transparency = static_cast<uint8_t>(*whole);
             }
             const char* patterns = "none, solid, diagonal, crosshatch, horizontal, vertical, grid, brick, concrete, insulation";
             auto parse = [](std::string_view s) { return PatternOf::FromName(s); };

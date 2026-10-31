@@ -1771,6 +1771,174 @@ namespace
         std::filesystem::remove(std::filesystem::path(std::u8string(project.begin(), project.end())), ec);
         std::filesystem::remove(std::filesystem::path(std::u8string(backup.begin(), backup.end())), ec);
     }
+
+    // ── 同步 BIMCraft 0733fd4：文件格式 11、房间、材质透明度 ──────────────
+    // 移植自 BIMCraft room_area_tests.rs 与 tests.rs 的
+    // a_separator_drawn_to_the_wall_faces_splits_rooms_measured_at_the_centre_lines_too（0733fd4）
+    void TestBimcraft0733()
+    {
+        // 所有房间的面积，从小到大
+        auto areas = [](Session& s)
+        {
+            std::vector<double> out;
+            const Json rooms = Run(s, "elements", R"({"category": "room"})");
+            for (const Json& r : rooms["elements"])
+                if (r.contains("area_m2") && r["area_m2"].is_number())
+                    out.push_back(r["area_m2"].get<double>());
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+        auto near = [](double got, double want) { return std::abs(got - want) <= 0.006; };
+        auto wall = [](Session& s, const char* points, bool closed)
+        {
+            Run(s, "wall", Json{ { "points", Json::parse(points) }, { "closed", closed }, { "type", "Exterior - 300mm" } });
+        };
+        {
+            // BIMCraft 第 11 版的文件：法语项目（还没移植）、尺寸类型、尺寸标注、透明的材质
+            Session s;
+            House(s);
+            Json file = s.GetModel().ToJson();
+            file["format"]          = 11;
+            file["language"]        = "fr";
+            file["dimension_types"] = Json::object({ { "Linear", Json::object() } });
+            file["materials"]["Glass"]["transparency"] = 70;
+            Model m;
+            std::vector<std::string> left;
+            std::string error;
+            const bool read = Model::Read(file.dump(), m, left, error);
+            auto has = [&](const char* p) { return std::find(left.begin(), left.end(), p) != left.end(); };
+            Check(read && m.language == Language::English && has("/language") && has("/dimension_types") && m.materials.at("Glass").transparency == 70 &&
+                      m.ToJson()["format"] == 11,
+                  "文件：BIMCraft 第 11 版的文件能打开，还没移植的语言与尺寸类型略去并列出 " + error);
+        }
+        {
+            Session s;
+            House(s);
+            const double half = Run(s, "elements", R"({"category": "wall"})")["elements"][0]["thickness"].get<double>() / 2.0;
+            // 像在平面上那样从墙面画到墙面，再斜着从墙面画一条到第一条线
+            Run(s, "room_separator", Json{ { "points", { { 5000, half }, { 5000, 6000.0 - half } } } });
+            Run(s, "room_separator", Json{ { "points", { { 8000.0 - half, 4000.0 - half / 3.0 }, { 5000, 3000 } } } });
+            Run(s, "room", R"({"point": [2000, 3000], "name": "Living"})");
+            Run(s, "room", R"({"point": [7000, 1000], "name": "Kitchen"})");
+            Run(s, "room", R"({"point": [7000, 5500], "name": "Pantry"})");
+            // 在中心线：5 m × 6 m，以及剩下的 3 m × 6 m 被 (8000, 4000) 到 (5000, 3000) 的斜线切开
+            const std::vector<double> centre = areas(s);
+            bool ok = centre.size() == 3 && near(centre[0], 3.0 * 2.5) && near(centre[1], 3.0 * 3.5) && near(centre[2], 30.0);
+            // 线本身照画的样子
+            ok = ok && Run(s, "elements", R"({"category": "roomseparator"})")["elements"][0]["length"] == 6000.0 - 2.0 * half;
+            // 在墙面量时一样分开，加起来是墙以内的地面
+            Run(s, "room_area", R"({"at": "finish"})");
+            const std::vector<double> inside = areas(s);
+            double sum = 0.0;
+            for (const double a : inside)
+                sum += a;
+            Check(ok && std::abs(sum - (8000.0 - 2.0 * half) * (6000.0 - 2.0 * half) / 1e6) < 0.02,
+                  "房间：画到墙面的分隔线在墙中心线量时也把房间分开");
+        }
+        {
+            // 4000 × 3000 的一圈 300 墙，里面一个房间
+            Session s;
+            wall(s, "[[0, 0], [4000, 0], [4000, 3000], [0, 3000]]", true);
+            Run(s, "room", R"({"point": [2000, 1500], "name": "TEST"})");
+            bool ok = Run(s, "inspect", Json::object())["room_area"] == "centre" && near(areas(s)[0], 12.0);
+            Run(s, "room_area", R"({"at": "finish"})");
+            ok = ok && Run(s, "inspect", Json::object())["room_area"] == "finish" && near(areas(s)[0], 9.99);
+            // 贴着南墙内面 20 mm 的仍是房间；在墙体里 10 mm 的不是
+            ok = ok && near(Run(s, "room", R"({"point": [2000, 170]})")["area_m2"].get<double>(), 9.99) &&
+                 Contains(Refused(s, "room", R"({"point": [2000, 140]})"), "inside wall");
+            for (const char* bad : { R"({"at": "core"})", R"({"at": 5})", R"({"at": [0, 0]})" })
+            {
+                const std::string e = Refused(s, "room_area", bad);
+                ok = ok && Contains(e, "centre") && Contains(e, "finish");
+            }
+            Check(ok, "房间：在墙面量时房间不能在墙体里，inspect 报出量法");
+        }
+        {
+            // 单独一面墙：两种量法都不出房间，在墙面量时说在墙里
+            Session s;
+            Run(s, "wall", R"({"points": [[0, 0], [4000, 0]], "type": "Exterior - 300mm"})");
+            bool ok = true;
+            for (const char* at : { "centre", "finish" })
+            {
+                Run(s, "room_area", Json{ { "at", at } });
+                for (const char* p : { R"({"point": [2000, 0]})", R"({"point": [2000, 100]})" })
+                {
+                    const std::string e = Refused(s, "room", p);
+                    ok = ok && !e.empty() && (std::string(at) == "centre" || Contains(e, "inside wall")) && areas(s).empty();
+                }
+            }
+            Check(ok, "房间：墙体里的点不成房间");
+        }
+        {
+            // L 形：中心线上 18 m²，墙以内 5700 × 1700 + 1700 × 3000
+            Session s;
+            wall(s, "[[0, 0], [6000, 0], [6000, 2000], [2000, 2000], [2000, 5000], [0, 5000]]", true);
+            Run(s, "room", R"({"point": [1000, 1000]})");
+            bool ok = near(areas(s)[0], 18.0);
+            Run(s, "room_area", R"({"at": "finish"})");
+            ok = ok && near(areas(s)[0], 14.79);
+            // 一圈墙里的岛：在墙面量时扣去岛的外表面，岛自己里面的空也是一个房间
+            Session t;
+            wall(t, "[[0, 0], [6000, 0], [6000, 5000], [0, 5000]]", true);
+            wall(t, "[[2500, 2000], [3500, 2000], [3500, 3000], [2500, 3000]]", true);
+            Run(t, "room", R"({"point": [1000, 1000]})");
+            ok = ok && near(areas(t)[0], 29.0);
+            Run(t, "room_area", R"({"at": "finish"})");
+            ok = ok && near(areas(t)[0], 25.1);
+            const Json island = Run(t, "room", R"({"point": [3000, 2500]})");
+            ok = ok && !island.is_null() && near(island["area_m2"].get<double>(), 0.49);
+            Check(ok, "房间：L 形与墙岛在墙面量");
+        }
+        {
+            // 十字交叉的墙围出四个房间；交叉处是墙
+            Session s;
+            wall(s, "[[0, 0], [6000, 0], [6000, 4000], [0, 4000]]", true);
+            wall(s, "[[3000, 0], [3000, 4000]]", false);
+            wall(s, "[[0, 2000], [6000, 2000]]", false);
+            for (const char* p : { R"({"point": [1500, 1000]})", R"({"point": [4500, 1000]})", R"({"point": [1500, 3000]})", R"({"point": [4500, 3000]})" })
+                Run(s, "room", p);
+            bool ok = areas(s) == std::vector<double>(4, 6.0);
+            Run(s, "room_area", R"({"at": "finish"})");
+            const std::vector<double> got = areas(s);
+            ok = ok && got.size() == 4;
+            for (const double a : got)
+                ok = ok && near(a, 4.59);
+            ok = ok && Contains(Refused(s, "room", R"({"point": [3000, 2000]})"), "inside wall");
+            // 墙的定位线在哪都一样：墙以内的面积相同
+            auto finish = [&](const char* location, const char* points)
+            {
+                Session u;
+                Run(u, "wall", Json{ { "points", Json::parse(points) }, { "closed", true }, { "type", "Exterior - 300mm" }, { "location", location } });
+                Run(u, "room_area", R"({"at": "finish"})");
+                Run(u, "room", R"({"point": [2000, 1500]})");
+                const std::vector<double> a = areas(u);
+                return a.empty() ? -1.0 : a[0];
+            };
+            const double centre = finish("centre", "[[0, 0], [4000, 0], [4000, 3000], [0, 3000]]");
+            ok = ok && near(centre, 9.99) && near(finish("exterior-finish", "[[-150, -150], [-150, 3150], [4150, 3150], [4150, -150]]"), centre) &&
+                 near(finish("interior-finish", "[[150, 150], [150, 2850], [3850, 2850], [3850, 150]]"), centre);
+            Check(ok, "房间：十字墙的四个房间在墙面量，与墙的定位线无关");
+        }
+        {
+            // 材质的透明度，百分数：留着、清掉、超过 100 拒绝
+            Session s;
+            bool ok = Run(s, "material", R"({"name": "Oak", "transparency": 40})")["material"]["transparency"] == 40 &&
+                      s.GetModel().materials.at("Oak").transparency == 40;
+            ok = ok && Run(s, "material", R"({"name": "Oak", "transparency": 0})")["material"].count("transparency") == 0;
+            for (const char* bad : { "101", "-1", "2.5", "\"x\"", "1e300" })
+                ok = ok && Contains(Refused(s, "material", Json{ { "name", "Oak" }, { "transparency", Json::parse(bad) } }), "transparency");
+            ok = ok && s.GetModel().materials.at("Oak").transparency == 0 && s.GetModel().materials.at("Glass").transparency == GlassTransparency;
+            // 随项目保存；第 8 版以前没有它的文件读成不透明
+            Json file = s.GetModel().ToJson();
+            ok = ok && file["materials"]["Glass"]["transparency"] == GlassTransparency && file["materials"]["Oak"].count("transparency") == 0;
+            Model m;
+            std::vector<std::string> left;
+            std::string error;
+            file["materials"]["Glass"]["transparency"] = 101;
+            ok = ok && Model::Read(file.dump(), m, left, error) && !m.Check(error) && Contains(error, "transparency");
+            Check(ok, "材质：透明度 0 到 100，新项目的玻璃是 70");
+        }
+    }
 }
 
 int main()
@@ -1791,6 +1959,7 @@ int main()
     TestSketches();
     TestAutosave();
     TestHostileParams();
+    TestBimcraft0733();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

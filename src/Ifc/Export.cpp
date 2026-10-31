@@ -257,7 +257,10 @@ namespace MiniBIM::Bim::Ifc
                 {
                     const auto& c = it->second.color;
                     const uint64_t colour  = Add("IFCCOLOURRGB($," + Real(c[0] / 255.0) + "," + Real(c[1] / 255.0) + "," + Real(c[2] / 255.0) + ")");
-                    const uint64_t shading = Add("IFCSURFACESTYLESHADING(" + Ref(colour) + ",$)");
+                    // 第二个参数是材质有多透：0 不透明到 1 全透；不透明的不写
+                    const uint8_t t = it->second.transparency;
+                    const std::string clear = t == 0 ? std::string("$") : Real(std::min<uint8_t>(t, 100) / 100.0);
+                    const uint64_t shading = Add("IFCSURFACESTYLESHADING(" + Ref(colour) + "," + clear + ")");
                     style = Add("IFCSURFACESTYLE(" + S(name) + ",.BOTH.,(" + Ref(shading) + "))");
                     const uint64_t item = Add("IFCSTYLEDITEM($,(" + Ref(*style) + "),$)");
                     const uint64_t rep  = Add("IFCSTYLEDREPRESENTATION(" + Ref(context) + ",'Style','Material',(" + Ref(item) + "))");

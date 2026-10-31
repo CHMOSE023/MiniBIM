@@ -42,7 +42,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   复制模型只复制指针，`Elements::GetMut` 改一个元素时才复制它（与快照共用时）。每条可撤销的命令改了模型就记一步（`Step` 按类别数做出与去掉的元素）
 - 元素有 ID（六位数，从 `FirstId` 往上）和 GUID（生成一次、永不改变）；凡是指向元素的字段都存 GUID。命令里可以先写 ID（`Guid::OfId`），执行后解析成 GUID。
   库条目（类型、材质）也有 ID（从 `LastId` 往下）和 GUID；类型的层是部件，自己存着 ID 和 GUID
-- 项目文件：`Model::ToFile` 写、`Model::Read` 读，格式与 BIMCraft 的 `.bimcraft` 相同（`FileFormat` 同为 9），扩展名用 `.minibim`，两边都能打开对方的文件。
+- 项目文件：`Model::ToFile` 写、`Model::Read` 读，格式与 BIMCraft 的 `.bimcraft` 相同（`FileFormat` 同为 11，BIMCraft `0733fd4`），扩展名用 `.minibim`，两边都能打开对方的文件。
+  第 10 版的尺寸标注、第 11 版的项目语言 sv / cs / fr 还没移植：读入时略去并列出（语言按英语）
   文件里引用库条目的名称（墙的 `type`、层的 `material`）一律写 GUID，读回时换回名称（`Model::NamesFromFile`）
 - 读文件宽松、读命令严格：命令里拼错的键报错（`FromJson` 读元素时先查不认识的键）；读文件时本版本不认识的内容（BIMCraft 新加的字段、还没移植的元素、
   族、阶段、视图设置……）略去，略去的位置以 JSON 指针列在 `open` 结果的 `left_out`（`/elements/100004/finish`）。读完再清理：宿主没了的门窗也略去，
@@ -66,6 +67,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
 - 房间只存一个点，边界每次由点四周的线找（`Model::RoomRegion`）：墙中心线与房间分隔线，或在墙面量时（`Model::roomArea`）墙轮廓的边与分隔线。
+  画到墙面的分隔线在中心线量时接着走到墙中心线（`Model::BoundingLines`，线本身不变）；在墙面量时点落在墙体里不成房间（`Model::WallHolding`，`room` 报错）
   墙动了房间跟着变；`floor`、`roof` 沿墙铺时，里面有房间的独立的一圈墙算室内
 
 ## 约束与坑

@@ -6,7 +6,7 @@ covers: docs/PLAN.md, THIRD_PARTY_NOTICES.md, src/Model/*, src/Commands/*
 
 ## 概述
 
-BIMCraft（Rust，基准提交 `f3bbb33`，本机在 `D:\BIMCraft`）的核心 `crates/core` 没有界面，所有编辑都是命令：`commands.rs` 的命令表 `ALL`，
+BIMCraft（Rust，基准提交 `f3bbb33`，已同步 `0733fd4` 的部分修复，见 `docs/PLAN.md`；本机在 `D:\BIMCraft`）的核心 `crates/core` 没有界面，所有编辑都是命令：`commands.rs` 的命令表 `ALL`，
 每条命令吃 JSON 参数、返回 JSON 结果或错误字符串，由 `engine.rs` 的 `Session` 执行（失败回滚、撤销）。界面、命令行、脚本都只调命令。
 MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最后在 MiniGUI 上重写。顺序见 `docs/PLAN.md` 第 2 阶段；移植过来的代码在哪、
 怎么用见 `.agents/features/model.md`。
@@ -25,7 +25,7 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 // 移植自 BIMCraft crates/core/src/walls.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 ```
 
-一个 C++ 文件来自几个 Rust 文件时都列上。BIMCraft 的版权行与 MIT 原文已在 `THIRD_PARTY_NOTICES.md`，不用逐个文件再贴。
+一个 C++ 文件来自几个 Rust 文件时都列上。之后从 BIMCraft 新版同步个别修复时来源行不改，改动记在 `docs/PLAN.md` 的"同步 BIMCraft 新版"，移植的测试注明新版的提交。BIMCraft 的版权行与 MIT 原文已在 `THIRD_PARTY_NOTICES.md`，不用逐个文件再贴。
 
 ## Rust → C++ 的对应写法
 

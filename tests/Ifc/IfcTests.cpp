@@ -1180,6 +1180,28 @@ window {"at": [2000, 6000]})");
               "材质与层：从 IFC 回来时层、材质与颜色不变");
     }
 
+    // 移植自 BIMCraft tests.rs 的 a_materials_transparency_goes_to_ifc_in_its_surface_style_and_comes_back（0733fd4）
+    void TestTransparency()
+    {
+        Session s;
+        House(s);
+        Run(s, "material", R"({"name": "Tint", "color": "#a0c0e0", "transparency": 40})");
+        Run(s, "material", R"({"name": "Paint", "color": "#a0703c"})");
+        Run(s, "type", R"({"category": "floor", "name": "Tinted", "layers": [{"material": "Tint", "thickness": 20}, {"material": "Paint", "thickness": 180}]})");
+        Run(s, "floor", R"({"type": "Tinted"})");
+        const std::string path = Temp("transparency.ifc");
+        Run(s, "save", Json{ { "path", path } });
+        const std::string ifc = ReadText(path);
+        Session t;
+        Run(t, "open", Json{ { "path", path } });
+        std::error_code ec;
+        std::filesystem::remove(PathOf(path), ec);
+        const auto& m = t.GetModel().materials;
+        Check(Contains(ifc, "IFCSURFACESTYLESHADING(#") && Contains(ifc, ",0.4)") && m.count("Tint") && m.count("Paint") &&
+                  m.at("Tint").transparency == 40 && m.at("Paint").transparency == 0,
+              "材质：透明度写进 IFC 的表面样式，再读回来");
+    }
+
     void TestSliding()
     {
         Session s;
@@ -1274,6 +1296,7 @@ int main()
     TestMarks();
     TestBroken();
     TestMaterials();
+    TestTransparency();
     TestSliding();
     TestRoomSeparators();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);

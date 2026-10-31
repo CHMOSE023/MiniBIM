@@ -43,9 +43,10 @@ namespace MiniBIM::Bim
     inline constexpr size_t MaxLayers     = 32;
     // 标高没有自己的范围时伸出模型多远，毫米
     inline constexpr double LevelPast     = 1000.0;
-    // 本程序写出、能读的项目文件版本，与 BIMCraft f3bbb33 相同（见 BIMCraft model.rs 的 FORMAT）。
+    // 本程序写出、能读的项目文件版本，与 BIMCraft 0733fd4 相同（见 BIMCraft model.rs 的 FORMAT）。
+    // 10 加了尺寸标注的端点、方向与类型（MiniBIM 还没有尺寸，读入时略去），11 加了项目语言 sv、cs、fr（还没移植，读入时按英语并略去）。
     // 更新的版本拒绝打开；0 是还没有 GUID 的旧文件
-    inline constexpr uint32_t FileFormat  = 9;
+    inline constexpr uint32_t FileFormat  = 11;
 
     // 平面视图的视图范围，同 Revit：标高以上的毫米。被 cut 平面剖切，往下看到 bottom，再往下到视图深度 depth；
     // 剖切面以上看到 top（没有时为上一个标高）为止的悬挑部分
@@ -155,13 +156,18 @@ namespace MiniBIM::Bim
         std::optional<Pattern> FromName(std::string_view name);
     }
 
-    // 项目库的材质：着色视图里的颜色、平面和剖面里剖切面的图案、俯视楼板（仰视天花板）时表面的图案。
+    // 新项目的玻璃材质有多透明，百分数
+    inline constexpr uint8_t GlassTransparency = 70;
+
+    // 项目库的材质：着色视图里的颜色、平面和剖面里剖切面的图案、俯视楼板（仰视天花板）时表面的图案，
+    // 以及三维视图里透过它的表面能看到身后多少（transparency，百分数：0 不透明到 100）。
     // BIMCraft 的材质还有填充样式名称与贴图，移植图纸、贴图时再加
     struct Material
     {
         std::array<uint8_t, 3> color{ 200, 200, 200 };
         Pattern cut     = Pattern::None;
         Pattern surface = Pattern::None;
+        uint8_t transparency = 0;
         bool operator==(const Material&) const = default;
     };
 
@@ -638,6 +644,9 @@ namespace MiniBIM::Bim
         std::optional<Geom::Region> RoomRegion(const Room& r) const;
         // 在 at 处量的房间边界：墙中心线（Revit 的"在墙中心"），或墙面（"在墙面层"：墙以内的面积）
         std::optional<Geom::Region> RoomRegionAt(const Room& r, RoomArea at) const;
+        // 在墙面量（at 为 Finish）时房间的点落在其墙体里的围合墙：那时墙的各个面把墙体自己围成一圈，墙里的点会把墙当成房间。
+        // 在中心线量时没有东西围住墙体，没什么要拒绝的
+        std::optional<Id> WallHolding(const Room& r, RoomArea at) const;
 
         // ── 检查 ────────────────────────────────────────────────
         // 每条命令之后检查整个模型；不通过时命令回滚。error 说明要改什么，关于元素的以"类别 ID: "开头

@@ -1362,7 +1362,14 @@ namespace MiniBIM::Bim::Ifc
         }
 
         // styles 着的颜色：IFC2x3 里经样式指定；表面样式的，它的着色或渲染的
-        std::optional<std::array<uint8_t, 3>> Colour(const Reader& r, std::vector<uint64_t> styles)
+        // 样式着的颜色与有多透（百分数，取着色或渲染的第二个参数，1 为全透）
+        struct Shade
+        {
+            std::array<uint8_t, 3> color;
+            uint8_t                clear = 0;
+        };
+
+        std::optional<Shade> Colour(const Reader& r, std::vector<uint64_t> styles)
         {
             std::unordered_set<uint64_t> seen;
             while (!styles.empty())
@@ -1392,17 +1399,21 @@ namespace MiniBIM::Bim::Ifc
                         };
                         const auto red = byte(1), green = byte(2), blue = byte(3);
                         if (red && green && blue)
-                            return std::array<uint8_t, 3>{ *red, *green, *blue };
+                        {
+                            const auto t = RealOf(Arg(*x, 1));
+                            const uint8_t clear = t && std::isfinite(*t) ? static_cast<uint8_t>(std::round(std::clamp(*t, 0.0, 1.0) * 100.0)) : 0;
+                            return Shade{ { *red, *green, *blue }, clear };
+                        }
                     }
                 }
             }
             return std::nullopt;
         }
 
-        // 文件给材质着的颜色，按名称：各材质的表面样式的
-        std::map<std::string, std::array<uint8_t, 3>> MaterialColours(const Reader& r, const std::vector<uint64_t>& ids)
+        // 文件给材质着的颜色与透明度，按名称：各材质的表面样式的
+        std::map<std::string, Shade> MaterialColours(const Reader& r, const std::vector<uint64_t>& ids)
         {
-            std::map<std::string, std::array<uint8_t, 3>> out;
+            std::map<std::string, Shade> out;
             // 先按表面样式自己的名称（MiniBIM、BIMCraft 与 Revit 都用材质名称给它命名），再用材质的样式盖过去
             for (const uint64_t id : ids)
             {
@@ -2384,15 +2395,10 @@ namespace MiniBIM::Bim::Ifc
             const Entity& s = *e(id);
             if (inWhole(id, { "IFCROOF", "IFCSTAIR", "IFCRAMP" }))
                 continue;
-            const auto kind = Enumeration(Arg(s, 8));
-            if (kind == "ROOF")
+            // 楼梯的平台板归楼梯（上面已跳过）；不属于楼梯的平台板与别的板一样，读成楼板
+            if (Enumeration(Arg(s, 8)) == "ROOF")
             {
                 roofs.push_back(id);
-                continue;
-            }
-            if (kind == "LANDING")
-            {
-                leave(id, "landings aren't supported");
                 continue;
             }
             const auto faces = r.Body(s);
@@ -3055,9 +3061,12 @@ namespace MiniBIM::Bim::Ifc
 
         // 各层用的材质放进库，按文件的颜色着色
         m.AdoptMaterials();
-        for (const auto& [mname, colour] : MaterialColours(r, ids))
+        for (const auto& [mname, shade] : MaterialColours(r, ids))
             if (const auto it = m.materials.find(mname); it != m.materials.end())
-                it->second.color = colour;
+            {
+                it->second.color        = shade.color;
+                it->second.transparency = shade.clear;
+            }
         // 每个元素的 GUID 是建成它的东西的 GlobalId（是 GlobalId 时）；指向元素的都指向它
         std::map<Id, Guid> globals;
         for (const auto& [step, id] : origin)

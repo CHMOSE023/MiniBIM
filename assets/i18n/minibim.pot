@@ -571,6 +571,10 @@ msgid "Color"
 msgstr ""
 
 #: apps/Common/src/GUI/Dialogs.cpp
+msgid "Transparency"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
 msgid "Cut Pattern"
 msgstr ""
 

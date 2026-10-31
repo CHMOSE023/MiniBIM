@@ -570,6 +570,10 @@ msgid "Color"
 msgstr "颜色"
 
 #: apps/Common/src/GUI/Dialogs.cpp
+msgid "Transparency"
+msgstr "透明度"
+
+#: apps/Common/src/GUI/Dialogs.cpp
 msgid "Cut Pattern"
 msgstr "截面填充图案"
 

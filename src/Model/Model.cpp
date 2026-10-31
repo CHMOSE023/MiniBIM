@@ -512,7 +512,9 @@ namespace MiniBIM::Bim
             { "Copper",         { 184, 115, 51 },  Pattern::Solid,      Pattern::None },
         };
         for (const Start& s : materials)
-            m.materials[LanguageOf::Word(language, s.name)] = Material{ s.color, s.cut, s.surface };
+            // 玻璃让身后的房子透出来
+            m.materials[LanguageOf::Word(language, s.name)] =
+                Material{ s.color, s.cut, s.surface, std::string_view(s.name) == "Glass" ? GlassTransparency : uint8_t(0) };
         m.types.wall["Generic - 200mm"]  = WallType{ 200.0, {} };
         m.types.wall["Interior - 100mm"] = WallType{ 100.0, {} };
         // 外墙从外往里的各层：砖、保温、砌块核心层、抹灰
@@ -1231,6 +1233,36 @@ namespace MiniBIM::Bim
     }
 
     // ── 房间找墙用的线 ───────────────────────────────────────────
+    namespace
+    {
+        // 墙中心线的一段与半个墙厚
+        struct HalfWall
+        {
+            P2     a, b;
+            double half;
+        };
+
+        // 从 from 经 end 的方向上，end 落在其中的墙（离中心线不到半个墙厚）的中心线在哪里：顺着线的方向接着走到那里；
+        // end 不在墙里或已在中心线上时就是 end
+        P2 ToCentre(P2 from, P2 end, const std::vector<HalfWall>& walls)
+        {
+            const P2 way = (end - from).Unit();
+            if (!way.IsFinite())
+                return end;
+            std::optional<double> nearest;
+            for (const HalfWall& w : walls)
+            {
+                if (w.half <= 0.0 || Geom::DistToSegment(end, w.a, w.b) > w.half + Tol)
+                    continue;
+                // 够穿过斜着碰到的墙，又到不了再过去的墙
+                const double reach = 4.0 * w.half + Tol;
+                if (const auto t = Geom::Crossing(end, end + way * reach, w.a, w.b); t && (!nearest || *t * reach < *nearest))
+                    nearest = *t * reach;
+            }
+            return nearest ? end + way * *nearest : end;
+        }
+    }
+
     std::vector<Segment> Model::WallLines(Guid level) const
     {
         std::vector<Segment> out;
@@ -1248,9 +1280,23 @@ namespace MiniBIM::Bim
 
     std::vector<Segment> Model::BoundingLines(Guid level) const
     {
-        std::vector<Segment> lines = WallLines(level);
-        for (const Segment& s : Separators(level))
-            lines.push_back(s);
+        // 墙中心线各段带上半个墙厚：画到墙面的分隔线（平面上通常这样画）接着走到墙中心线，在中心线上量的房间也被它分开
+        std::vector<HalfWall> walls;
+        for (const auto& [id, e] : elements.Items())
+        {
+            const Wall* w = e->As<Wall>();
+            if (!w || !Bounding(*w, level))
+                continue;
+            const double half = Thickness(*w) / 2.0;
+            const std::vector<P2> line = Walls::CentreLine(*this, id);
+            for (size_t i = 0; i + 1 < line.size(); ++i)
+                walls.push_back({ line[i], line[i + 1], half });
+        }
+        std::vector<Segment> lines;
+        for (const HalfWall& w : walls)
+            lines.emplace_back(w.a, w.b);
+        for (const auto& [a, b] : Separators(level))
+            lines.emplace_back(ToCentre(b, a, walls), ToCentre(a, b, walls));
         return lines;
     }
 
@@ -1280,7 +1326,19 @@ namespace MiniBIM::Bim
 
     std::optional<Geom::Region> Model::RoomRegionAt(const Room& r, RoomArea at) const
     {
+        if (WallHolding(r, at))
+            return std::nullopt;
         return Geom::RegionAt(RoomLines(r.level, at), r.point, Tol);
+    }
+
+    std::optional<Id> Model::WallHolding(const Room& r, RoomArea at) const
+    {
+        if (at != RoomArea::Finish)
+            return std::nullopt;
+        for (const auto& [id, e] : elements.Items())
+            if (const Wall* w = e->As<Wall>(); w && Bounding(*w, r.level) && Geom::Contains(Walls::Outline(*this, id), r.point))
+                return id;
+        return std::nullopt;
     }
 
     std::vector<Segment> Model::FaceLines(Guid level) const
@@ -1478,12 +1536,16 @@ namespace MiniBIM::Bim
         }
         for (const auto& [n, x] : materials)
         {
-            (void)x;
             if (!TextOk("material `" + n + "`", "name", n, error))
                 return false;
             if (Text::Trim(n).empty())
             {
                 error = "a material needs a name";
+                return false;
+            }
+            if (x.transparency > 100)
+            {
+                error = "material `" + n + "`: transparency is a percent, 0 to 100, not " + std::to_string(x.transparency);
                 return false;
             }
         }
