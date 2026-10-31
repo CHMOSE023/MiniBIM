@@ -2,17 +2,73 @@
 #include "Rvt/Bytes.h"
 
 #include <algorithm>
-#include <functional>
+#include <cstring>
 
 namespace MiniBIM::Rvt::Bytes
 {
+    std::optional<uint16_t> U16At(Span buf, size_t at)
+    {
+        if (at > buf.size() || buf.size() - at < 2)
+            return std::nullopt;
+        return U16(buf.data() + at);
+    }
+
+    std::optional<uint32_t> U32At(Span buf, size_t at)
+    {
+        if (at > buf.size() || buf.size() - at < 4)
+            return std::nullopt;
+        return U32(buf.data() + at);
+    }
+
+    std::optional<uint64_t> U64At(Span buf, size_t at)
+    {
+        if (at > buf.size() || buf.size() - at < 8)
+            return std::nullopt;
+        return U64(buf.data() + at);
+    }
+
+    std::optional<double> F64At(Span buf, size_t at)
+    {
+        const auto bits = U64At(buf, at);
+        if (!bits)
+            return std::nullopt;
+        double v;
+        std::memcpy(&v, &*bits, 8);
+        return v;
+    }
+
     size_t Find(Span hay, Span needle, size_t from)
     {
-        if (needle.empty() || from >= hay.size() || hay.size() - from < needle.size())
+        if (needle.empty() || from > hay.size() || hay.size() - from < needle.size())
             return npos;
-        const auto it = std::search(hay.begin() + static_cast<std::ptrdiff_t>(from), hay.end(),
-                                    std::boyer_moore_horspool_searcher(needle.begin(), needle.end()));
-        return it == hay.end() ? npos : static_cast<size_t>(it - hay.begin());
+        // 分区里要找几百万次短的模式：先 memchr 第一个字节再比较，比每次建 Boyer-Moore 表快
+        const uint8_t* p   = hay.data() + from;
+        const uint8_t* end = hay.data() + (hay.size() - needle.size()) + 1;
+        while (p < end)
+        {
+            p = static_cast<const uint8_t*>(std::memchr(p, needle[0], static_cast<size_t>(end - p)));
+            if (!p)
+                return npos;
+            if (std::memcmp(p, needle.data(), needle.size()) == 0)
+                return static_cast<size_t>(p - hay.data());
+            ++p;
+        }
+        return npos;
+    }
+
+    size_t FindLast(Span hay, Span needle)
+    {
+        if (needle.empty() || hay.size() < needle.size())
+            return npos;
+        for (size_t at = hay.size() - needle.size() + 1; at-- > 0;)
+            if (std::memcmp(hay.data() + at, needle.data(), needle.size()) == 0)
+                return at;
+        return npos;
+    }
+
+    bool Matches(Span buf, size_t at, Span want)
+    {
+        return at <= buf.size() && buf.size() - at >= want.size() && std::equal(want.begin(), want.end(), buf.begin() + static_cast<std::ptrdiff_t>(at));
     }
 
     std::vector<uint8_t> Wide(std::string_view utf8)
@@ -104,6 +160,52 @@ namespace MiniBIM::Rvt::Bytes
         for (size_t i = 0; i + 1 < bytes.size(); i += 2)
             out.push_back(U16(bytes.data() + i));
         return out;
+    }
+
+    std::optional<std::u32string> CodePoints(const std::vector<uint16_t>& units)
+    {
+        std::u32string out;
+        out.reserve(units.size());
+        for (size_t i = 0; i < units.size(); ++i)
+        {
+            const uint32_t u = units[i];
+            if (u >= 0xd800 && u <= 0xdbff && i + 1 < units.size() && units[i + 1] >= 0xdc00 && units[i + 1] <= 0xdfff)
+            {
+                out += static_cast<char32_t>(0x10000 + ((u - 0xd800) << 10) + (units[i + 1] - 0xdc00u));
+                ++i;
+            }
+            else if (u >= 0xd800 && u <= 0xdfff)
+                return std::nullopt;
+            else
+                out += static_cast<char32_t>(u);
+        }
+        return out;
+    }
+
+    std::optional<std::u32string> CodePointsAt(Span buf, size_t at, size_t n)
+    {
+        if (at > buf.size() || n > (buf.size() - at) / 2)
+            return std::nullopt;
+        return CodePoints(Units(buf.subspan(at, 2 * n)));
+    }
+
+    std::string Utf8(std::u32string_view cps)
+    {
+        std::string out;
+        for (const char32_t c : cps)
+            PutUtf8(out, c);
+        return out;
+    }
+
+    bool IsWhiteSpace(char32_t c)
+    {
+        return c == ' ' || (c >= 0x09 && c <= 0x0d) || c == 0x85 || c == 0xa0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200a) || c == 0x2028 || c == 0x2029 ||
+               c == 0x202f || c == 0x205f || c == 0x3000;
+    }
+
+    bool IsBlank(std::u32string_view cps)
+    {
+        return std::all_of(cps.begin(), cps.end(), IsWhiteSpace);
     }
 
     bool IsUtf8(std::string_view s)

@@ -57,6 +57,17 @@ namespace Fixture
     // 其中一行（IsSingleUserCloudModel）的值是夹在宽文字里的窄字符串
     Bytes BasicFileInfo(const Basic& b);
 
+    // 类表里的一个类
+    struct Class
+    {
+        std::string              name;
+        std::vector<std::string> fields;
+        const Class*             base = nullptr;   // 内联写在它里面的基类
+    };
+    // 读取器认得的语法写的、去掉页的 Formats/Latest：一个为 0 的 u16，然后每个类（带计数的名字、基类引用、版本、字段数、
+    // 字段，没有 GUID）。标签从 12 起按定义的顺序排，内联的基类也算
+    Bytes Schema(const std::vector<Class>& classes);
+
     // 只有一个条目的 ZIP，像 Revit 的 ProjectInformation（条目名是带用户文件夹的路径）
     Bytes ZipEntry(std::span<const uint8_t> body, bool deflate);
 

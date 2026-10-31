@@ -63,9 +63,6 @@ namespace MiniBIM::Rvt
                    std::all_of(key.begin(), key.end(), [&](char c) { return alpha(c) || IsDigit(c) || c == ' ' || c == '\'' || c == '-' || c == '_'; });
         }
 
-        bool IsSpace(uint32_t c) { return c == ' ' || (c >= 0x09 && c <= 0x0d) || c == 0x85 || c == 0xa0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200a) ||
-                                          c == 0x2028 || c == 0x2029 || c == 0x202f || c == 0x205f || c == 0x3000; }
-
         // 值的文字：窄的字符串里没有 NUL，宽的 ASCII 每个字符后面一个 NUL
         std::string Text(Bytes::Span value)
         {
@@ -78,9 +75,9 @@ namespace MiniBIM::Rvt
                 return std::string(trimmed.begin(), trimmed.end());
             std::vector<uint16_t> units = Bytes::Units(value);
             // 两端去掉 NUL 与空白（码元层面即可：这些都在基本平面里）
-            while (!units.empty() && (units.front() == 0 || IsSpace(units.front())))
+            while (!units.empty() && (units.front() == 0 || Bytes::IsWhiteSpace(units.front())))
                 units.erase(units.begin());
-            while (!units.empty() && (units.back() == 0 || IsSpace(units.back())))
+            while (!units.empty() && (units.back() == 0 || Bytes::IsWhiteSpace(units.back())))
                 units.pop_back();
             return Bytes::FromUtf16(units, false).value_or("");
         }

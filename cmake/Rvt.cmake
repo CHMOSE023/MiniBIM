@@ -14,6 +14,17 @@ if(MINIBIM_WITH_RVT)
         src/Rvt/Info.cpp
         src/Rvt/Atom.cpp
         src/Rvt/Preview.cpp
+        # 记录层（R4）：类表、ElemTable、分区里的记录，以及从记录与元素数据里读出的标高、名称、类型、曲线、放置与草图
+        src/Rvt/Schema.cpp
+        src/Rvt/ElemTable.cpp
+        src/Rvt/Records.cpp
+        src/Rvt/Names.cpp
+        src/Rvt/Data.cpp
+        src/Rvt/Types.cpp
+        src/Rvt/Curves.cpp
+        src/Rvt/Placement.cpp
+        src/Rvt/Sketch.cpp
+        src/Rvt/Inventory.cpp
     )
     target_include_directories(MiniBIMRvt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(MiniBIMRvt PUBLIC MINIBIM_WITH_RVT)

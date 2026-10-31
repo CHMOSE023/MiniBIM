@@ -51,6 +51,11 @@ MiniBIM 照这个结构移植：先移植核心并带上它的测试，界面最
 | `msg!` / `ui_msg!` 标记的原文 | `N_("…")` / `Tr("…")` | 英文原文照抄，译文以后从 BIMCraft 的 `.po` 合并（见 `docs/i18n.md`）。命令的报错不标记：照 BIMCraft 写英文 |
 | `Language::word`（项目词典 `translations/project/*.po`） | `LanguageOf::Word`（`src/Model/Language.cpp` 的词表） | 只搬了用到的词；与界面语言无关 |
 | `#[test] fn …` | `tests/<模块>/…Tests.cpp` 里的 `Check(…)` | 一条测试一个函数，名字照原来的意思写 |
+| `memchr::memmem::find_iter` | `Bytes::ForEach`，要中途停下时用 `Bytes::Find` 从 `at + needle.size()` 接着找 | Revit 读取器（`src/Rvt`）：找到的位置**不重叠**，换成逐字节找会多出候选 |
+| `String::from_utf16`、`char::is_control`、`str::trim().is_empty()` | `Bytes::CodePointsAt`、`Bytes::IsControl`、`Bytes::IsBlank` | 照 Rust 的规则：不成对的代理是错，控制字符只算 Cc，空白按 Unicode 的 White_Space |
+| `buf.get(a..b) == Some(x)` | `Bytes::Matches` | 越界时为假，不读出界 |
+| `sort_by` / `sort_by_key`（稳定） | `std::stable_sort` | `std::sort` 不稳定，排好后取第一个的地方结果会变 |
+| `f64::total_cmp` | 自己写的全序比较（`src/Rvt/Inventory.cpp`） | NaN 与 −0 也有位置，不能直接用 `<` |
 
 ## 已定的事（用户在第 2a 步定的）
 

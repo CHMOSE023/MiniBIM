@@ -1,6 +1,8 @@
 // Revit 文件读取器的底层（src/Rvt）：复合文档、gzip 与页、BasicFileInfo、Atom 条目、预览图，以及许可的隔离。
 // 移植自 BIMCraft crates/rvt/src/tests/mod.rs 与 metadata.rs 的测试（f3bbb33），Apache-2.0 许可（不是 MIT），已改写为 C++，见 src/Rvt/NOTICE。
-// 要样例文件（BIMCRAFT_RVT_SAMPLES）的测试与类表（R4）的没有移植；自己写的 inflate 与复合文档读取另有测试
+// 要样例文件（BIMCRAFT_RVT_SAMPLES）的测试没有移植；自己写的 inflate 与复合文档读取另有测试。记录层（R4）的测试在
+// RecordTests.cpp 与 DecoderTests.cpp
+#include "Check.h"
 #include "Fixture.h"
 #include "DeflateVectors.inc"
 
@@ -48,18 +50,12 @@ namespace Gzip    = MiniBIM::Rvt::Gzip;
 namespace RB      = MiniBIM::Rvt::Bytes;
 using Fixture::Bytes;
 using Fixture::Streams;
+using RvtTest::Check;
+using RvtTest::Contains;
+using RvtTest::Xorshift;
 
 namespace
 {
-    int g_failed = 0;
-    void Check(bool ok, const std::string& label)
-    {
-        std::printf("[%s] %s\n", ok ? "PASS" : "FAIL", label.c_str());
-        g_failed += ok ? 0 : 1;
-    }
-
-    bool Contains(const std::string& s, const std::string& part) { return s.find(part) != std::string::npos; }
-
     // BasicFileInfo 的替身：容器只要这个流在
     const Bytes kBasic{ 'b', 0, 'f', 0, 'i', 0 };
 
@@ -86,19 +82,6 @@ namespace
         r.ReadStream(name, out, e);
         return out;
     }
-
-    // 与 Rust 测试一样的 xorshift
-    struct Xorshift
-    {
-        uint64_t seed;
-        uint64_t operator()()
-        {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            return seed;
-        }
-    };
 
     std::string ReadText(const std::filesystem::path& p)
     {
@@ -831,7 +814,13 @@ int main()
     TestBasicFileInfo();
     TestAtom();
     TestPreview();
+    RvtTest::TestSchema();
+    RvtTest::TestRecords();
+    RvtTest::TestInventory();
+    RvtTest::TestDecoders();
+    RvtTest::TestSketch();
     TestFence();
-    std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
-    return g_failed == 0 ? 0 : 1;
+    const int failed = RvtTest::g_failed;
+    std::printf("\n%s：%d 项失败\n", failed == 0 ? "全部通过" : "有失败", failed);
+    return failed == 0 ? 0 : 1;
 }

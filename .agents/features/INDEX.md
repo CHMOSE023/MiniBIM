@@ -12,7 +12,7 @@ covers: .agents/features/*.md
 | [view3d](view3d.md) | 三维视口：相机、渲染、边线、实体内核与模型的三维场景 | `src/View/OrbitCamera.h`、`src/View/ModelScene.h`、`apps/Render`、`src/Solid` | `ViewTests`、`SMLibSmokeTests`、`ModelSceneTests` |
 | [model](model.md) | 模型核心（移植自 BIMCraft）：元素与检查、墙、族、库与文件、命令与撤销、平面图、示例房屋 | `src/Model`、`src/Commands` | `ModelTests`、`CommandTests` |
 | [ifc](ifc.md) | IFC 交换（移植自 BIMCraft）：STEP 的读法、IFC4 导出、IFC2x3 / IFC4 导入 | `src/Ifc` | `IfcTests` |
-| [rvt](rvt.md) | Revit 文件读取器（移植自 BIMCraft，Apache-2.0）：复合文档、gzip 与页、BasicFileInfo、Atom 条目、预览图，许可的隔离 | `src/Rvt` | `RvtTests` |
+| [rvt](rvt.md) | Revit 文件读取器（移植自 BIMCraft，Apache-2.0）：复合文档、gzip 与页、BasicFileInfo、Atom 条目、预览图；类表、元素表、记录与清单、元素数据的读法、草图；许可的隔离 | `src/Rvt` | `RvtTests` |
 | [多语言](../../docs/i18n.md) | 词典、`Tr` 系列、界面库的翻译钩子、收集工具、字体 | `src/I18n`、`src/UI/Core/Translate.h` | `I18nTests`、skill `i18n` |
 | [porting](porting.md) | 移植 BIMCraft：顺序、来源标注（含 Apache-2.0 的 Revit 读取器）、Rust → C++ 的对应写法、已定的事、界面的移植 | `docs/PLAN.md` | 随模块移植 BIMCraft 的测试 |
 | [icons](icons.md) | 图标：全部由脚本生成，命令图标的风格与新增步骤，程序图标 | `tools/make_icons.py`、`assets/icons` | `make_icons.py --check`（skill `test`） |

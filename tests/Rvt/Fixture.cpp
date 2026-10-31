@@ -6,6 +6,7 @@
 #include "Rvt/Inflate.h"
 
 #include <algorithm>
+#include <functional>
 #include <map>
 
 namespace Fixture
@@ -468,6 +469,42 @@ namespace Fixture
             else
                 Append(out, Bytes{ 0x0d, 0, 0x0a, 0 });
         }
+        return out;
+    }
+
+    Bytes Schema(const std::vector<Class>& classes)
+    {
+        Bytes out;
+        uint16_t nextTag = 12;
+        const std::function<void(const Class&)> one = [&](const Class& c)
+        {
+            ++nextTag;
+            Le16(out, static_cast<uint32_t>(c.name.size()));
+            Append(out, Of(c.name));
+            if (c.base)
+            {
+                Le16(out, 0x8000u | nextTag);
+                Le16(out, 0);
+                one(*c.base);
+            }
+            else
+                Le16(out, 0);
+            Le32(out, 1);
+            Le32(out, static_cast<uint32_t>(c.fields.size()));
+            for (const std::string& field : c.fields)
+            {
+                Le32(out, static_cast<uint32_t>(field.size()));
+                Append(out, Of(field));
+                Le32(out, 5);
+            }
+            Le32(out, 0);
+        };
+        for (const Class& c : classes)
+        {
+            Le16(out, 0);
+            one(c);
+        }
+        Le16(out, 0);
         return out;
     }
 
