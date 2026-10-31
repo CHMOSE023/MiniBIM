@@ -1,4 +1,5 @@
 // 移植自 BIMCraft crates/core/src/model.rs 与 graphics.rs（f3bbb33）的视图部分，MIT 许可，见 THIRD_PARTY_NOTICES.md
+#include "Model/Insert.h"
 #include "Model/Language.h"
 #include "Model/Model.h"
 #include "Model/Text.h"
@@ -279,7 +280,9 @@ namespace MiniBIM::Bim
         const Graphics g = own.Resolved(*this);
         Look look;
         look.style = g.style;
-        if (g.categories.empty() && g.filters.empty() && g.elements.empty())
+        // 视图画的模型里有链接造的东西（ID 最大的是链接的）时，它们都要半色调
+        const bool linked = !elements.Items().empty() && Links::IsLinked(elements.Items().rbegin()->first);
+        if (g.categories.empty() && g.filters.empty() && g.elements.empty() && !linked)
             return look;
         // 套用的每个过滤器，以及它挑出的元素
         std::vector<std::pair<const Applied*, std::set<Id>>> applied;
@@ -299,6 +302,9 @@ namespace MiniBIM::Bim
                     over = a->first->over.Over(over);
             if (const auto mine = g.elements.find(GuidOf(id)); mine != g.elements.end())
                 over = mine->second.Over(over);
+            // 链接造的东西是参照：半色调，视图说的在上面
+            if (Links::IsLinked(id))
+                over.halftone = true;
             if (over.hidden)
                 look.hidden.insert(id);
             else if (!over.Empty())

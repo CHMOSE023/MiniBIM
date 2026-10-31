@@ -26,6 +26,18 @@ msgid "Recover"
 msgstr "恢复"
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Insert from File"
+msgstr "从文件插入"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Link Model"
+msgstr "链接模型"
+
+#: src/Commands/Commands.cpp
+msgid "Reload Links"
+msgstr "重新载入链接"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Save"
 msgstr "保存"
 
@@ -617,7 +629,7 @@ msgstr "展开功能区（双击选项卡也可以）"
 msgid "Search commands"
 msgstr "搜索命令"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "关闭"
 
@@ -961,6 +973,51 @@ msgstr "可见"
 msgid "Reset"
 msgstr "重置"
 
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Could not link the model"
+msgstr "无法链接模型"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Could not insert from the file"
+msgstr "无法从文件插入"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Manage Links"
+msgstr "管理链接"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reloaded {0} link."
+msgid_plural "Reloaded {0} links."
+msgstr[0] "已重新载入 {0} 个链接。"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Loaded"
+msgstr "已载入"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Not loaded"
+msgstr "未载入"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reload"
+msgstr "重新载入"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr "删除"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "This project links no models. Link one with Link Model."
+msgstr "此项目没有链接模型。用“链接模型”链接一个。"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reload All"
+msgstr "全部重新载入"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Link Model..."
+msgstr "链接模型…"
+
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Start an empty project with two levels"
 msgstr "新建一个只有两个标高的空项目"
@@ -1140,6 +1197,18 @@ msgstr "项目的填充样式；导入、导出 PAT 文件"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Take out types, families and the rest that nothing uses"
 msgstr "去掉没有用到的类型、族等"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show another project as a reference that can't be edited (LK)"
+msgstr "把另一个项目作为不能编辑的参照显示 (LK)"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The linked models: reload or remove them"
+msgstr "链接的模型：重新载入或删除"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Bring the elements of another project into this one"
+msgstr "把另一个项目的图元放进此项目"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "What the view shows: hide or show categories; a plan's scale and detail level"
@@ -1680,6 +1749,15 @@ msgid_plural "{0} items of this file aren't supported by this version yet and we
 msgstr[0] "这个文件有 {0} 项内容本版本还不支持，已经略去。保存项目时这些内容会丢掉。"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Links not loaded"
+msgstr "链接未载入"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} linked model couldn't be read; it draws nothing until it's reloaded (Insert > Manage Links)."
+msgid_plural "{0} linked models couldn't be read; they draw nothing until they're reloaded (Insert > Manage Links)."
+msgstr[0] "{0} 个链接的模型读不到；重新载入之前什么都不画（插入 > 管理链接）。"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not save the project"
 msgstr "无法保存项目"
 
@@ -1875,10 +1953,6 @@ msgstr "每号笔在纸上画多宽，单位毫米。模型的笔按最接近视
 #: apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Scale"
 msgstr "比例"
-
-#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
-msgid "Remove"
-msgstr "删除"
 
 #: apps/Common/src/GUI/ManageDialogs.cpp
 msgid "New scale 1 :"
@@ -2150,6 +2224,14 @@ msgstr "视图（全部）"
 msgid "Sheets (all)"
 msgstr "图纸（全部）"
 
+#: apps/Common/src/GUI/Panels.cpp
+msgid "{0} (not loaded)"
+msgstr "{0}（未载入）"
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Linked Models"
+msgstr "链接的模型"
+
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Constraints"
 msgstr "约束"
@@ -2285,6 +2367,14 @@ msgstr "引线"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Region Type"
 msgstr "区域类型"
+
+#: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+msgid "File"
+msgstr "文件"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Origin"
+msgstr "原点"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
@@ -2469,6 +2559,10 @@ msgstr "视口"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Viewports"
 msgstr "视口"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Linked Model"
+msgstr "链接的模型"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
@@ -3722,10 +3816,6 @@ msgid "Could not read the file"
 msgstr "无法读取文件"
 
 #: assets/ui/minibim_ui.json
-msgid "File"
-msgstr "文件"
-
-#: assets/ui/minibim_ui.json
 msgid "Open Recent"
 msgstr "最近打开"
 
@@ -3788,6 +3878,18 @@ msgstr "接地"
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
 msgstr "插座和设备"
+
+#: assets/ui/minibim_ui.json
+msgid "Insert"
+msgstr "插入"
+
+#: assets/ui/minibim_ui.json
+msgid "Link"
+msgstr "链接"
+
+#: assets/ui/minibim_ui.json
+msgid "Import"
+msgstr "导入"
 
 #: assets/ui/minibim_ui.json
 msgid "Annotate"

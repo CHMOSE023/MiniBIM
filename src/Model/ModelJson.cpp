@@ -909,6 +909,15 @@ namespace MiniBIM::Bim
                 out = Element(std::move(sh));
                 return true;
             }
+            if (category == "link")
+            {
+                Link l;
+                if (!f.Allow({ "name", "path", "at", "angle" }) || !f.String("name", l.name, true) || !f.String("path", l.path, true) ||
+                    !f.Point("at", l.at, true) || !f.Number("angle", l.angle, false) || !f.Finish())
+                    return false;
+                out = Element(std::move(l));
+                return true;
+            }
             if (category == "viewport")
             {
                 Viewport v;
@@ -2175,6 +2184,14 @@ namespace MiniBIM::Bim
             j["number"] = sh->number;
             j["name"]   = sh->name;
             j["size"]   = sh->size;
+        }
+        else if (const Link* lk = e.As<Link>())
+        {
+            j["name"] = lk->name;
+            j["path"] = lk->path;
+            j["at"]   = ToJson(lk->at);
+            if (lk->angle != 0.0)
+                j["angle"] = lk->angle;
         }
         else if (const Viewport* vp = e.As<Viewport>())
         {

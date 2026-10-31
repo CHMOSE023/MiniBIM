@@ -134,6 +134,8 @@ namespace MiniBIM::Bim::Align
                     Path(out, piece.outline, true);
             Axes(out, c->at, c->angle, 100.0);
         }
+        else if (const Link* l = e->As<Link>())
+            Axes(out, l->at, l->angle, 100.0);
         std::erase_if(out, [](const Line& l) { return !(l.first.Dist(l.second) > Tol); });
         return out;
     }

@@ -742,6 +742,16 @@ namespace MiniBIM
             sheetEntries.push_back(std::move(entry));
         top.push_back(group(Tr("Sheets (all)"), true, std::move(sheetEntries)));
         top.push_back(group(Tr("Families"), false, std::move(families)));
+        // 链接的模型：双击选中它；没读到的注明
+        std::vector<Entry> links;
+        for (const auto& [id, e] : m.elements.Items())
+            if (const Bim::Link* l = e->As<Bim::Link>())
+            {
+                const std::string label = m.loaded.count(l->path) ? l->name : Format(Tr("{0} (not loaded)"), { l->name });
+                links.push_back(Entry{ label, [this, id] { SetSelection({ id }); }, false, false, {} });
+            }
+        if (!links.empty())
+            top.push_back(group(Tr("Linked Models"), true, std::move(links)));
 
         // 记下现在各分支展开着没有（按路径），重建后照旧
         std::function<void(const TreeItem*, const std::string&)> remember = [&](const TreeItem* item, const std::string& path)

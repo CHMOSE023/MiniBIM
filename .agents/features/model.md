@@ -28,6 +28,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Manage.cpp` | `model.rs` 的项目参数、`pen.rs`、`styles.rs` | 管理：项目参数的种类与类别（`ProjectParameter::Holds`、`Model::ParameterOf`、`Model::RekeyParams`）、项目的线宽与对象样式（`Model::LineWeightsOf`、`Model::ObjectStyleOf`）、`Model::CheckManage` |
 | `src/Model/Pens.h` | `pen.rs`、`styles.rs` 的对象样式 | 笔 0–16 的宽度表、`LineWeights`（模型的笔按比例分列、注释的笔一列，`LineWeights::Default` 按单位）、`ObjectStyle` 与 `ObjectStyles::Default` |
 | `src/Model/Pat.h` | `fills.rs` 的 PAT | PAT 文件（`;%UNITS`、`;%TYPE=MODEL`）读成填充图案（`Pat::ReadText`，读不了的列出原因）、写出（`Pat::Write`，毫米） |
+| `src/Model/Insert.h` | `insert.rs`、`link.rs` | 从文件插入（`Bim::Insert`：要的元素与它们指着、这个项目没有的东西，ID 被占时另取、GUID 已有时是副本，库条目按 GUID 或名称）；链接的模型（`Links::Seen`：视图画的模型，项目加上每个读到的链接造的东西，ID 从 `Linked` 起，`Links::IsLinked`） |
 | `src/Model/Sheets.cpp` | `sheet.rs` | 图纸：标题栏、视口的框（`Render::Frames`）与默认位置（`Render::SpotOn`）、明细表的表格，`Render::DrawSheet`（声明在 `Render.h`） |
 | `src/Model/Views.cpp` | `model.rs`、`graphics.rs` 的视图部分 | 平面视图与三维视图：`Model::PlanLevel`、`PlanSource`（相关视图跟父视图）、`ViewRangeOf`、`CropOf`、`ViewGraphics`、`ScaleOf`、`ViewName`、`FreeViewName`、`Default3D`、`LookOf`（类别覆盖 → 过滤器 → 元素覆盖）、`CheckFollowed` |
 | `src/Model/Styles.h` | `lines.rs`、`fills.rs`、`model.rs` 的 `TextType` | 注释的库条目：线型图案、线样式、填充图案、填充区域类型、文字类型，各语言的默认条目与检查 |
@@ -177,6 +178,10 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   （"sketch line"，在 `Model::PartsNow`、`Model::SyncParts`、`Model::ForgetParts` 里），`Model::Check` 查线本身（`Sketch::Check`）；
   `edit_boundary` 不带 `sketch` 时给出现在的线（记着的线还画得出轮廓时用它们，否则轮廓的边当作新线），带 `sketch` 时解了换掉轮廓，线带 `id` 的保留 ID 与 GUID。
   只移植了直线与圆弧：`curves.rs` 的其他曲线（样条、椭圆……）读文件时整个草图略去（`left_out`），命令里拒绝
+- 链接（第 5g1 步）：`Link` 元素只存名称、路径、原点与角度；读到的项目在 `Model::loaded`（按路径，不存进文件、不进 `Model::Check`），`open` / `recover` / `link` / `reload`
+  读文件（相对路径相对于项目文件，`ReadLink` 用一个新的 `Session` 照 `open` 读，不跟着它自己的链接）。视图、捕捉与三维场景用 `Links::Seen` 的结果：
+  `Model::LookWith` 给 ID 不小于 `Linked` 的元素加半色调，`Render::Drawing::LinkedUnder` 把它们放在项目画的下面，`Render::Drawing::PickAll` 与 `ModelScene::Pick` 不拾取它们；
+  剖到的并集另用拥有者 `Links::Union` 填。链接里的元素经 `Moved`（`move` 命令的 `Transformed`）照链接站的地方挪
 - 直骨架照 BIMCraft 用二叉堆排事件：同一时刻的事件顺序与 Rust 的堆可能不同，结果一样（`ModelTests` 的 2000 个随机迹线检查面积与平面性）
 
 ## 测试与排查
@@ -193,6 +198,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   一个视图一张图纸、明细表与三维视图放上时建出来、挪视口、文件往返、删除的连带，图纸的标题栏与视口的框、拾取，明细表的大小，葡萄牙语的名称）
   与管理（`TestManage`：对象样式与线宽的查、改、撤销、重置与平面的笔宽，项目参数的值、明细表、按 GUID 的项目文件、改名、类别、拒绝，
   线型图案、线样式、填充图案的改名与删除，PAT 的读写与英寸，导入导出命令，清除未使用）
+  与链接、插入（`TestLinks`、`TestInsert`：链接画在视图里、转与挪、别的高度的标高、平面的半色调与拾取与先后、捕捉、链接 IFC、相对路径与打开时再读、
+  读不到时、reload、恢复副本、move 与 modify、撤销、拒绝、链接的链接、不带进注释；插入自己、别的项目的 ID 与 GUID、同名的标高、副本另起名称、拒绝）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

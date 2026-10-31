@@ -9,6 +9,7 @@
 #include "I18n/Translator.h"
 #include "Ifc/Ifc.h"
 #include "Model/Align.h"
+#include "Model/Insert.h"
 #include "Model/Sketch.h"
 #include "Model/ModelJson.h"
 #include "Model/Pat.h"
@@ -516,7 +517,7 @@ namespace MiniBIM::Bim
             return true;
         }
 
-        bool Open(Session& s, const Json& p, Json& result, std::string& error)
+        bool OpenFile(Session& s, const Json& p, Json& result, std::string& error)
         {
             const char* c = "open";
             Params P(c, p, error);
@@ -626,6 +627,71 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // path 相对于项目文件（项目还没存过时照给的）
+        std::string Beside(const Session& s, const std::string& path)
+        {
+            const std::filesystem::path at = ToPath(path);
+            if (!s.Path() || !at.is_relative())
+                return path;
+            const std::u8string full = (ToPath(*s.Path()).parent_path() / at).u8string();
+            return std::string(full.begin(), full.end());
+        }
+
+        // 链接的 path 说的项目，照 open 那样读：不跟着它自己的链接
+        bool ReadLink(const Session& s, const std::string& path, std::shared_ptr<const Model>& out, std::string& error)
+        {
+            Session other;
+            Json r;
+            if (!OpenFile(other, Json{ { "path", Beside(s, path) } }, r, error))
+            {
+                if (error.rfind("open: ", 0) == 0)
+                    error.erase(0, 6);
+                return false;
+            }
+            out = other.Snapshot();
+            return true;
+        }
+
+        // 再读项目的每个链接；读不到的链接，{name, error}
+        Json Relink(Session& s)
+        {
+            std::vector<std::pair<std::string, std::string>> links;
+            for (const auto& [_, e] : s.GetModel().elements.Items())
+                if (const Link* l = e->As<Link>())
+                    links.emplace_back(l->name, l->path);
+            Json failed = Json::array();
+            for (const auto& [name, path] : links)
+            {
+                std::shared_ptr<const Model> m;
+                std::string why;
+                if (ReadLink(s, path, m, why))
+                    s.ModelMut().loaded[path] = std::move(m);
+                else
+                {
+                    if (s.GetModel().loaded.count(path))
+                        s.ModelMut().loaded.erase(path);
+                    failed.push_back(Json{ { "name", name }, { "error", why } });
+                }
+            }
+            return failed;
+        }
+
+        // 打开的结果，加上项目读完后读不到的链接
+        void WithLinks(Session& s, Json& result)
+        {
+            Json failed = Relink(s);
+            if (!failed.empty())
+                result["links_not_loaded"] = std::move(failed);
+        }
+
+        bool Open(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            if (!OpenFile(s, p, result, error))
+                return false;
+            WithLinks(s, result);
+            return true;
+        }
+
         // 打开并检查一份恢复副本；之后保存存到 project，没有时（没保存过的项目）要另存
         bool Recover(Session& s, const Json& p, Json& result, std::string& error)
         {
@@ -635,14 +701,110 @@ namespace MiniBIM::Bim
             std::optional<std::string> path, project;
             if (!P.String("path", path) || !P.String("project", project))
                 return false;
-            if (!Open(s, Json{ { "path", path ? Json(*path) : Json() } }, result, error))
+            if (!OpenFile(s, Json{ { "path", path ? Json(*path) : Json() } }, result, error))
             {
                 if (error.rfind("open:", 0) == 0)
                     error = "recover:" + error.substr(5);
                 return false;
             }
+            // 它的链接从项目所在的地方读，不从恢复副本那里
             s.SetPath(project);
             result["project"] = project ? Json(*project) : Json();
+            WithLinks(s, result);
+            return true;
+        }
+
+        // ── 插入：链接与从文件插入（移植自 BIMCraft commands.rs 的 insert_from、link_model、reload）──
+        bool InsertFrom(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "insert";
+            Params P(c, p, error);
+            std::optional<std::string> path;
+            if (!P.String("path", path))
+                return false;
+            if (!path)
+                return P.Fail("`path` is required");
+            // 照 open 那样读，在它自己的会话里
+            Session other;
+            Json r;
+            std::string why;
+            if (!OpenFile(other, Json{ { "path", *path } }, r, why))
+                return P.Fail(why.rfind("open: ", 0) == 0 ? why.substr(6) : why);
+            std::vector<Id> ids;
+            if (!P.Absent("ids") && !IdsParam(c, other.GetModel(), p, ids, error))
+                return false;
+            Inserted made;
+            if (!Insert(s.ModelMut(), other.GetModel(), ids, false, made, why))
+                return P.Fail(why);
+            Json there = Json::object();
+            for (const auto& [a, b] : made.ids)
+                there[std::to_string(a)] = b;
+            result = Json{ { "ids", std::move(there) }, { "copies", made.copies }, { "library", made.library }, { "left_out", made.leftOut } };
+            return true;
+        }
+
+        bool LinkModel(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "link";
+            Params P(c, p, error);
+            std::optional<std::string> path, name;
+            std::optional<P2> at;
+            std::optional<double> angle;
+            if (!P.String("path", path) || !P.String("name", name) || !P.PointOpt("at", at) || !P.Num("angle", angle))
+                return false;
+            if (!path)
+                return P.Fail("`path` is required");
+            std::shared_ptr<const Model> other;
+            std::string why;
+            if (!ReadLink(s, *path, other, why))
+                return P.Fail(why);
+            if (!name)
+            {
+                const std::u8string stem = ToPath(*path).stem().u8string();
+                name = stem.empty() ? std::string("Link") : std::string(stem.begin(), stem.end());
+            }
+            const size_t elements = other->elements.Items().size();
+            Model& m = s.ModelMut();
+            const Id id = m.Insert(Element(Link{ *name, *path, at.value_or(P2(0.0, 0.0)), angle.value_or(0.0) }));
+            m.loaded[*path] = std::move(other);
+            result = Json{ { "id", id }, { "name", *name }, { "elements", elements } };
+            return true;
+        }
+
+        bool Reload(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "reload";
+            Params P(c, p, error);
+            std::optional<Guid> only;
+            if (!P.IdOpt("id", only))
+                return false;
+            const Model& m = s.GetModel();
+            if (only)
+            {
+                const auto id = m.elements.IdOf(*only);
+                const Element* e = id ? m.elements.Get(*id) : nullptr;
+                if (!e || !e->As<Link>())
+                    return P.Fail("element " + Show(ToJson(*only)) + " is not a link");
+            }
+            std::vector<std::pair<std::string, std::string>> want;
+            for (const auto& [id, e] : m.elements.Items())
+                if (const Link* l = e->As<Link>())
+                    if (!only || m.Same(m.GuidOf(id), *only))
+                        want.emplace_back(l->name, l->path);
+            Json reloaded = Json::array(), failed = Json::array();
+            for (const auto& [name, path] : want)
+            {
+                std::shared_ptr<const Model> other;
+                std::string why;
+                if (ReadLink(s, path, other, why))
+                {
+                    s.ModelMut().loaded[path] = std::move(other);
+                    reloaded.push_back(name);
+                }
+                else
+                    failed.push_back(Json{ { "name", name }, { "error", why } });
+            }
+            result = Json{ { "reloaded", std::move(reloaded) }, { "failed", std::move(failed) } };
             return true;
         }
 
@@ -2957,6 +3119,8 @@ namespace MiniBIM::Bim
                 std::tie(cp->at, cp->angle) = Turned(f, cp->at, cp->angle);
                 cp->mirrored = cp->mirrored != mo.mirror;
             }
+            else if (Link* lk = out.As<Link>())
+                std::tie(lk->at, lk->angle) = Turned(f, lk->at, lk->angle);
             else if (Roof* r = out.As<Roof>())
             {
                 // 边保持编号，山墙随之
@@ -6670,9 +6834,12 @@ namespace MiniBIM::Bim
         // edit：可撤销；other：不算撤销步骤（只读，或换掉整个项目）
         static const std::vector<Command> all = {
             { "new", N_("New"), {}, "{name?, language?: en|pt|es} an empty project with Level 1 (0) and Level 2 (3000), named in its language", New, false },
-            { "open", N_("Open"), {}, "{path} a .minibim (or BIMCraft .bimcraft) project; what this version doesn't know of it is left out, listed in `left_out`. An .ifc (IFC2x3 or IFC4) comes in as a new project: what MiniBIM has no element for, or what breaks a rule, is listed in `skipped`", Open, false },
+            { "open", N_("Open"), {}, "{path} a .minibim (or BIMCraft .bimcraft) project; what this version doesn't know of it is left out, listed in `left_out`; its links that can't be read are listed in `links_not_loaded` ({name, error}). An .ifc (IFC2x3 or IFC4) comes in as a new project: what MiniBIM has no element for, or what breaks a rule, is listed in `skipped`", Open, false },
             { "autosave", N_("Autosave"), {}, "{path} atomically write a recovery snapshot, keeping the project path and undo history", AutosaveCmd, false },
             { "recover", N_("Recover"), {}, "{path, project?} open and validate a recovery snapshot; Save targets `project`, or asks for Save As without it", Recover, false },
+            { "insert", N_("Insert from File"), {}, "{path, ids?: [id, …]} elements of another project (.minibim, .bimcraft or .ifc) brought into this one: those `ids` names (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is this project's of the same name, where it has one). Each keeps its id unless this project has that id, and its GUID unless this project has that GUID: then it's a copy, with a GUID of its own (the same file inserted into itself is copied whole). What they point at among themselves follows them. A name or a number taken here gets ` 2`, ` 3`…; types, families, materials and parameters this project hasn't come by name, and so do the line styles, fill patterns and filled region types a detail line or a filled region uses. Returns `ids` {there: here}, `copies`, `library`, `left_out`", InsertFrom, true },
+            { "link", N_("Link Model"), { "LK" }, "{path, name?, at?: [x, y], angle?: degrees} another project (.minibim, .bimcraft or .ifc) shown in this one as a reference that can't be edited: its walls, floors, roofs, columns, stairs and the rest of what it builds are drawn in the plans, sections and 3D views, halftone; nothing of it is selected, scheduled, checked or exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`", LinkModel, true },
+            { "reload", N_("Reload Links"), {}, "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` (the names) and `failed` ({name, error})", Reload, false },
             { "save", N_("Save"), {}, "{path?} saves the project (Save As with a path) as .minibim; the format is BIMCraft's, which opens it too. A path ending .ifc exports IFC4 and leaves the project's own path as it was", Save, false },
             { "undo", N_("Undo"), {}, "{count?} takes back the last `count` steps (1 by default)", Undo, false },
             { "redo", N_("Redo"), {}, "{count?} does again the last `count` steps undone (1 by default)", Redo, false },
@@ -7117,6 +7284,11 @@ namespace MiniBIM::Bim
         return BuildOpening(m, p, isDoor, out, error);
     }
 
+    bool Moved(const Model& m, Id id, const std::function<P2(P2)>& map, const std::set<Id>& with, Element& out, std::string& error)
+    {
+        return Transformed("move", m, id, Motion{ map }, with, out, error);
+    }
+
     Json ElementJson(const Model& m, Id id)
     {
         const Element* e = m.elements.Get(id);
@@ -7133,7 +7305,13 @@ namespace MiniBIM::Bim
                 if (const auto g = m.library.GuidOf(kind, name))
                     v["type_guid"] = ToJson(*g);
         });
-        if (const Wall* w = e->As<Wall>())
+        if (const Link* l = e->As<Link>())
+        {
+            const auto it = m.loaded.find(l->path);
+            v["loaded"]   = it != m.loaded.end();
+            v["elements"] = it != m.loaded.end() ? Json(it->second->elements.Items().size()) : Json();
+        }
+        else if (const Wall* w = e->As<Wall>())
         {
             const Walls::Axis axis = Walls::Axis::Of(*w);
             v["length"]    = Hundredth(axis.Length() * 1e4) / 1e4;

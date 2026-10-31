@@ -340,7 +340,7 @@ namespace MiniBIM
 
     void MainFrame::RenderPlan(IRenderer& renderer, int pixelWidth, int pixelHeight)
     {
-        const Bim::Model& m = m_session.GetModel();
+        const Bim::Model& m = SeenModel();
         const uint32_t w = static_cast<uint32_t>(std::max(pixelWidth, 1)), h = static_cast<uint32_t>(std::max(pixelHeight, 1));
         if (!m_planView)
         {
@@ -461,7 +461,7 @@ namespace MiniBIM
 
     void MainFrame::RenderSection(IRenderer& renderer, int pixelWidth, int pixelHeight)
     {
-        const Bim::Model& m = m_session.GetModel();
+        const Bim::Model& m = SeenModel();
         const Bim::Section* sv = m_sectionOf ? m.GetSection(*m_sectionOf) : nullptr;
         if (!sv)
             return;
@@ -765,7 +765,7 @@ namespace MiniBIM
 
     void MainFrame::RenderSheet(IRenderer& renderer, int pixelWidth, int pixelHeight)
     {
-        const Bim::Model& m = m_session.GetModel();
+        const Bim::Model& m = SeenModel();
         const Bim::Sheet* sh = m_sheetOf ? m.GetSheet(*m_sheetOf) : nullptr;
         const auto paper = sh ? Bim::PaperOf(sh->size) : std::nullopt;
         if (!paper)

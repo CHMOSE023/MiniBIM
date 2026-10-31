@@ -1,6 +1,7 @@
 // 移植自 BIMCraft crates/core/src/render.rs、pen.rs、styles.rs、view3d.rs 的 crossings（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Model/Render.h"
 #include "Model/Font.h"
+#include "Model/Insert.h"
 #include "Model/Sketch.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
@@ -991,7 +992,7 @@ namespace MiniBIM::Bim::Render
         std::map<Id, std::pair<double, size_t>> near;
         for (size_t order = 0; order < prims.size(); ++order)
         {
-            if (!owners[order])
+            if (!owners[order] || Links::IsLinked(*owners[order]))
                 continue;
             const Id id = *owners[order];
             const Prim& prim = prims[order];
@@ -1024,6 +1025,32 @@ namespace MiniBIM::Bim::Render
         for (const auto& [id, _] : found)
             out.push_back(id);
         return out;
+    }
+
+    void Drawing::LinkedUnder()
+    {
+        const auto under = [](const std::optional<Id>& o) { return o && Links::IsLinked(*o); };
+        if (std::none_of(owners.begin(), owners.end(), under))
+            return;
+        std::vector<size_t> order(prims.size());
+        for (size_t i = 0; i < order.size(); ++i)
+            order[i] = i;
+        std::stable_partition(order.begin(), order.end(), [&](size_t i) { return under(owners[i]); });
+        std::vector<Prim> ps;
+        std::vector<std::optional<Id>> os;
+        std::vector<Part> pa;
+        std::vector<std::optional<uint8_t>> pe;
+        for (const size_t i : order)
+        {
+            ps.push_back(std::move(prims[i]));
+            os.push_back(owners[i]);
+            pa.push_back(parts[i]);
+            pe.push_back(pens[i]);
+        }
+        prims  = std::move(ps);
+        owners = std::move(os);
+        parts  = std::move(pa);
+        pens   = std::move(pe);
     }
 
     std::optional<Id> Drawing::Pick(Px at, float tol) const
@@ -1474,14 +1501,17 @@ namespace MiniBIM::Bim::Render
             const Rgb c = o->cut.fill ? Rgb{ (*o->cut.fill)[0], (*o->cut.fill)[1], (*o->cut.fill)[2] } : Poche;
             return o->halftone ? Halftone(c) : c;
         };
-        d.Own(std::nullopt);
+        // 链接造的另外一起填，LinkedUnder 把它放在项目的下面
+        for (const bool linked : { true, false })
         {
+            d.Own(linked ? std::optional<Id>(Links::Union) : std::nullopt);
             std::map<std::tuple<uint8_t, uint8_t, uint8_t>, std::vector<Ring>> byColour;
             for (const auto& [id, o] : outlines)
-            {
-                const Rgb c = cutFill(id);
-                byColour[{ c.r, c.g, c.b }].push_back(o);
-            }
+                if (Links::IsLinked(id) == linked)
+                {
+                    const Rgb c = cutFill(id);
+                    byColour[{ c.r, c.g, c.b }].push_back(o);
+                }
             for (const auto& [c, rings] : byColour)
                 d.Fill(rings, Rgb{ std::get<0>(c), std::get<1>(c), std::get<2>(c) });
         }
@@ -1671,6 +1701,7 @@ namespace MiniBIM::Bim::Render
                    });
         }
         d.Own(std::nullopt);
+        d.LinkedUnder();
         d.ByCategory(m);
         d.Dress(look);
         d.Weigh(m);
@@ -1872,14 +1903,17 @@ namespace MiniBIM::Bim::Render
             return o->halftone ? Halftone(c) : c;
         };
         d.SetPart(Part::Cut);
-        d.Own(std::nullopt);
+        // 链接造的另外一起填，LinkedUnder 把它放在项目的下面
+        for (const bool linked : { true, false })
         {
+            d.Own(linked ? std::optional<Id>(Links::Union) : std::nullopt);
             std::map<std::tuple<uint8_t, uint8_t, uint8_t>, std::vector<Ring>> byColour;
             for (const auto& [id, o] : outlines)
-            {
-                const Rgb c = cutFill(id);
-                byColour[{ c.r, c.g, c.b }].push_back(o);
-            }
+                if (Links::IsLinked(id) == linked)
+                {
+                    const Rgb c = cutFill(id);
+                    byColour[{ c.r, c.g, c.b }].push_back(o);
+                }
             for (const auto& [c, rings] : byColour)
                 d.Fill(rings, Rgb{ std::get<0>(c), std::get<1>(c), std::get<2>(c) });
         }
@@ -1933,6 +1967,7 @@ namespace MiniBIM::Bim::Render
             GridOf(d, P2{ along, lo - GridPast }, P2{ along, hi + GridPast }, g->name);
         }
         d.Own(std::nullopt);
+        d.LinkedUnder();
         d.ByCategory(m);
         d.Dress(look);
         d.Weigh(m);

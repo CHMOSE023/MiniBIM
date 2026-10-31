@@ -6,6 +6,8 @@
 #include "Commands/Sample.h"
 #include "Commands/Session.h"
 #include "Model/Align.h"
+#include "Ifc/Ifc.h"
+#include "Model/Insert.h"
 #include "Model/ModelJson.h"
 #include "Model/Pat.h"
 #include "Model/Render.h"
@@ -4021,6 +4023,353 @@ namespace
                   "视图：图形写进文件：" + lj["graphics"].dump());
         }
     }
+
+    // ── 链接与从文件插入（第 5g1 步，移植自 BIMCraft link.rs 与 insert.rs 的测试）──
+    // 一圈墙加一扇门，存到一个文件：路径
+    std::string Architect(const std::string& name)
+    {
+        Session s;
+        House(s);
+        Run(s, "door", R"({"at": [2000, 0]})");
+        const std::string path = Temp("link-" + name + ".minibim");
+        Run(s, "save", Json{ { "path", path } });
+        return path;
+    }
+
+    std::vector<std::pair<Id, Wall>> WallsOf(const Model& m)
+    {
+        std::vector<std::pair<Id, Wall>> out;
+        for (const auto& [id, e] : m.elements.Items())
+            if (const Wall* w = e->As<Wall>())
+                out.emplace_back(id, *w);
+        return out;
+    }
+
+    std::shared_ptr<const Model> SeenOf(const Session& s) { return Links::Seen(s.Snapshot()); }
+
+    void Remove(const std::string& path)
+    {
+        std::error_code ec;
+        std::filesystem::remove(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+    }
+
+    std::filesystem::path FsPath(const std::string& path) { return std::filesystem::path(std::u8string(path.begin(), path.end())); }
+
+    std::string Utf8(const std::filesystem::path& p)
+    {
+        const std::u8string u = p.u8string();
+        return std::string(u.begin(), u.end());
+    }
+
+    void TestLinks()
+    {
+        // 链接画在视图里，不是项目的
+        {
+            const std::string path = Architect("seen");
+            Session s;
+            Run(s, "link", Json{ { "path", path }, { "name", "Architecture" }, { "at", Pt(1000, 2000) } });
+            Remove(path);
+            Check(WallsOf(s.GetModel()).empty(), "链接：项目自己没有墙");
+            const auto seen = SeenOf(s);
+            const auto linked = WallsOf(*seen);
+            Check(linked.size() == 4 && std::all_of(linked.begin(), linked.end(), [](const auto& w) { return Links::IsLinked(w.first); }),
+                  "链接：视图画的模型有它的 4 面墙，ID 从 Linked 起");
+            const auto west = std::min_element(linked.begin(), linked.end(), [](const auto& a, const auto& b) { return a.second.start.x < b.second.start.x; });
+            Check(west != linked.end() && west->second.start == P2(1000, 2000), "链接：挪到它站的地方");
+            const Guid level = s.GetModel().GuidOf(s.GetModel().Levels()[0].first);
+            Check(std::all_of(linked.begin(), linked.end(), [&](const auto& w) { return seen->Same(w.second.level, level); }), "链接：站在同高的标高上");
+            Check(seen->Levels().size() == 2, "链接：没有带进标高");
+            std::string why;
+            Check(s.GetModel().Check(why), "链接：项目通过检查：" + why);
+            Check(!Contains(Ifc::Export(s.GetModel()), "IFCWALL"), "链接：不导出 IFC");
+            const Json e = ElementOf(s, Run(s, "elements", R"({"category": "link"})")["elements"][0]["id"].get<Id>());
+            Check(e["loaded"] == true && e["elements"].get<size_t>() > 4 && e["name"] == "Architecture", "链接：元素说读到了：" + e.dump());
+        }
+        // 绕原点转
+        {
+            const std::string path = Architect("turned");
+            Session s;
+            Run(s, "link", Json{ { "path", path }, { "angle", 90 } });
+            Remove(path);
+            bool corner = false;
+            for (const auto& [_, w] : WallsOf(*SeenOf(s)))
+                corner = corner || (std::round(w.end.x) == 0.0 && std::round(w.end.y) == 8000.0);
+            Check(corner, "链接：转 90 度，(8000, 0) 到 (0, 8000)");
+        }
+        // 别的高度的标高进来，名称前加链接的名称
+        {
+            Session other;
+            Run(other, "level", R"({"name": "Roof deck", "elevation": 9100})");
+            Run(other, "wall", R"({"points": [[0, 0], [4000, 0]], "level": "Roof deck"})");
+            const std::string path = Temp("link-levels.minibim");
+            Run(other, "save", Json{ { "path", path } });
+            Session s;
+            Run(s, "link", Json{ { "path", path }, { "name", "Shell" } });
+            Remove(path);
+            // 先留住 Seen 的结果：范围 for 不延长 SeenOf(s) 这个临时对象的寿命
+            const auto seen = SeenOf(s);
+            bool found = false;
+            for (const auto& [_, l] : seen->Levels())
+                found = found || l->name == "Shell: Roof deck";
+            Check(found && s.GetModel().Levels().size() == 2, "链接：别的高度的标高叫 Shell: Roof deck");
+        }
+        // 平面：半色调，拾取不到，放在项目的下面
+        {
+            const std::string path = Architect("plan");
+            Session direct, s;
+            Run(direct, "open", Json{ { "path", path } });
+            Run(s, "link", Json{ { "path", path } });
+            Run(s, "wall", R"({"points": [[1000, 1000], [7000, 1000]]})");
+            Remove(path);
+            Render::View view;
+            view.scale = 0.08; view.cx = 4000.0; view.cy = 3000.0; view.width = 800; view.height = 600;
+            const Guid level = s.GetModel().GuidOf(s.GetModel().Levels()[0].first);
+            const Render::Drawing own = Render::Draw(direct.GetModel(), level, view);
+            const auto seen = SeenOf(s);
+            const Render::Drawing linked = Render::Draw(*seen, level, view);
+            const auto darkest = [](const Render::Drawing& d, bool linkedOnly)
+            {
+                int best = 255;
+                for (size_t i = 0; i < d.prims.size(); ++i)
+                    if (!linkedOnly || (d.owners[i] && Links::IsLinked(*d.owners[i])))
+                        best = std::min<int>(best, std::min({ d.prims[i].color.r, d.prims[i].color.g, d.prims[i].color.b }));
+                return best;
+            };
+            Check(darkest(own, false) < 60, "链接：平面的线是深色的");
+            Check(darkest(linked, true) > 100, "链接：链接的半色调：" + std::to_string(darkest(linked, true)));
+            const Render::Px at = view.ToPx(P2(6000, 0));
+            Check(own.Pick(at, 4.0f).has_value() && !linked.Pick(at, 4.0f), "链接：项目的墙拾取得到，链接的拾取不到");
+            std::optional<size_t> firstOwn, lastLinked;
+            for (size_t i = 0; i < linked.owners.size(); ++i)
+            {
+                if (linked.owners[i] && !Links::IsLinked(*linked.owners[i]) && !firstOwn)
+                    firstOwn = i;
+                if (linked.owners[i] && Links::IsLinked(*linked.owners[i]))
+                    lastLinked = i;
+            }
+            Check(firstOwn && lastLinked && *lastLinked < *firstOwn, "链接：画在项目的下面");
+            // 捕捉得到链接造的
+            const Snap::Found near = Snap::At(*seen, level, P2(8060, 40), Snap::Reach{ 300.0, 300.0 }, {}, false, Snap::Snaps{});
+            const Snap::Found none = Snap::At(s.GetModel(), level, P2(8060, 40), Snap::Reach{ 300.0, 300.0 }, {}, false, Snap::Snaps{});
+            Check(near.kind == Snap::Kind::Endpoint && near.at == P2(8000, 0) && none.kind != Snap::Kind::Endpoint, "链接：捕捉到链接的墙角");
+        }
+        // 链接 IFC 文件
+        {
+            Session other;
+            Run(other, "wall", R"({"points": [[0, 0], [5000, 0], [5000, 4000]]})");
+            const std::string path = Temp("link-ifc.ifc");
+            Run(other, "save", Json{ { "path", path } });
+            Session s;
+            const Json made = Run(s, "link", Json{ { "path", path }, { "at", Pt(100, 200) } });
+            Remove(path);
+            Check(made["elements"].get<size_t>() > 0 && !WallsOf(*SeenOf(s)).empty(), "链接：IFC 文件也画出来：" + made.dump());
+        }
+        // 按路径存着，打开项目时再读；相对路径相对于项目文件
+        {
+            const std::filesystem::path d = FsPath(Temp("link-file"));
+            std::error_code ec;
+            std::filesystem::remove_all(d, ec);
+            std::filesystem::create_directories(d);
+            const std::string arch = Utf8(d / "arch.minibim"), project = Utf8(d / "project.minibim");
+            Session other;
+            Run(other, "wall", R"({"points": [[0, 0], [8000, 0]]})");
+            Run(other, "save", Json{ { "path", arch } });
+            Session s;
+            Run(s, "save", Json{ { "path", project } });
+            Run(s, "link", R"({"path": "arch.minibim", "name": "Arch"})");
+            Run(s, "save", Json{ { "path", project } });
+            std::ifstream in(FsPath(project), std::ios::binary);
+            const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            in.close();
+            Check(Contains(text, "arch.minibim") && !Contains(text, "\"loaded\"") && !Contains(text, "\"category\": \"wall\""), "链接：文件里只有路径");
+            Session again;
+            Json r = Run(again, "open", Json{ { "path", project } });
+            Check(!r.contains("links_not_loaded") && WallsOf(*SeenOf(again)).size() == 1, "链接：打开项目时读它：" + r.dump());
+            // 文件不在了：链接还在，什么都不画，项目照样通过检查
+            std::filesystem::remove(FsPath(arch));
+            Session lost;
+            r = Run(lost, "open", Json{ { "path", project } });
+            std::string why;
+            Check(r["links_not_loaded"][0]["name"] == "Arch" && WallsOf(*SeenOf(lost)).empty() && lost.GetModel().Check(why), "链接：读不到的列出来：" + r.dump());
+            Run(other, "save", Json{ { "path", arch } });
+            r = Run(lost, "reload", Json::object());
+            Check(r["reloaded"] == Json::array({ "Arch" }) && WallsOf(*SeenOf(lost)).size() == 1, "链接：reload 再读：" + r.dump());
+            // 恢复副本的链接从项目所在的地方读
+            const std::filesystem::path elsewhere = FsPath(Temp("link-backups"));
+            std::filesystem::remove_all(elsewhere, ec);
+            std::filesystem::create_directories(elsewhere);
+            const std::string backup = Utf8(elsewhere / "backup.minibim");
+            Run(s, "autosave", Json{ { "path", backup } });
+            Session back;
+            Run(back, "recover", Json{ { "path", backup }, { "project", project } });
+            Check(WallsOf(*SeenOf(back)).size() == 1, "链接：恢复的项目从项目的文件夹读链接");
+            std::filesystem::remove_all(d, ec);
+            std::filesystem::remove_all(elsewhere, ec);
+        }
+        // reload 读改过的文件，只认链接
+        {
+            const std::string path = Architect("reload");
+            Session s;
+            const Id id = Run(s, "link", Json{ { "path", path } })["id"].get<Id>();
+            Check(WallsOf(*SeenOf(s)).size() == 4, "reload：先是 4 面墙");
+            Session bigger;
+            Run(bigger, "open", Json{ { "path", path } });
+            Run(bigger, "wall", R"({"points": [[0, 0], [0, -3000]]})");
+            Run(bigger, "save", Json{ { "path", path } });
+            Run(s, "reload", Json{ { "id", id } });
+            Remove(path);
+            Check(WallsOf(*SeenOf(s)).size() == 5 && WallsOf(s.GetModel()).empty(), "reload：读到第 5 面墙");
+            Check(Contains(Refused(s, "reload", Json{ { "id", s.GetModel().Levels()[0].first } }), "not a link"), "reload：不是链接的拒绝");
+        }
+        // move、modify 挪链接，撤销带回读到的
+        {
+            const std::string path = Architect("moved");
+            Session s;
+            const Id id = Run(s, "link", Json{ { "path", path } })["id"].get<Id>();
+            Remove(path);
+            Run(s, "move", Json{ { "ids", { id } }, { "by", Pt(500, 700) } });
+            Check(s.GetModel().elements.Get(id)->As<Link>()->at == P2(500, 700), "链接：move 挪它");
+            Run(s, "modify", Json{ { "ids", { id } }, { "at", Pt(0, 0) }, { "angle", 180 } });
+            P2 corner(0, 0);
+            for (const auto& [_, w] : WallsOf(*SeenOf(s)))
+                corner = P2(std::min(corner.x, w.start.x), std::min(corner.y, w.start.y));
+            Check(std::round(corner.x) == -8000.0 && std::round(corner.y) == -6000.0, "链接：转半圈");
+            Run(s, "undo", Json::object());
+            Run(s, "delete", Json{ { "ids", { id } } });
+            Check(WallsOf(*SeenOf(s)).empty(), "链接：删掉就不画");
+            Run(s, "undo", Json::object());
+            Check(WallsOf(*SeenOf(s)).size() == 4, "链接：撤销带回链接与读到的");
+        }
+        // 不能做链接的
+        {
+            const std::string path = Architect("refused");
+            Session s;
+            Check(Contains(Refused(s, "link", Json::object()), "`path`"), "链接：要 path");
+            Check(!Refused(s, "link", R"({"path": "/nowhere/x.minibim"})").empty(), "链接：没有的文件");
+            Run(s, "link", Json{ { "path", path }, { "name", "A" } });
+            Check(Contains(Refused(s, "link", Json{ { "path", path }, { "name", "A" } }), "already named"), "链接：名称不重");
+            Check(Contains(Refused(s, "link", Json{ { "path", path }, { "name", "B" }, { "angle", 1e9 } }), "angle"), "链接：角度");
+            Check(!Refused(s, "link", Json{ { "path", path }, { "name", "C" }, { "at", Pt(1e12, 0) } }).empty(), "链接：太远");
+            Remove(path);
+            const std::string junk = Temp("link-junk.minibim");
+            std::ofstream(FsPath(junk)) << "not a project";
+            Check(!Refused(s, "link", Json{ { "path", junk } }).empty(), "链接：不是项目的文件");
+            Remove(junk);
+        }
+        // 链接的项目自己的链接不跟着
+        {
+            const std::string inner = Architect("inner");
+            Session mid;
+            Run(mid, "link", Json{ { "path", inner } });
+            const std::string outer = Temp("link-mid.minibim");
+            Run(mid, "save", Json{ { "path", outer } });
+            Session s;
+            Run(s, "link", Json{ { "path", outer } });
+            Remove(inner);
+            Remove(outer);
+            Check(WallsOf(*SeenOf(s)).empty(), "链接：链接的链接什么都不画");
+        }
+        // 链接不带进它的详图线与填充区域
+        {
+            Session other;
+            Run(other, "wall", R"({"points": [[0, 0], [8000, 0]]})");
+            Run(other, "detail_line", R"({"points": [[0, 500], [6000, 500]]})");
+            const std::string path = Temp("link-detail.minibim");
+            Run(other, "save", Json{ { "path", path } });
+            Session s;
+            Run(s, "link", Json{ { "path", path } });
+            Remove(path);
+            std::set<std::string> kinds;
+            const auto seen = SeenOf(s);
+            for (const auto& [id, e] : seen->elements.Items())
+                if (Links::IsLinked(id))
+                    kinds.insert(e->Category());
+            Check(kinds.count("wall") && !kinds.count("line"), "链接：只带进造的东西");
+        }
+    }
+
+    void TestInsert()
+    {
+        // 一圈墙、一扇门、一根轴线，存到一个文件
+        const auto saved = [](Session& s, const std::string& name)
+        {
+            House(s);
+            Run(s, "door", R"({"at": [2000, 0]})");
+            Run(s, "grid", R"({"start": [-1000, 3000], "end": [9000, 3000]})");
+            const std::string path = Temp("insert-" + name + ".minibim");
+            Run(s, "save", Json{ { "path", path } });
+            return path;
+        };
+        // 插进自己：全部是副本，新 ID、新 GUID，互相指着
+        {
+            Session s;
+            const std::string path = saved(s, "self");
+            std::set<Guid> before;
+            for (const auto& [id, _] : s.GetModel().elements.Items())
+                before.insert(s.GetModel().GuidOf(id));
+            const size_t n = s.GetModel().elements.Items().size();
+            const Json r = Run(s, "insert", Json{ { "path", path } });
+            Remove(path);
+            Check(s.GetModel().elements.Items().size() == 2 * n && r["ids"].size() == n && r["copies"].size() == n, "插入自己：全部再来一份：" + std::to_string(r["ids"].size()));
+            bool past = true;
+            for (const auto& [there, here] : r["ids"].items())
+                past = past && here.get<Id>() > std::stoull(there);
+            Check(past, "插入自己：每个都取了新 ID");
+            Id door = 0;
+            for (const auto& [id, e] : s.GetModel().elements.Items())
+                if (e->As<Door>())
+                    door = std::max(door, id);
+            const Door* d = s.GetModel().elements.Get(door)->As<Door>();
+            const Wall* w = s.GetModel().GetWall(d->host);
+            Check(!before.count(d->host) && w && !before.count(w->level) && s.GetModel().GetLevel(w->level)->name == "Level 1 2", "插入自己：复制的门在复制的墙上，标高另起名称");
+            Run(s, "undo", Json::object());
+            Check(s.GetModel().elements.Items().size() == n, "插入：一个撤销步骤");
+        }
+        // 别的项目的元素保留 GUID，ID 被占时另取，站在同名的标高上
+        {
+            Session other;
+            const std::string path = saved(other, "other");
+            Session s;
+            const Guid levelHere = s.GetModel().GuidOf(Id(100000));
+            for (int x = 0; x < 6; ++x)
+                Run(s, "grid", Json{ { "start", Pt(x * 1000, -9000) }, { "end", Pt(x * 1000, -8000) } });
+            Id door = 0, grid = 0;
+            for (const auto& [id, e] : other.GetModel().elements.Items())
+            {
+                if (e->As<Door>())
+                    door = id;
+                if (e->As<Grid>())
+                    grid = id;
+            }
+            Json r = Run(s, "insert", Json{ { "path", path }, { "ids", { door } } });
+            Check(r["ids"].size() == 2 && r["copies"].empty(), "插入：门带着它的墙：" + r.dump());
+            const Id here = r["ids"][std::to_string(door)].get<Id>();
+            Check(here != door && s.GetModel().GuidOf(here) == other.GetModel().GuidOf(door), "插入：ID 被占时另取，GUID 保留");
+            const Door* d = s.GetModel().elements.Get(here)->As<Door>();
+            Check(s.GetModel().GetWall(d->host)->level == levelHere && s.GetModel().Levels().size() == 2, "插入：站在这个项目同名的标高上");
+            const std::string nameThere = other.GetModel().elements.Get(grid)->As<Grid>()->name;
+            const Id first = Run(s, "insert", Json{ { "path", path }, { "ids", { grid } } })["ids"][std::to_string(grid)].get<Id>();
+            const Json again = Run(s, "insert", Json{ { "path", path }, { "ids", { grid } } });
+            Remove(path);
+            const Id copy = again["ids"][std::to_string(grid)].get<Id>();
+            const auto nameOf = [&](Id id) { return s.GetModel().elements.Get(id)->As<Grid>()->name; };
+            Check(again["copies"] == Json::array({ copy }) && s.GetModel().GuidOf(first) == other.GetModel().GuidOf(grid) &&
+                      s.GetModel().GuidOf(copy) != s.GetModel().GuidOf(first),
+                  "插入：再插一次是副本，自己的 GUID");
+            Check(nameOf(first).rfind(nameThere, 0) == 0 && nameOf(copy).rfind(nameThere, 0) == 0 && nameOf(copy) != nameOf(first), "插入：名称另起");
+        }
+        // 没有的、不是项目的
+        {
+            Session s;
+            Check(Contains(Refused(s, "insert", Json::object()), "`path`"), "插入：要 path");
+            Check(!Refused(s, "insert", R"({"path": "/nowhere/x.minibim"})").empty(), "插入：没有的文件");
+            Session other;
+            const std::string path = saved(other, "missing");
+            const std::string e = Refused(s, "insert", Json{ { "path", path }, { "ids", { 5 } } });
+            Remove(path);
+            Check(Contains(e, "no element 5"), "插入：那边没有的元素：" + e);
+        }
+    }
 }
 
 int main()
@@ -4052,6 +4401,8 @@ int main()
     TestSections();
     TestSheets();
     TestManage();
+    TestLinks();
+    TestInsert();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

@@ -5,6 +5,7 @@
 #include "Data/Json.h"
 #include "I18n/Translator.h"
 #include "MiniBIMVersion.h"
+#include "Model/Insert.h"
 #include "Render/IRenderer.h"
 #include "Style/Theme.hpp"
 #include "Widgets/Dialog.h"
@@ -416,9 +417,15 @@ namespace MiniBIM
     {
         m_sceneError.clear();
         m_sceneModel = m_session.Snapshot();
-        if (!m_scene.Build(*m_sceneModel, m_platform->GetSolidKernel(), m_sceneError))
+        m_seenModel  = Bim::Links::Seen(m_sceneModel);
+        if (!m_scene.Build(*m_seenModel, m_platform->GetSolidKernel(), m_sceneError))
             LOG_WARN("三维场景：%s", m_sceneError.c_str());
         ++m_sceneVersion;
+    }
+
+    const Bim::Model& MainFrame::SeenModel() const
+    {
+        return m_seenModel && m_sceneModel == m_session.Snapshot() ? *m_seenModel : m_session.GetModel();
     }
 
     std::unique_ptr<MiniGUI::Node> MainFrame::CreateViewport()

@@ -3,6 +3,7 @@
 #include "Commands/Session.h"
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -38,4 +39,7 @@ namespace MiniBIM::Bim
     std::optional<Reference> ReferenceNear(const Model& m, Guid level, P2 p, const std::function<bool(const Segment&)>& keep);
     // 径向尺寸：level 上圆柱的边离 p 最近（100 毫米以内）的那根
     std::optional<Reference> ArcNear(const Model& m, Guid level, P2 p);
+    // 元素 id 经 map 平移或旋转后的样子（move、rotate 命令那样）；with 是一起动的元素（门窗随它们的墙）。
+    // 链接把它造的东西照它站的地方带进视图用
+    bool Moved(const Model& m, Id id, const std::function<P2(P2)>& map, const std::set<Id>& with, Element& out, std::string& error);
 }

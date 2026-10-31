@@ -139,11 +139,14 @@ namespace MiniBIM::Bim::Render
         float Width(uint8_t pen) const;
         float PxOf(float px) const { return px * k; }
 
-        // 离像素 at 最近、在 tol 像素以内的元素：在填色里面胜过在线上；一样近的取后画的（显示在上面）
+        // 离像素 at 最近、在 tol 像素以内的元素：在填色里面胜过在线上；一样近的取后画的（显示在上面）。
+        // 链接造的东西画出来、能捕捉，从不拾取
         std::optional<Id> Pick(Px at, float tol) const;
         // tol 以内的每个元素，按 Pick 的先后
         std::vector<Id> PickAll(Px at, float tol) const;
 
+        // 链接造的东西放到最前面，项目画的盖在它上面：各项保持画的先后与笔
+        void LinkedUnder();
         // 裁到像素 lo 到 hi 的框里：keep 认的元素的各项整个留着
         void Crop(Px lo, Px hi, const std::function<bool(std::optional<Id>)>& keep);
         // 照视图的图形改各元素的线与填充：颜色、线宽、虚实、填充色，半色调向纸色走一半

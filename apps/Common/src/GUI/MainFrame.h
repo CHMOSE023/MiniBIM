@@ -166,6 +166,8 @@ namespace MiniBIM
         // 模型变了（命令、新建、打开）之后：重建三维场景，刷新标题与状态栏；换了项目时相机重新框住模型
         void OnModelChanged();
         void RebuildScene();
+        // 视图（平面、剖面、图纸、三维）画的模型：项目加上链接造的东西；场景还没跟上项目时就是项目
+        const Bim::Model& SeenModel() const;
 
         // ── 选择集、特性面板、项目浏览器（Panels.cpp）─────────────────
         void SetSelection(std::vector<Bim::Id> ids);
@@ -323,6 +325,10 @@ namespace MiniBIM
         void OpenLineStyles();
         void OpenFillPatterns();
         void OpenPurge();
+        // ── 插入选项卡（InsertDialogs.cpp）：链接模型、管理链接、从文件插入 ──
+        void LinkModel();
+        void OpenManageLinks();
+        void InsertFromFile();
         // 可见性 / 图形（Dialogs.cpp）：正在显示的视图隐藏哪些类别，平面的比例与详细程度
         void OpenVisibilityGraphics();
         // 复制正在显示的平面（mode：duplicate、detailing、dependent），之后显示新的平面视图
@@ -512,6 +518,7 @@ namespace MiniBIM
         Bim::Session m_session;
         std::shared_ptr<const Bim::Model> m_savedModel;      // 最后打开、新建或保存的那一份：别的都是没保存的
         std::shared_ptr<const Bim::Model> m_sceneModel;      // 场景是按哪一份模型建的
+        std::shared_ptr<const Bim::Model> m_seenModel;       // 视图画的：m_sceneModel 加上链接造的东西（Links::Seen）
         size_t       m_sceneResets = 0;                      // 场景建好时项目换过几次：换了项目时相机重新框住模型
         uint64_t     m_sceneVersion = 0;                     // 交给 IRenderer::SubmitCached：场景重建后加一，后端重新上传
 

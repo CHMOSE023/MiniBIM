@@ -486,6 +486,9 @@ namespace MiniBIM
                 hit  = m_owners[owner].second;
             }
         }
+        // 链接造的东西挡着后面的，自己拾取不到
+        if (hit && *hit >= Bim::Linked)
+            return std::nullopt;
         return hit;
     }
 

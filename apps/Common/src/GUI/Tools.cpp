@@ -722,7 +722,7 @@ namespace MiniBIM
                     points.emplace_back(Bim::Sketch::Middle(l), Bim::Snap::Kind::Midpoint);
                 }
             }
-        return Bim::Snap::At(m_session.GetModel(), *m_planLevel, v.ToMm({ pixel.x, pixel.y }), reach, from, square, m_snaps, lines, points);
+        return Bim::Snap::At(SeenModel(), *m_planLevel, v.ToMm({ pixel.x, pixel.y }), reach, from, square, m_snaps, lines, points);
     }
 
     Bim::Json MainFrame::Typed(const std::string& category, Bim::Json p) const

@@ -197,6 +197,17 @@ namespace MiniBIM::Bim
         bool operator==(const Viewport&) const = default;
     };
 
+    // 链接的模型（第 5g1 步，移植自 BIMCraft model.rs 的 Link）：另一个项目（.minibim、.bimcraft 或 .ifc）当作参照画在这个项目的视图里，
+    // 不能编辑。它的原点在 at，绕原点转 angle 度；它的标高在自己的高度上。path 照给的存：相对路径相对于项目文件
+    struct Link
+    {
+        std::string name;
+        std::string path;
+        P2          at;
+        double      angle = 0.0;
+        bool operator==(const Link&) const = default;
+    };
+
     struct Grid
     {
         std::string name;
@@ -739,7 +750,7 @@ namespace MiniBIM::Bim
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
                                      Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass,
                                      Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D, Schedule, Section, Elevation,
-                                     Sheet, Viewport>;
+                                     Sheet, Viewport, Link>;
         Variant v;
 
         Element() = default;
@@ -950,6 +961,8 @@ namespace MiniBIM::Bim
         Elements    elements;
         // 库的 ID 和 GUID：类型、材质
         Library     library;
+        // 读进来的链接的项目，按链接的 path（不存进文件：打开项目与 reload 时读）；没读到的链接什么都不画
+        std::map<std::string, std::shared_ptr<const Model>> loaded;
 
         // 空项目：两个标高，几种起步用的类型与材质
         static Model New(std::string_view name, Language language = Language::English);

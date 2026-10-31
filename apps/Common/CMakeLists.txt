@@ -18,6 +18,7 @@ add_custom_target(MiniBIMVersionHeader
 
 add_library(MiniBIMApp STATIC
     src/GUI/MainFrame.cpp
+    src/GUI/InsertDialogs.cpp
     src/GUI/ManageDialogs.cpp
     src/GUI/MainCommands.cpp
     src/GUI/PlanView.cpp

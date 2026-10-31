@@ -16,6 +16,7 @@ add_library(MiniBIM STATIC
     src/Model/Font.cpp
     src/Model/Geom.cpp
     src/Model/Ids.cpp
+    src/Model/Insert.cpp
     src/Model/Language.cpp
     src/Model/Library.cpp
     src/Model/Model.cpp

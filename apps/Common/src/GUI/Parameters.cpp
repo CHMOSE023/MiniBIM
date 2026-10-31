@@ -141,6 +141,13 @@ namespace MiniBIM::Props
             { "Graphics", "type", N_("Region Type"), Shown },
             { "Dimensions", "area_m2", "Area", AreaShown },
         };
+        constexpr Row LinkRows[] = {
+            { "Identity Data", "name", N_("Name"), Text },
+            { "Identity Data", "path", N_("File"), Shown },
+            { "Identity Data", "loaded", N_("Loaded"), Shown },
+            { "Other", "at", N_("Origin"), Point },
+            { "Other", "angle", N_("Angle"), Number },
+        };
         constexpr Row Roof[] = {
             { "Constraints", "level", N_("Base Level"), Level },
             { "Constraints", "offset", "Base Offset", Length },
@@ -241,6 +248,7 @@ namespace MiniBIM::Props
         if (category == "tag") return TagRows;
         if (category == "line") return LineRows;
         if (category == "region") return RegionRows;
+        if (category == "link") return LinkRows;
         return {};
     }
 
@@ -399,6 +407,7 @@ namespace MiniBIM::Props
             { "groundconductor", N_("Earthing Conductor"), N_("Earthing Conductors") },
             { "section", N_("Section"), N_("Sections") },   { "elevation", N_("Elevation View"), N_("Elevations") },
             { "sheet", N_("Sheet"), N_("Sheets") },         { "viewport", N_("Viewport"), N_("Viewports") },
+            { "link", N_("Linked Model"), N_("Linked Models") },
             { "mass", N_("Mass"), N_("Masses") },           { "massfloor", N_("Mass Floor"), N_("Mass Floors") },
             { "dimension", N_("Dimension"), N_("Dimensions") }, { "text", N_("Text Note"), N_("Text Notes") },
             { "spot", N_("Spot Elevation"), N_("Spot Elevations") }, { "tag", N_("Tag"), N_("Tags") },

@@ -109,6 +109,11 @@ covers: cmake/ClShowIncludes.cpp, build.bat, run_tests.bat, CMakePresets.json, .
   没有显示器的机器上看界面：`xvfb-run -a -s '-screen 0 1400x900x24'` 里运行，用 ImageMagick 的 `import -window root` 截屏；
   llvmpipe 的 Vulkan 与 OpenGL ES 3 都能画，`--gpu gl` 换后端
 
+### 测试时对时错，或数据像是乱的：`for (… : SeenOf(s)->Levels())`
+- 原因：C++20 的范围 for 只延长最后那个临时对象（`Levels()` 返回的 vector）的寿命，`SeenOf(s)` 返回的 `shared_ptr` 在循环开始前就析构了，
+  vector 里是指向已释放模型的指针。实例：链接的测试里找 "Shell: Roof deck" 找不到
+- 做法：先存成局部变量（`const auto seen = SeenOf(s);`）再遍历；返回值类型的（`WallsOf` 复制出来的）不受影响
+
 ### PowerShell 里 `cmd /c "build_wasm.bat"` 报 "is not recognized"
 - 原因：这台机器的 cmd 不在当前目录里找批处理（`NoDefaultCurrentDirectoryInExePath`）
 - 做法：写成 `cmd /c ".\build_wasm.bat"`（`build.bat`、`run_tests.bat` 同理）

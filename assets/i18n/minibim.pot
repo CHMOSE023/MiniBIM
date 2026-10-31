@@ -27,6 +27,18 @@ msgid "Recover"
 msgstr ""
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Insert from File"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Link Model"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Reload Links"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Save"
 msgstr ""
 
@@ -618,7 +630,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr ""
 
@@ -962,6 +974,52 @@ msgstr ""
 msgid "Reset"
 msgstr ""
 
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Could not link the model"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Could not insert from the file"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Manage Links"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reloaded {0} link."
+msgid_plural "Reloaded {0} links."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Loaded"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Not loaded"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reload"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "This project links no models. Link one with Link Model."
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reload All"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Link Model..."
+msgstr ""
+
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Start an empty project with two levels"
 msgstr ""
@@ -1140,6 +1198,18 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Take out types, families and the rest that nothing uses"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show another project as a reference that can't be edited (LK)"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The linked models: reload or remove them"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Bring the elements of another project into this one"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -1683,6 +1753,16 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Links not loaded"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} linked model couldn't be read; it draws nothing until it's reloaded (Insert > Manage Links)."
+msgid_plural "{0} linked models couldn't be read; they draw nothing until they're reloaded (Insert > Manage Links)."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not save the project"
 msgstr ""
 
@@ -1881,10 +1961,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Scale"
-msgstr ""
-
-#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
-msgid "Remove"
 msgstr ""
 
 #: apps/Common/src/GUI/ManageDialogs.cpp
@@ -2161,6 +2237,14 @@ msgstr ""
 msgid "Sheets (all)"
 msgstr ""
 
+#: apps/Common/src/GUI/Panels.cpp
+msgid "{0} (not loaded)"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Linked Models"
+msgstr ""
+
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Constraints"
 msgstr ""
@@ -2295,6 +2379,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Region Type"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+msgid "File"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Origin"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -2479,6 +2571,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Viewports"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Linked Model"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
@@ -3743,10 +3839,6 @@ msgid "Could not read the file"
 msgstr ""
 
 #: assets/ui/minibim_ui.json
-msgid "File"
-msgstr ""
-
-#: assets/ui/minibim_ui.json
 msgid "Open Recent"
 msgstr ""
 
@@ -3808,6 +3900,18 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Insert"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Link"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Import"
 msgstr ""
 
 #: assets/ui/minibim_ui.json

@@ -886,6 +886,33 @@ def _(i):
     i.rect(44, 46, 50, 52, A, AF, w=2); i.rect(52, 36, 58, 42, A, AF, w=2)
 
 
+@icon("LinkModel")         # insert.link：链接模型（灰色的房子，前面强调色的两个链环）
+def _(i):
+    i.poly([(6, 30), (26, 10), (46, 30)], G, w=3.5)
+    i.rect(11, 28, 41, 52, G, w=3.5)
+    i.ellipse(36, 44, 12, 7, A, w=4)
+    i.ellipse(50, 44, 12, 7, A, w=4)
+
+
+@icon("InsertFromFile")    # insert.fromFile：从文件插入（一页纸，强调色的箭头把它的东西放进下面的方框）
+def _(i):
+    i.poly([(8, 4), (26, 4), (34, 12), (34, 36), (8, 36)], G, w=3)
+    i.line([(26, 4), (26, 12), (34, 12)], G, 2.5)
+    i.rect(24, 40, 58, 60, G, GF, w=3)
+    i.arrow(30, 22, 44, 50, A, w=4, head=9)
+
+
+@icon("ManageLinks")       # insert.manageLinks：管理链接（几行列表，前面强调色的链环与再读的箭头）
+def _(i):
+    for y in (12, 24):
+        i.line([(30, y), (58, y)], G, 3)
+    for y in (38, 50):
+        i.line([(40, y), (58, y)], G, 3)
+    i.ellipse(10, 18, 7, 4.5, A, w=3); i.ellipse(19, 18, 7, 4.5, A, w=3)
+    i.arc(20, 46, 11, 20, 300, A, w=4)
+    i.head(20, 33.5, 27, 37.5, A, head=9)
+
+
 @icon("Properties")        # view.properties：特性面板（照 MiniCAD 的 PropertiesPanel：名称 | 值的几行）
 def _(i):
     i.rect(8, 8, 56, 56, G, w=3, r=4); i.d.rectangle(i.P([(8, 8), (56, 18)]), fill=AF)

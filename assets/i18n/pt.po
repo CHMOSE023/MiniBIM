@@ -27,6 +27,18 @@ msgid "Recover"
 msgstr "Recuperar"
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Insert from File"
+msgstr "Inserir do arquivo"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Link Model"
+msgstr "Vincular modelo"
+
+#: src/Commands/Commands.cpp
+msgid "Reload Links"
+msgstr "Recarregar vínculos"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Save"
 msgstr "Salvar"
 
@@ -618,7 +630,7 @@ msgstr "Expandir a faixa de opções (ou clique duplo em uma guia)"
 msgid "Search commands"
 msgstr "Pesquisar comandos"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "Fechar"
 
@@ -962,6 +974,52 @@ msgstr "Visível"
 msgid "Reset"
 msgstr "Redefinir"
 
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Could not link the model"
+msgstr "Não foi possível vincular o modelo"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Could not insert from the file"
+msgstr "Não foi possível inserir do arquivo"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Manage Links"
+msgstr "Gerenciar vínculos"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reloaded {0} link."
+msgid_plural "Reloaded {0} links."
+msgstr[0] "{0} vínculo recarregado."
+msgstr[1] "{0} vínculos recarregados."
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Loaded"
+msgstr "Carregado"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Not loaded"
+msgstr "Não carregado"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reload"
+msgstr "Recarregar"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr "Remover"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "This project links no models. Link one with Link Model."
+msgstr "Este projeto não vincula nenhum modelo. Vincule um com Vincular modelo."
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reload All"
+msgstr "Recarregar tudo"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Link Model..."
+msgstr "Vincular modelo…"
+
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Start an empty project with two levels"
 msgstr "Iniciar um projeto vazio com dois níveis"
@@ -1141,6 +1199,18 @@ msgstr "Os padrões de preenchimento do projeto; importe e exporte arquivos PAT"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Take out types, families and the rest that nothing uses"
 msgstr "Remova tipos, famílias e o resto que nada usa"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show another project as a reference that can't be edited (LK)"
+msgstr "Mostra outro projeto como referência que não pode ser editada (LK)"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The linked models: reload or remove them"
+msgstr "Os modelos vinculados: recarregue-os ou remova-os"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Bring the elements of another project into this one"
+msgstr "Traz os elementos de outro projeto para este"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "What the view shows: hide or show categories; a plan's scale and detail level"
@@ -1683,6 +1753,16 @@ msgstr[0] "{0} item deste arquivo ainda não é compatível com esta versão e f
 msgstr[1] "{0} itens deste arquivo ainda não são compatíveis com esta versão e foram omitidos. Salvar o projeto os descarta."
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Links not loaded"
+msgstr "Vínculos não carregados"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} linked model couldn't be read; it draws nothing until it's reloaded (Insert > Manage Links)."
+msgid_plural "{0} linked models couldn't be read; they draw nothing until they're reloaded (Insert > Manage Links)."
+msgstr[0] "Não foi possível ler {0} modelo vinculado; ele não desenha nada até ser recarregado (Inserir > Gerenciar vínculos)."
+msgstr[1] "Não foi possível ler {0} modelos vinculados; eles não desenham nada até serem recarregados (Inserir > Gerenciar vínculos)."
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not save the project"
 msgstr "Não foi possível salvar o projeto"
 
@@ -1882,10 +1962,6 @@ msgstr "O que cada pena desenha no papel, em mm. As penas do modelo desenham na 
 #: apps/Common/src/GUI/ManageDialogs.cpp
 msgid "Scale"
 msgstr "Escala"
-
-#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
-msgid "Remove"
-msgstr "Remover"
 
 #: apps/Common/src/GUI/ManageDialogs.cpp
 msgid "New scale 1 :"
@@ -2161,6 +2237,14 @@ msgstr "Vistas (todas)"
 msgid "Sheets (all)"
 msgstr "Folhas (todas)"
 
+#: apps/Common/src/GUI/Panels.cpp
+msgid "{0} (not loaded)"
+msgstr "{0} (não carregado)"
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Linked Models"
+msgstr "Modelos vinculados"
+
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Constraints"
 msgstr "Restrições"
@@ -2296,6 +2380,14 @@ msgstr "Linha de chamada"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Region Type"
 msgstr "Tipo de região"
+
+#: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+msgid "File"
+msgstr "Arquivo"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Origin"
+msgstr "Origem"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
@@ -2480,6 +2572,10 @@ msgstr "Janela de vista"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Viewports"
 msgstr "Janelas de vista"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Linked Model"
+msgstr "Modelo vinculado"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
@@ -3743,10 +3839,6 @@ msgid "Could not read the file"
 msgstr "Não foi possível ler o arquivo"
 
 #: assets/ui/minibim_ui.json
-msgid "File"
-msgstr "Arquivo"
-
-#: assets/ui/minibim_ui.json
 msgid "Open Recent"
 msgstr "Abrir recente"
 
@@ -3809,6 +3901,18 @@ msgstr "Aterramento"
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
 msgstr "Tomadas e equipamentos"
+
+#: assets/ui/minibim_ui.json
+msgid "Insert"
+msgstr "Inserir"
+
+#: assets/ui/minibim_ui.json
+msgid "Link"
+msgstr "Vincular"
+
+#: assets/ui/minibim_ui.json
+msgid "Import"
+msgstr "Importar"
 
 #: assets/ui/minibim_ui.json
 msgid "Annotate"

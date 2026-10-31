@@ -452,6 +452,7 @@ namespace MiniBIM::Bim
             const char* operator()(const Elevation&) const { return "elevation"; }
             const char* operator()(const Sheet&) const { return "sheet"; }
             const char* operator()(const Viewport&) const { return "viewport"; }
+            const char* operator()(const Link&) const { return "link"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -468,6 +469,7 @@ namespace MiniBIM::Bim
             void operator()(Section&) const {}
             void operator()(Elevation&) const {}
             void operator()(Sheet&) const {}
+            void operator()(Link&) const {}
             void operator()(Viewport& v) const
             {
                 f(v.sheet);
@@ -2171,7 +2173,7 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
-        std::set<std::string> levelNames, gridNames, viewNames, sheetNumbers;
+        std::set<std::string> levelNames, gridNames, viewNames, sheetNumbers, linkNames;
         // 放到图纸上的视图：一个视图只放在一张图纸上
         std::map<Guid, Guid> placed;
         // 每个项目都有的明细表的类别：一个类别只有一个
@@ -2358,6 +2360,26 @@ namespace MiniBIM::Bim
                 if (!PaperOf(sh->size))
                 {
                     error = who + ": size `" + sh->size + "` isn't A0, A1, A2, A3 or A4";
+                    return false;
+                }
+            }
+            else if (const Link* lk = e.As<Link>())
+            {
+                if (!TextOk(who, "name", lk->name, error) || !TextOk(who, "path", lk->path, error) || !Point(who, lk->at, error))
+                    return false;
+                if (Text::Trim(lk->name).empty() || Text::Trim(lk->path).empty())
+                {
+                    error = who + ": a link needs a name and the path of a file, up to " + std::to_string(MaxText) + " characters";
+                    return false;
+                }
+                if (!(std::isfinite(lk->angle) && std::abs(lk->angle) <= 360.0))
+                {
+                    error = who + ": its angle " + Num(lk->angle) + "\u00b0 isn't between -360\u00b0 and 360\u00b0";
+                    return false;
+                }
+                if (!linkNames.insert(lk->name).second)
+                {
+                    error = who + ": another link is already named `" + lk->name + "`";
                     return false;
                 }
             }

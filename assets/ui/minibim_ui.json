@@ -38,6 +38,9 @@
     "manage.lineStyles":     { "icon": "LineStyles.png" },
     "manage.fillPatterns":   { "icon": "FillPatterns.png" },
     "manage.purge":          { "icon": "Purge.png" },
+    "insert.link":           { "icon": "LinkModel.png" },
+    "insert.manageLinks":    { "icon": "ManageLinks.png" },
+    "insert.fromFile":       { "icon": "InsertFromFile.png" },
     "modify.align":      { "icon": "Align.png" },
     "modify.offset":     { "icon": "Offset.png" },
     "modify.mirrorPick": { "icon": "MirrorPick.png" },
@@ -192,6 +195,15 @@
             { "title": "Select", "items": [ "modify.select" ] },
             { "title": "Outlets & Equipment", "items": [ "mep.dataOutlet", "mep.voiceOutlet", "mep.rack", "mep.patchPanel" ] },
             { "title": "Cabling", "items": [ "mep.cableTray", "mep.cabling" ] }
+          ]
+        },
+        // 插入：链接的模型、从文件插入（CAD 与点云随第 5g2、5g3 步加进来）
+        {
+          "title": "Insert",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Link", "items": [ "insert.link", "insert.manageLinks" ] },
+            { "title": "Import", "items": [ "insert.fromFile" ] }
           ]
         },
         // 注释：标高平面里的尺寸、详图线、区域、文字、测量与标记

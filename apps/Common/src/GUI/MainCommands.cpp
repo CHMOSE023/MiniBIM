@@ -94,6 +94,10 @@ namespace MiniBIM
         add("manage.lineStyles", N_("Line Styles"), N_("The project's line styles: pen, colour and line pattern"), [this] { OpenLineStyles(); });
         add("manage.fillPatterns", N_("Fill Patterns"), N_("The project's fill patterns; import and export PAT files"), [this] { OpenFillPatterns(); });
         add("manage.purge", N_("Purge Unused"), N_("Take out types, families and the rest that nothing uses"), [this] { OpenPurge(); });
+        // ── 插入（移植自 BIMCraft 的插入选项卡）：链接的模型、从文件插入 ─────────
+        add("insert.link", N_("Link Model"), N_("Show another project as a reference that can't be edited (LK)"), [this] { LinkModel(); });
+        add("insert.manageLinks", N_("Manage Links"), N_("The linked models: reload or remove them"), [this] { OpenManageLinks(); });
+        add("insert.fromFile", N_("Insert from File"), N_("Bring the elements of another project into this one"), [this] { InsertFromFile(); });
         // ── 视图（移植自 BIMCraft 的视图选项卡）：可见性 / 图形、复制视图、裁剪 ─────────
         add("view.visibility", N_("Visibility/Graphics"), N_("What the view shows: hide or show categories; a plan's scale and detail level"),
             [this] { OpenVisibilityGraphics(); });
@@ -412,6 +416,18 @@ namespace MiniBIM
                 Format(TrN("{0} item of this file isn't supported by this version yet and was left out. Saving the project drops it.",
                            "{0} items of this file aren't supported by this version yet and were left out. Saving the project drops them.",
                            static_cast<long long>(*left)), { n }));
+        }
+        // 读不到的链接：说是哪些，怎样再读
+        if (r.contains("links_not_loaded") && r["links_not_loaded"].is_array() && !r["links_not_loaded"].empty())
+        {
+            std::string list;
+            for (const Bim::Json& f : r["links_not_loaded"])
+                list += "\n" + f["name"].get<std::string>() + ": " + f["error"].get<std::string>();
+            const size_t n = r["links_not_loaded"].size();
+            MiniGUI::ShowMessageBox(*m_ui, Tr("Links not loaded"),
+                Format(TrN("{0} linked model couldn't be read; it draws nothing until it's reloaded (Insert > Manage Links).",
+                           "{0} linked models couldn't be read; they draw nothing until they're reloaded (Insert > Manage Links).",
+                           static_cast<long long>(n)), { std::to_string(n) }) + "\n" + list);
         }
         return true;
     }
