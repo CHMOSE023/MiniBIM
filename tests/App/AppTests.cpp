@@ -5,6 +5,7 @@
 #include "Commands/Session.h"
 #include "GUI/Parameters.h"
 #include "GUI/Recent.h"
+#include "GUI/Shortcuts.h"
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -220,6 +221,57 @@ namespace
                   RecentFiles::Age(40 * 86400) == "1 month ago" && RecentFiles::Age(800 * 86400) == "2 years ago",
               "age: days, months, years");
     }
+
+    void TestShortcuts()
+    {
+        Shortcuts s;
+        s.SetDefaults({ { "WA", "arch.wall" }, { "ZF", "view.zoomFit" }, { "ZE", "view.zoomFit" }, { "WA", "arch.window" } });
+        Check(s.Find("wa") == "arch.wall" && s.Find(" ZE ") == "view.zoomFit" && s.Find("QQ").empty(), "shortcuts: defaults, the first of a key wins");
+        Check(Shortcuts::IsKey("3D") && !Shortcuts::IsKey("W") && !Shortcuts::IsKey("WAL") && !Shortcuts::IsKey("W-"), "shortcuts: two letters or digits");
+
+        // 打字：两个字凑成一个就执行并清空；凑不成时只留最后两个
+        std::string got;
+        for (const char c : std::string("xwa"))
+            got = s.Type(c);
+        Check(got == "arch.wall" && s.Typed().empty(), "shortcuts: typed letters, a shortcut out of the last two");
+        Check(s.Type('-').empty() && s.Type('z').empty() && s.Typed() == "Z" && s.Type('f') == "view.zoomFit", "shortcuts: other characters are left out");
+
+        // 自己改的：换、关掉默认的、加新的，存成 JSON 再读回来
+        s.Set("zf", "view.home");
+        s.Remove("ZE");
+        s.Set("XY", "arch.door");
+        Check(s.Find("ZF") == "view.home" && s.Find("ZE").empty() && s.Find("XY") == "arch.door", "shortcuts: changed, turned off, added");
+        Check(s.Conflict("XY", "arch.wall") == "arch.door" && s.Conflict("XY", "arch.door").empty() && s.Conflict("ZE", "arch.wall").empty(),
+              "shortcuts: a key in use by another command conflicts");
+        const std::vector<Shortcuts::Entry> all = s.All();
+        Check(all == std::vector<Shortcuts::Entry>{ { "WA", "arch.wall", false }, { "XY", "arch.door", true }, { "ZF", "view.home", true } },
+              "shortcuts: the list, defaults first");
+        Shortcuts t;
+        t.SetDefaults({ { "WA", "arch.wall" }, { "ZF", "view.zoomFit" }, { "ZE", "view.zoomFit" } });
+        t.FromJson(Bim::Json::parse(s.ToJson().dump()));
+        Check(t.All() == all && t.ToJson() == s.ToJson(), "shortcuts: saved and read back");
+        t.FromJson(Bim::Json{ { "toolong", "a" }, { "ab", "lowercase" }, { "QQ", 5 } });
+        Check(t.ToJson() == Bim::Json::object(), "shortcuts: bad entries are left out");
+        s.Set("ZF", "view.zoomFit");
+        s.Remove("XY");
+        Check(s.ToJson() == Bim::Json{ { "ZE", "" } }, "shortcuts: back to the default is not kept, a removed custom one is gone");
+        s.Reset();
+        Check(s.Find("ZE") == "view.zoomFit" && s.ToJson() == Bim::Json::object(), "shortcuts: restore defaults");
+
+        // 快捷键文件：JSON、Revit 的 XML、文本行
+        using Pairs = std::vector<std::pair<std::string, std::string>>;
+        Check(Shortcuts::ParseFile(R"({"wa": "Wall", "DR": "Door"})") == Pairs{ { "WA", "Wall" }, { "DR", "Door" } }, "shortcuts file: JSON, in its order");
+        Check(Shortcuts::ParseFile(R"(  <Shortcut CommandName="Wall" CommandId="ID_WALL" Shortcuts="WA#W1"/>)") == Pairs{ { "WA", "Wall" }, { "W1", "Wall" } },
+              "shortcuts file: Revit's XML, several keys");
+        Check(Shortcuts::ParseFile("# mine\nWA - Wall\n**dr**: Door\nZF = Zoom to Fit\nrubbish\nCS \xE2\x80\x93 Create Similar\n") ==
+                  Pairs{ { "WA", "Wall" }, { "DR", "Door" }, { "ZF", "Zoom to Fit" }, { "CS", "Create Similar" } },
+              "shortcuts file: text lines");
+        auto resolve = [](const std::string& d) { return d == "Wall" ? std::string("arch.wall") : d == "Door" ? std::string("arch.door") : std::string(); };
+        Shortcuts u;
+        u.SetDefaults({ { "DR", "arch.door" }, { "WN", "arch.window" } });
+        const auto [added, skipped] = u.Add(Pairs{ { "W1", "Wall" }, { "DR", "Door" }, { "WN", "Door" }, { "QQ", "Nothing" }, { "WAL", "Wall" } }, resolve);
+        Check(added == 2 && skipped == 3 && u.Find("W1") == "arch.wall" && u.Find("WN") == "arch.window", "shortcuts file: added only what is free and known");
+    }
 }
 
 int main()
@@ -231,6 +283,7 @@ int main()
     TestSearch();
     TestRoundTrip();
     TestRecent();
+    TestShortcuts();
     std::printf("\n%s：%d 项失败\n", g_failed ? "失败" : "全部通过", g_failed);
     return g_failed ? 1 : 0;
 }

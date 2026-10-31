@@ -54,6 +54,8 @@ namespace MiniBIM
         virtual std::string ChooseProjectSavePath(const std::string& suggestedName) { (void)suggestedName; return {}; }
         // 导出 IFC 存到哪里：suggestedName 为默认文件名（带 .ifc），返回 UTF-8 路径，空串 = 取消
         virtual std::string ChooseIfcSavePath(const std::string& suggestedName) { (void)suggestedName; return {}; }
+        // 选一个快捷键文件来读（JSON、Revit 导出的 XML、文本）；取消时返回空串
+        virtual std::string PickShortcutsFile() { return {}; }
 
         // ── 系统 ─────────────────────────────────────────────────
         // 系统界面语言（BCP 47，如 "zh-CN"、"en-US"）；取不到时返回空串

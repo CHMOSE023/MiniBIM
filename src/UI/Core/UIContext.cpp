@@ -1294,8 +1294,11 @@ namespace MiniGUI
     {
         if (IsBlockedByOwner())
             return m_modalOwner->TextInput(utf8);
-        if (!m_focus || utf8.empty())
+        if (utf8.empty())
             return false;
+        auto unhandled = [&] { return m_unhandledText && !m_composing && !GetTopPopup() && m_unhandledText(utf8); };
+        if (!m_focus)
+            return unhandled();
 
         TextInputEvent e;
         e.text = std::string(utf8);
@@ -1310,6 +1313,8 @@ namespace MiniGUI
             if (e.handled || version != m_treeVersion)
                 break;
         }
+        if (!e.handled && version == m_treeVersion)
+            return unhandled();
         return e.handled;
     }
 

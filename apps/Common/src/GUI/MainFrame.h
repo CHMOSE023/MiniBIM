@@ -3,6 +3,7 @@
 #include "Commands/Session.h"
 #include "GUI/AppPlatform.h"
 #include "GUI/Recent.h"
+#include "GUI/Shortcuts.h"
 #include "Model/Align.h"
 #include "Model/Render.h"
 #include "Model/Sketch.h"
@@ -269,6 +270,12 @@ namespace MiniBIM
         // 文件 > 设置（Settings.cpp）；主题按 m_themeSetting
         void OpenSettings();
         void ApplyTheme();
+        // 两个字母的快捷键（ShortcutsDialog.cpp）：默认的表、在视图上打的字母、键盘快捷键对话框（KS）
+        void RegisterShortcuts();
+        bool OnShortcutText(std::string_view text);
+        void OpenShortcuts();
+        // 快捷键文件里的说明是哪个界面命令：名称（英文原文或译文，不分大小写）或 ID
+        std::string ShortcutCommand(const std::string& description) const;
         std::string SettingsPath() const;
 
         // ── 最近打开（Recent.h，存在用户设置目录的 recent.json）──────────
@@ -325,6 +332,7 @@ namespace MiniBIM
         std::string m_languageOverride;
         std::vector<std::string> m_startupCommands;
         RecentFiles m_recent;
+        Shortcuts   m_shortcuts;
         std::string m_recentPath;                             // 空 = 不记（平台没有用户设置目录）
         MiniGUI::Node* m_startPage = nullptr;
         bool m_startShown = false;

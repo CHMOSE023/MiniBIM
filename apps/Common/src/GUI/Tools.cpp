@@ -17,6 +17,7 @@
 #include "Widgets/TextBox.h"
 #include "Widgets/ViewportHost.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <numbers>
@@ -775,6 +776,9 @@ namespace MiniBIM
         for (const char c : text)
             if (static_cast<unsigned char>(c) < 0x20)
                 return false;
+        // 长度从数字开始（之后的英尺、英寸、单位都算它的）；先打的字母是两个字母的快捷键（MainFrame::OnShortcutText）
+        if (m_typedLength.empty() && !std::isdigit(static_cast<unsigned char>(text[0])) && text[0] != '.')
+            return false;
         m_typedLength += text;
         m_viewport->RequestRender();
         return true;

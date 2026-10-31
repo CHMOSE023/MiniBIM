@@ -216,6 +216,14 @@ def _(i):
     i.circle(32, 32, 8, A, AF, w=3.5)
 
 
+@icon("Shortcuts")         # file.shortcuts：键盘快捷键（一块键盘，打的两个键强调）
+def _(i):
+    i.rect(4, 14, 60, 50, G, w=3.5, r=4)
+    for k, x in enumerate((10, 22, 34, 46)):
+        i.rect(x, 21, x + 8, 29, A if k in (1, 2) else G, AF if k in (1, 2) else None, w=3)
+    i.line([(18, 41), (46, 41)], G, 4)
+
+
 @icon("SampleHouse")       # file.sample：示例房屋（等轴测的房子，墙上一扇门）
 def _(i):
     cube(i, fill_all=True)

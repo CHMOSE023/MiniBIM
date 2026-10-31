@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -39,6 +39,13 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   还没决定的副本不覆盖、不删
 - 设置（`Settings.cpp`，移植自 `settings.rs`）：文件 > 设置（`file.settings`）弹出的对话框，左边各页：界面（主题深色 / 浅色 `MainFrame::ApplyTheme`、语言、两块面板）、
   文件（自动保存开关与间隔）。改了马上生效并写 settings.json。主题只换 MiniGUI 的颜色，视口与平面视图不跟着换。BIMCraft 设置里的性能、图形、更新等页随那些功能再加
+- 两个字母的快捷键（`Shortcuts.h` 的 `Shortcuts` 管键表、不碰控件；`ShortcutsDialog.cpp`；移植自 `shortcuts.rs` 与 `lib.rs` 的 `SHORTCUTS`）：
+  在视图上（或没有焦点时）打字母，最后两个凑成一个快捷键就执行它的界面命令（WA 墙、DR 门、ZF 缩放匹配……）。字母经
+  `UIContext::SetUnhandledTextHandler` 到 `MainFrame::OnShortcutText`：没有节点要、没有弹层、不在输入法组合中、不在开始页上时才算；
+  画了起点之后先打数字的是长度（`MainFrame::OnPlanText`）。默认的表（`MainFrame::RegisterShortcuts`）是桌面自己的几个加上模型命令的快捷名
+  （`Bim::Command` 的 `aliases`）中有界面命令的；改过的存在 settings.json 的 `shortcuts`（键 → 界面命令 ID，空 = 关掉默认的）。
+  文件 > 键盘快捷键（`file.shortcuts`，KS）：搜索、删除、指定、恢复默认，从文件读入（`AppPlatform::PickShortcutsFile`；JSON、Revit 导出的 XML、
+  "WA - Wall" 这样的行，说明按命令名称或 ID 找，`MainFrame::ShortcutCommand`）
 - 最近打开（`Recent.h` 的 `RecentFiles`，移植自 `recent.rs`）：文件菜单"最近打开"（动态子菜单 `recent`，`MainFrame::BuildRecentMenu`）列最后打开或保存的
   10 个项目与 IFC 文件，新的在前，同名的后面加文件夹；"清除最近打开的文件"。打开成功（`MainFrame::OpenPath`）、保存成功时 `MainFrame::NoteRecent`；
   打不开且文件已经不在了时从列表去掉。存在用户设置目录的 `recent.json`（`AppPlatform::GetUserDataDir`，空时不记），读不出、坏了、过大都当作空列表
@@ -96,7 +103,7 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 - 动态菜单：`{ "title": "Language", "dynamic": "languages" }` 由 `MainFrame::BuildLanguageMenu` 生成（跟随系统 + 词典目录里的每种语言，名称用那种语言自己写）
 - 帧顺序（同 MiniCAD）：输入到达时立即改状态并 `RequestRender` → 消息队列空了收到 `WM_PAINT` → `MainFrame::RenderFrame`：`UIContext::Update` 布局 →
   `ViewportHost::RenderContent` 按最新尺寸渲染视口 → `AppPlatform::BeginUiPass` → `UIContext::Render` → `AppPlatform::EndUiPass`（呈现）
-- 用户设置：`%LOCALAPPDATA%\MiniBIM\settings.json`（`AppPlatform::GetUserDataDir`），有 `language`（空 = 跟随系统）、`theme`（`dark` / `light`）、`autosave_minutes`；`MainFrame::LoadSettings` / `MainFrame::SaveSettings`
+- 用户设置：`%LOCALAPPDATA%\MiniBIM\settings.json`（`AppPlatform::GetUserDataDir`），有 `language`（空 = 跟随系统）、`theme`（`dark` / `light`）、`autosave_minutes`、`shortcuts`；`MainFrame::LoadSettings` / `MainFrame::SaveSettings`
 
 ## 约束与坑
 

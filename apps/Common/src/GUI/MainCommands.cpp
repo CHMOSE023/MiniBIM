@@ -45,6 +45,8 @@ namespace MiniBIM
         add("file.start", N_("Start Page"), N_("The start page: new, open and the recent files; again to go back to the project"),
             [this] { ToggleStartPage(); }, {}, [this] { return m_startShown; });
         add("file.settings", N_("Settings..."), N_("The window's own settings: theme, language, palettes, autosave"), [this] { OpenSettings(); });
+        add("file.shortcuts", N_("Keyboard Shortcuts..."), N_("The two-letter shortcuts typed over the view (WA wall, DR door…): see, change, load from a file"),
+            [this] { OpenShortcuts(); });
         add("file.exit", N_("Exit"), "", [this] { RequestExit(); });
 
         // ── 编辑 ─────────────────────────────────────────────────
@@ -130,6 +132,7 @@ namespace MiniBIM
 
         // ── 帮助 ─────────────────────────────────────────────────
         add("help.about", N_("About MiniBIM"), "", [this] { ShowAbout(); });
+        RegisterShortcuts();
     }
 
     // =========================================================

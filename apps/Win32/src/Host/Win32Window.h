@@ -61,6 +61,7 @@ namespace MiniBIM
         std::string GetResourceDir() const override;
         std::string GetUserDataDir() const override;
         std::string PickProjectFile() override;
+        std::string PickShortcutsFile() override;
         std::string ChooseProjectSavePath(const std::string& suggestedName) override;
         std::string ChooseIfcSavePath(const std::string& suggestedName) override;
         std::string GetSystemLanguage() const override;
@@ -74,7 +75,7 @@ namespace MiniBIM
 
         bool InitWindow(const wchar_t* title, int width, int height);
         // 打开或保存的文件对话框：打开项目、保存项目、导出 IFC
-        enum class FileDialog { Open, SaveProject, SaveIfc };
+        enum class FileDialog { Open, SaveProject, SaveIfc, Shortcuts };
         std::string ShowProjectDialog(FileDialog kind, const std::string& suggestedName);
         void UpdateDisplaySize();
         void WatchUiFile();

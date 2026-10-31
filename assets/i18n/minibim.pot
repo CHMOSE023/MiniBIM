@@ -294,7 +294,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr ""
 
@@ -632,6 +632,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "The window's own settings: theme, language, palettes, autosave"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Keyboard Shortcuts..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The two-letter shortcuts typed over the view (WA wall, DR door…): see, change, load from a file"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -1087,7 +1095,7 @@ msgstr ""
 msgid "Not enclosed: the walls around it don't close."
 msgstr ""
 
-#: apps/Common/src/GUI/Panels.cpp
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Search"
 msgstr ""
 
@@ -1457,6 +1465,78 @@ msgstr ""
 
 #: apps/Common/src/GUI/Settings.cpp
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Keyboard Shortcuts"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Type two letters over the view to run a command (WA wall, DR door, ZF zoom to fit)."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Keys"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Assign"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Custom"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "A shortcut is two letters or digits."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Choose a command."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "{0} is already used by {1}: remove it there first."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "{0} runs {1}."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Load from File..."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Could not read the file: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "That is too big to be a shortcuts file."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Loaded {0} shortcut from the file."
+msgid_plural "Loaded {0} shortcuts from the file."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use)."
+msgid_plural "Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use)."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Restore Defaults"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Back to the default shortcuts."
 msgstr ""
 
 #: apps/Common/src/GUI/SketchMode.cpp
@@ -1958,6 +2038,10 @@ msgstr ""
 
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "IFC file"
+msgstr ""
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "Shortcuts file"
 msgstr ""
 
 #: apps/Win32/src/Host/Win32Window.cpp

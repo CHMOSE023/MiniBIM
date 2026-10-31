@@ -108,6 +108,8 @@ namespace MiniBIM
         RegisterCommands();
         m_commands.BindShortcuts(m_ui->GetShortcuts());
         m_commands.AddListener([this] { UpdateStatus(); });
+        // 视图上（或没有焦点时）打的字母：两个字母的快捷键
+        m_ui->SetUnhandledTextHandler([this](std::string_view text) { return OnShortcutText(text); });
 
         // ── 宿主面板，交给界面描述文件摆放（标题写英文原文，UiLayout 应用时翻译）──
         m_layout = std::make_unique<MiniGUI::UiLayout>(m_commands, m_platform->GetResourceDir() + "/icons");
@@ -269,6 +271,8 @@ namespace MiniBIM
         const double minutes = doc["autosave_minutes"].AsNumber(m_autosave.minutes);
         if (minutes >= 0 && minutes <= 120)
             m_autosave.minutes = static_cast<int>(minutes);
+        if (const MiniGUI::JsonValue& keys = doc["shortcuts"]; keys.IsObject())
+            m_shortcuts.FromJson(Bim::Json::parse(keys.Dump(), nullptr, false));
     }
 
     void MainFrame::SaveSettings() const
@@ -282,6 +286,10 @@ namespace MiniBIM
         doc.Set("language", m_languageSetting);
         doc.Set("theme", m_themeSetting);
         doc.Set("autosave_minutes", static_cast<double>(m_autosave.minutes));
+        MiniGUI::JsonValue keys;
+        MiniGUI::JsonError err;
+        if (MiniGUI::ParseJson(m_shortcuts.ToJson().dump(), keys, err))
+            doc.Set("shortcuts", std::move(keys));
         std::ofstream out(ToPath(path), std::ios::binary | std::ios::trunc);
         out << doc.Dump(2) << '\n';
         if (!out)

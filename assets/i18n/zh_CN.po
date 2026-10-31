@@ -293,7 +293,7 @@ msgstr "展开功能区（双击选项卡也可以）"
 msgid "Search commands"
 msgstr "搜索命令"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr "关闭"
 
@@ -632,6 +632,14 @@ msgstr "设置..."
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "The window's own settings: theme, language, palettes, autosave"
 msgstr "窗口自己的设置：主题、语言、面板、自动保存"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Keyboard Shortcuts..."
+msgstr "键盘快捷键..."
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The two-letter shortcuts typed over the view (WA wall, DR door…): see, change, load from a file"
+msgstr "在视图上打的两个字母的快捷键（WA 墙、DR 门……）：查看、修改、从文件读入"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Exit"
@@ -1080,7 +1088,7 @@ msgstr "未连接"
 msgid "Not enclosed: the walls around it don't close."
 msgstr "未封闭：四周的墙没有围合。"
 
-#: apps/Common/src/GUI/Panels.cpp
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Search"
 msgstr "搜索"
 
@@ -1445,6 +1453,76 @@ msgstr "分钟"
 #: apps/Common/src/GUI/Settings.cpp
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
 msgstr "保存过的项目，恢复副本放在项目旁边；没保存过的项目放在临时文件夹里。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Keyboard Shortcuts"
+msgstr "键盘快捷键"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Type two letters over the view to run a command (WA wall, DR door, ZF zoom to fit)."
+msgstr "在视图上打两个字母就执行一个命令（WA 墙、DR 门、ZF 缩放匹配）。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Keys"
+msgstr "键"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Assign"
+msgstr "指定"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Custom"
+msgstr "自定义"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr "删除"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "A shortcut is two letters or digits."
+msgstr "快捷键是两个字母或数字。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Choose a command."
+msgstr "请选择一个命令。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "{0} is already used by {1}: remove it there first."
+msgstr "{0} 已经给了“{1}”：先在那里删掉。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "{0} runs {1}."
+msgstr "{0} 执行“{1}”。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Load from File..."
+msgstr "从文件读入..."
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Could not read the file: {0}"
+msgstr "无法读取文件：{0}"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "That is too big to be a shortcuts file."
+msgstr "文件太大，不是快捷键文件。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Loaded {0} shortcut from the file."
+msgid_plural "Loaded {0} shortcuts from the file."
+msgstr[0] "从文件读入了 {0} 个快捷键。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use)."
+msgid_plural "Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use)."
+msgstr[0] "略过 {0} 个（不是两个字母、MiniBIM 没有的命令，或键已经有用处）。"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Restore Defaults"
+msgstr "恢复默认"
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Back to the default shortcuts."
+msgstr "已恢复默认的快捷键。"
 
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "Line {0}"
@@ -1946,6 +2024,10 @@ msgstr "MiniBIM 项目"
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "IFC file"
 msgstr "IFC 文件"
+
+#: apps/Win32/src/Host/Win32Window.cpp
+msgid "Shortcuts file"
+msgstr "快捷键文件"
 
 #: apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"

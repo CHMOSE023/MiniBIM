@@ -376,6 +376,11 @@ namespace MiniBIM
         return ShowProjectDialog(FileDialog::Open, {});
     }
 
+    std::string Win32Window::PickShortcutsFile()
+    {
+        return ShowProjectDialog(FileDialog::Shortcuts, {});
+    }
+
     std::string Win32Window::ChooseProjectSavePath(const std::string& suggestedName)
     {
         return ShowProjectDialog(FileDialog::SaveProject, suggestedName);
@@ -388,7 +393,7 @@ namespace MiniBIM
 
     std::string Win32Window::ShowProjectDialog(FileDialog kind, const std::string& suggestedName)
     {
-        const bool save = kind != FileDialog::Open;
+        const bool save = kind != FileDialog::Open && kind != FileDialog::Shortcuts;
         // 筛选器：名称\0模式\0……\0\0；名称经 Tr 翻译
         std::wstring filter;
         auto add = [&](const std::string& label, const wchar_t* pattern)
@@ -402,6 +407,8 @@ namespace MiniBIM
             add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
         else if (kind == FileDialog::SaveIfc)
             add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
+        else if (kind == FileDialog::Shortcuts)
+            add(Tr("Shortcuts file") + " (*.json;*.xml;*.txt;*.md)", L"*.json;*.xml;*.txt;*.md");
         else
         {
             add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc)", L"*.minibim;*.bimcraft;*.ifc");
