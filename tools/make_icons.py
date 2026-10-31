@@ -190,6 +190,20 @@ def _(i):
     i.arrow(30, 38, 58, 38, A, 4.5, 10)
 
 
+@icon("StartPage")         # file.start：开始页（一个窗口，里面排着几张卡片，一张强调）
+def _(i):
+    i.rect(6, 10, 58, 54, G, w=3.5, r=4)
+    i.line([(6, 20), (58, 20)], G, 3)
+    i.rect(13, 27, 29, 47, A, AF, w=3)
+    i.rect(35, 27, 51, 35, G, w=3); i.rect(35, 39, 51, 47, G, w=3)
+
+
+@icon("Back")              # 开始页的"回到项目"：向左的箭头，回到一页图纸上
+def _(i):
+    i.poly([(26, 8), (48, 8), (56, 16), (56, 56), (26, 56)], G, w=3.5)
+    i.arrow(44, 32, 8, 32, A, 4.5, 10)
+
+
 @icon("SampleHouse")       # file.sample：示例房屋（等轴测的房子，墙上一扇门）
 def _(i):
     cube(i, fill_all=True)

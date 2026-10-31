@@ -18,6 +18,7 @@
     "file.saveAs":  { "icon": "SaveAs.png", "shortcut": "Ctrl+Shift+S" },
     "file.exportIfc": { "icon": "ExportIfc.png" },
     "file.sample":  { "icon": "SampleHouse.png" },
+    "file.start":   { "icon": "StartPage.png", "shortcut": "Ctrl+D" },
     "file.exit":    { "icon": "Exit.png" },
     "edit.undo":    { "icon": "Undo.png", "shortcut": "Ctrl+Z" },
     "edit.redo":    { "icon": "Redo.png", "shortcut": "Ctrl+Y" },
@@ -64,7 +65,7 @@
   },
   "menus": [
     { "title": "File", "items": [ "file.new", "file.open", { "title": "Open Recent", "dynamic": "recent" }, "file.save", "file.saveAs",
-                                  "file.exportIfc", "-", "file.sample", "-",
+                                  "file.exportIfc", "-", "file.start", "file.sample", "-",
                                   { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
     { "title": "Edit", "items": [ "edit.undo", "edit.redo", "-", "edit.delete", "modify.flip" ] },
     { "title": "View", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown", "-", "view.home", "view.zoomFit", "-",
@@ -72,7 +73,7 @@
     { "title": "Help", "items": [ "help.about" ] }
   ],
   "toolbars": {
-    "quick": [ "file.open", "file.save", "edit.undo", "edit.redo" ]
+    "quick": [ "file.start", "file.open", "file.save", "edit.undo", "edit.redo" ]
   },
   "ribbons": {
     "main": {

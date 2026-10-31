@@ -77,11 +77,20 @@ namespace MiniBIM
                  m_languageSetting.c_str(), platform.GetSystemLanguage().c_str());
 
         InitUI();
-        OpenSample();
+        OnResize(width, height, pixelScale);
+        // 给了项目文件就打开它；给了 --run 的界面命令就在示例房屋上执行（看界面效果时用）；否则显示开始页
+        const bool opened = !m_startupFile.empty() && OpenPath(m_startupFile);
+        if (!opened && !m_startupCommands.empty())
+            OpenSample();
+        else if (!opened)
+        {
+            m_savedModel = m_session.Snapshot();    // 开始页后面的空项目算保存过的
+            OnModelChanged();
+            ShowStartPage(true, false);
+        }
         for (const std::string& id : m_startupCommands)
             if (!m_commands.Execute(id))
                 LOG_WARN("启动参数 --run：没有界面命令 %s", id.c_str());
-        OnResize(width, height, pixelScale);
         return true;
     }
 
@@ -107,7 +116,9 @@ namespace MiniBIM
         m_layout->SetDynamicMenuItems("languages", [this] { return BuildLanguageMenu(); });
         m_layout->SetDynamicMenuItems("recent", [this] { return BuildRecentMenu(); });
 
-        m_uiHost = m_ui->GetRoot()->AddChild<MiniGUI::Node>();
+        // 界面描述生成的部分放在 m_uiHost 里；开始页（StartPage.cpp）是它旁边绝对定位的一层（根节点把子节点都拉满，不排版）
+        m_appHost = m_ui->GetRoot()->AddChild<MiniGUI::Node>();
+        m_uiHost  = m_appHost->AddChild<MiniGUI::Node>();
         MiniGUI::LayoutStyle hs;
         hs.grow = 1.0f;
         m_uiHost->SetLayoutStyle(hs);
@@ -124,6 +135,7 @@ namespace MiniBIM
         }
         ReloadUi();
         BuildOptionsBar();
+        CreateStartPage();
     }
 
     void MainFrame::ReloadUi()
@@ -166,6 +178,8 @@ namespace MiniBIM
             return;
         m_dpiScale = pixelScale;
         m_ui->SetDisplaySize({ width, height }, pixelScale);
+        if (m_startShown && StartColumns() != m_startColumns)
+            PostStartPage();
         m_ui->Update();
         m_commands.NotifyStateChanged();    // 最大化按钮切换"还原"图标
     }
@@ -214,6 +228,8 @@ namespace MiniBIM
         ReloadUi();
         RefreshPanels();
         BuildOptionsBar();
+        if (m_startShown)
+            BuildStartPage();
         m_ui->Update();
     }
 

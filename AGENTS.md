@@ -59,7 +59,7 @@ MiniBIM → `src`（另有 `3rd/nlohmann/include`），MiniGUI → `src/UI`，�
 - 三维视口：`OrbitCamera`（正交、Z 向上、单位毫米）+ `IRenderer`；`Mat4` 为行向量约定（P' = P · M）
 - 几何：只经 `Solid::ISolidKernel`（`AppPlatform::GetSolidKernel`）；SMLib 不能并发使用（适配层内部加锁）
 - 模型：`MainFrame` 拥有一个 `Bim::Session`，一切编辑都是命令（`Session::Execute`，命令表在 `src/Commands/Commands.cpp`），失败时回滚，撤销存整个模型的快照；
-  三维视口显示 `ModelScene` 由模型经实体内核建成的三角形。启动时打开示例房屋。第 2 阶段的进度见 `docs/PLAN.md`
+  三维视口显示 `ModelScene` 由模型经实体内核建成的三角形。启动时显示开始页（启动参数给了项目文件就打开它）。第 2 阶段的进度见 `docs/PLAN.md`
 
 ## 约定
 

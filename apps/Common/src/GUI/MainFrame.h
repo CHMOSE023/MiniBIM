@@ -40,7 +40,7 @@ namespace MiniBIM
     // MiniBIM 主窗口的界面与逻辑（与平台无关，平台服务经 AppPlatform）。结构沿用 MiniCAD 的 MainFrame：
     //   - 整个界面由 MiniGUI 绘制：标题栏自绘，菜单栏在标题栏里；菜单与布局由界面描述文件 ui/minibim_ui.json 描述（UiLayout），
     //     保存后自动重新加载
-    //   - 模型：Bim::Session（移植自 BIMCraft 的命令与撤销），界面只经命令改它；启动时打开示例房屋
+    //   - 模型：Bim::Session（移植自 BIMCraft 的命令与撤销），界面只经命令改它；启动时显示开始页（StartPage.cpp）
     //   - 停靠区（Panels.cpp）：特性面板 "properties"（类型选择器与选中元素的参数，改动经 modify 命令）、项目浏览器 "browser"
     //     （视图与族的树，双击打开视图）；功能区与快速访问工具栏在界面描述文件里
     //   - 工具（Tools.cpp）：功能区"建筑"里放东西的工具（墙、门、窗、构件、屋顶、楼板、天花板、房间、标高、轴网），
@@ -64,8 +64,10 @@ namespace MiniBIM
         void SetUiFile(std::string utf8Path) { m_uiPath = std::move(utf8Path); }
         // 启动参数指定的语言（--lang），优先于用户设置，不保存
         void SetLanguageOverride(std::string code) { m_languageOverride = std::move(code); }
-        // 启动参数 --run 给的界面命令（如 view.plan）：打开示例房屋之后依次执行，看界面效果时用
+        // 启动参数 --run 给的界面命令（如 view.plan）：打开示例房屋之后依次执行（不显示开始页），看界面效果时用
         void AddStartupCommand(std::string id) { m_startupCommands.push_back(std::move(id)); }
+        // 启动参数给的项目文件（双击 .minibim 打开程序时）：打开它；没给文件也没给 --run 时启动后显示开始页
+        void SetStartupFile(std::string utf8Path) { m_startupFile = std::move(utf8Path); }
 
         // 平台对象必须比 MainFrame 活得久。尺寸为逻辑像素，pixelScale = 物理像素 / 逻辑像素
         bool Initialize(AppPlatform& platform, float width, float height, float pixelScale);
@@ -106,7 +108,7 @@ namespace MiniBIM
         void NewProject();
         void OpenProject();
         // 打开一个文件（打开对话框选的、最近打开里的）：成功时记进最近打开，文件已经不在时从里面去掉
-        void OpenPath(const std::string& path);
+        bool OpenPath(const std::string& path);
         bool SaveProject(bool saveAs);
         void StepHistory(bool redo);
         void DeleteSelection();
@@ -271,12 +273,23 @@ namespace MiniBIM
         void KeepRecent();
         std::vector<MiniGUI::MenuItem> BuildRecentMenu();
 
+        // ── 开始页（StartPage.cpp）：盖在标题栏下面的整个窗口上 ──────────
+        void CreateStartPage();
+        // over：叫到项目上面（有"回到项目"，Ctrl+D 回去）；启动时打开的没有项目可回
+        void ShowStartPage(bool show, bool over);
+        void ToggleStartPage();
+        void BuildStartPage();
+        void PostStartPage();
+        // 右边一栏一行放几张卡片：窗口宽度变了、放的张数也变了时重建
+        int StartColumns() const;
+
         AppPlatform* m_platform = nullptr;
         float        m_dpiScale = 1.0f;
 
         std::unique_ptr<MiniGUI::UIContext> m_ui;
         MiniGUI::CommandRegistry            m_commands;
         std::unique_ptr<MiniGUI::UiLayout>  m_layout;
+        MiniGUI::Node*                      m_appHost    = nullptr;  // m_uiHost 与开始页
         MiniGUI::Node*                      m_uiHost     = nullptr;
         MiniGUI::ViewportHost*              m_viewport   = nullptr;
         MiniGUI::Label*                     m_statusHint = nullptr;
@@ -291,6 +304,11 @@ namespace MiniBIM
         std::vector<std::string> m_startupCommands;
         RecentFiles m_recent;
         std::string m_recentPath;                             // 空 = 不记（平台没有用户设置目录）
+        MiniGUI::Node* m_startPage = nullptr;
+        bool m_startShown = false;
+        bool m_startOver  = false;
+        int  m_startColumns = 0;
+        std::string m_startupFile;                            // 启动参数给的项目文件：打开它，不显示开始页
 
         Bim::Session m_session;
         std::shared_ptr<const Bim::Model> m_savedModel;      // 最后打开、新建或保存的那一份：别的都是没保存的

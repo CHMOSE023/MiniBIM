@@ -30,6 +30,9 @@ namespace MiniBIM
         // 菜单上每个文件显示什么：文件名；两个文件同名时后面加它所在的文件夹
         std::vector<std::string> Labels() const;
 
+        // 文件改过多久了（秒），用话说（开始页的卡片）：刚刚、5 分钟前、昨天、3 天前……
+        static std::string Age(long long seconds);
+
         bool operator==(const RecentFiles&) const = default;
 
     private:

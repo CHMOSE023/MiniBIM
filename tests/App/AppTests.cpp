@@ -212,6 +212,13 @@ namespace
         Check(RecentFiles::Load(odd).Paths().empty(), "recent: an oversized file is an empty list");
         std::filesystem::remove(std::filesystem::path(std::u8string(file.begin(), file.end())), ec);
         std::filesystem::remove(std::filesystem::path(std::u8string(odd.begin(), odd.end())), ec);
+
+        // 开始页卡片上的"多久以前"（没设语言时是英文原文）
+        Check(RecentFiles::Age(30) == "Just now" && RecentFiles::Age(5 * 60) == "5 min ago" && RecentFiles::Age(3 * 3600) == "3 h ago",
+              "age: minutes and hours");
+        Check(RecentFiles::Age(30 * 3600) == "Yesterday" && RecentFiles::Age(3 * 86400) == "3 days ago" &&
+                  RecentFiles::Age(40 * 86400) == "1 month ago" && RecentFiles::Age(800 * 86400) == "2 years ago",
+              "age: days, months, years");
     }
 }
 

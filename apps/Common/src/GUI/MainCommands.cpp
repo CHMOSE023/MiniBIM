@@ -42,6 +42,8 @@ namespace MiniBIM
         add("file.saveAs", N_("Save As..."), N_("Save the project under another name"), [this] { SaveProject(true); });
         add("file.exportIfc", N_("Export IFC..."), N_("Export the model as an IFC4 file for other BIM software"), [this] { ExportIfc(); });
         add("file.sample", N_("Sample House"), N_("Open the sample house, built by commands"), [this] { Guard([this] { OpenSample(); }); });
+        add("file.start", N_("Start Page"), N_("The start page: new, open and the recent files; again to go back to the project"),
+            [this] { ToggleStartPage(); }, {}, [this] { return m_startShown; });
         add("file.exit", N_("Exit"), "", [this] { RequestExit(); });
 
         // ── 编辑 ─────────────────────────────────────────────────
@@ -199,7 +201,7 @@ namespace MiniBIM
             OpenPath(path);
     }
 
-    void MainFrame::OpenPath(const std::string& path)
+    bool MainFrame::OpenPath(const std::string& path)
     {
         Bim::Json r;
         if (!RunCommand("open", Bim::Json{ { "path", path } }, N_("Could not open the project"), &r))
@@ -211,7 +213,7 @@ namespace MiniBIM
                 m_recent.Remove(path);
                 KeepRecent();
             }
-            return;
+            return false;
         }
         NoteRecent(path);
         // IFC 里 MiniBIM 还没有的元素、违反规则的略去了：说一声有几个（列表在命令的结果里）
@@ -233,6 +235,7 @@ namespace MiniBIM
                            "{0} items of this file aren't supported by this version yet and were left out. Saving the project drops them.",
                            static_cast<long long>(*left)), { n }));
         }
+        return true;
     }
 
     bool MainFrame::SaveProject(bool saveAs)
@@ -274,6 +277,8 @@ namespace MiniBIM
         std::string error;
         if (!m_recentPath.empty() && !m_recent.Save(m_recentPath, error))
             LOG_WARN("最近打开：%s", error.c_str());
+        if (m_startShown)
+            PostStartPage();
     }
 
     std::vector<MiniGUI::MenuItem> MainFrame::BuildRecentMenu()
@@ -355,6 +360,9 @@ namespace MiniBIM
                 SetTool(Tool::Modify);
             }
             m_savedModel   = m_session.Snapshot();
+            // 新建、打开了项目：开始页让给它
+            if (m_startShown)
+                ShowStartPage(false, false);
         }
         OnPlanModelChanged();
         UpdateTitle();

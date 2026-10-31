@@ -1,5 +1,6 @@
 // 移植自 BIMCraft crates/ui-egui/src/recent.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "GUI/Recent.h"
+#include "I18n/Translator.h"
 #include "Model/Json.h"
 #include <algorithm>
 #include <filesystem>
@@ -110,5 +111,23 @@ namespace MiniBIM
             out.push_back(same < 2 || folder.empty() ? n : n + " (" + folder + ")");
         }
         return out;
+    }
+
+    std::string RecentFiles::Age(long long seconds)
+    {
+        const long long minutes = seconds / 60, hours = seconds / 3600, days = seconds / 86400;
+        if (minutes < 1)
+            return Tr("Just now");
+        if (hours < 1)
+            return Format(TrN("{0} min ago", "{0} min ago", minutes), { std::to_string(minutes) });
+        if (days < 1)
+            return Format(TrN("{0} h ago", "{0} h ago", hours), { std::to_string(hours) });
+        if (days < 2)
+            return Tr("Yesterday");
+        if (days < 31)
+            return Format(TrN("{0} day ago", "{0} days ago", days), { std::to_string(days) });
+        if (days < 365)
+            return Format(TrN("{0} month ago", "{0} months ago", days / 30), { std::to_string(days / 30) });
+        return Format(TrN("{0} year ago", "{0} years ago", days / 365), { std::to_string(days / 365) });
     }
 }

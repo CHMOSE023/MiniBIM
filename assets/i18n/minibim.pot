@@ -14,7 +14,7 @@ msgstr ""
 msgid "New"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/StartPage.cpp
 msgid "Open"
 msgstr ""
 
@@ -546,7 +546,7 @@ msgstr ""
 msgid "Start an empty project with two levels"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/StartPage.cpp
 msgid "Open..."
 msgstr ""
 
@@ -574,12 +574,20 @@ msgstr ""
 msgid "Export the model as an IFC4 file for other BIM software"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/StartPage.cpp
 msgid "Sample House"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Open the sample house, built by commands"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Start Page"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The start page: new, open and the recent files; again to go back to the project"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -1317,6 +1325,44 @@ msgid_plural "{0} elements selected"
 msgstr[0] ""
 msgstr[1] ""
 
+#: apps/Common/src/GUI/Recent.cpp
+msgid "Just now"
+msgstr ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} min ago"
+msgid_plural "{0} min ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} h ago"
+msgid_plural "{0} h ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "Yesterday"
+msgstr ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} day ago"
+msgid_plural "{0} days ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} month ago"
+msgid_plural "{0} months ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} year ago"
+msgid_plural "{0} years ago"
+msgstr[0] ""
+msgstr[1] ""
+
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "Line {0}"
 msgstr ""
@@ -1415,6 +1461,67 @@ msgstr ""
 
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "Finish or cancel the sketch before leaving its plan."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Building information modelling, open and free."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgctxt "start page"
+msgid "Start"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "New Project"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "An empty project to model in."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "A MiniBIM or BIMCraft project, or an IFC file."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "A small house to look around and try the tools on."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Back to {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "The project stays as you left it."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Recent"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "No recent projects yet"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "The projects you open or save show here."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Not found"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Remove from List"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Source code on GitHub"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Version {0}"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp

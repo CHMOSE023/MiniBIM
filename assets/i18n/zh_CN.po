@@ -13,7 +13,7 @@ msgstr ""
 msgid "New"
 msgstr "新建"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/StartPage.cpp
 msgid "Open"
 msgstr "打开"
 
@@ -545,7 +545,7 @@ msgstr "表面填充图案"
 msgid "Start an empty project with two levels"
 msgstr "新建一个只有两个标高的空项目"
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/StartPage.cpp
 msgid "Open..."
 msgstr "打开..."
 
@@ -573,13 +573,21 @@ msgstr "导出 IFC..."
 msgid "Export the model as an IFC4 file for other BIM software"
 msgstr "把模型导出为 IFC4 文件，供别的 BIM 软件使用"
 
-#: apps/Common/src/GUI/MainCommands.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/StartPage.cpp
 msgid "Sample House"
 msgstr "示例房屋"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Open the sample house, built by commands"
 msgstr "打开用命令搭建的示例房屋"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Start Page"
+msgstr "开始页"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The start page: new, open and the recent files; again to go back to the project"
+msgstr "开始页：新建、打开与最近打开的文件；再点一次回到项目"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Exit"
@@ -1309,6 +1317,39 @@ msgid "{0} element selected"
 msgid_plural "{0} elements selected"
 msgstr[0] "选中了 {0} 个元素"
 
+#: apps/Common/src/GUI/Recent.cpp
+msgid "Just now"
+msgstr "刚刚"
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} min ago"
+msgid_plural "{0} min ago"
+msgstr[0] "{0} 分钟前"
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} h ago"
+msgid_plural "{0} h ago"
+msgstr[0] "{0} 小时前"
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "Yesterday"
+msgstr "昨天"
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} day ago"
+msgid_plural "{0} days ago"
+msgstr[0] "{0} 天前"
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} month ago"
+msgid_plural "{0} months ago"
+msgstr[0] "{0} 个月前"
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} year ago"
+msgid_plural "{0} years ago"
+msgstr[0] "{0} 年前"
+
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "Line {0}"
 msgstr "线 {0}"
@@ -1408,6 +1449,67 @@ msgstr "一个环至少要三条线：单击一个不是起点的点。"
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "Finish or cancel the sketch before leaving its plan."
 msgstr "先完成或取消草图，再离开它的平面。"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Building information modelling, open and free."
+msgstr "建筑信息模型，开源而免费。"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgctxt "start page"
+msgid "Start"
+msgstr "开始"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "New Project"
+msgstr "新建项目"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "An empty project to model in."
+msgstr "一个空项目，从头建模。"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "A MiniBIM or BIMCraft project, or an IFC file."
+msgstr "MiniBIM 或 BIMCraft 项目，或 IFC 文件。"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "A small house to look around and try the tools on."
+msgstr "一座小房子，可以四处看看、试试各种工具。"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Back to {0}"
+msgstr "回到 {0}"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "The project stays as you left it."
+msgstr "项目保持你离开时的样子。"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Recent"
+msgstr "最近"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "No recent projects yet"
+msgstr "还没有最近打开的项目"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "The projects you open or save show here."
+msgstr "打开或保存过的项目会显示在这里。"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Not found"
+msgstr "找不到文件"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Remove from List"
+msgstr "从列表中移除"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Source code on GitHub"
+msgstr "GitHub 上的源代码"
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Version {0}"
+msgstr "版本 {0}"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click a sketch line to select it, Ctrl adds; drag a selected line's end to move it. Delete removes, Ctrl+Z steps back."

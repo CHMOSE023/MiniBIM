@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -8,14 +8,14 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
 
 整个界面由 MiniGUI 绘制（`src/UI`，复制自 MiniCAD），主窗口的逻辑在 `MiniBIM::MainFrame`（`apps/Common/src/GUI/MainFrame.h`），与平台无关；
 平台服务经 `AppPlatform`，现在只有 Win32 宿主 `Win32Window`（`apps/Win32/src/Host/Win32Window.h`）。结构照 MiniCAD 的主窗口，但精简了很多：
-没有文档标签、浮动窗口、起始页。界面按 `docs/PLAN.md` 第 3 阶段从 BIMCraft 的 `crates/ui-egui` 移植（在 MiniGUI 上重写），现在做到 3d：
+没有文档标签、浮动窗口。界面按 `docs/PLAN.md` 第 3 阶段从 BIMCraft 的 `crates/ui-egui` 移植（在 MiniGUI 上重写），现在做到 3d：
 标题栏（菜单栏 + 快速访问工具栏：打开、保存、撤销、重做）、功能区（"建筑"、"修改"、"视图"三个选项卡）、选项栏、停靠区（左上特性、左下项目浏览器，同 Revit）、视图、状态栏。
 
 ## 入口与数据流
 
-- 启动：`GuiMain.cpp` 解析参数（`--ui`、`--gpu`、`--lang`）→ `Win32Window::Initialize` 建无边框窗口和图形设备（D3D12 → D3D11 → WARP）→ `MainFrame::Initialize`：
-  选语言（`--lang` > 用户设置 > `AppPlatform::GetSystemLanguage`）、建 `UIContext`、注册命令、注册宿主面板、读界面描述文件、打开示例房屋（`MainFrame::OpenSample`），
-  再依次执行启动参数 `--run` 给的界面命令（`MainFrame::AddStartupCommand`；看界面效果时用，如 `--run view.plan`）
+- 启动：`GuiMain.cpp` 解析参数（项目文件、`--ui`、`--gpu`、`--lang`、`--run`）→ `Win32Window::Initialize` 建无边框窗口和图形设备（D3D12 → D3D11 → WARP）→ `MainFrame::Initialize`：
+  选语言（`--lang` > 用户设置 > `AppPlatform::GetSystemLanguage`）、建 `UIContext`、注册命令、注册宿主面板、读界面描述文件；给了项目文件（`MainFrame::SetStartupFile`）就打开它，给了 `--run` 的界面命令（`MainFrame::AddStartupCommand`；看界面效果时用，
+  如 `--run view.plan`）就打开示例房屋（`MainFrame::OpenSample`）后依次执行，都没有时显示开始页
 - 界面描述文件 `assets/ui/minibim_ui.json`（格式见 `src/UI/Widgets/UiLayout.h`）：菜单、快速访问工具栏、功能区与布局；宿主面板 `viewport`（`MiniGUI::ViewportHost`）、
   `options`（选项栏，`Tools.cpp`）、`properties`、`browser`（`Panels.cpp`）、`statusbar`。停靠区的布局写在文件的 `dock` 里，用户拖动后的布局还不保存（3f 的设置再做）
   开发时读源码目录里的文件（宏 `MINIBIM_UI_SOURCE`），宿主监视它所在的目录，保存后 `MainFrame::CheckUiFileChanged` 重新加载；写错时保留原界面，状态栏显示原因
@@ -26,6 +26,11 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   `MainFrame::ExportIfc`、`MainFrame::OpenSample`）都走
   `MainFrame::RunCommand`（命令失败时弹出对话框，标题翻译、核心给的原因是英文），之后 `MainFrame::OnModelChanged` 重建三维场景、刷新标题与状态栏，
   换了项目时相机重新框住模型、清空选择集。标题栏显示保存过的文件名，否则显示项目名称；有没保存的改动时前面加 `*`
+- 开始页（`StartPage.cpp`，移植自 `start.rs`）：盖在标题栏下面的一层（`MainFrame::m_appHost` 里 `m_uiHost` 旁边绝对定位的面板；
+  `UIContext::GetRoot` 把子节点都拉满、不排版，所以多套了一层），菜单与快速访问工具栏照常能用。左边"开始"：新建项目、打开、示例房屋，叫到项目上面时还有
+  "回到 …"；右边"最近"：最近打开的文件排成卡片（文件名、文件夹 · 多久以前改的 `RecentFiles::Age`，文件不在了写"找不到文件"；单击打开，右键打开或从列表移除），
+  一行几张按窗口宽度（`MainFrame::StartColumns`，变了时重建）；底栏是 GitHub 上的源代码与版本。`file.start`（快速访问工具栏第一个，Ctrl+D）
+  在项目上叫出、再按回去（`MainFrame::ToggleStartPage`）；换了项目（新建、打开、示例房屋）时让给项目。卡片还没有项目的缩略图
 - 最近打开（`Recent.h` 的 `RecentFiles`，移植自 `recent.rs`）：文件菜单"最近打开"（动态子菜单 `recent`，`MainFrame::BuildRecentMenu`）列最后打开或保存的
   10 个项目与 IFC 文件，新的在前，同名的后面加文件夹；"清除最近打开的文件"。打开成功（`MainFrame::OpenPath`）、保存成功时 `MainFrame::NoteRecent`；
   打不开且文件已经不在了时从列表去掉。存在用户设置目录的 `recent.json`（`AppPlatform::GetUserDataDir`，空时不记），读不出、坏了、过大都当作空列表
