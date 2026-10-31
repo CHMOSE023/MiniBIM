@@ -95,7 +95,7 @@ namespace MiniBIM
             });
 
         // ── 草图模式（SketchMode.cpp）：编辑边界，完成、取消，画草图线的工具 ─────────
-        add("modify.editBoundary", N_("Edit Boundary"), N_("Edit the outline of the selected floor, ceiling or roof as sketch lines"),
+        add("modify.editBoundary", N_("Edit Boundary"), N_("Edit the outline of the selected floor, ceiling, roof or filled region as sketch lines"),
             [this] { EditBoundary(); }, [this] { return CanEditBoundary(); });
         add("sketch.finish", N_("Finish Edit Mode"), N_("Finish the sketch: its lines must make one closed outline, with any openings inside it"),
             [this] { FinishSketch(); }, [this] { return m_sketch.has_value(); });
@@ -206,6 +206,29 @@ namespace MiniBIM
         byMass("massing.updateByFace", N_("Update to Face"),
                N_("Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"), "update_by_face",
                N_("Could not update to the mass"));
+
+        // ── 注释（移植自 BIMCraft 的注释选项卡）：尺寸、详图线、区域、文字、测量、标记 ─────────
+        tool("annotate.aligned", N_("Aligned"),
+             N_("Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"),
+             Tool::Dimension);
+        tool("annotate.angular", N_("Angular"), N_("Angular Dimension: pick two lines that meet, then click where the arc goes"), Tool::Angular);
+        tool("annotate.radial", N_("Radial"), N_("Radial Dimension: pick a round column, then click where the radius goes"), Tool::Radial);
+        tool("annotate.spot", N_("Spot Elevation"), N_("Spot Elevation (EL): click a floor, a roof or a stair"), Tool::Spot);
+        tool("annotate.detailLine", N_("Detail Line"), N_("Detail Line (DL): click point to point; lines only this plan shows, in the Options Bar's line style"),
+             Tool::DetailLine);
+        auto region = [&](const char* id, const char* label, const char* tooltip, SketchOf of)
+        {
+            add(id, label, tooltip, [this, of] { StartSketch(of, 0, {}); }, [this] { return !m_sketch; });
+        };
+        region("annotate.filledRegion", N_("Filled Region"), N_("Filled Region (FR): sketch an area filled with a pattern, in this view"), SketchOf::Region);
+        region("annotate.maskingRegion", N_("Masking Region"), N_("Masking Region: sketch an area that hides what's under it, in this view"), SketchOf::Masking);
+        tool("annotate.text", N_("Text"), N_("Text (TX): type the note in the Options Bar, then click where it goes"), Tool::Text);
+        tool("annotate.measure", N_("Measure"), N_("Measure (ME): click two points; their length and angle read beside the ruler between them"),
+             Tool::Measure);
+        tool("annotate.tag", N_("Tag by Category"),
+             N_("Tag by Category (TG): click an element to tag it with its type, a door's or window's mark, or a room's name"), Tool::Tag);
+        add("annotate.tagAll", N_("Tag All"), N_("Tag every door and window in this view that has no tag"), [this] { TagAll(); },
+            [this] { return !m_sketch; });
 
         // ── 视图 ─────────────────────────────────────────────────
         add("view.3d", N_("3D View"), N_("Show the model in 3D"), [this] { ShowModel3D(); });

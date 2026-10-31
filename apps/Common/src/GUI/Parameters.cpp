@@ -112,6 +112,35 @@ namespace MiniBIM::Props
             { "Dimensions", "gross_floor_area_m2", N_("Gross Floor Area"), AreaShown },
             { "Identity Data", "name", "Name", Text },
         };
+        // 注释：它在的平面与读出的值；文字可改，标记的引线可开关
+        constexpr Row DimensionRows[] = {
+            { "Constraints", "level", N_("Level"), LevelName },
+        };
+        constexpr Row NoteRows[] = {
+            { "Constraints", "level", N_("Level"), LevelName },
+            { "Text", "text", N_("Text"), Text },
+            { "Text", "type", N_("Text Type"), Shown },
+            { "Graphics", "angle", N_("Angle"), Number },
+        };
+        constexpr Row SpotRows[] = {
+            { "Constraints", "level", N_("Level"), LevelName },
+            { "Dimensions", "elevation", N_("Elevation"), LengthShown },
+        };
+        constexpr Row TagRows[] = {
+            { "Constraints", "level", N_("Level"), LevelName },
+            { "Text", "text", N_("Text"), Shown },
+            { "Graphics", "leader", N_("Leader Line"), Flag },
+        };
+        constexpr Row LineRows[] = {
+            { "Constraints", "level", N_("Level"), LevelName },
+            { "Graphics", "style", N_("Line Style"), Shown },
+            { "Dimensions", "length", "Length", LengthShown },
+        };
+        constexpr Row RegionRows[] = {
+            { "Constraints", "level", N_("Level"), LevelName },
+            { "Graphics", "type", N_("Region Type"), Shown },
+            { "Dimensions", "area_m2", "Area", AreaShown },
+        };
         constexpr Row Roof[] = {
             { "Constraints", "level", N_("Base Level"), Level },
             { "Constraints", "offset", "Base Offset", Length },
@@ -196,6 +225,12 @@ namespace MiniBIM::Props
         if (Bim::IsRunCategory(category)) return Run;
         if (category == "roof") return Roof;
         if (category == "mass") return Mass;
+        if (category == "dimension") return DimensionRows;
+        if (category == "text") return NoteRows;
+        if (category == "spot") return SpotRows;
+        if (category == "tag") return TagRows;
+        if (category == "line") return LineRows;
+        if (category == "region") return RegionRows;
         return {};
     }
 
@@ -352,6 +387,9 @@ namespace MiniBIM::Props
             { "downconductor", N_("Down Conductor"), N_("Down Conductors") },
             { "groundconductor", N_("Earthing Conductor"), N_("Earthing Conductors") },
             { "mass", N_("Mass"), N_("Masses") },
+            { "dimension", N_("Dimension"), N_("Dimensions") }, { "text", N_("Text Note"), N_("Text Notes") },
+            { "spot", N_("Spot Elevation"), N_("Spot Elevations") }, { "tag", N_("Tag"), N_("Tags") },
+            { "line", N_("Detail Line"), N_("Detail Lines") }, { "region", N_("Filled Region"), N_("Filled Regions") },
         };
         for (const auto& n : names)
             if (category == n.category)

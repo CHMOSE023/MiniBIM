@@ -146,6 +146,38 @@ msgstr ""
 msgid "Update to Face"
 msgstr ""
 
+#: src/Commands/Commands.cpp
+msgid "Aligned Dimension"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+msgid "Text"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Text Types"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Spot Elevation"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag by Category"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Detail Line"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Filled Region"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Measure"
+msgstr ""
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr ""
@@ -286,7 +318,7 @@ msgstr ""
 msgid "Nearest"
 msgstr ""
 
-#: src/Model/Snap.cpp
+#: src/Model/Snap.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Angle"
 msgstr ""
 
@@ -412,6 +444,30 @@ msgstr ""
 
 #: src/View/ModelScene.cpp
 msgid "Some elements could not be modelled in 3D; see the log for which."
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the dimension"
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the spot elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the text"
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Type the note in the Options Bar first."
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not tag the element"
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not tag the doors and windows"
 msgstr ""
 
 #: apps/Common/src/GUI/Autosave.cpp
@@ -554,7 +610,7 @@ msgstr ""
 msgid "System Family: {0}"
 msgstr ""
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Type:"
 msgstr ""
 
@@ -831,7 +887,7 @@ msgid "Turn the selected walls round: their exterior sides go to the other side"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
-msgid "Edit the outline of the selected floor, ceiling or roof as sketch lines"
+msgid "Edit the outline of the selected floor, ceiling, roof or filled region as sketch lines"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
@@ -1124,6 +1180,70 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not update to the mass"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Aligned"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Angular"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Angular Dimension: pick two lines that meet, then click where the arc goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Radial"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Radial Dimension: pick a round column, then click where the radius goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Spot Elevation (EL): click a floor, a roof or a stair"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Detail Line (DL): click point to point; lines only this plan shows, in the Options Bar's line style"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Filled Region (FR): sketch an area filled with a pattern, in this view"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Masking Region"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Masking Region: sketch an area that hides what's under it, in this view"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Text (TX): type the note in the Options Bar, then click where it goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag by Category (TG): click an element to tag it with its type, a door's or window's mark, or a room's name"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Tag All"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag every door and window in this view that has no tag"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
@@ -1632,6 +1752,22 @@ msgid "Gross Floor Area"
 msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Text Type"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Leader Line"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Line Style"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Region Type"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr ""
 
@@ -1805,6 +1941,38 @@ msgstr ""
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Dimension"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Text Note"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Text Notes"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Spot Elevations"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Tag"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Tags"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Detail Lines"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Filled Regions"
 msgstr ""
 
 #: apps/Common/src/GUI/PlanView.cpp
@@ -2150,6 +2318,10 @@ msgid "Could not finish the sketch"
 msgstr ""
 
 #: apps/Common/src/GUI/SketchMode.cpp
+msgid "The project has no masking region type."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
 msgid "A loop needs three lines: click a point that isn't the start."
 msgstr ""
 
@@ -2487,6 +2659,58 @@ msgid "Pick walls: each adds a line along the wall's location line."
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Pick parallel wall faces, wall ends, doors, windows or grid lines to dimension."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick another reference, or click away from them where the dimension line goes. Esc starts over."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick two lines that meet: wall faces, wall centre lines or grid lines."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the arc goes. Esc starts over."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a round column's edge."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the radius line goes. Esc starts over."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a floor, a roof, a stair, a wall or a column to read its top's elevation."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Type the note in the Options Bar, then click where it goes."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click an element to tag it; Tag All tags the doors and windows that have none."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's start."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's end, or type a length and press Enter. Enter or Esc ends the chain."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the second point."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the first point to measure from."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Wall"
 msgstr ""
 
@@ -2571,6 +2795,30 @@ msgid "Modify | Create Mass"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Dimensions"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Spot Elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Text"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Tag"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Detail Lines"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Measure"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr ""
 
@@ -2584,6 +2832,14 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Edit Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Filled Region Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Masking Region Boundary"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -2655,6 +2911,22 @@ msgid "Place Centre"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Text:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "the note"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Leader"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Line Style:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "the next free name"
 msgstr ""
 
@@ -2688,6 +2960,10 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the component"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not draw the detail line"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -2824,6 +3100,18 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Annotate"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Detail"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Region"
 msgstr ""
 
 #: assets/ui/minibim_ui.json

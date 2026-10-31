@@ -581,11 +581,14 @@ wall {"points":[[0,0],[6000,0],[6000,4000]],"level":"Level 2"})", out, error);
             const Session s;
             const Model& m = s.GetModel();
             // 类型：墙 3、楼板 1、门 2、窗 2、柱 2、屋顶 1、天花板 2、结构柱 3、基础 2，run 的 26（梁 3、条形基础 1、管道 4、线管 4、桥架 3、
-            // 导线 3、引下线 3、接地线 2、缆线 3）；材质 17；族，以及每个族的类型和参数
+            // 导线 3、引下线 3、接地线 2、缆线 3）；材质 17；族，以及每个族的类型和参数；注释的线型图案、线样式 7、填充图案、
+            // 填充区域类型 6、文字类型 3
             size_t familyEntries = 0;
             for (const auto& [_, f] : m.families)
                 familyEntries += 1 + f.types.size() + f.parameters.size();
-            bool ok = m.LibraryInStep() && !m.families.empty() && m.library.Size() == 3 + 1 + 2 + 2 + 2 + 1 + 2 + 3 + 2 + 26 + 17 + familyEntries;
+            const size_t styles = m.linePatterns.size() + m.lineStyles.size() + m.fillPatterns.size() + m.regionTypes.size() + m.textTypes.size();
+            bool ok = m.LibraryInStep() && !m.families.empty() && m.lineStyles.size() == 7 && m.regionTypes.size() == 6 && m.textTypes.size() == 3 &&
+                      m.library.Size() == 3 + 1 + 2 + 2 + 2 + 1 + 2 + 3 + 2 + 26 + 17 + familyEntries + styles;
             ok = ok && !m.library.Entries().empty() && m.library.Entries().rbegin()->first == LastId;
             for (const auto& [id, _] : m.library.Entries())
                 ok = ok && id >= FirstId && id <= LastId && !m.elements.Contains(id);

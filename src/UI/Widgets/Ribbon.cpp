@@ -23,6 +23,7 @@ namespace MiniGUI
         constexpr float kLabelPad   = 10.0f;    // 按钮名称两侧
         constexpr float kIconSize   = 24.0f;
         constexpr float kLabelSize  = 11.5f;
+        constexpr float kLabelMinSize = 9.5f;
         constexpr float kTabSize    = 13.0f;
         constexpr float kTabPadX    = 12.0f;
         constexpr float kSectionSz  = 11.5f;
@@ -201,7 +202,10 @@ namespace MiniGUI
                     ctx->GetTextSystem().Draw(dl, icon, FirstChar(m_label), Params(13.0f, enabled ? Theme::Text : Theme::TextDisabled));
                 }
                 const Rect label{ r.min.x + 2.0f, icon.max.y + 3.0f, r.max.x - 2.0f, r.max.y - 1.0f };
-                TextParams p = Params(kLabelSize, enabled ? Theme::Text : Theme::TextDisabled, TextAlign::Center, TextAlign::Start);
+                // 最宽的按钮也放不下时字号缩小（不小于 kLabelMinSize），一行画完；再放不下才折行
+                const float full = ctx->GetTextSystem().Measure(m_label, Params(kLabelSize, Theme::Text)).x;
+                const float size = full > label.Width() ? std::max(kLabelMinSize, kLabelSize * label.Width() / full) : kLabelSize;
+                TextParams p = Params(size, enabled ? Theme::Text : Theme::TextDisabled, TextAlign::Center, TextAlign::Start);
                 p.wrap = true;
                 dl.PushClipRect(label);
                 ctx->GetTextSystem().Draw(dl, label, m_label, p);

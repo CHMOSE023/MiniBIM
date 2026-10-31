@@ -16,6 +16,8 @@ namespace MiniBIM::Bim
     // 类型与材质（用名称，不是 GUID）：inspect 显示它们
     Json ToJson(const Types& t);
     Json ToJson(const std::map<std::string, Material>& materials);
+    // 文字类型（文件里 text_types 的一项）
+    Json ToJson(const TextType& t);
 
     // GUID：数（ID）或 GUID 字符串
     bool FromJson(const Json& v, Guid& out, std::string& error);

@@ -1609,7 +1609,7 @@ grid {"start": [0, -2000], "end": [0, 8000]})", out, error))
             Run(s, "undo", Json::object());
             ok = ok && s.GetModel().elements.Get(f.get<Id>())->As<Floor>()->openings.empty();
             const Json w = Run(s, "wall", R"({"points": [[0, 0], [1000, 0]]})")["ids"][0];
-            ok = ok && Contains(Refused(s, "edit_boundary", Json{ { "id", w }, { "sketch", WithHole() } }), "floor, a ceiling or a roof's footprint");
+            ok = ok && Contains(Refused(s, "edit_boundary", Json{ { "id", w }, { "sketch", WithHole() } }), "floor, a ceiling, a roof's footprint or a filled region");
             Check(ok, "编辑边界：一步重画轮廓，不行时原样不动");
         }
         {
@@ -2857,6 +2857,170 @@ namespace
         }
     }
 
+    // ── 注释（第 5d 步）────────────────────────────────────────
+    void TestAnnotations()
+    {
+        {
+            // 尺寸：点在墙上取参照，跟着墙走；量的墙删了它也删
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Json r = Run(s, "DI", Json{ { "refs", { Pt(4000, 0), Pt(4000, 6000) } }, { "at", Pt(9000, 3000) } });
+            const Id dim = r["id"].get<Id>();
+            Check(r["values"] == Json::array({ 6000.0 }), "尺寸：两面平行的墙中心线之间：" + r.dump());
+            Run(s, "move", Json{ { "ids", { walls[2] } }, { "by", Pt(0, 500) } });
+            Check(ElementOf(s, dim)["values"] == Json::array({ 6500.0 }), "尺寸：跟着它量的墙");
+            const Json faces = Run(s, "dimension", Json{ { "refs", { { { "id", walls[0] }, { "face", "left" } }, { { "id", walls[0] }, { "face", "right" } } } },
+                                                         { "at", Pt(2000, -1000) } });
+            Check(!faces.is_null() && NearNum(faces["values"][0], 200.0, 1e-6), "尺寸：墙的两面：" + faces.dump());
+            Check(Contains(Refused(s, "dimension", Json{ { "refs", { Pt(4000, 0), Pt(0, 3000) } }, { "at", Pt(9000, 3000) } }), "no wall face"),
+                  "尺寸：对齐尺寸的第二条参照要平行");
+            const Json angle = Run(s, "dimension", Json{ { "kind", "angular" }, { "refs", { Pt(4000, 0), Pt(0, 3000) } }, { "at", Pt(1000, 1000) } });
+            Check(!angle.is_null() && NearNum(angle["values"][0], 90.0, 1e-6), "尺寸：角度：" + angle.dump());
+            Run(s, "delete", Json{ { "ids", { walls[0] } } });
+            Check(ElementOf(s, dim).is_null() && ElementOf(s, faces["id"].get<Id>()).is_null(), "尺寸：量的墙删了，剩不到两条参照的尺寸也删");
+        }
+        {
+            // 全部标记：门窗的标记写编号，跟着门走；门删了标记也删
+            Session s;
+            const std::vector<Id> walls = House(s);
+            const Id door = Run(s, "door", Json{ { "wall", walls[0] }, { "offset", 2000 } })["id"].get<Id>();
+            Run(s, "window", Json{ { "wall", walls[1] }, { "offset", 3000 } });
+            const Json tags = Run(s, "TG", Json::object());
+            Check(tags["ids"].size() == 2, "标记：全部标记标上门和窗：" + tags.dump());
+            const Id tag = tags["ids"][0].get<Id>();
+            const Json e = ElementOf(s, tag);
+            Check(e["text"] == ElementOf(s, door)["mark"] && e["leader"] == false, "标记：写门的编号：" + e.dump());
+            Check(Contains(Refused(s, "tag", Json::object()), "nothing to tag"), "标记：都标过了");
+            const Json before = e["at"];
+            Run(s, "move", Json{ { "ids", { door } }, { "by", Pt(500, 0) } });
+            Check(ElementOf(s, tag)["at"][0] == before[0].get<double>() + 500.0, "标记：跟着门走");
+            const Json room = Run(s, "tag", Json{ { "ids", { walls[0] } }, { "label", "Length" } });
+            Check(ElementOf(s, room["ids"][0].get<Id>())["text"] != "?", "标记：墙的长度");
+            Run(s, "delete", Json{ { "ids", { walls[0] } } });
+            Check(ElementOf(s, tag).is_null() && ElementOf(s, room["ids"][0].get<Id>()).is_null(), "标记：宿主删了标记也删");
+        }
+        {
+            // 文字与文字类型
+            Session s;
+            const Id note = Run(s, "TX", Json{ { "text", "Hello\nworld" }, { "at", Pt(1000, 1000) } })["id"].get<Id>();
+            Json e = ElementOf(s, note);
+            Check(e["type"] == "2.5mm" && e["size"] == 2.5 && IdOf(s, e["view"]) == Id(100000), "文字：默认 2.5mm，在最低标高的平面：" + e.dump());
+            Check(Contains(Refused(s, "text", Json{ { "text", "x" }, { "at", Pt(0, 0) }, { "size", 3 } }), "text type"), "文字：size 是类型的");
+            Check(Contains(Refused(s, "text", Json{ { "text", "x" }, { "at", Pt(0, 0) }, { "type", "9mm" } }), "9mm"), "文字：没有的类型");
+            const Json made = Run(s, "text_type", Json{ { "name", "Title" }, { "like", "5mm" }, { "bold", true }, { "font", "Courier New" } });
+            Check(made["type"]["size"] == 5.0 && made["type"]["bold"] == true && made["type"]["font"] == "Courier New", "文字类型：照另一个做：" + made.dump());
+            Run(s, "modify", Json{ { "id", note }, { "type", "Title" } });
+            Run(s, "text_type", Json{ { "name", "Title" }, { "rename", "Heading" } });
+            Check(ElementOf(s, note)["type"] == "Heading", "文字类型：改名后注释跟着");
+            Check(Contains(Refused(s, "text_type", Json{ { "name", "Heading" }, { "delete", true } }), "give it another type"), "文字类型：有注释用时不删");
+            Check(Contains(Refused(s, "text_type", Json{ { "name", "Big" }, { "size", 0 } }), "size"), "文字类型：字高要大于 0");
+            Check(Run(s, "text_type", Json::object())["types"].size() == 4, "文字类型：列出");
+            Run(s, "mirror", Json{ { "ids", { note } }, { "axis", { Pt(0, 0), Pt(0, 1000) } } });
+            e = ElementOf(s, note);
+            Check(e["at"] == Pt(-1000, 1000) && e["angle"] == 0.0, "文字：镜像后仍然正着读");
+            Check(Contains(Refused(s, "text", Json{ { "text", "x" }, { "at", Pt(0, 0) }, { "override_format", true },
+                                                       { "runs", Json::parse(R"([{"from": 0, "to": 5}])") } }), "run"),
+                  "文字：格式段超出文字");
+        }
+        {
+            // 高程点读楼板顶；详图线；填充区域
+            Session s;
+            House(s);
+            const Id floor = Run(s, "floor", Json{ { "offset", 150 } })["id"].get<Id>();
+            const Json sp = Run(s, "EL", Json{ { "at", Pt(4000, 3000) } });
+            Check(sp["elevation"] == 150.0 && sp["host"] == floor, "高程点：读楼板的顶：" + sp.dump());
+            Check(Contains(Refused(s, "spot", Json{ { "at", Pt(50000, 50000) } }), "nothing to read"), "高程点：那里没有东西");
+            const Id line = Run(s, "DL", Json{ { "start", Pt(0, -2000) }, { "end", Pt(4000, -2000) } })["id"].get<Id>();
+            Json e = ElementOf(s, line);
+            Check(e["style"] == "Thin Lines" && e["shape"] == "line" && e["length"] == 4000.0, "详图线：默认细线：" + e.dump());
+            const Json circle = Run(s, "detail_line", Json{ { "centre", Pt(0, 0) }, { "radius", 500 }, { "style", "Hidden Lines" }, { "centre_mark", true } });
+            Check(ElementOf(s, circle["id"].get<Id>())["shape"] == "circle", "详图线：圆");
+            Check(Contains(Refused(s, "detail_line", Json{ { "centre", Pt(0, 0) }, { "radii", Pt(500, 300) } }), "isn't ported"), "详图线：椭圆还没移植");
+            Check(Contains(Refused(s, "detail_line", Json{ { "start", Pt(0, 0) }, { "end", Pt(1000, 0) }, { "style", "Nope" } }), "Nope"), "详图线：没有的线样式");
+            const Id copy = FirstId(Run(s, "copy", Json{ { "ids", { line } }, { "by", Pt(0, -1000) } }));
+            Check(ElementOf(s, copy)["start"] == Pt(0, -3000), "详图线：复制");
+            const Json fr = Run(s, "FR", Json{ { "sketch", SquareLines(10000, 0, 2000) }, { "line_style", nullptr } });
+            e = ElementOf(s, fr["id"].get<Id>());
+            Check(fr["area_m2"] == 4.0 && e["type"] == "Solid Black" && !e.contains("line_style"), "填充区域：默认实心黑色，边界不画：" + e.dump());
+            const Json styled = Run(s, "filled_region", Json{ { "sketch", SquareLines(13000, 0, 1000) }, { "type", "Crosshatch" } });
+            Check(ElementOf(s, styled["id"].get<Id>())["line_style"] == "Thin Lines", "填充区域：边界默认细线");
+            Check(Run(s, "edit_boundary", Json{ { "id", fr["id"] }, { "sketch", SquareLines(10000, 0, 3000) } })["area_m2"] == 9.0, "填充区域：编辑边界");
+            Check(Contains(Refused(s, "filled_region", Json{ { "sketch", Json::parse("[[[0, 0], [1000, 0]]]") } }), "loops"), "填充区域：不闭合");
+            // 标高删了，在它平面里的注释都删
+            const Id roofLevel = Run(s, "level", Json{ { "name", "Roof" }, { "elevation", 6000 } })["id"].get<Id>();
+            Run(s, "DL", Json{ { "start", Pt(0, 0) }, { "end", Pt(1000, 0) }, { "level", "Roof" } });
+            Run(s, "TX", Json{ { "text", "Up" }, { "at", Pt(0, 0) }, { "view", "Roof" } });
+            const uint64_t lines = Count(s, "line");
+            Run(s, "delete", Json{ { "ids", { roofLevel } } });
+            Check(Count(s, "line") == lines - 1 && Count(s, "text") == 0, "注释：标高删了它平面里的注释也删");
+        }
+        {
+            // 存进文件再读回来一样；注释的库条目按 GUID 存
+            Session s;
+            const std::vector<Id> walls = House(s);
+            Run(s, "DI", Json{ { "refs", { Pt(4000, 0), Pt(4000, 6000) } }, { "at", Pt(9000, 3000) } });
+            Run(s, "TX", Json{ { "text", "Note" }, { "at", Pt(1000, 1000) }, { "leader", Pt(0, 0) } });
+            Run(s, "door", Json{ { "wall", walls[0] }, { "offset", 2000 } });
+            Run(s, "TG", Json::object());
+            Run(s, "EL", Json{ { "at", Pt(100, 0) } });
+            Run(s, "DL", Json{ { "points", { Pt(0, 0), Pt(1000, 0), Pt(1000, 1000) } }, { "arcs", { 0, 90 } } });
+            Run(s, "FR", Json{ { "sketch", SquareLines(10000, 0, 2000) } });
+            const Model& m = s.GetModel();
+            // 平面上每个注释都画了东西
+            const Render::Drawing d = Render::Plan(m, m.GuidOf(Id(100000)), 800, 600);
+            bool drawn = true;
+            for (const auto& [id, e] : m.elements.Items())
+                if (e->IsAnnotation())
+                    drawn = drawn && std::find(d.owners.begin(), d.owners.end(), std::optional<Id>(id)) != d.owners.end();
+            Check(drawn, "注释：平面上画尺寸、文字、标记、高程点、详图线、填充区域");
+            std::string text, error;
+            Check(m.ToFile(text, error), "注释：写进文件");
+            const Json file = Json::parse(text);
+            const auto thin = m.library.GuidOf(Kind::Of(Kind::Tag::LineStyle), "Thin Lines");
+            bool byGuid = false;
+            for (const auto& [_, e] : file["elements"].items())
+                if (e["category"] == "line")
+                    byGuid = thin && e["style"] == thin->ToString();
+            Check(byGuid && file["line_styles"].contains("Thin Lines") && file["text_types"].contains("2.5mm"), "注释：线样式按 GUID 存");
+            Model back;
+            std::vector<std::string> leftOut;
+            Check(Model::Read(text, back, leftOut, error) && leftOut.empty() && back.ToJson() == m.ToJson() && back.Check(error), "注释：读回来一样：" + error);
+        }
+        {
+            // BIMCraft 的文件：第 7 版的文字按 size 记字高；在平面视图、剖面里的注释略去
+            Session s;
+            House(s);
+            Run(s, "TX", Json{ { "text", "Note" }, { "at", Pt(1000, 1000) } });
+            std::string text, error;
+            s.GetModel().ToFile(text, error);
+            Json file = Json::parse(text);
+            Json note;
+            std::string noteKey;
+            for (auto& [k, e] : file["elements"].items())
+                if (e["category"] == "text")
+                    noteKey = k;
+            file["elements"][noteKey].erase("type");
+            file["elements"][noteKey]["size"] = 4;
+            Json other = file["elements"][noteKey];
+            other["view"] = "3f2a9c1e-0000-4000-8000-0000000000aa";
+            other["guid"] = "3f2a9c1e-0000-4000-8000-0000000000ab";
+            file["elements"]["200000"] = other;
+            Model m;
+            std::vector<std::string> left;
+            const bool read = Model::Read(file.dump(), m, left, error);
+            const Note* n = read ? m.elements.Get(std::stoull(noteKey))->As<Note>() : nullptr;
+            Check(n && n->typeName == "4mm" && m.textTypes.at("4mm").size == 4.0 && !m.elements.Get(200000) &&
+                      std::find(left.begin(), left.end(), "/elements/200000") != left.end() && m.Check(error),
+                  "注释：旧文件的字高变成文字类型，别的视图里的略去：" + error);
+        }
+        {
+            // 测量：不改模型
+            Session s;
+            const Json r = Run(s, "ME", Json{ { "from", Pt(0, 0) }, { "to", Pt(3000, 4000) } });
+            Check(r["length"] == 5000.0 && r["dx"] == 3000.0 && r["dy"] == 4000.0 && NearNum(r["angle"], 53.1301, 1e-4) && !s.CanUndo(),
+                  "测量：长度、分量、角度：" + r.dump());
+        }
+    }
 }
 
 int main()
@@ -2882,6 +3046,7 @@ int main()
     TestStructure();
     TestMep();
     TestMassing();
+    TestAnnotations();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

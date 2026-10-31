@@ -1,6 +1,7 @@
 // 移植自 BIMCraft crates/core/src/render.rs、pen.rs、styles.rs、view3d.rs 的 crossings（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #include "Model/Render.h"
 #include "Model/Font.h"
+#include "Model/Sketch.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
 #include <algorithm>
@@ -64,11 +65,11 @@ namespace MiniBIM::Bim::Render
             return Stand{ g->Footprint(), bottom, top, true };
         }
 
-        // 注释的元素用注释的线宽：轴网、标高、房间的标签（BIMCraft 还有尺寸、标记、文字、高程点、剖面与立面的标记）
+        // 注释的元素用注释的线宽：轴网、标高、房间的标签，尺寸、标记、文字、高程点、详图线、填充区域（BIMCraft 还有剖面与立面的标记）
         bool Annotates(const Model& m, std::optional<Id> owner)
         {
             const Element* e = owner ? m.elements.Get(*owner) : nullptr;
-            return e && (e->As<Grid>() || e->As<Level>() || e->As<Room>());
+            return e && (e->As<Grid>() || e->As<Level>() || e->As<Room>() || e->IsAnnotation());
         }
 
         // 环 ring 被过 p、方向 u 的直线穿过的各段：沿线的起止距离，两两一对（移植自 view3d.rs）
@@ -172,6 +173,413 @@ namespace MiniBIM::Bim::Render
                     if (at < len)
                         d.Line({ a + u * at, b }, Pen::ByCategory, Ink, false);
                 }
+            }
+        }
+
+        // ── 注释（移植自 render.rs 的 aligned、angular、radial、tag、note、spot_mark、detail_line、filled_region、styled）──
+        Rgb Color(const Rgb3& c) { return Rgb{ c[0], c[1], c[2] }; }
+
+        // text 以像素 at 为中心，大写字母 height 像素高，在屏幕上顺时针转 angle 弧度（y 向下）
+        void TextTurned(Drawing& d, std::string_view text, Px at, float height, float angle, Rgb color)
+        {
+            const float s = std::sin(angle), c = std::cos(angle);
+            const size_t from = d.prims.size();
+            d.Text(text, { 0.0f, 0.0f }, height, color);
+            for (size_t i = from; i < d.prims.size(); ++i)
+                for (Px& p : d.prims[i].pts)
+                    p = { at.first + p.first * c - p.second * s, at.second + p.first * s + p.second * c };
+        }
+
+        // 按线样式画像素 pts：笔、颜色、线型图案（纸上的长度；太密时画实线，偏移线、波浪、字的图案先画成实线）
+        void Styled(Drawing& d, const Model& m, const LineStyle& st, std::vector<Px> pts, bool closed)
+        {
+            const float k = static_cast<float>(Density) * d.paper;
+            std::optional<std::vector<float>> dash;
+            if (st.pattern)
+                if (const auto p = m.linePatterns.find(*st.pattern); p != m.linePatterns.end() && p->second.IsDash())
+                    dash = p->second.Dash(k);
+            d.Stroke(std::move(pts), st.pen, Color(st.color), std::move(dash), closed);
+        }
+
+        // 填充图案 p 填 rings（模型毫米；pieces 是去掉了洞的同样的地方，实心填充用），从 origin 起、转 angle 度。
+        // 线距不到一像素时太密看不清，不画；多于一张图能放的也不画
+        void FillPatternOf(Drawing& d, const FillPattern& p, const std::vector<Ring>& rings, const std::vector<Ring>& pieces, Rgb color, P2 origin,
+                           double angle)
+        {
+            if (p.IsSolid())
+            {
+                for (const Ring& piece : pieces)
+                    d.Fill({ piece }, color);
+                return;
+            }
+            const Px corner = { static_cast<float>(d.view.width), static_cast<float>(d.view.height) };
+            const std::array<P2, 2> window = { d.view.ToMm({ 0.0f, corner.second }), d.view.ToMm({ corner.first, 0.0f }) };
+            // 制图图案的毫米是视图的图纸上的
+            const double k = p.model ? 1.0 : Density * d.paper / d.view.scale;
+            double closest = INFINITY;
+            for (const HatchLine& l : p.lines)
+                closest = std::min(closest, l.spacing);
+            if (!(closest * k * d.view.scale >= 1.0))
+                return;
+            if (const auto strokes = Fills::Strokes(p, rings, k, window, 50000, origin, angle))
+                for (const auto& [a, b] : *strokes)
+                    d.Line({ a, b }, Pen::Fine, color, false);
+        }
+
+        void FilledRegionOf(Drawing& d, const Model& m, const FilledRegion& r)
+        {
+            const auto t = m.regionTypes.find(r.typeName);
+            if (t == m.regionTypes.end())
+                return;
+            Sketch::Profile profile;
+            std::vector<Sketch::Problem> problems;
+            if (!Sketch::Solve(r.sketch, profile, problems))
+                return;
+            d.SetPart(Part::Pattern);
+            std::vector<std::pair<const FillPattern*, Rgb>> layers;
+            for (const auto& [name, color] : { std::pair{ &t->second.background, t->second.backgroundColor },
+                                               std::pair{ &t->second.foreground, t->second.foregroundColor } })
+                if (*name)
+                    if (const auto p = m.fillPatterns.find(**name); p != m.fillPatterns.end())
+                        layers.emplace_back(&p->second, Color(color));
+            for (const Geom::Region& region : profile.regions)
+            {
+                std::vector<Ring> rings{ region.outer };
+                rings.insert(rings.end(), region.holes.begin(), region.holes.end());
+                // 去掉洞的轮廓：实心填充与遮罩要它
+                std::vector<Ring> pieces{ region.outer };
+                for (const Ring& hole : region.holes)
+                    pieces = Walls::Minus(pieces, hole);
+                if (t->second.masking)
+                    for (const Ring& piece : pieces)
+                        d.Fill({ piece }, Paper);
+                for (const auto& [p, color] : layers)
+                    FillPatternOf(d, *p, rings, pieces, color, r.patternOrigin, r.patternAngle);
+            }
+            d.SetPart(Part::Projection);
+            // 每条边界线用自己的线样式，否则区域的；不画的线，或区域不画线又没有自己的样式的，不画
+            for (const SketchLine& l : r.sketch)
+            {
+                if (l.invisible)
+                    continue;
+                const std::optional<std::string>& name = l.style ? l.style : r.lineStyle;
+                const auto st = name ? m.lineStyles.find(*name) : m.lineStyles.end();
+                if (st == m.lineStyles.end())
+                    continue;
+                std::vector<Px> px;
+                for (const P2& q : Walls::Axis(l.start, l.end, l.arc).Points(0.0, Walls::Axis(l.start, l.end, l.arc).Length(), 0.0))
+                    px.push_back(d.view.ToPx(q));
+                Styled(d, m, st->second, std::move(px), false);
+            }
+        }
+
+        void DetailLineOf(Drawing& d, const Model& m, const DetailLine& l)
+        {
+            const auto st = m.lineStyles.find(l.style);
+            if (st == m.lineStyles.end())
+                return;
+            // 闭合的按环画，虚线与拐角绕着它的第一个点走
+            const bool closed = l.curve.IsClosed();
+            std::vector<Px> px;
+            for (const P2& q : l.curve.Points())
+                px.push_back(d.view.ToPx(q));
+            if (closed && px.size() > 2)
+                px.pop_back();
+            Styled(d, m, st->second, std::move(px), closed);
+            // 圆心记号：纸上 3 毫米的十字，实线
+            if (l.centreMark)
+            {
+                const float arm = d.PxOf(static_cast<float>(1.5 * Density));
+                for (const P2& c : l.curve.Centres())
+                {
+                    const Px at = d.view.ToPx(c);
+                    d.Stroke({ { at.first - arm, at.second }, { at.first + arm, at.second } }, st->second.pen, Color(st->second.color), std::nullopt, false);
+                    d.Stroke({ { at.first, at.second - arm }, { at.first, at.second + arm } }, st->second.pen, Color(st->second.color), std::nullopt, false);
+                }
+            }
+        }
+
+        // 对齐尺寸：从每条参照到尺寸线的尺寸界线，交处一个斜短线，每段的长度写在中间上方，从下面或右边读
+        void AlignedOf(Drawing& d, const Model& m, const Dimension& dim)
+        {
+            const auto [n, cross] = m.Crossings(dim);
+            if (cross.empty())
+                return;
+            const double lo = cross.front().first, hi = cross.back().first;
+            // 沿尺寸线、沿参照；px 毫米合一像素
+            const P2 u = n.Perp();
+            const double px = d.k / d.view.scale;
+            const auto on = [&](double s) { return dim.at + n * s; };
+            d.Line({ on(lo - 4.0 * px), on(hi + 4.0 * px) }, Pen::Projection, Ink, false);
+            for (const auto& [s, seg] : cross)
+            {
+                const P2 c = on(s);
+                // 参照在它方向上的范围，从尺寸线量：尺寸界线从它近的一端外一点画到尺寸线外一点
+                const double ta = (seg.first - c).Dot(u), tb = (seg.second - c).Dot(u);
+                const double nearLo = std::min(ta, tb), nearHi = std::max(ta, tb);
+                double from = -4.0 * px, to = 4.0 * px;
+                if (nearLo > 0.0)
+                    std::tie(from, to) = std::pair{ nearLo - 3.0 * px, -4.0 * px };
+                else if (nearHi < 0.0)
+                    std::tie(from, to) = std::pair{ nearHi + 3.0 * px, 4.0 * px };
+                d.Line({ c + u * from, c + u * to }, Pen::Projection, Ink, false);
+                d.Line({ c - (u + n) * (3.0 * px), c + (u + n) * (3.0 * px) }, Pen::Heavy, Ink, false);
+            }
+            // 线在屏幕上的角度（y 向下）：它朝东或朝北，字从下面或右边读
+            const double angle = std::atan2(-n.y, n.x);
+            const Px up = { static_cast<float>(std::sin(angle)), static_cast<float>(-std::cos(angle)) };
+            for (size_t i = 0; i + 1 < cross.size(); ++i)
+            {
+                const double s0 = cross[i].first, s1 = cross[i + 1].first;
+                const Px at = d.view.ToPx(on((s0 + s1) / 2.0));
+                TextTurned(d, UnitsOf::Length(m.units, s1 - s0), { at.first + up.first * d.PxOf(9.0f), at.second + up.second * d.PxOf(9.0f) },
+                           d.PxOf(10.0f), static_cast<float>(angle), Ink);
+            }
+        }
+
+        // 角度尺寸：过 at 的弧在两条线之间，尺寸界线沿它们伸到弧，两端斜短线，角度写在弧中间外面
+        void AngularOf(Drawing& d, const Model& m, const Dimension& dim)
+        {
+            const auto sector = m.AngleSector(dim);
+            if (!sector)
+                return;
+            const auto [o, from, sweep] = *sector;
+            const double r = dim.at.Dist(o);
+            if (r <= 0.0)
+                return;
+            const double px = d.k / d.view.scale;
+            const auto ray = [](double t) { return P2(std::cos(t), std::sin(t)); };
+            std::vector<P2> arc;
+            for (int i = 0; i <= 48; ++i)
+                arc.push_back(o + ray(from + sweep * i / 48.0) * r);
+            d.Line(arc, Pen::Projection, Ink, false);
+            std::vector<Segment> lines;
+            for (const Reference& x : dim.refs)
+            {
+                Segment l;
+                std::string why;
+                if (m.ReferenceLine(x, l, why))
+                    lines.push_back(l);
+            }
+            for (const double t : { from, from + sweep })
+            {
+                const P2 u = ray(t);
+                // 这条射线上它的线伸到多远：尺寸界线从那里画到弧
+                double reach = 0.0;
+                for (const auto& [a, b] : lines)
+                    if (Geom::Parallel(a, b, o, o + u))
+                        reach = std::max({ reach, (a - o).Dot(u), (b - o).Dot(u) });
+                if (r > reach + 3.0 * px)
+                    d.Line({ o + u * (reach + 3.0 * px), o + u * (r + 4.0 * px) }, Pen::Projection, Ink, false);
+                const P2 p = o + u * r, k = (u + u.Perp()) * (3.0 * px);
+                d.Line({ p - k, p + k }, Pen::Heavy, Ink, false);
+            }
+            const std::string text = Figure(sweep * 180.0 / kPi) + "\xC2\xB0";
+            const P2 mid = ray(from + sweep / 2.0);
+            const double clear = Font::Width(text, 10.0f) / 2.0 * std::abs(mid.x) + 5.0 * std::abs(mid.y) + 4.0;
+            d.Text(text, d.view.ToPx(o + mid * (r + clear * px)), d.PxOf(10.0f), Ink);
+        }
+
+        // 径向尺寸：从圆心（画一个十字）朝 at 的线，到边处一个箭头，半径写在线端外面
+        void RadialOf(Drawing& d, const Model& m, const Dimension& dim)
+        {
+            P2 c;
+            double r = 0.0;
+            std::string why;
+            if (dim.refs.empty() || !m.ReferenceArc(dim.refs.front(), c, r, why))
+                return;
+            const P2 u = dim.at.Dist(c) > 0.0 ? (dim.at - c).Unit() : P2(1.0, 0.0);
+            const P2 edge = c + u * r, end = dim.at.Dist(c) > r ? dim.at : edge;
+            d.Line({ c, end }, Pen::Projection, Ink, false);
+            const Px a = d.view.ToPx(c), b = d.view.ToPx(edge);
+            // 圆太小放不下时箭头从外面进来
+            if (r * d.view.scale > d.PxOf(14.0f) || end == edge)
+                Arrow(d, a, b);
+            else
+                Arrow(d, d.view.ToPx(end), b);
+            for (const auto& [dx, dy] : { std::pair{ d.PxOf(4.0f), 0.0f }, std::pair{ 0.0f, d.PxOf(4.0f) } })
+                d.Stroke({ { a.first - dx, a.second - dy }, { a.first + dx, a.second + dy } }, Pen::Projection, Ink, std::nullopt, false);
+            const std::string text = "R " + UnitsOf::Length(m.units, r);
+            const Px at = d.view.ToPx(end);
+            const float w = Font::Width(text, d.PxOf(10.0f)) / 2.0f + d.PxOf(6.0f);
+            d.Text(text, { at.first + static_cast<float>(u.x) * w, at.second - static_cast<float>(u.y) * w }, d.PxOf(10.0f), Ink);
+        }
+
+        // 标记：门的编号在方框里、窗的在六边形里，底下垫纸色；别的东西的字段直接写，垫纸色；有引线时引一条线到它指的点
+        void TagOf(Drawing& d, const Model& m, const Tag& t)
+        {
+            const auto anchor = m.Anchor(t.host);
+            if (!anchor)
+                return;
+            const P2 head = *anchor + t.offset;
+            if (t.leader)
+                d.Line({ *anchor, head }, Pen::Projection, Ink, false);
+            const std::string text = m.TagText(t);
+            const Px at = d.view.ToPx(head);
+            const float x = at.first, y = at.second;
+            const size_t from = d.prims.size();
+            const float w = std::max(Font::Width(text, 10.0f) / 2.0f + 5.0f, 8.0f), h = 8.0f;
+            const Element* host = m.elements.Get(t.host);
+            const bool window = host && host->As<Window>();
+            std::vector<Px> ring = window ? std::vector<Px>{ { x - w - 4.0f, y }, { x - w, y - h }, { x + w, y - h }, { x + w + 4.0f, y }, { x + w, y + h }, { x - w, y + h } }
+                                          : std::vector<Px>{ { x - w, y - h }, { x + w, y - h }, { x + w, y + h }, { x - w, y + h } };
+            Prim fill;
+            fill.kind  = Prim::Kind::Fill;
+            fill.color = Paper;
+            fill.rings = { ring };
+            d.Push(std::move(fill));
+            if (host && host->AsOpening())
+                d.Stroke(ring, Pen::Projection, Ink, std::nullopt, true);
+            d.Text(text, at, 10.0f, Ink);
+            d.Grow(from, at);
+        }
+
+        // 高程点：像素 at 上立着的三角，读的高度写在旁边一条线上，按项目单位，带符号：±0、+3000、-600
+        void SpotMark(Drawing& d, Px at, std::optional<double> z, Units units)
+        {
+            const float x = at.first, y = at.second;
+            const size_t from = d.prims.size();
+            Prim tri;
+            tri.kind  = Prim::Kind::Fill;
+            tri.color = Ink;
+            tri.rings = { { { x, y }, { x + 5.0f, y - 8.0f }, { x - 5.0f, y - 8.0f } } };
+            d.Push(std::move(tri));
+            std::string text = "?";
+            if (z)
+            {
+                text = UnitsOf::Length(units, *z);
+                // 舍入成零的两边都读作零
+                if (text.empty() || text[0] != '-')
+                    text = (text == UnitsOf::Length(units, 0.0) ? "\xC2\xB1" : "+") + text;
+            }
+            const float w = Font::Width(text, 10.0f);
+            d.Stroke({ { x - 5.0f, y - 8.0f }, { x + 9.0f + w, y - 8.0f } }, Pen::Projection, Ink, std::nullopt, false);
+            d.Text(text, { x + 7.0f + w / 2.0f, y - 16.0f }, 10.0f, Ink);
+            d.Grow(from, at);
+        }
+
+        // 文字注释：从左上角往下一行行按类型写（单线字；宽度系数、粗、斜、下划线），转它的角度；类型有边框时画边框，有引线时画引线和箭头
+        void NoteOf(Drawing& d, const Model& m, const Note& n)
+        {
+            const auto found = m.textTypes.find(n.typeName);
+            const TextType t = found != m.textTypes.end() ? found->second : TextType{};
+            // 纸上一毫米多少像素；屏幕上顺时针转（视图里逆时针）
+            const float k = d.PxOf(static_cast<float>(Density));
+            const float angle = -static_cast<float>(n.angle * kPi / 180.0);
+            const float sn = std::sin(angle), cs = std::cos(angle);
+            const Px at = d.view.ToPx(n.at);
+            const auto frame = [&](double x, double y)
+            {
+                const float fx = static_cast<float>(x) * k, fy = static_cast<float>(y) * k;
+                return Px{ at.first + fx * cs - fy * sn, at.second + fx * sn + fy * cs };
+            };
+            const Rgb color = Color(t.color);
+            // 每个字的样式：类型的，override_format 时按各段改
+            struct Look
+            {
+                bool bold, italic, underline;
+                bool operator==(const Look&) const = default;
+            };
+            std::vector<Look> looks;
+            for (size_t i = 0, chars = Text::CharCount(n.text); i < chars; ++i)
+            {
+                Look l{ t.bold, t.italic, t.underline };
+                if (n.overrideFormat)
+                    for (const TextRun& r : n.runs)
+                        if (r.from <= i && i < r.to)
+                        {
+                            l.bold      = r.bold.value_or(l.bold);
+                            l.italic    = r.italic.value_or(l.italic);
+                            l.underline = r.underline.value_or(l.underline);
+                        }
+                looks.push_back(l);
+            }
+            const double size = t.size, pitch = TextTypes::LinePitch * t.size;
+            double width = 0.0;
+            size_t index = 0, row = 0;
+            d.SetPart(Part::Text);
+            std::string_view rest = n.text;
+            for (;;)
+            {
+                const size_t nl = rest.find('\n');
+                const std::string_view line = rest.substr(0, nl);
+                const double baseline = size + pitch * row;
+                // 一样样式的一段段
+                double x = 0.0;
+                size_t i = 0;
+                const std::vector<std::string_view> chars = [&]
+                {
+                    std::vector<std::string_view> out;
+                    for (size_t p = 0; p < line.size();)
+                    {
+                        size_t len = 1;
+                        const unsigned char c = static_cast<unsigned char>(line[p]);
+                        if (c >= 0xF0) len = 4;
+                        else if (c >= 0xE0) len = 3;
+                        else if (c >= 0xC0) len = 2;
+                        len = std::min(len, line.size() - p);
+                        out.push_back(line.substr(p, len));
+                        p += len;
+                    }
+                    return out;
+                }();
+                while (i < chars.size())
+                {
+                    const Look look = index + i < looks.size() ? looks[index + i] : Look{ t.bold, t.italic, t.underline };
+                    size_t j = i;
+                    std::string piece;
+                    while (j < chars.size() && (index + j < looks.size() ? looks[index + j] : look) == look)
+                        piece += chars[j++];
+                    const double w = Font::Width(piece, static_cast<float>(size)) * t.widthFactor;
+                    const float stroke = std::max(static_cast<float>(size / 10.0 * (look.bold ? 2.0 : 1.0)) * k, 1.0f);
+                    for (auto& s : Font::Strokes(piece, 0.0f, static_cast<float>(baseline), static_cast<float>(size)))
+                    {
+                        Prim p;
+                        p.kind  = Prim::Kind::Line;
+                        p.width = stroke;
+                        p.color = color;
+                        for (const auto& [sx, sy] : s)
+                        {
+                            const double lx = x + sx * t.widthFactor + (look.italic ? (baseline - sy) * 0.2 : 0.0);
+                            p.pts.push_back(frame(lx, sy));
+                        }
+                        d.Push(std::move(p));
+                    }
+                    if (look.underline)
+                    {
+                        Prim p;
+                        p.kind  = Prim::Kind::Line;
+                        p.width = std::max(static_cast<float>(size / 10.0) * k, 1.0f);
+                        p.color = color;
+                        p.pts   = { frame(x, baseline + 0.2 * size), frame(x + w, baseline + 0.2 * size) };
+                        d.Push(std::move(p));
+                    }
+                    x += w;
+                    i = j;
+                }
+                width = std::max(width, x);
+                index += chars.size() + 1;
+                ++row;
+                if (nl == std::string_view::npos)
+                    break;
+                rest = rest.substr(nl + 1);
+            }
+            d.SetPart(Part::Projection);
+            const double height = size + pitch * (row - 1);
+            const double off = t.border ? t.borderOffset : 0.4 * t.size;
+            if (t.border)
+                d.Stroke({ frame(-off, -off), frame(width + off, -off), frame(width + off, height + off), frame(-off, height + off) }, t.borderPen, color,
+                         std::nullopt, true);
+            if (n.leader)
+            {
+                // 从离它指的地方近的一边引出
+                const Px to = d.view.ToPx(*n.leader);
+                const float dx = to.first - at.first, dy = to.second - at.second;
+                const double along = (dx * cs + dy * sn) / std::max(k, 1e-6f);
+                const bool right = along > width / 2.0;
+                const Px from = frame(right ? width + off : -off, size / 2.0);
+                d.Stroke({ from, to }, Pen::Projection, Ink, std::nullopt, false);
+                Arrow(d, from, to);
             }
         }
 
@@ -689,6 +1097,25 @@ namespace MiniBIM::Bim::Render
                     for (const P2& q : m.RoofOutline(*rf))
                         extent.push_back(q);
             }
+            // 这个平面里的注释
+            else if (e->IsAnnotation() && m.AnnotationIn(*e, level))
+            {
+                if (const DetailLine* l = e->As<DetailLine>())
+                    for (const P2& q : l->curve.Points())
+                        extent.push_back(q);
+                else if (const FilledRegion* fr = e->As<FilledRegion>())
+                    for (const SketchLine& l : fr->sketch)
+                    {
+                        extent.push_back(l.start);
+                        extent.push_back(l.end);
+                    }
+                else if (const Note* n = e->As<Note>())
+                    extent.push_back(n->at);
+                else if (const Spot* sp = e->As<Spot>())
+                    extent.push_back(sp->at);
+                else if (const Dimension* dm = e->As<Dimension>())
+                    extent.push_back(dm->at);
+            }
         }
         return extent;
     }
@@ -920,6 +1347,38 @@ namespace MiniBIM::Bim::Render
             for (const P2& q : g->Footprint())
                 px.push_back(d.view.ToPx(q));
             d.Stroke(std::move(px), Pen::ByCategory, Ink, std::vector<float>{ 10.0f, 5.0f }, true);
+        }
+        // 填充区域盖在模型上，注释之下
+        for (const auto& [id, e] : m.elements.Items())
+            if (const FilledRegion* fr = e->As<FilledRegion>(); fr && m.AnnotationIn(*e, level))
+            {
+                d.Own(id);
+                FilledRegionOf(d, m, *fr);
+            }
+        // 注释最后画，在模型之上
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            if (!e->IsAnnotation() || e->As<FilledRegion>() || !m.AnnotationIn(*e, level))
+                continue;
+            d.Own(id);
+            d.SetPart(Part::Projection);
+            if (const Dimension* dm = e->As<Dimension>())
+            {
+                if (dm->kind == DimKind::Aligned)
+                    AlignedOf(d, m, *dm);
+                else if (dm->kind == DimKind::Angular)
+                    AngularOf(d, m, *dm);
+                else
+                    RadialOf(d, m, *dm);
+            }
+            else if (const Tag* t = e->As<Tag>())
+                TagOf(d, m, *t);
+            else if (const Note* n = e->As<Note>())
+                NoteOf(d, m, *n);
+            else if (const DetailLine* l = e->As<DetailLine>())
+                DetailLineOf(d, m, *l);
+            else if (const Spot* sp = e->As<Spot>())
+                SpotMark(d, d.view.ToPx(sp->at), m.SpotValue(*sp), m.units);
         }
         d.Own(std::nullopt);
         d.ByCategory(m);

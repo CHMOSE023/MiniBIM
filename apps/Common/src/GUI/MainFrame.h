@@ -210,11 +210,14 @@ namespace MiniBIM
         // Stand 放结构柱或独立基础、Run 放梁、条形基础或别的 run，类别在 m_toolOf（照 BIMCraft 的 Tool::Stand、Tool::Run）
         enum class Tool { Modify, Wall, Door, Window, Column, Component, Roof, Floor, Ceiling, Room, Level, Grid, Stand, Run,
                           Move, Copy, Rotate, MirrorPick, MirrorDraw, Align, Trim, Split, Offset,
-                          SketchLine, SketchRect, SketchPick, Mass };
+                          SketchLine, SketchRect, SketchPick, Mass,
+                          Dimension, Angular, Radial, Spot, Text, Tag, DetailLine, Measure };
         // 改选择集的工具（移动、复制、旋转、镜像）要先选东西
         static bool NeedsSelection(Tool t) { return t == Tool::Move || t == Tool::Copy || t == Tool::Rotate || t == Tool::MirrorPick || t == Tool::MirrorDraw; }
         // 画草图线的工具（只在草图模式里）
         static bool SketchTool(Tool t) { return t == Tool::SketchLine || t == Tool::SketchRect || t == Tool::SketchPick; }
+        // 注释选项卡的工具（Annotate.cpp）：尺寸、高程点、文字、标记、详图线、测量
+        static bool AnnotateTool(Tool t) { return t >= Tool::Dimension && t <= Tool::Measure; }
         void SetTool(Tool tool);
         // 放类别 category 的 Stand 或 Run 工具；已是它时回到修改
         void SetToolOf(Tool tool, const char* category);
@@ -253,6 +256,16 @@ namespace MiniBIM
         // 选中的体量；体量选项卡"按面建模"的按钮对每个选中的体量执行 command（移植自 BIMCraft 的 by_mass）
         std::vector<Bim::Id> SelectedMasses() const;
         void ByMass(const char* command, const char* title);
+
+        // ── 注释工具（Annotate.cpp，移植自 BIMCraft 的注释选项卡）──────────
+        // 尺寸工具在 p 处拾取的参照：对齐的与已拾取的第一条平行，角度的与它相交，径向的为圆柱的边
+        std::optional<Bim::Reference> PickReference(Bim::P2 p) const;
+        // 已拾取的参照加上放尺寸线的点做成的尺寸（还不在模型里）；参照不够时为空
+        std::optional<Bim::Dimension> DimensionAt(Bim::P2 at) const;
+        void AnnotateClick(MiniGUI::Vec2 pixel, uint8_t modifiers);
+        void BuildAnnotatePreview(Bim::Render::Drawing& d, std::string& tip);
+        // 标记全部：这个平面上还没有标记的门窗
+        void TagAll();
 
         // ── 修改（Modify.cpp）：框选、Tab 切换、拖动、夹点、修改工具 ──────────
         // 光标下的元素：几个叠在一起时按 Tab 轮换
@@ -295,7 +308,7 @@ namespace MiniBIM
         bool RunQuiet(const char* id, const Bim::Json& params, std::string& error, Bim::Json* result = nullptr);
 
         // ── 草图模式（SketchMode.cpp）：编辑边界、画新楼板 / 天花板 / 屋顶的轮廓 ──
-        enum class SketchOf { Floor, Ceiling, Roof, Edit };
+        enum class SketchOf { Floor, Ceiling, Roof, Edit, Region, Masking };
         struct SketchState
         {
             SketchOf of = SketchOf::Edit;
@@ -499,6 +512,7 @@ namespace MiniBIM
         std::string          m_typedLength;                 // 在视图里输入的长度，Enter 时用
         Bim::Snap::Snaps     m_snaps;
         std::optional<Bim::Snap::Found> m_found;            // 最后一次预览捕捉到的点
+        std::vector<Bim::Reference> m_toolRefs;             // 尺寸工具已拾取的参照
         // 选项栏的设置（同 BIMCraft，值是输入框里的文字，用时再读）
         struct ToolOptions
         {
@@ -527,6 +541,11 @@ namespace MiniBIM
             std::map<std::string, std::string> types;            // 类别 → 类型
             std::map<std::string, std::string> openingFamilies;  // door / window → 族（选了项目自己的类型时没有）
             std::optional<std::pair<std::string, std::string>> component;
+            std::string   noteText;                             // 文字工具放的文字，与它的文字类型（空：项目默认的）
+            std::string   textType;
+            bool          tagLeader    = false;                 // 标记带引线
+            std::string   lineStyle;                            // 详图线的线样式（空：细线）
+            std::string   regionType;                           // 填充区域的类型（空：实心黑色）
         } m_toolOpt;
         const char*     m_toolOf = nullptr;                 // Stand、Run 工具放的类别；构件工具放的设备（MEP 的按钮）
         MiniGUI::Node*  m_optionsBody = nullptr;

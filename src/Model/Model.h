@@ -7,6 +7,8 @@
 #include "Model/Language.h"
 #include "Model/Library.h"
 #include "Model/Runs.h"
+#include "Model/Curve.h"
+#include "Model/Styles.h"
 #include "Model/Units.h"
 #include <array>
 #include <cstdint>
@@ -203,6 +205,9 @@ namespace MiniBIM::Bim
         P2     start;
         P2     end;
         double arc = 0.0;
+        // 填充区域的边界线：自己的线样式（没有时用区域的），或不画（invisible）
+        std::optional<std::string> style;
+        bool   invisible = false;
         bool operator==(const SketchLine&) const = default;
     };
 
@@ -440,6 +445,125 @@ namespace MiniBIM::Bim
         bool operator==(const Mass&) const = default;
     };
 
+    // ── 注释（第 5d 步，移植自 BIMCraft model.rs、lines.rs、fills.rs）──────────────
+    // MiniBIM 还没有平面视图元素（随第 5e 步），注释所在的视图是一个标高（它自己的平面）；BIMCraft 文件里在别的视图（平面视图、
+    // 剖面、立面、图纸）里的注释读入时略去
+
+    // 尺寸量到的线：墙的中心线（默认）、左面或右面（从起点往终点看）、起点或终点；门窗的中心或朝墙起点、终点的洞口边；轴网的线；
+    // 直的详图线或它的起点、终点
+    enum class Face
+    {
+        Centre,
+        Left,
+        Right,
+        Start,
+        End,
+    };
+
+    namespace FaceOf
+    {
+        // 文件与命令里的名称：centre、left、right、start、end
+        const char* Name(Face f);
+        // 报错里的说法：centre line、left face……
+        const char* Said(Face f);
+        std::optional<Face> FromName(std::string_view s);
+        // 镜像过去的墙（反着走）上同一条线：起点与终点对调
+        Face Mirrored(Face f);
+        // 翻转的墙（沿同一条线反着走）上同一条线：左右对调，起点与终点对调
+        Face Flipped(Face f);
+    }
+
+    struct Reference
+    {
+        Guid id;
+        Face face = Face::Centre;
+        bool operator==(const Reference&) const = default;
+    };
+
+    enum class DimKind
+    {
+        Aligned,
+        Angular,
+        Radial,
+    };
+
+    // 标高平面里的尺寸。对齐：平行的参照之间的距离，沿过 at 横穿它们的线；角度：相交的两条参照之间的角，在 at 那一侧，弧过 at；
+    // 径向：圆的东西的半径，线朝 at。它量的是模型现在的样子，所以跟着它量的东西走
+    struct Dimension
+    {
+        Guid                   level;
+        std::optional<Guid>    view;      // 不是标高自己的平面时的平面视图（MiniBIM 还没有，读入时略去）
+        DimKind                kind = DimKind::Aligned;
+        std::vector<Reference> refs;
+        P2                     at;
+        bool operator==(const Dimension&) const = default;
+    };
+
+    // 文字注释：at 是第一行的左上角，按文字类型写，逆时针转 angle 度，有 leader 时引一条线到那里。override_format 时各段 runs
+    // 改成粗、斜、下划线或不是
+    struct Note
+    {
+        Guid                 view;
+        P2                   at;
+        std::string          text;
+        std::string          typeName;
+        double               angle = 0.0;
+        std::optional<P2>    leader;
+        bool                 overrideFormat = false;
+        std::vector<TextRun> runs;
+        bool operator==(const Note&) const = default;
+    };
+
+    // 高程点：标高平面里读 host 在 at 处的顶面高度
+    struct Spot
+    {
+        Guid                view;
+        P2                  at;
+        std::optional<Guid> host;
+        bool operator==(const Spot&) const = default;
+    };
+
+    // 标记：在 host 所在标高的平面上写它的一个字段（label；没有时为类别平常的那个，Tag::Usual），离它的点 offset 毫米，跟着它走
+    struct Tag
+    {
+        Guid                       host;
+        std::optional<Guid>        view;
+        P2                         offset;
+        bool                       leader = false;
+        std::optional<std::string> label;
+
+        // 类别 category 的标记平常写的字段：门窗的标记、房间的名称、别的为类型
+        static const char* Usual(std::string_view category);
+        bool operator==(const Tag&) const = default;
+    };
+
+    // 详图线：只画在一个视图里的线，按线样式 style 画。insulation（保温层宽）、cloud（云线弧长）与 revision 记着、写回文件，
+    // 画成普通的线（随后面的阶段移植）；centreMark 在圆弧、圆的圆心画小十字
+    struct DetailLine
+    {
+        Guid                       view;
+        Curve                      curve;
+        std::string                style;
+        std::optional<double>      insulation;
+        bool                       centreMark = false;
+        std::optional<double>      cloud;
+        std::optional<std::string> revision;
+        bool operator==(const DetailLine&) const = default;
+    };
+
+    // 填充区域：草图围出的环（洞与岛按草图的嵌套）填上类型的图案，边界按线样式 lineStyle 画（没有时不画）
+    struct FilledRegion
+    {
+        Guid                       view;
+        std::string                typeName;
+        std::optional<std::string> lineStyle;
+        std::vector<SketchLine>    sketch;
+        // 模型图案从哪里起、转多少度
+        P2                         patternOrigin;
+        double                     patternAngle = 0.0;
+        bool operator==(const FilledRegion&) const = default;
+    };
+
     // 坡屋顶迹线最多的点数：找坡面相交处费时间
     inline constexpr size_t MaxRoofPoints = 256;
     // 天花板默认在标高以上的高度
@@ -452,7 +576,8 @@ namespace MiniBIM::Bim
     struct Element
     {
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
-                                     Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass>;
+                                     Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass,
+                                     Dimension, Note, Spot, Tag, DetailLine, FilledRegion>;
         Variant v;
 
         Element() = default;
@@ -472,7 +597,9 @@ namespace MiniBIM::Bim
         Run*       AsRun();
         // 类别 category 的 run 成为元素；不是 run 的类别时为空
         static std::optional<Element> OfRun(std::string_view category, Run r);
-        // 楼板、天花板、屋顶记着的草图；别的元素没有
+        // 尺寸、文字、高程点、标记、详图线、填充区域
+        bool IsAnnotation() const;
+        // 楼板、天花板、屋顶、填充区域记着的草图；别的元素没有
         const std::vector<SketchLine>* SketchOf() const;
         std::vector<SketchLine>*       SketchOf();
         bool IsDoor() const   { return std::holds_alternative<Door>(v); }
@@ -643,6 +770,12 @@ namespace MiniBIM::Bim
         std::map<std::string, Material> materials;
         // 族，按名称：构件放置的东西
         std::map<std::string, Family> families;
+        // 注释的库条目（Model/Styles.h），按名称：线型图案、线样式、填充图案、填充区域类型、文字类型
+        std::map<std::string, LinePattern> linePatterns = Lines::Patterns(Language::English);
+        std::map<std::string, LineStyle>   lineStyles   = Lines::Styles(Language::English);
+        std::map<std::string, FillPattern> fillPatterns = Fills::Patterns(Language::English);
+        std::map<std::string, RegionType>  regionTypes  = Fills::RegionTypes(Language::English);
+        std::map<std::string, TextType>    textTypes    = TextTypes::Defaults(Language::English);
         Elements    elements;
         // 库的 ID 和 GUID：类型、材质
         Library     library;
@@ -815,6 +948,42 @@ namespace MiniBIM::Bim
         // 在中心线量时没有东西围住墙体，没什么要拒绝的
         std::optional<Id> WallHolding(const Room& r, RoomArea at) const;
 
+        // ── 注释（Annotate.cpp）────────────────────────────────
+        // 注释在的平面（标高）；不是注释时为空
+        std::optional<Guid> AnnotationPlan(const Element& e) const;
+        // level 的平面画注释 e
+        bool AnnotationIn(const Element& e, Guid level) const;
+        // 元素在平面上的点（标记指着它）：门窗在墙中线上的中心、墙的中点、柱与构件的插入点、房间的点、run 的中点、楼板等轮廓的平均点
+        std::optional<P2> Anchor(Guid id) const;
+        // 门窗 host 的新标记离它中心多远：墙外 400 毫米，在门不开向的一侧（窗朝外的一侧）；别的东西右上 400、400
+        P2 TagOffset(Guid host) const;
+        // 标记写什么：它宿主的那个字段；还没有值时为 ?
+        std::string TagText(const Tag& t) const;
+        // 类别 category 的标记能写的字段（随明细表移植前：类型、族、标高、标记、名称、编号、面积……）
+        std::vector<std::string> TagFields(std::string_view category) const;
+        // 元素 host 的字段 field 的值（显示用，项目单位）；没有这个字段时为空
+        std::optional<std::string> FieldText(Guid host, const std::string& field) const;
+        // 尺寸量到的线，或为什么没有。直墙的线伸到它的轮廓那么远，端头、门窗的中心与洞口边从墙面横到墙面
+        bool ReferenceLine(const Reference& r, Segment& out, std::string& error) const;
+        // 元素 id 上尺寸能量到的线：墙的中心线、两面、两端，门窗的中心与两边，轴网的线，直的详图线与两端
+        std::vector<std::pair<Reference, Segment>> ReferenceLines(Guid id) const;
+        // id 的参照线里 keep 认的、离 p 最近的那条与距离
+        std::optional<std::pair<Reference, double>> ReferenceAt(Guid id, P2 p, const std::function<bool(const Segment&)>& keep) const;
+        // 径向尺寸量的圆：圆柱的圆心与半径，弧墙的（中心线或一面），圆或圆弧的详图线
+        bool ReferenceArc(const Reference& r, P2& centre, double& radius, std::string& error) const;
+        // 角度尺寸的弧：两条线的交点、起始射线的角（弧度，从正东逆时针）、逆时针扫到另一条的角：四个角里含 at 的那个
+        std::optional<std::tuple<P2, double, double>> AngleSector(const Dimension& d) const;
+        // 对齐尺寸线的方向（与第一条参照垂直：朝东，或南北走向时朝北），以及各参照与它的交点：离 at 多远、参照的线，按这个方向排好
+        std::pair<P2, std::vector<std::pair<double, Segment>>> Crossings(const Dimension& d) const;
+        // 尺寸显示的数：对齐的各段长度（从西到东或从南到北）、角度的度数、径向的半径
+        std::vector<double> DimensionValues(const Dimension& d) const;
+        // level 的平面里 p 处的高程点读谁：站在这个标高上的东西在那里最高的顶面（天花板除外）
+        std::optional<Id> SpotHost(Guid level, P2 p) const;
+        // 高程点读的高度：宿主在它的点处的顶面；宿主不在那里时为空
+        std::optional<double> SpotValue(const Spot& sp) const;
+        // 元素 id 在 p 处的顶面高度（p 不在它上面时为空）：楼板、屋顶、墙、柱、基础、run、构件
+        std::optional<double> TopAt(Id id, P2 p) const;
+
         // ── 检查 ────────────────────────────────────────────────
         // 每条命令之后检查整个模型；不通过时命令回滚。error 说明要改什么，关于元素的以"类别 ID: "开头
         bool Check(std::string& error) const;
@@ -851,6 +1020,9 @@ namespace MiniBIM::Bim
 
     private:
         bool CheckIds(std::string& error) const;
+        // 注释的库条目（Annotate.cpp）与一个注释元素
+        bool CheckStyles(std::string& error) const;
+        bool CheckAnnotation(const std::string& who, const Element& e, std::string& error) const;
         // 族 f 的元素给的值是它的实例参数的：是实例参数、不由公式算出、材质在库里
         bool FamilyValuesOk(const std::string& who, const std::string& name, const Family& f, const std::map<std::string, Json>& params,
                             std::string& error) const;

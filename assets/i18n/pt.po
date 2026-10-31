@@ -146,6 +146,38 @@ msgstr "Telhado por face"
 msgid "Update to Face"
 msgstr "Atualizar face"
 
+#: src/Commands/Commands.cpp
+msgid "Aligned Dimension"
+msgstr "Cota alinhada"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+msgid "Text"
+msgstr "Texto"
+
+#: src/Commands/Commands.cpp
+msgid "Text Types"
+msgstr "Tipos de texto"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Spot Elevation"
+msgstr "Cota de elevação"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag by Category"
+msgstr "Identificar por categoria"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Detail Line"
+msgstr "Linha de detalhe"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Filled Region"
+msgstr "Região preenchida"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Measure"
+msgstr "Medir"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "Telhado"
@@ -286,7 +318,7 @@ msgstr "Perpendicular"
 msgid "Nearest"
 msgstr "Mais próximo"
 
-#: src/Model/Snap.cpp
+#: src/Model/Snap.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Angle"
 msgstr "Ângulo"
 
@@ -413,6 +445,30 @@ msgstr "Esta compilação não tem núcleo de modelagem de sólidos (MINIBIM_WIT
 #: src/View/ModelScene.cpp
 msgid "Some elements could not be modelled in 3D; see the log for which."
 msgstr "Alguns elementos não puderam ser modelados em 3D; o registro indica quais."
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the dimension"
+msgstr "Não foi possível colocar a cota"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the spot elevation"
+msgstr "Não foi possível colocar a cota de elevação"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the text"
+msgstr "Não foi possível colocar o texto"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Type the note in the Options Bar first."
+msgstr "Digite primeiro a nota na barra de opções."
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not tag the element"
+msgstr "Não foi possível identificar o elemento"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not tag the doors and windows"
+msgstr "Não foi possível identificar as portas e janelas"
 
 #: apps/Common/src/GUI/Autosave.cpp
 msgid "Could not discard the recovery copy"
@@ -554,7 +610,7 @@ msgstr "Família:"
 msgid "System Family: {0}"
 msgstr "Família de sistema: {0}"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Type:"
 msgstr "Tipo:"
 
@@ -831,8 +887,8 @@ msgid "Turn the selected walls round: their exterior sides go to the other side"
 msgstr "Inverter as paredes selecionadas: a face externa passa para o outro lado"
 
 #: apps/Common/src/GUI/MainCommands.cpp
-msgid "Edit the outline of the selected floor, ceiling or roof as sketch lines"
-msgstr "Editar o contorno do piso, forro ou telhado selecionado como linhas de esboço"
+msgid "Edit the outline of the selected floor, ceiling, roof or filled region as sketch lines"
+msgstr "Edite o contorno do piso, forro, telhado ou região preenchida selecionados como linhas de esboço"
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Finish Edit Mode"
@@ -1125,6 +1181,70 @@ msgstr "Atualizar face (UF): as paredes, pisos e telhados feitos por face das ma
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not update to the mass"
 msgstr "Não foi possível atualizar para a massa"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Aligned"
+msgstr "Alinhada"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"
+msgstr "Cota alinhada (DI): escolha faces de parede paralelas, extremidades de parede, portas, janelas ou eixos e clique onde vai a linha de cota"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Angular"
+msgstr "Angular"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Angular Dimension: pick two lines that meet, then click where the arc goes"
+msgstr "Cota angular: escolha duas linhas que se encontram e clique onde vai o arco"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Radial"
+msgstr "Radial"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Radial Dimension: pick a round column, then click where the radius goes"
+msgstr "Cota radial: escolha um pilar redondo e clique onde vai o raio"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Spot Elevation (EL): click a floor, a roof or a stair"
+msgstr "Cota de elevação (EL): clique em um piso, um telhado ou uma escada"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Detail Line (DL): click point to point; lines only this plan shows, in the Options Bar's line style"
+msgstr "Linha de detalhe (DL): clique de ponto a ponto; linhas que só esta planta mostra, no estilo de linha da barra de opções"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Filled Region (FR): sketch an area filled with a pattern, in this view"
+msgstr "Região preenchida (FR): esboce uma área preenchida com um padrão, nesta vista"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Masking Region"
+msgstr "Região de máscara"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Masking Region: sketch an area that hides what's under it, in this view"
+msgstr "Região de máscara: esboce uma área que oculta o que está embaixo, nesta vista"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Text (TX): type the note in the Options Bar, then click where it goes"
+msgstr "Texto (TX): digite a nota na barra de opções e clique onde ela vai"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+msgstr "Medir (ME): clique em dois pontos; o comprimento e o ângulo aparecem ao lado da régua entre eles"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag by Category (TG): click an element to tag it with its type, a door's or window's mark, or a room's name"
+msgstr "Identificar por categoria (TG): clique em um elemento para identificá-lo com seu tipo, a marca de uma porta ou janela, ou o nome de um ambiente"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Tag All"
+msgstr "Identificar tudo"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag every door and window in this view that has no tag"
+msgstr "Identifica todas as portas e janelas desta vista que não têm identificador"
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
@@ -1632,6 +1752,22 @@ msgid "Gross Floor Area"
 msgstr "Área bruta de pavimentos"
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Text Type"
+msgstr "Tipo de texto"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Leader Line"
+msgstr "Linha de chamada"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Line Style"
+msgstr "Estilo de linha"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Region Type"
+msgstr "Tipo de região"
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr "Nível da base"
 
@@ -1806,6 +1942,38 @@ msgstr "Condutores de aterramento"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
 msgstr "Massas"
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Dimension"
+msgstr "Cota"
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Text Note"
+msgstr "Nota de texto"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Text Notes"
+msgstr "Notas de texto"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Spot Elevations"
+msgstr "Cotas de elevação"
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Tag"
+msgstr "Identificador"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Tags"
+msgstr "Identificadores"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Detail Lines"
+msgstr "Linhas de detalhe"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Filled Regions"
+msgstr "Regiões preenchidas"
 
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"
@@ -2150,6 +2318,10 @@ msgid "Could not finish the sketch"
 msgstr "Não foi possível concluir o esboço"
 
 #: apps/Common/src/GUI/SketchMode.cpp
+msgid "The project has no masking region type."
+msgstr "O projeto não tem nenhum tipo de região de máscara."
+
+#: apps/Common/src/GUI/SketchMode.cpp
 msgid "A loop needs three lines: click a point that isn't the start."
 msgstr "Um contorno precisa de três linhas: clique em um ponto que não seja o início."
 
@@ -2487,6 +2659,58 @@ msgid "Pick walls: each adds a line along the wall's location line."
 msgstr "Selecione paredes: cada uma adiciona uma linha ao longo da sua linha de localização."
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Pick parallel wall faces, wall ends, doors, windows or grid lines to dimension."
+msgstr "Escolha as faces de parede paralelas, extremidades de parede, portas, janelas ou linhas de eixo a cotar."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick another reference, or click away from them where the dimension line goes. Esc starts over."
+msgstr "Escolha outra referência, ou clique longe delas onde vai a linha de cota. Esc recomeça."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick two lines that meet: wall faces, wall centre lines or grid lines."
+msgstr "Escolha duas linhas que se encontram: faces de parede, eixos de parede ou linhas de eixo."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the arc goes. Esc starts over."
+msgstr "Clique onde vai o arco. Esc recomeça."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a round column's edge."
+msgstr "Escolha a borda de um pilar redondo."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the radius line goes. Esc starts over."
+msgstr "Clique onde vai a linha do raio. Esc recomeça."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a floor, a roof, a stair, a wall or a column to read its top's elevation."
+msgstr "Clique em um piso, um telhado, uma escada, uma parede ou um pilar para ler a elevação do topo."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Type the note in the Options Bar, then click where it goes."
+msgstr "Digite a nota na barra de opções e clique onde ela vai."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click an element to tag it; Tag All tags the doors and windows that have none."
+msgstr "Clique em um elemento para identificá-lo; Identificar tudo identifica as portas e janelas que não têm."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's start."
+msgstr "Clique no início da linha."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's end, or type a length and press Enter. Enter or Esc ends the chain."
+msgstr "Clique no fim da linha, ou digite um comprimento e pressione Enter. Enter ou Esc termina a cadeia."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the second point."
+msgstr "Clique no segundo ponto."
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the first point to measure from."
+msgstr "Clique no primeiro ponto a partir do qual medir."
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Wall"
 msgstr "Modificar | Posicionar parede"
 
@@ -2571,6 +2795,30 @@ msgid "Modify | Create Mass"
 msgstr "Modificar | Criar massa"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Dimensions"
+msgstr "Modificar | Colocar cotas"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Spot Elevation"
+msgstr "Modificar | Cota de elevação"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Text"
+msgstr "Modificar | Colocar texto"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Tag"
+msgstr "Modificar | Identificar"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Detail Lines"
+msgstr "Modificar | Colocar linhas de detalhe"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Measure"
+msgstr "Modificar | Medir"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr "Altura:"
 
@@ -2585,6 +2833,14 @@ msgstr "Modificar | Criar limite de forro"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Edit Boundary"
 msgstr "Modificar | Editar limite"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Filled Region Boundary"
+msgstr "Modificar | Criar contorno de região preenchida"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Masking Region Boundary"
+msgstr "Modificar | Criar contorno de região de máscara"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Height Offset:"
@@ -2655,6 +2911,22 @@ msgid "Place Centre"
 msgstr "Posicionar centro"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Text:"
+msgstr "Texto:"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "the note"
+msgstr "a nota"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Leader"
+msgstr "Linha de chamada"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Line Style:"
+msgstr "Estilo de linha:"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "the next free name"
 msgstr "o próximo nome livre"
 
@@ -2689,6 +2961,10 @@ msgstr "Não foi possível colocar"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the component"
 msgstr "Não foi possível posicionar o componente"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not draw the detail line"
+msgstr "Não foi possível desenhar a linha de detalhe"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the door"
@@ -2825,6 +3101,18 @@ msgstr "Aterramento"
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
 msgstr "Tomadas e equipamentos"
+
+#: assets/ui/minibim_ui.json
+msgid "Annotate"
+msgstr "Anotar"
+
+#: assets/ui/minibim_ui.json
+msgid "Detail"
+msgstr "Detalhe"
+
+#: assets/ui/minibim_ui.json
+msgid "Region"
+msgstr "Região"
 
 #: assets/ui/minibim_ui.json
 msgid "Massing"

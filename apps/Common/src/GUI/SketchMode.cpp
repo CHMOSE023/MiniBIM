@@ -90,7 +90,7 @@ namespace MiniBIM
             return false;
         if (const Bim::Roof* r = e->As<Bim::Roof>())
             return !r->extrusion;
-        return e->As<Bim::Floor>() || e->As<Bim::Ceiling>();
+        return e->As<Bim::Floor>() || e->As<Bim::Ceiling>() || e->As<Bim::FilledRegion>();
     }
 
     void MainFrame::EditBoundary()
@@ -114,6 +114,9 @@ namespace MiniBIM
                 l.id = o["id"].get<Bim::Id>();
             if (o.contains("guid"))
                 Bim::FromJson(o["guid"], l.guid, why);
+            if (o.contains("style") && o["style"].is_string())
+                l.style = o["style"].get<std::string>();
+            l.invisible = o.value("invisible", false);
             lines.push_back(l);
         }
         StartSketch(SketchOf::Edit, id, std::move(lines));
@@ -190,9 +193,14 @@ namespace MiniBIM
         if (!m_sketch)
             return;
         SketchState& sk = *m_sketch;
+        const Bim::Model& m = m_session.GetModel();
+        // 填充区域可以是几个环（洞与岛）；楼板、天花板、屋顶只一块
+        const Bim::Element* edited = sk.of == SketchOf::Edit ? m.elements.Get(sk.edit) : nullptr;
+        const bool loops = sk.of == SketchOf::Region || sk.of == SketchOf::Masking || (edited && edited->As<Bim::FilledRegion>());
         Bim::Geom::Region r;
+        Bim::Sketch::Profile profile;
         std::vector<Bim::Sketch::Problem> problems;
-        if (!Bim::Sketch::SolveOne(sk.lines, r, problems))
+        if (loops ? !Bim::Sketch::Solve(sk.lines, profile, problems) : !Bim::Sketch::SolveOne(sk.lines, r, problems))
         {
             sk.wrong.clear();
             for (const auto& p : problems)
@@ -201,7 +209,6 @@ namespace MiniBIM
             m_viewport->RequestRender();
             return;
         }
-        const Bim::Model& m = m_session.GetModel();
         const Bim::Json lines = Bim::SketchJson(sk.lines);
         const Bim::Json level = Bim::ToJson(sk.level);
         const char* id = "edit_boundary";
@@ -240,6 +247,26 @@ namespace MiniBIM
         case SketchOf::Edit:
             p = Bim::Json{ { "id", sk.edit }, { "sketch", lines } };
             break;
+        // 填充区域：选项栏选的类型；遮罩区域：遮罩的类型，不画边界线
+        case SketchOf::Region:
+            id = "filled_region";
+            p  = Bim::Json{ { "level", level }, { "sketch", lines } };
+            if (const auto t = m.regionTypes.find(m_toolOpt.regionType); t != m.regionTypes.end() && !t->second.masking)
+                p["type"] = m_toolOpt.regionType;
+            break;
+        case SketchOf::Masking:
+        {
+            id = "filled_region";
+            p  = Bim::Json{ { "level", level }, { "sketch", lines }, { "line_style", nullptr } };
+            const auto t = std::find_if(m.regionTypes.begin(), m.regionTypes.end(), [](const auto& kv) { return kv.second.masking; });
+            if (t == m.regionTypes.end())
+            {
+                MiniGUI::ShowMessageBox(*m_ui, Tr("Could not finish the sketch"), Tr("The project has no masking region type."));
+                return;
+            }
+            p["type"] = t->first;
+            break;
+        }
         }
         // 解得出，也可能因为它做成的东西被拒绝：命令说为什么
         Bim::Json made;

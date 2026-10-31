@@ -173,7 +173,13 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
   功能区按钮的最大宽度放宽到 100（见"与 MiniCAD 的差异"）。
   留到后面的：显示体量（`show_mass`，要视图的图形覆盖，随 5e）、体量楼层明细表与体量的明细表（随 5e）、剖面切体量（随 5e）、
   体量的项目参数（随 5f）、顶部轮廓在特性面板里的编辑
-- 5d 注释：尺寸、高程点、详图线、填充区域、文字、标记、测量
+- **5d 注释（已完成）**：核心移植注释元素（尺寸、文字、高程点、标记、详图线、填充区域）、`lines.rs` / `fills.rs` 的线型与填充图案、线样式、
+  填充区域类型、文字类型（`src/Model/Styles.h`）与详图线的曲线（`src/Model/Curve.h`）；命令 `dimension`（DI）、`tag`（TG）、`text`（TX）、`text_type`、
+  `spot`（EL）、`detail_line`（DL）、`filled_region`（FR）、`measure`（ME），编辑、删除、项目文件（BIMCraft 文件里在平面视图、剖面、立面、图纸里的注释读入时略去）、
+  平面的画法（尺寸、单线字的文字与边框、引线、填充图案、线样式的虚线）；界面的"注释"选项卡（尺寸三种、高程点、详图线、填充与遮罩区域、文字、测量、
+  按类别标记与全部标记）与十一个图标。注释的视图暂时是标高的平面，平面视图元素随 5e。功能区按钮的最大宽度再放宽到 130，放不下的名称缩小字号（见"与 MiniCAD 的差异"）。
+  留到后面的：注释不进 IFC（BIMCraft 也不导出）、椭圆与样条的详图线、保温层与云线照普通的线画、线样式与填充图案的管理对话框（随 5f）、
+  在剖面、立面、图纸上的注释（随 5e）、拖动尺寸文字与标记的夹点
 - 5e 视图：可见性 / 图形、过滤器、视图样板、裁剪、复制视图、剖面、立面、明细表、图纸
 - 5f 管理：项目参数、线宽、对象样式、线样式、清除未使用、填充图案
 - 5g 插入：链接模型、点云、CAD（DXF）导入
@@ -201,7 +207,7 @@ BIMCraft 的界面译文（`translations/ui/zh.po`、`es.po`、`pt.po`）在界�
 - MiniGUI：界面描述文件的节点属性 `card`（row / column / 宿主面板画成圆角带边框的卡片，功能区 false 时方角贴边）与 `variants`（`UiLayout::SetVariant` 选的变体覆盖节点属性），
   `Ribbon::SetCard`（MiniCAD 的功能区总是卡片）：设置里的布局浮动 / 紧凑用
 - MiniGUI：浮动停靠区不再隐含卡片样式（`DockSpace::IsCardStyle` 只看 gap > 0）：gap 为 0 的浮动停靠区是紧贴的方角面板，文档区照样是"洞"（紧凑布局用）
-- MiniGUI：`Ribbon::kButtonMaxW` 由 76 放宽到 100（按钮名称只画一行，长的会被截掉；名称短的按钮宽度不变）
+- MiniGUI：`Ribbon::kButtonMaxW` 由 76 放宽到 130，名称在最宽的按钮里也放不下时字号缩小（不小于 9.5）画成一行（MiniCAD 折成两行，第二行被截掉一半；名称短的按钮宽度不变）
 - MiniGUI：`UIContext::UpdateHover` 在关掉提示之后才取树的版本号（修复：提示显示着时指针直接跳到相邻控件，新控件收不到 Enter、点了不触发；MiniCAD 也有这个问题）
 - `cmake/Render.cmake` 照 MiniCAD 分 Windows、Linux、网页三段；`apps/Win32` 的宿主精简（没有浮动窗口、自测）；`AppPlatform` 精简并加了 `GetSystemLanguage`、`PostDelayed`，
   文件对话框同 MiniCAD 是异步的 `PickFile` 与 `ChooseSavePath`，但 `FileKind` / `SaveKind` 换成项目、IFC、快捷键文件（没有 DWG 的格式与版本）

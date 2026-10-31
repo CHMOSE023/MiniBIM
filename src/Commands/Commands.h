@@ -1,6 +1,7 @@
 // 移植自 BIMCraft crates/core/src/commands.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #pragma once
 #include "Commands/Session.h"
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -32,4 +33,9 @@ namespace MiniBIM::Bim
     bool RunsOf(const Model& m, const Json& p, std::string_view category, std::vector<Element>& out, std::string& error);
     // 命令要的柱、结构柱或独立基础（category 为 column、structuralcolumn、footing），还没放进模型：工具预览用
     bool StoodOf(const Model& m, const Json& p, std::string_view category, Element& out, std::string& error);
+    // dimension 命令把点认成的参照：level 的平面剖切到的东西（墙的面、中心线与端头，门窗的中心与两边，轴网）里 keep 认的、
+    // 离 p 最近的参照线，100 毫米以内；尺寸工具拾取参照也用它
+    std::optional<Reference> ReferenceNear(const Model& m, Guid level, P2 p, const std::function<bool(const Segment&)>& keep);
+    // 径向尺寸：level 上圆柱的边离 p 最近（100 毫米以内）的那根
+    std::optional<Reference> ArcNear(const Model& m, Guid level, P2 p);
 }

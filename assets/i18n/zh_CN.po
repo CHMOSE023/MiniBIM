@@ -145,6 +145,38 @@ msgstr "面屋顶"
 msgid "Update to Face"
 msgstr "更新到面"
 
+#: src/Commands/Commands.cpp
+msgid "Aligned Dimension"
+msgstr "对齐尺寸"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+msgid "Text"
+msgstr "文字"
+
+#: src/Commands/Commands.cpp
+msgid "Text Types"
+msgstr "文字类型"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Spot Elevation"
+msgstr "高程点"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag by Category"
+msgstr "按类别标记"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Detail Line"
+msgstr "详图线"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Filled Region"
+msgstr "填充区域"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Measure"
+msgstr "测量"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
 msgid "Roof"
 msgstr "屋顶"
@@ -285,7 +317,7 @@ msgstr "垂足"
 msgid "Nearest"
 msgstr "最近点"
 
-#: src/Model/Snap.cpp
+#: src/Model/Snap.cpp apps/Common/src/GUI/Parameters.cpp
 msgid "Angle"
 msgstr "角度"
 
@@ -412,6 +444,30 @@ msgstr "这个版本没有编入实体建模内核（MINIBIM_WITH_SOLID 关闭�
 #: src/View/ModelScene.cpp
 msgid "Some elements could not be modelled in 3D; see the log for which."
 msgstr "有些元素没能建成三维模型，详见日志。"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the dimension"
+msgstr "无法放置尺寸"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the spot elevation"
+msgstr "无法放置高程点"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the text"
+msgstr "无法放置文字"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Type the note in the Options Bar first."
+msgstr "先在选项栏里输入文字。"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not tag the element"
+msgstr "无法标记该元素"
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not tag the doors and windows"
+msgstr "无法标记门窗"
 
 #: apps/Common/src/GUI/Autosave.cpp
 msgid "Could not discard the recovery copy"
@@ -553,7 +609,7 @@ msgstr "族："
 msgid "System Family: {0}"
 msgstr "系统族：{0}"
 
-#: apps/Common/src/GUI/Dialogs.cpp
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Type:"
 msgstr "类型："
 
@@ -830,8 +886,8 @@ msgid "Turn the selected walls round: their exterior sides go to the other side"
 msgstr "翻转选中的墙：外侧换到另一边"
 
 #: apps/Common/src/GUI/MainCommands.cpp
-msgid "Edit the outline of the selected floor, ceiling or roof as sketch lines"
-msgstr "把选中的楼板、天花板或屋顶的轮廓当作草图线编辑"
+msgid "Edit the outline of the selected floor, ceiling, roof or filled region as sketch lines"
+msgstr "把选中的楼板、天花板、屋顶或填充区域的轮廓作为草图线编辑"
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
 msgid "Finish Edit Mode"
@@ -1124,6 +1180,70 @@ msgstr "更新到面 (UF)：由选中体量按面做的墙、楼板和屋顶重�
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Could not update to the mass"
 msgstr "无法更新到体量"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Aligned"
+msgstr "对齐"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"
+msgstr "对齐尺寸 (DI)：拾取平行的墙面、墙端、门、窗或轴网，再单击尺寸线的位置"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Angular"
+msgstr "角度"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Angular Dimension: pick two lines that meet, then click where the arc goes"
+msgstr "角度尺寸：拾取两条相交的线，再单击圆弧的位置"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Radial"
+msgstr "径向"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Radial Dimension: pick a round column, then click where the radius goes"
+msgstr "径向尺寸：拾取一根圆柱，再单击半径线的位置"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Spot Elevation (EL): click a floor, a roof or a stair"
+msgstr "高程点 (EL)：单击楼板、屋顶或楼梯"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Detail Line (DL): click point to point; lines only this plan shows, in the Options Bar's line style"
+msgstr "详图线 (DL)：逐点单击；只在这个平面显示的线，按选项栏的线样式"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Filled Region (FR): sketch an area filled with a pattern, in this view"
+msgstr "填充区域 (FR)：在这个视图里画一块填上图案的区域"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Masking Region"
+msgstr "遮罩区域"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Masking Region: sketch an area that hides what's under it, in this view"
+msgstr "遮罩区域：在这个视图里画一块遮住下面东西的区域"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Text (TX): type the note in the Options Bar, then click where it goes"
+msgstr "文字 (TX)：在选项栏里输入文字，再单击放置的位置"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+msgstr "测量 (ME)：单击两点；它们之间的尺子旁显示长度与角度"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag by Category (TG): click an element to tag it with its type, a door's or window's mark, or a room's name"
+msgstr "按类别标记 (TG)：单击元素给它加标记：它的类型，门窗的标记，或房间的名称"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Tag All"
+msgstr "全部标记"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag every door and window in this view that has no tag"
+msgstr "给这个视图里还没有标记的门窗都加上标记"
 
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
 msgid "3D View"
@@ -1625,6 +1745,22 @@ msgid "Gross Floor Area"
 msgstr "总楼面面积"
 
 #: apps/Common/src/GUI/Parameters.cpp
+msgid "Text Type"
+msgstr "文字类型"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Leader Line"
+msgstr "引线"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Line Style"
+msgstr "线样式"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Region Type"
+msgstr "区域类型"
+
+#: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
 msgstr "底部标高"
 
@@ -1799,6 +1935,38 @@ msgstr "接地导体"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
 msgstr "体量"
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Dimension"
+msgstr "尺寸"
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Text Note"
+msgstr "文字注释"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Text Notes"
+msgstr "文字注释"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Spot Elevations"
+msgstr "高程点"
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Tag"
+msgstr "标记"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Tags"
+msgstr "标记"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Detail Lines"
+msgstr "详图线"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Filled Regions"
+msgstr "填充区域"
 
 #: apps/Common/src/GUI/PlanView.cpp
 msgid "Plan: {0}"
@@ -2132,6 +2300,10 @@ msgstr "“{0}”不是以度为单位的角度"
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "Could not finish the sketch"
 msgstr "无法完成草图"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The project has no masking region type."
+msgstr "项目里没有遮罩区域类型。"
 
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "A loop needs three lines: click a point that isn't the start."
@@ -2471,6 +2643,58 @@ msgid "Pick walls: each adds a line along the wall's location line."
 msgstr "拾取墙：每面墙沿它的定位线加一条线。"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Pick parallel wall faces, wall ends, doors, windows or grid lines to dimension."
+msgstr "拾取要标注的平行墙面、墙端、门、窗或轴线。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick another reference, or click away from them where the dimension line goes. Esc starts over."
+msgstr "再拾取一个参照，或在别处单击放尺寸线。Esc 重来。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick two lines that meet: wall faces, wall centre lines or grid lines."
+msgstr "拾取两条相交的线：墙面、墙中心线或轴线。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the arc goes. Esc starts over."
+msgstr "单击圆弧的位置。Esc 重来。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a round column's edge."
+msgstr "拾取圆柱的边。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the radius line goes. Esc starts over."
+msgstr "单击半径线的位置。Esc 重来。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a floor, a roof, a stair, a wall or a column to read its top's elevation."
+msgstr "单击楼板、屋顶、楼梯、墙或柱，读出它顶面的高程。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Type the note in the Options Bar, then click where it goes."
+msgstr "在选项栏里输入文字，再单击放置的位置。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click an element to tag it; Tag All tags the doors and windows that have none."
+msgstr "单击元素给它加标记；“全部标记”给还没有标记的门窗加上。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's start."
+msgstr "单击线的起点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's end, or type a length and press Enter. Enter or Esc ends the chain."
+msgstr "单击线的终点，或输入长度后按 Enter。Enter 或 Esc 结束连续绘制。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the second point."
+msgstr "单击第二点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the first point to measure from."
+msgstr "单击测量的起点。"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Wall"
 msgstr "修改 | 放置墙"
 
@@ -2555,6 +2779,30 @@ msgid "Modify | Create Mass"
 msgstr "修改 | 创建体量"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Dimensions"
+msgstr "修改 | 放置尺寸"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Spot Elevation"
+msgstr "修改 | 高程点"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Text"
+msgstr "修改 | 放置文字"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Tag"
+msgstr "修改 | 标记"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Detail Lines"
+msgstr "修改 | 放置详图线"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Measure"
+msgstr "修改 | 测量"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Height:"
 msgstr "高度："
 
@@ -2569,6 +2817,14 @@ msgstr "修改 | 创建天花板边界"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Edit Boundary"
 msgstr "修改 | 编辑边界"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Filled Region Boundary"
+msgstr "修改 | 创建填充区域边界"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Masking Region Boundary"
+msgstr "修改 | 创建遮罩区域边界"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Height Offset:"
@@ -2639,6 +2895,22 @@ msgid "Place Centre"
 msgstr "放置中心"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Text:"
+msgstr "文字："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "the note"
+msgstr "注释文字"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Leader"
+msgstr "引线"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Line Style:"
+msgstr "线样式："
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "the next free name"
 msgstr "下一个可用的名称"
 
@@ -2673,6 +2945,10 @@ msgstr "无法放置"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the component"
 msgstr "无法放置构件"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not draw the detail line"
+msgstr "无法画详图线"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the door"
@@ -2809,6 +3085,18 @@ msgstr "接地"
 #: assets/ui/minibim_ui.json
 msgid "Outlets & Equipment"
 msgstr "插座和设备"
+
+#: assets/ui/minibim_ui.json
+msgid "Annotate"
+msgstr "注释"
+
+#: assets/ui/minibim_ui.json
+msgid "Detail"
+msgstr "详图"
+
+#: assets/ui/minibim_ui.json
+msgid "Region"
+msgstr "区域"
 
 #: assets/ui/minibim_ui.json
 msgid "Massing"

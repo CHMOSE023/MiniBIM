@@ -3,6 +3,7 @@
 #include "Model/Massing.h"
 #include "Model/Sketch.h"
 #include "Model/Text.h"
+#include <algorithm>
 #include <cmath>
 #include <initializer_list>
 #include <set>
@@ -197,7 +198,7 @@ namespace MiniBIM::Bim
                         return Fail(at + " must be an object");
                     for (auto it = o.begin(); it != o.end(); ++it)
                         if (it.key() != "id" && it.key() != "guid" && it.key() != "start" && it.key() != "end" && it.key() != "arc" &&
-                            it.key() != "through")
+                            it.key() != "through" && it.key() != "style" && it.key() != "invisible")
                         {
                             if (!m_leftOut)
                                 return Fail(at + ": `" + it.key() + "` isn't ported yet; lines and arcs are");
@@ -232,6 +233,18 @@ namespace MiniBIM::Bim
                         if (!FromJson(o["through"], t, why))
                             return Fail(at + ": `through`: " + why);
                         l.arc = Sketch::ArcThrough(l.start, l.end, t).arc;
+                    }
+                    if (o.contains("style") && !o["style"].is_null())
+                    {
+                        if (!o["style"].is_string())
+                            return Fail(at + ": `style` must be a line style's name");
+                        l.style = o["style"].get<std::string>();
+                    }
+                    if (o.contains("invisible") && !o["invisible"].is_null())
+                    {
+                        if (!o["invisible"].is_boolean())
+                            return Fail(at + ": `invisible` must be true or false");
+                        l.invisible = o["invisible"].get<bool>();
                     }
                     out.push_back(l);
                 }
@@ -341,6 +354,158 @@ namespace MiniBIM::Bim
                           "centre, core-centre, exterior-finish, interior-finish, exterior-core, interior-core") &&
                  f.OptId("attach_top", w.attachTop) && f.OptId("attach_base", w.attachBase);
         }
+
+        // [r, g, b]，各 0 到 255
+        bool ReadColor(Fields& f, const char* key, Rgb3& out)
+        {
+            const Json* c = f.Raw(key);
+            if (!c)
+                return true;
+            if (!c->is_array() || c->size() != 3)
+                return f.Fail(std::string("`") + key + "` must be [r, g, b]");
+            for (size_t i = 0; i < 3; ++i)
+            {
+                const auto byte = AsWhole((*c)[i]);
+                if (!byte || *byte > 255)
+                    return f.Fail(std::string("`") + key + "` must be [r, g, b], each 0 to 255");
+                out[i] = static_cast<uint8_t>(*byte);
+            }
+            return true;
+        }
+
+        bool ReadPen(Fields& f, const char* key, uint8_t& out)
+        {
+            const Json* v = f.Raw(key);
+            if (!v)
+                return true;
+            const auto n = AsWhole(*v);
+            if (!n || *n > 255)
+                return f.Fail(std::string("`") + key + "` must be a pen, 0 to 16");
+            out = static_cast<uint8_t>(*n);
+            return true;
+        }
+
+        // 详图线的曲线：{start, end, arc? | through?}、{points, arcs?, closed?} 或 {centre, radius}。椭圆与样条还没移植：
+        // 宽松时设 unsupported（整个略去），严格时报错
+        bool ReadCurve(Fields& f, Curve& out, bool& unsupported)
+        {
+            unsupported = false;
+            for (const char* k : { "radii", "angle", "span", "control", "knots", "fit", "start_tangent", "end_tangent" })
+                if (f.Raw(k))
+                {
+                    if (f.LeftOut())
+                        return unsupported = true, true;
+                    return f.Fail(std::string("`") + k + "` isn't ported yet; lines, arcs, polylines and circles are");
+                }
+            const Json* start = f.Raw("start");
+            const Json* points = f.Raw("points");
+            const Json* centre = f.Raw("centre");
+            const Json* through = f.Raw("through");
+            const Json* arc = f.Raw("arc");
+            const Json* arcs = f.Raw("arcs");
+            const Json* radius = f.Raw("radius");
+            bool closed = false;
+            if (!f.Bool("closed", closed))
+                return false;
+            std::string why;
+            const auto only = [&](std::initializer_list<std::pair<const char*, bool>> others, const char* what)
+            {
+                for (const auto& [k, on] : others)
+                    if (on)
+                        return f.Fail(std::string("`") + k + "` doesn't go with the " + what + " given");
+                return true;
+            };
+            if (start)
+            {
+                if (!only({ { "points", points != nullptr }, { "arcs", arcs != nullptr }, { "closed", closed }, { "centre", centre != nullptr },
+                            { "radius", radius != nullptr } }, "start, end"))
+                    return false;
+                P2 a, b;
+                if (!f.Point("start", a, true) || !f.Point("end", b, true))
+                    return false;
+                if (arc && through)
+                    return f.Fail("give an arc's `through` point or its `arc` turn, not both");
+                if (through)
+                {
+                    P2 t;
+                    if (!f.Point("through", t, true))
+                        return false;
+                    out = Curve::Arc(a, b, Sketch::ArcThrough(a, b, t).arc);
+                    return true;
+                }
+                double sweep = 0.0;
+                if (!f.Number("arc", sweep, false))
+                    return false;
+                out = Curve::Arc(a, b, sweep);
+                return true;
+            }
+            if (points)
+            {
+                if (!only({ { "end", f.Raw("end") != nullptr }, { "arc", arc != nullptr }, { "through", through != nullptr },
+                            { "centre", centre != nullptr }, { "radius", radius != nullptr } }, "points"))
+                    return false;
+                Curve c;
+                if (!f.Points("points", c.points, true))
+                    return false;
+                if (arcs)
+                {
+                    if (!arcs->is_array())
+                        return f.Fail("`arcs` must be a list of turns in degrees");
+                    for (const Json& a : *arcs)
+                    {
+                        if (!a.is_number())
+                            return f.Fail("`arcs` must be a list of turns in degrees");
+                        c.arcs.push_back(a.get<double>());
+                    }
+                    if (std::all_of(c.arcs.begin(), c.arcs.end(), [](double a) { return a == 0.0; }))
+                        c.arcs.clear();
+                }
+                c.closed = closed;
+                out = std::move(c);
+                return true;
+            }
+            if (centre && radius)
+            {
+                if (!only({ { "end", f.Raw("end") != nullptr }, { "arc", arc != nullptr }, { "through", through != nullptr },
+                            { "closed", closed } }, "centre, radius"))
+                    return false;
+                P2 c;
+                double r = 0.0;
+                if (!f.Point("centre", c, true) || !f.Number("radius", r, true))
+                    return false;
+                out = Curve::CircleOf(c, r);
+                return true;
+            }
+            return f.Fail("a line is {start, end, arc? or through?}, {points, arcs?, closed?} or {centre, radius}");
+        }
+
+        void CurveJson(const Curve& c, Json& j)
+        {
+            if (c.kind == Curve::Kind::Circle)
+            {
+                j["centre"] = ToJson(c.centre);
+                j["radius"] = c.radius;
+                return;
+            }
+            if (!c.closed && c.points.size() == 2)
+            {
+                j["start"] = ToJson(c.points[0]);
+                j["end"]   = ToJson(c.points[1]);
+                if (!c.arcs.empty() && c.arcs[0] != 0.0)
+                    j["arc"] = c.arcs[0];
+                return;
+            }
+            Json pts = Json::array();
+            for (const P2& p : c.points)
+                pts.push_back(ToJson(p));
+            j["points"] = std::move(pts);
+            if (!c.arcs.empty())
+                j["arcs"] = c.arcs;
+            if (c.closed)
+                j["closed"] = true;
+        }
+
+        Json ColorJson(const Rgb3& c) { return Json::array({ c[0], c[1], c[2] }); }
 
         // 读一个元素。宽松模式下整个略去的（还没移植的类别、带族的门窗）返回 true 并设 skip
         bool ReadElement(const Json& v, Element& out, const std::string& who, const std::string& path, std::vector<std::string>* leftOut,
@@ -537,6 +702,148 @@ namespace MiniBIM::Bim
                 out = Element(std::move(x));
                 return true;
             }
+            if (category == "dimension")
+            {
+                Dimension d;
+                std::string kind;
+                if (!f.Allow({ "level", "view", "kind", "refs", "at" }) || !f.Id("level", d.level, true) || !f.OptId("view", d.view) ||
+                    !f.String("kind", kind, false) || !f.Point("at", d.at, true))
+                    return false;
+                if (kind == "angular")
+                    d.kind = DimKind::Angular;
+                else if (kind == "radial")
+                    d.kind = DimKind::Radial;
+                else if (!kind.empty() && kind != "aligned")
+                    return f.Fail("`kind`: unknown variant `" + kind + "`, expected one of aligned, angular, radial");
+                const Json* refs = f.Raw("refs");
+                if (!refs)
+                    return f.Missing("refs");
+                if (!refs->is_array())
+                    return f.Fail("`refs` must be a list of references {id, face?}");
+                for (const Json& rv : *refs)
+                {
+                    Fields g(rv, who + " ref", path + "/refs", leftOut, error);
+                    Reference r;
+                    std::string face;
+                    if (!g.IsObject() || !g.Id("id", r.id, true) || !g.String("face", face, false) || !g.Finish())
+                        return false;
+                    if (!face.empty())
+                    {
+                        const auto fc = FaceOf::FromName(face);
+                        if (!fc)
+                            return g.Fail("`face`: unknown variant `" + face + "`, expected one of centre, left, right, start, end");
+                        r.face = *fc;
+                    }
+                    d.refs.push_back(r);
+                }
+                if (!f.Finish())
+                    return false;
+                out = Element(std::move(d));
+                return true;
+            }
+            if (category == "text")
+            {
+                Note n;
+                if (!f.Allow({ "view", "at", "text", "type", "angle", "leader", "override_format", "runs" }) || !f.Id("view", n.view, true) ||
+                    !f.Point("at", n.at, true) || !f.String("text", n.text, true) || !f.String("type", n.typeName, false) ||
+                    !f.Number("angle", n.angle, false) || !f.Bool("override_format", n.overrideFormat))
+                    return false;
+                if (f.Raw("leader"))
+                {
+                    P2 l;
+                    if (!f.Point("leader", l, true))
+                        return false;
+                    n.leader = l;
+                }
+                if (const Json* runs = f.Raw("runs"))
+                {
+                    if (!runs->is_array())
+                        return f.Fail("`runs` must be a list of {from, to, bold?, italic?, underline?}");
+                    for (const Json& rv : *runs)
+                    {
+                        Fields g(rv, who + " run", path + "/runs", leftOut, error);
+                        TextRun r;
+                        double from = -1.0, to = -1.0;
+                        if (!g.IsObject() || !g.Number("from", from, true) || !g.Number("to", to, true))
+                            return false;
+                        if (!(from >= 0.0 && to >= 0.0 && from == std::floor(from) && to == std::floor(to) && to < 1e9))
+                            return g.Fail("`from` and `to` are counts of characters");
+                        r.from = static_cast<size_t>(from);
+                        r.to   = static_cast<size_t>(to);
+                        for (const auto& [k, slot] : { std::pair{ "bold", &r.bold }, std::pair{ "italic", &r.italic }, std::pair{ "underline", &r.underline } })
+                            if (g.Raw(k))
+                            {
+                                bool b = false;
+                                if (!g.Bool(k, b))
+                                    return false;
+                                *slot = b;
+                            }
+                        if (!g.Finish())
+                            return false;
+                        n.runs.push_back(r);
+                    }
+                }
+                if (!f.Finish())
+                    return false;
+                out = Element(std::move(n));
+                return true;
+            }
+            if (category == "spot")
+            {
+                Spot sp;
+                if (!f.Allow({ "view", "at", "host" }) || !f.Id("view", sp.view, true) || !f.Point("at", sp.at, true) || !f.OptId("host", sp.host) ||
+                    !f.Finish())
+                    return false;
+                out = Element(std::move(sp));
+                return true;
+            }
+            if (category == "tag")
+            {
+                Tag t;
+                if (!f.Allow({ "host", "view", "offset", "leader", "label" }) || !f.Id("host", t.host, true) || !f.OptId("view", t.view) ||
+                    !f.Point("offset", t.offset, true) || !f.Bool("leader", t.leader) || !f.OptString("label", t.label) || !f.Finish())
+                    return false;
+                out = Element(std::move(t));
+                return true;
+            }
+            if (category == "line")
+            {
+                DetailLine l;
+                bool unsupported = false;
+                if (!f.Allow({ "view", "style", "insulation", "centre_mark", "cloud", "revision", "start", "end", "through", "arc", "points", "arcs",
+                               "closed", "centre", "radius", "radii", "angle", "span", "control", "knots", "fit", "start_tangent", "end_tangent" }) ||
+                    !f.Id("view", l.view, true) || !f.String("style", l.style, true) || !f.OptNumber("insulation", l.insulation) ||
+                    !f.Bool("centre_mark", l.centreMark) || !f.OptNumber("cloud", l.cloud) || !f.OptString("revision", l.revision) ||
+                    !ReadCurve(f, l.curve, unsupported))
+                    return false;
+                if (unsupported)
+                {
+                    skip = true;
+                    return true;
+                }
+                if (!f.Finish())
+                    return false;
+                out = Element(std::move(l));
+                return true;
+            }
+            if (category == "region")
+            {
+                FilledRegion r;
+                const size_t before = leftOut ? leftOut->size() : 0;
+                if (!f.Allow({ "view", "type", "line_style", "sketch", "pattern_origin", "pattern_angle" }) || !f.Id("view", r.view, true) ||
+                    !f.String("type", r.typeName, true) || !f.OptString("line_style", r.lineStyle) || !f.SketchLines("sketch", r.sketch) ||
+                    !f.Point("pattern_origin", r.patternOrigin, false) || !f.Number("pattern_angle", r.patternAngle, false) || !f.Finish())
+                    return false;
+                // 草图里有还没移植的曲线：区域没有轮廓，整个略去
+                if (r.sketch.empty() && leftOut && leftOut->size() > before)
+                {
+                    leftOut->resize(before);
+                    skip = true;
+                    return true;
+                }
+                out = Element(std::move(r));
+                return true;
+            }
             if (IsRunCategory(category))
             {
                 Run r;
@@ -556,7 +863,7 @@ namespace MiniBIM::Bim
             }
             error = who + ": unknown variant `" + category +
                     "`, expected one of level, grid, roomseparator, wall, floor, ceiling, door, window, room, roof, component, column, structuralcolumn, footing, "
-                    "beam, stripfooting, pipe, conduit, cabletray, wire, downconductor, groundconductor, cable, mass";
+                    "beam, stripfooting, pipe, conduit, cabletray, wire, downconductor, groundconductor, cable, mass, dimension, text, spot, tag, line, region";
             return false;
         }
 
@@ -649,6 +956,181 @@ namespace MiniBIM::Bim
                 out[it.key()] = std::move(t);
             }
             return true;
+        }
+
+        // 线型图案的一段：{"dash": 3}、{"space": 1.5}、"dot"、{"dot_length": 1}、{"offset": {length, count, distance}}、
+        // {"wave" | "zigzag": {length, frequency, amplitude}}、{"text": {length, size, text}}
+        bool ReadSegment(const Json& v, LineSegment& s, std::string& why)
+        {
+            using K = LineSegment::Kind;
+            if (v.is_string() && v.get<std::string>() == "dot")
+            {
+                s.kind = K::Dot;
+                return true;
+            }
+            const char* expected = "a segment is {\"dash\": mm}, {\"space\": mm}, \"dot\", {\"dot_length\": mm}, {\"offset\": {...}}, "
+                                   "{\"wave\": {...}}, {\"zigzag\": {...}} or {\"text\": {...}}";
+            if (!v.is_object() || v.size() != 1)
+                return why = expected, false;
+            const std::string key = v.begin().key();
+            const Json& x = v.begin().value();
+            const auto number = [&](const Json& o, const char* k, double& out)
+            {
+                const auto it = o.find(k);
+                if (it == o.end() || !it->is_number())
+                    return why = std::string("`") + key + "` needs a number `" + k + "`", false;
+                out = it->get<double>();
+                return true;
+            };
+            const auto only = [&](std::initializer_list<const char*> keys)
+            {
+                for (auto it = x.begin(); it != x.end(); ++it)
+                    if (std::none_of(keys.begin(), keys.end(), [&](const char* k) { return it.key() == k; }))
+                        return why = "`" + key + "` has an unknown field `" + it.key() + "`", false;
+                return true;
+            };
+            if (key == "dash" || key == "space" || key == "dot_length")
+            {
+                if (!x.is_number())
+                    return why = "`" + key + "` must be a length in mm", false;
+                s.kind   = key == "dash" ? K::Dash : key == "space" ? K::Space : K::DotLength;
+                s.length = x.get<double>();
+                return true;
+            }
+            if (!x.is_object())
+                return why = expected, false;
+            if (key == "offset")
+            {
+                double count = 0.0;
+                if (!only({ "length", "count", "distance" }) || !number(x, "length", s.length) || !number(x, "count", count) ||
+                    !number(x, "distance", s.distance))
+                    return false;
+                if (!(count >= 0.0 && count <= 255.0 && count == std::floor(count)))
+                    return why = "`offset` has a whole `count` of lines, 0 to 255", false;
+                s.kind  = K::Offset;
+                s.count = static_cast<uint8_t>(count);
+                return true;
+            }
+            if (key == "wave" || key == "zigzag")
+            {
+                s.kind = key == "wave" ? K::Wave : K::Zigzag;
+                return only({ "length", "frequency", "amplitude" }) && number(x, "length", s.length) && number(x, "frequency", s.frequency) &&
+                       number(x, "amplitude", s.amplitude);
+            }
+            if (key == "text")
+            {
+                s.kind = K::Text;
+                const auto t = x.find("text");
+                if (t == x.end() || !t->is_string())
+                    return why = "`text` needs a string `text`", false;
+                s.text = t->get<std::string>();
+                return only({ "length", "size", "text" }) && number(x, "length", s.length) && number(x, "size", s.size);
+            }
+            return why = expected, false;
+        }
+
+        Json SegmentJson(const LineSegment& s)
+        {
+            using K = LineSegment::Kind;
+            switch (s.kind)
+            {
+            case K::Dash: return Json{ { "dash", s.length } };
+            case K::Space: return Json{ { "space", s.length } };
+            case K::Dot: return "dot";
+            case K::DotLength: return Json{ { "dot_length", s.length } };
+            case K::Offset: return Json{ { "offset", { { "length", s.length }, { "count", s.count }, { "distance", s.distance } } } };
+            case K::Wave:
+            case K::Zigzag:
+                return Json{ { s.kind == K::Wave ? "wave" : "zigzag", { { "length", s.length }, { "frequency", s.frequency }, { "amplitude", s.amplitude } } } };
+            case K::Text: return Json{ { "text", { { "length", s.length }, { "size", s.size }, { "text", s.text } } } };
+            }
+            return nullptr;
+        }
+
+        // 注释的库条目：line_patterns、line_styles、fill_patterns、region_types、text_types（没有的键保留模型起步的）
+        bool ReadStyles(Fields& f, Model& m)
+        {
+            if (const Json* lp = f.Raw("line_patterns"))
+            {
+                if (!lp->is_object())
+                    return f.Fail("`line_patterns` must be an object of patterns by name");
+                m.linePatterns.clear();
+                for (auto it = lp->begin(); it != lp->end(); ++it)
+                {
+                    const std::string at = "line pattern `" + it.key() + "`";
+                    if (!it->is_array())
+                        return f.Fail(at + " must be a list of segments");
+                    LinePattern p;
+                    for (const Json& sv : *it)
+                    {
+                        LineSegment s;
+                        std::string why;
+                        if (!ReadSegment(sv, s, why))
+                            return f.Fail(at + ": " + why);
+                        p.segments.push_back(std::move(s));
+                    }
+                    m.linePatterns[it.key()] = std::move(p);
+                }
+            }
+            return ReadNamed(f, "line_styles", m.lineStyles, false, [](Fields& g, LineStyle& s)
+                   {
+                       s.pen = 1;
+                       if (!g.Raw("pen"))
+                           return g.Missing("pen");
+                       return ReadPen(g, "pen", s.pen) && ReadColor(g, "color", s.color) && g.OptString("pattern", s.pattern);
+                   }) &&
+                   ReadNamed(f, "fill_patterns", m.fillPatterns, false, [](Fields& g, FillPattern& p)
+                   {
+                       std::string target;
+                       if (!g.String("target", target, false))
+                           return false;
+                       if (target == "model")
+                           p.model = true;
+                       else if (!target.empty() && target != "drafting")
+                           return g.Fail("`target`: unknown variant `" + target + "`, expected `drafting` or `model`");
+                       const Json* ls = g.Raw("lines");
+                       if (!ls)
+                           return true;
+                       if (!ls->is_array())
+                           return g.Fail("`lines` must be a list of {angle, origin?, shift?, spacing, dashes?}");
+                       for (const Json& lv : *ls)
+                       {
+                           Fields h(lv, g.Who() + " line", g.Path() + "/lines", g.LeftOut(), g.Error());
+                           HatchLine l;
+                           if (!h.IsObject() || !h.Number("angle", l.angle, true) || !h.Point("origin", l.origin, false) ||
+                               !h.Number("shift", l.shift, false) || !h.Number("spacing", l.spacing, true))
+                               return false;
+                           if (const Json* d = h.Raw("dashes"))
+                           {
+                               if (!d->is_array())
+                                   return h.Fail("`dashes` must be a list of lengths");
+                               for (const Json& x : *d)
+                               {
+                                   if (!x.is_number())
+                                       return h.Fail("`dashes` must be a list of lengths");
+                                   l.dashes.push_back(x.get<double>());
+                               }
+                           }
+                           if (!h.Finish())
+                               return false;
+                           p.lines.push_back(std::move(l));
+                       }
+                       return true;
+                   }) &&
+                   ReadNamed(f, "region_types", m.regionTypes, false, [](Fields& g, RegionType& t)
+                   {
+                       return g.OptString("foreground", t.foreground) && ReadColor(g, "foreground_color", t.foregroundColor) &&
+                              g.OptString("background", t.background) && ReadColor(g, "background_color", t.backgroundColor) &&
+                              g.Bool("masking", t.masking);
+                   }) &&
+                   ReadNamed(f, "text_types", m.textTypes, false, [](Fields& g, TextType& t)
+                   {
+                       t = TextType{};
+                       return g.String("font", t.font, false) && g.Number("size", t.size, false) && g.Bool("bold", t.bold) &&
+                              g.Bool("italic", t.italic) && g.Bool("underline", t.underline) && g.Number("width_factor", t.widthFactor, false) &&
+                              ReadColor(g, "color", t.color) && g.Bool("border", t.border) && g.Number("border_offset", t.borderOffset, false) &&
+                              ReadPen(g, "border_pen", t.borderPen);
+                   });
         }
 
         // run 的类型：{类别: {名称: {width, depth, round?, material?}}}
@@ -1172,6 +1654,10 @@ namespace MiniBIM::Bim
             o["end"]   = ToJson(l.end);
             if (l.arc != 0.0)
                 o["arc"] = l.arc;
+            if (l.style)
+                o["style"] = *l.style;
+            if (l.invisible)
+                o["invisible"] = true;
             out.push_back(std::move(o));
         }
         return out;
@@ -1388,6 +1874,89 @@ namespace MiniBIM::Bim
             if (!c->params.empty())
                 j["params"] = ParamsJson(c->params);
         }
+        else if (const Dimension* d = e.As<Dimension>())
+        {
+            j["level"] = ToJson(d->level);
+            if (d->view)
+                j["view"] = ToJson(*d->view);
+            j["kind"] = d->kind == DimKind::Angular ? "angular" : d->kind == DimKind::Radial ? "radial" : "aligned";
+            Json refs = Json::array();
+            for (const Reference& r : d->refs)
+                refs.push_back(Json{ { "id", ToJson(r.id) }, { "face", FaceOf::Name(r.face) } });
+            j["refs"] = std::move(refs);
+            j["at"]   = ToJson(d->at);
+        }
+        else if (const Note* n = e.As<Note>())
+        {
+            j["view"]  = ToJson(n->view);
+            j["at"]    = ToJson(n->at);
+            j["text"]  = n->text;
+            j["type"]  = n->typeName;
+            j["angle"] = n->angle;
+            if (n->leader)
+                j["leader"] = ToJson(*n->leader);
+            if (n->overrideFormat)
+                j["override_format"] = true;
+            if (!n->runs.empty())
+            {
+                Json runs = Json::array();
+                for (const TextRun& r : n->runs)
+                {
+                    Json o{ { "from", r.from }, { "to", r.to } };
+                    if (r.bold)
+                        o["bold"] = *r.bold;
+                    if (r.italic)
+                        o["italic"] = *r.italic;
+                    if (r.underline)
+                        o["underline"] = *r.underline;
+                    runs.push_back(std::move(o));
+                }
+                j["runs"] = std::move(runs);
+            }
+        }
+        else if (const Spot* sp = e.As<Spot>())
+        {
+            j["view"] = ToJson(sp->view);
+            j["at"]   = ToJson(sp->at);
+            if (sp->host)
+                j["host"] = ToJson(*sp->host);
+        }
+        else if (const Tag* t = e.As<Tag>())
+        {
+            j["host"] = ToJson(t->host);
+            if (t->view)
+                j["view"] = ToJson(*t->view);
+            j["offset"] = ToJson(t->offset);
+            j["leader"] = t->leader;
+            if (t->label)
+                j["label"] = *t->label;
+        }
+        else if (const DetailLine* l = e.As<DetailLine>())
+        {
+            j["view"]  = ToJson(l->view);
+            j["style"] = l->style;
+            if (l->insulation)
+                j["insulation"] = *l->insulation;
+            if (l->centreMark)
+                j["centre_mark"] = true;
+            if (l->cloud)
+                j["cloud"] = *l->cloud;
+            if (l->revision)
+                j["revision"] = *l->revision;
+            CurveJson(l->curve, j);
+        }
+        else if (const FilledRegion* r = e.As<FilledRegion>())
+        {
+            j["view"] = ToJson(r->view);
+            j["type"] = r->typeName;
+            if (r->lineStyle)
+                j["line_style"] = *r->lineStyle;
+            j["sketch"] = SketchJson(r->sketch);
+            if (r->patternOrigin != P2{})
+                j["pattern_origin"] = ToJson(r->patternOrigin);
+            if (r->patternAngle != 0.0)
+                j["pattern_angle"] = r->patternAngle;
+        }
         return j;
     }
 
@@ -1470,6 +2039,23 @@ namespace MiniBIM::Bim
         return mats;
     }
 
+    Json ToJson(const TextType& t)
+    {
+        Json y{ { "font", t.font }, { "size", t.size }, { "color", ColorJson(t.color) }, { "border_offset", t.borderOffset },
+                { "border_pen", t.borderPen } };
+        if (t.bold)
+            y["bold"] = true;
+        if (t.italic)
+            y["italic"] = true;
+        if (t.underline)
+            y["underline"] = true;
+        if (t.widthFactor != 1.0)
+            y["width_factor"] = t.widthFactor;
+        if (t.border)
+            y["border"] = true;
+        return y;
+    }
+
     // ── 模型 ─────────────────────────────────────────────────────
     Json Model::ToJson() const
     {
@@ -1488,6 +2074,64 @@ namespace MiniBIM::Bim
         for (const auto& [n, f] : families)
             fams[n] = Bim::ToJson(f);
         j["families"] = std::move(fams);
+        Json lp = Json::object();
+        for (const auto& [n, p] : linePatterns)
+        {
+            Json segs = Json::array();
+            for (const LineSegment& s : p.segments)
+                segs.push_back(SegmentJson(s));
+            lp[n] = std::move(segs);
+        }
+        j["line_patterns"] = std::move(lp);
+        Json ls = Json::object();
+        for (const auto& [n, s] : lineStyles)
+        {
+            Json y{ { "pen", s.pen }, { "color", ColorJson(s.color) } };
+            if (s.pattern)
+                y["pattern"] = *s.pattern;
+            ls[n] = std::move(y);
+        }
+        j["line_styles"] = std::move(ls);
+        Json fp = Json::object();
+        for (const auto& [n, p] : fillPatterns)
+        {
+            Json y{ { "target", p.model ? "model" : "drafting" } };
+            if (!p.lines.empty())
+            {
+                Json lines = Json::array();
+                for (const HatchLine& l : p.lines)
+                {
+                    Json o{ { "angle", l.angle }, { "spacing", l.spacing } };
+                    if (l.origin != P2{})
+                        o["origin"] = Bim::ToJson(l.origin);
+                    if (l.shift != 0.0)
+                        o["shift"] = l.shift;
+                    if (!l.dashes.empty())
+                        o["dashes"] = l.dashes;
+                    lines.push_back(std::move(o));
+                }
+                y["lines"] = std::move(lines);
+            }
+            fp[n] = std::move(y);
+        }
+        j["fill_patterns"] = std::move(fp);
+        Json rt = Json::object();
+        for (const auto& [n, t] : regionTypes)
+        {
+            Json y{ { "foreground_color", ColorJson(t.foregroundColor) }, { "background_color", ColorJson(t.backgroundColor) } };
+            if (t.foreground)
+                y["foreground"] = *t.foreground;
+            if (t.background)
+                y["background"] = *t.background;
+            if (t.masking)
+                y["masking"] = true;
+            rt[n] = std::move(y);
+        }
+        j["region_types"] = std::move(rt);
+        Json tt = Json::object();
+        for (const auto& [n, t] : textTypes)
+            tt[n] = Bim::ToJson(t);
+        j["text_types"] = std::move(tt);
         Json es = Json::object();
         for (const auto& [id, e] : elements.Items())
         {
@@ -1675,6 +2319,16 @@ namespace MiniBIM::Bim
         }))
             return false;
 
+        // 注释的库条目；BIMCraft 第 6 版之前的文件没有线样式与线型图案：按项目的语言起名（有它们的文件按 GUID 记着图案，不会相等）
+        if (!ReadStyles(f, m))
+            return false;
+        if (m.language != Language::English && m.lineStyles == Lines::Styles(Language::English) &&
+            m.linePatterns == Lines::Patterns(Language::English))
+        {
+            m.lineStyles   = Lines::Styles(m.language);
+            m.linePatterns = Lines::Patterns(m.language);
+        }
+
         // 族
         if (const Json* fams = f.Raw("families"))
         {
@@ -1691,6 +2345,7 @@ namespace MiniBIM::Bim
         }
 
         // 元素：没有 GUID 的（旧文件）读的时候各给一个
+        std::map<Id, double> noteSizes;
         const Json* es = f.Raw("elements");
         if (!es)
             return f.Missing("elements");
@@ -1724,6 +2379,19 @@ namespace MiniBIM::Bim
                     bare.erase("guid");
                 }
             }
+            // BIMCraft 第 8 版之前的文字注释记着字高，没有文字类型：读完后给它那个字高的类型
+            std::optional<double> noteSize;
+            if (bare.is_object() && bare.value("category", "") == "text")
+                if (const auto s = bare.find("size"); s != bare.end())
+                {
+                    if (!s->is_number() || !(s->get<double>() > 0.0))
+                    {
+                        error = who + ": `size` must be a text height in mm";
+                        return false;
+                    }
+                    noteSize = s->get<double>();
+                    bare.erase("size");
+                }
             Element e;
             bool skip = false;
             if (!ReadElement(bare, e, who, path, &leftOut, error, skip))
@@ -1735,6 +2403,8 @@ namespace MiniBIM::Bim
             }
             if (!m.elements.InsertAs(eid, guid.value_or(m.elements.Fresh()), std::move(e), error))
                 return false;
+            if (noteSize)
+                noteSizes[eid] = *noteSize;
         }
 
         // 库
@@ -1806,8 +2476,68 @@ namespace MiniBIM::Bim
                 m.elements.Insert(id, std::move(w));
         }
 
+        // 注释：MiniBIM 还没有平面视图、剖面、立面、图纸，在那些视图里的注释（视图不是标高的）略去；宿主、参照的东西不在了的
+        // 标记、高程点略去，尺寸去掉那些参照，剩下的不够量时也略去
+        for (bool removed = true; removed;)
+        {
+            removed = false;
+            std::vector<Id> gone;
+            std::vector<std::pair<Id, Dimension>> trimmed;
+            const auto here = [&](Guid g) { return m.elements.Contains(g); };
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                if (!e->IsAnnotation())
+                    continue;
+                bool keep = true;
+                if (const Dimension* d = e->As<Dimension>())
+                {
+                    Dimension t = *d;
+                    std::erase_if(t.refs, [&](const Reference& r) { return !here(r.id); });
+                    keep = !d->view && m.GetLevel(d->level) && t.refs.size() >= (d->kind == DimKind::Radial ? 1u : 2u);
+                    if (keep && t.refs.size() != d->refs.size())
+                        trimmed.emplace_back(id, std::move(t));
+                }
+                else if (const Tag* t = e->As<Tag>())
+                    keep = !t->view && here(t->host);
+                else
+                {
+                    const auto plan = m.AnnotationPlan(*e);
+                    keep = plan && m.GetLevel(*plan);
+                    if (const Spot* sp = e->As<Spot>(); keep && sp && sp->host)
+                        keep = here(*sp->host);
+                }
+                if (!keep)
+                    gone.push_back(id);
+            }
+            for (auto& [id, d] : trimmed)
+            {
+                leftOut.push_back("/elements/" + std::to_string(id) + "/refs");
+                m.elements.Insert(id, std::move(d));
+            }
+            for (const Id id : gone)
+            {
+                m.elements.Remove(id);
+                leftOut.push_back("/elements/" + std::to_string(id));
+                removed = true;
+            }
+        }
+
         m.Migrate();
         m.NamesFromFile();
+        // 没有文字类型的文字注释（第 8 版之前的文件）：给它字高的类型
+        std::vector<Id> notes;
+        for (const auto& [id, e] : m.elements.Items())
+            if (const Note* n = e->As<Note>(); n && (n->typeName.empty() || noteSizes.count(id)))
+                notes.push_back(id);
+        for (const Id id : notes)
+        {
+            Note n = *m.elements.Get(id)->As<Note>();
+            const auto s = noteSizes.find(id);
+            n.typeName = TextTypes::ForSize(m.textTypes, s != noteSizes.end() ? s->second : 2.5);
+            m.elements.Insert(id, std::move(n));
+        }
+        if (!notes.empty())
+            m.SyncLibrary();
         // 参数值里不是它的族的参数、也不是体量记号的（项目参数还没移植）略去
         std::vector<Id> withParams;
         for (const auto& [id, e] : m.elements.Items())

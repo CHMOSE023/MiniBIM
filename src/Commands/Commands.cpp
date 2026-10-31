@@ -11,6 +11,7 @@
 #include "Model/Align.h"
 #include "Model/Sketch.h"
 #include "Model/ModelJson.h"
+#include "Model/Snap.h"
 #include "Model/Text.h"
 #include "Model/Walls.h"
 #include <algorithm>
@@ -809,13 +810,29 @@ namespace MiniBIM::Bim
                 std::swap(w->start, w->end);
                 w->arc = -w->arc + 0.0;
             }
+            std::map<Guid, Guid> hostOf;
             for (const Id id : openings)
             {
                 Opening* o = m.elements.GetMut(id)->AsOpening();
                 o->offset     = lengths[o->host] - o->offset;
                 o->flipFacing = !o->flipFacing;
                 o->flipHand   = !o->flipHand;
+                hostOf[m.GuidOf(id)] = o->host;
             }
+            // 尺寸量着同样的线：翻转的墙左右对调、起点终点对调，它的门窗的两边也对调
+            std::vector<Id> dims;
+            for (const auto& [id, e] : m.elements.Items())
+                if (e->As<Dimension>())
+                    dims.push_back(id);
+            for (const Id id : dims)
+                for (Reference& r : m.elements.GetMut(id)->As<Dimension>()->refs)
+                {
+                    const Guid g = m.GuidOf(r.id);
+                    if (lengths.count(g))
+                        r.face = FaceOf::Flipped(r.face);
+                    else if (const auto h = hostOf.find(g); h != hostOf.end() && lengths.count(h->second))
+                        r.face = FaceOf::Mirrored(r.face);
+                }
             result = Json{ { "flipped", ids } };
             return true;
         }
@@ -921,7 +938,9 @@ namespace MiniBIM::Bim
         // ── 草图（移植自 commands.rs 的 sketch_param、sketched、edit_boundary）────────────
         // 命令里的草图线：[[x,y],[x,y]] 直线，[[x,y],[x,y],[x,y]] 从第一点到第二点、经过第三点的圆弧，或 {id?, start, end, arc? | through?}；
         // 带 id 的保留 old（正在编辑的草图）里那条线的 ID 与 GUID
-        bool SketchParam(Params& P, const Json& p, const char* key, const std::vector<SketchLine>& old, std::optional<std::vector<SketchLine>>& out)
+        // styled 时（填充区域的边界）线还可以带 style（线样式）与 invisible
+        bool SketchParam(Params& P, const Json& p, const char* key, const std::vector<SketchLine>& old, std::optional<std::vector<SketchLine>>& out,
+                         bool styled = false)
         {
             const Json* v = Get(p, key);
             if (!v || v->is_null())
@@ -962,8 +981,21 @@ namespace MiniBIM::Bim
                 else if (g.is_object())
                 {
                     for (auto it = g.begin(); it != g.end(); ++it)
-                        if (it.key() != "id" && it.key() != "guid" && it.key() != "start" && it.key() != "end" && it.key() != "arc" && it.key() != "through")
+                        if (it.key() != "id" && it.key() != "guid" && it.key() != "start" && it.key() != "end" && it.key() != "arc" && it.key() != "through" &&
+                            !(styled && (it.key() == "style" || it.key() == "invisible")))
                             return P.Fail(at + ": `" + it.key() + "` isn't one it takes; lines and arcs are ported, other curves aren't yet");
+                    if (styled && g.contains("style") && !g["style"].is_null())
+                    {
+                        if (!g["style"].is_string())
+                            return P.Fail(at + ": `style` is a line style's name");
+                        l.style = std::string(Text::Trim(g["style"].get<std::string>()));
+                    }
+                    if (styled && g.contains("invisible") && !g["invisible"].is_null())
+                    {
+                        if (!g["invisible"].is_boolean())
+                            return P.Fail(at + ": `invisible` is true or false");
+                        l.invisible = g["invisible"].get<bool>();
+                    }
                     if (!g.contains("start") || !g.contains("end") || !FromJson(g["start"], l.start, why) || !FromJson(g["end"], l.end, why))
                         return P.Fail(at + " needs `start` and `end` [x, y]" + (why.empty() ? "" : ": " + why));
                     if (g.contains("arc") && g.contains("through"))
@@ -1048,16 +1080,36 @@ namespace MiniBIM::Bim
             if (!P.IdOpt("id", g))
                 return false;
             if (!g)
-                return P.Fail("`id`, the floor, ceiling or roof to edit, is required");
+                return P.Fail("`id`, the floor, ceiling, roof or filled region to edit, is required");
             const auto id = m.elements.IdOf(*g);
             if (!id)
                 return P.Fail("no element " + g->ToString());
             Element e = *m.elements.Get(*id);
+            // 填充区域：任意多个环，线带线样式
+            if (FilledRegion* fr = e.As<FilledRegion>())
+            {
+                std::optional<std::vector<SketchLine>> lines;
+                if (!SketchParam(P, p, "sketch", fr->sketch, lines, true))
+                    return false;
+                if (!lines)
+                {
+                    result = Json{ { "id", *id }, { "sketch", SketchJson(fr->sketch) } };
+                    return true;
+                }
+                Sketch::Profile profile;
+                std::vector<Sketch::Problem> problems;
+                if (!Sketch::Solve(*lines, profile, problems))
+                    return P.Fail("the sketch doesn't close into loops: " + Sketch::Say(problems, Sketch::Namer(*lines)));
+                fr->sketch = std::move(*lines);
+                s.ModelMut().elements.Insert(*id, std::move(e));
+                result = Json{ { "id", *id }, { "area_m2", M2(profile.Area()) } };
+                return true;
+            }
             if (const Roof* r = e.As<Roof>(); r && r->extrusion)
                 return P.Fail(std::to_string(*id) + " is an extrusion roof: change its profile, `modify` its `extrusion`");
             const auto now = BoundaryNow(e);
             if (!now)
-                return P.Fail(std::to_string(*id) + " isn't a floor, a ceiling or a roof's footprint");
+                return P.Fail(std::to_string(*id) + " isn't a floor, a ceiling, a roof's footprint or a filled region");
             std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sk;
             if (!Sketched(P, p, "", *now, sk))
                 return false;
@@ -2702,7 +2754,7 @@ namespace MiniBIM::Bim
                             continue;
                         return Fail(error, c, "`category` can't change; delete the element and create another");
                     }
-                    if ((k == "level" || k == "top_level") && val.is_string())
+                    if ((k == "level" || k == "top_level" || (k == "view" && e->IsAnnotation())) && val.is_string())
                     {
                         Guid g;
                         if (!LevelParam(c, m, p, k.c_str(), g, error))
@@ -2885,6 +2937,26 @@ namespace MiniBIM::Bim
                         std::tie(r->extrusion->from, r->extrusion->to) = std::pair{ -r->extrusion->to + 0.0, -r->extrusion->from + 0.0 };
                 }
             }
+            else if (Note* n = out.As<Note>())
+            {
+                // 镜像过去的文字仍然正着读
+                const auto [at, angle] = Turned(f, n->at, n->angle);
+                n->at = at;
+                if (!mo.mirror)
+                    n->angle = angle;
+                if (n->leader)
+                    n->leader = f(*n->leader);
+            }
+            else if (Spot* sp = out.As<Spot>())
+                sp->at = f(sp->at);
+            else if (DetailLine* l = out.As<DetailLine>())
+                l->curve = l->curve.Map([&](P2 q) { return Micron(f(q)); }, mo.mirror);
+            // 草图在上面跟着走了，图案也跟着
+            else if (FilledRegion* fr = out.As<FilledRegion>())
+                std::tie(fr->patternOrigin, fr->patternAngle) = Turned(f, fr->patternOrigin, fr->patternAngle);
+            else if (Dimension* d = out.As<Dimension>())
+                d->at = f(d->at);
+            // 标记的位置跟着它的宿主：见 Relocate 与 Duplicate
             else if (Opening* o = out.AsOpening())
             {
                 const auto host = m.elements.IdOf(o->host);
@@ -2900,6 +2972,27 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // 选中的标记的头被 mo 带到哪里
+        std::vector<std::pair<Id, P2>> TagHeads(const Model& m, const std::vector<Id>& ids, const Motion& mo)
+        {
+            std::vector<std::pair<Id, P2>> out;
+            for (const Id id : ids)
+                if (const Tag* t = m.elements.Get(id)->As<Tag>())
+                    if (const auto a = m.Anchor(t->host))
+                        out.emplace_back(id, mo.map(*a + t->offset));
+            return out;
+        }
+
+        // 标记 id 的头放到 head，不管它的宿主怎样动了
+        void PlaceTag(Model& m, Id id, P2 head)
+        {
+            const Element* e = m.elements.Get(id);
+            const Tag* t = e ? e->As<Tag>() : nullptr;
+            const auto a = t ? m.Anchor(t->host) : std::nullopt;
+            if (a)
+                m.elements.GetMut(id)->As<Tag>()->offset = Micron(head - *a);
+        }
+
         bool Relocate(const char* c, Session& s, const std::vector<Id>& ids, const Motion& mo, std::optional<bool> end, std::string& error)
         {
             const Model& m = s.GetModel();
@@ -2908,6 +3001,7 @@ namespace MiniBIM::Bim
             std::set<Guid> movingGuids;
             for (const Id id : ids)
                 movingGuids.insert(m.GuidOf(id));
+            const auto heads = TagHeads(m, ids, mo);
             // 整个带走的墙上的门窗随墙走
             auto carried = [&](Guid host) { return movingGuids.count(host) && !end; };
             std::map<Id, Wall> walls;
@@ -3029,6 +3123,30 @@ namespace MiniBIM::Bim
             // 镜像的体量轮廓反着走：按面做的墙记着的边重新编号
             for (const Id id : flipped)
                 Massing::Mirrored(mm, id);
+            // 尺寸量着镜像过去的墙上同样的线：墙反着走，起点终点对调，它的门窗的两边也对调
+            if (mo.mirror && !end)
+            {
+                std::map<Guid, Guid> hostOf;
+                std::vector<Id> dims;
+                for (const auto& [id, e] : mm.elements.Items())
+                {
+                    if (const Opening* o = e->AsOpening())
+                        hostOf[mm.GuidOf(id)] = mm.GuidOf(o->host);
+                    if (e->As<Dimension>())
+                        dims.push_back(id);
+                }
+                const auto turned = [&](Guid g)
+                {
+                    const auto h = hostOf.find(g);
+                    return movingGuids.count(g) || (h != hostOf.end() && movingGuids.count(h->second));
+                };
+                for (const Id id : dims)
+                    for (Reference& r : mm.elements.GetMut(id)->As<Dimension>()->refs)
+                        if (turned(mm.GuidOf(r.id)))
+                            r.face = FaceOf::Mirrored(r.face);
+            }
+            for (const auto& [id, head] : heads)
+                PlaceTag(mm, id, head);
             return true;
         }
 
@@ -3041,6 +3159,10 @@ namespace MiniBIM::Bim
             for (const Id id : ids)
                 copyingGuids.insert(m.GuidOf(id));
             std::vector<std::pair<Id, Element>> copies;
+            // 尺寸、标记、高程点最后复制：它们可能指着副本
+            std::vector<std::pair<Id, Element>> notes;
+            const auto headList = TagHeads(m, ids, mo);
+            const std::map<Id, P2> heads(headList.begin(), headList.end());
             for (const Id id : ids)
             {
                 Element e;
@@ -3049,7 +3171,10 @@ namespace MiniBIM::Bim
                 // 复制的墙带上它的门窗，见下
                 if (const Opening* o = e.AsOpening(); o && copyingGuids.count(o->host))
                     continue;
-                copies.emplace_back(id, std::move(e));
+                if (e.As<Dimension>() || e.As<Tag>() || e.As<Spot>())
+                    notes.emplace_back(id, std::move(e));
+                else
+                    copies.emplace_back(id, std::move(e));
             }
             for (const auto& [id, e] : m.elements.Items())
                 if (const Opening* o = e->AsOpening(); o && copyingGuids.count(o->host))
@@ -3104,6 +3229,33 @@ namespace MiniBIM::Bim
                     if (*at)
                         if (const auto it = hosts.find(**at); it != hosts.end())
                             *at = it->second;
+            }
+            // 复制的尺寸、标记、高程点挂到它们量的、写的、读的东西的副本上（有的话）
+            const auto copied = [&](Guid g)
+            {
+                const auto it = hosts.find(mm.GuidOf(g));
+                return it != hosts.end() ? std::optional<Guid>(it->second) : std::nullopt;
+            };
+            for (auto& [from, e] : notes)
+            {
+                if (Dimension* d = e.As<Dimension>())
+                {
+                    for (Reference& r : d->refs)
+                        if (const auto to = copied(r.id))
+                        {
+                            r.id = *to;
+                            if (mo.mirror)
+                                r.face = FaceOf::Mirrored(r.face);
+                        }
+                }
+                else if (Tag* t = e.As<Tag>())
+                    t->host = copied(t->host).value_or(t->host);
+                else if (Spot* sp = e.As<Spot>(); sp && sp->host)
+                    sp->host = copied(*sp->host).value_or(*sp->host);
+                const Id id = mm.Insert(std::move(e));
+                if (const auto h = heads.find(from); h != heads.end())
+                    PlaceTag(mm, id, h->second);
+                made.push_back(id);
             }
             result = Json{ { "ids", made } };
             return true;
@@ -3530,18 +3682,48 @@ namespace MiniBIM::Bim
                     const Guid g = m.GuidOf(id);
                     if (gone.count(g))
                         continue;
-                    if (const Opening* o = e->AsOpening(); o && gone.count(o->host))
+                    const auto in = [&](const std::optional<Guid>& x) { return x && gone.count(m.GuidOf(*x)); };
+                    bool hangs = false;
+                    if (const Opening* o = e->AsOpening())
+                        hangs = gone.count(m.GuidOf(o->host)) > 0;
+                    // 注释跟着它在的视图（标高的平面）走，标记跟着它的宿主，高程点跟着它读的东西
+                    else if (const Tag* t = e->As<Tag>())
+                        hangs = in(t->host) || in(t->view);
+                    else if (const Dimension* d = e->As<Dimension>())
+                        hangs = in(d->level) || in(d->view);
+                    else if (const Spot* sp = e->As<Spot>())
+                        hangs = in(sp->view) || in(sp->host);
+                    else if (e->IsAnnotation())
+                        hangs = in(m.AnnotationPlan(*e));
+                    if (hangs)
                     {
                         gone.insert(g);
                         more = true;
                     }
                 }
             }
+            // 尺寸去掉删了的参照；剩下不到两个时也删
+            std::vector<std::pair<Id, Dimension>> trimmed;
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const Dimension* d = e->As<Dimension>();
+                if (!d || gone.count(m.GuidOf(id)) ||
+                    std::none_of(d->refs.begin(), d->refs.end(), [&](const Reference& r) { return gone.count(m.GuidOf(r.id)) > 0; }))
+                    continue;
+                Dimension t = *d;
+                std::erase_if(t.refs, [&](const Reference& r) { return gone.count(m.GuidOf(r.id)) > 0; });
+                if (t.refs.size() < 2)
+                    gone.insert(m.GuidOf(id));
+                else
+                    trimmed.emplace_back(id, std::move(t));
+            }
             Json deleted = Json::array();
             for (const auto& [id, _] : m.elements.Items())
                 if (gone.count(m.GuidOf(id)))
                     deleted.push_back(id);
             Model& mm = s.ModelMut();
+            for (auto& [id, d] : trimmed)
+                mm.elements.Insert(id, std::move(d));
             // 记号认体量要它还在：先拿掉记号再删
             Massing::Forget(mm, gone);
             for (const Guid g : gone)
@@ -3570,6 +3752,494 @@ namespace MiniBIM::Bim
                     r->join.reset();
             }
             result = Json{ { "deleted", deleted } };
+            return true;
+        }
+
+        // ── 注释（移植自 BIMCraft 的注释选项卡，第 5d 步）─────────────
+        // 只收 keys 里的参数
+        bool Only(const char* c, const Json& p, std::initializer_list<const char*> keys, std::string& error)
+        {
+            if (!p.is_object())
+                return Fail(error, c, "params must be an object");
+            for (auto it = p.begin(); it != p.end(); ++it)
+                if (std::none_of(keys.begin(), keys.end(), [&](const char* k) { return it.key() == k; }))
+                    return Fail(error, c, "unknown parameter `" + it.key() + "`");
+            return true;
+        }
+
+        // 注释在的视图：view（标高的名称、ID 或 GUID：它的平面），没给时为 level 的平面（默认最低的标高）。
+        // MiniBIM 还没有平面视图、剖面、立面与图纸
+        bool ViewParam(const char* c, const Model& m, const Json& p, Guid& out, std::string& error)
+        {
+            return LevelParam(c, m, p, Absent(p, "view") ? "level" : "view", out, error);
+        }
+
+        bool DimensionCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "dimension";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            P2 at;
+            std::optional<std::string> kindName;
+            if (!LevelParam(c, m, p, "level", level, error) || !P.PointReq("at", at) || !P.String("kind", kindName))
+                return false;
+            DimKind kind = DimKind::Aligned;
+            if (kindName)
+            {
+                if (*kindName == "angular")
+                    kind = DimKind::Angular;
+                else if (*kindName == "radial")
+                    kind = DimKind::Radial;
+                else if (*kindName != "aligned")
+                    return P.Fail("`kind` is aligned, angular or radial, not `" + *kindName + "`");
+            }
+            const Json* given = Get(p, "refs");
+            if (!given || !given->is_array())
+                return P.Fail("`refs` [ref, …] is required");
+            if (given->size() > MaxPoints)
+                return P.Fail("`refs` has more than " + std::to_string(MaxPoints) + " references");
+            std::vector<Reference> refs;
+            for (const Json& v : *given)
+            {
+                const auto near = [&](P2 q, const char* what)
+                {
+                    return P.Fail(std::string("no ") + what + " at [" + Num(q.x) + ", " + Num(q.y) + "] on " + LevelName(m, level));
+                };
+                if (const auto q = PointOf(v))
+                {
+                    std::optional<Reference> r;
+                    if (kind == DimKind::Radial)
+                    {
+                        if (!(r = ArcNear(m, level, *q)))
+                            return near(*q, "round column's edge");
+                    }
+                    else
+                    {
+                        // 第一条之后：对齐的与它平行，角度的与它相交
+                        std::optional<Segment> first;
+                        Segment l;
+                        std::string why;
+                        if (!refs.empty() && m.ReferenceLine(refs.front(), l, why))
+                            first = l;
+                        const auto keep = [&](const Segment& x)
+                        {
+                            return !first || Geom::Parallel(first->first, first->second, x.first, x.second) == (kind == DimKind::Aligned);
+                        };
+                        if (!(r = ReferenceNear(m, level, *q, keep)))
+                            return near(*q, "wall face, wall centre line, wall end, door, window or grid line");
+                    }
+                    refs.push_back(*r);
+                    continue;
+                }
+                const std::string shape = Show(v) + " is not a reference {id, face?} or a point [x, y]";
+                if (!v.is_object())
+                    return P.Fail(shape);
+                for (auto it = v.begin(); it != v.end(); ++it)
+                    if (it.key() != "id" && it.key() != "face")
+                        return P.Fail(shape + ": unknown field `" + it.key() + "`");
+                Reference r;
+                std::string why;
+                if (!v.contains("id") || !FromJson(v["id"], r.id, why))
+                    return P.Fail(shape + ": `id` is required");
+                if (v.contains("face") && !v["face"].is_null())
+                {
+                    const auto f = v["face"].is_string() ? FaceOf::FromName(v["face"].get<std::string>()) : std::nullopt;
+                    if (!f)
+                        return P.Fail(shape + ": `face` is centre, left, right, start or end");
+                    r.face = *f;
+                }
+                refs.push_back(r);
+            }
+            Dimension d{ level, std::nullopt, kind, std::move(refs), at };
+            Json values = Json::array();
+            for (const double x : m.DimensionValues(d))
+                values.push_back(Hundredth(x));
+            const Id id = s.ModelMut().Insert(Element(std::move(d)));
+            result = Json{ { "id", id }, { "values", std::move(values) } };
+            return true;
+        }
+
+        bool TagCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "tag";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<P2> offset;
+            bool leader = false;
+            std::optional<std::string> label, category;
+            Guid level;
+            if (!P.PointOpt("offset", offset) || !P.Flag("leader", leader) || !P.String("label", label) || !P.String("category", category) ||
+                !LevelParam(c, m, p, "level", level, error))
+                return false;
+            if (label && Text::Trim(*label).empty())
+                label.reset();
+            std::vector<Id> hosts;
+            if (P.Absent("ids") && P.Absent("id"))
+            {
+                // 全部标记：这个平面上还没有标记的门窗，或 category 的
+                const std::optional<std::string> of = category ? std::optional<std::string>(NormalizeCategory(*category)) : std::nullopt;
+                std::set<Guid> tagged;
+                for (const auto& [_, e] : m.elements.Items())
+                    if (const Tag* t = e->As<Tag>(); t && m.AnnotationIn(*e, level))
+                        tagged.insert(m.GuidOf(t->host));
+                for (const auto& [id, e] : m.elements.Items())
+                {
+                    const bool wanted = of ? e->Category() == *of : e->AsOpening() != nullptr;
+                    if (wanted && !tagged.count(m.GuidOf(id)) && m.LevelOf(*e) == std::optional<Guid>(level))
+                        hosts.push_back(id);
+                }
+                if (hosts.empty())
+                    return P.Fail("nothing to tag: " + LevelName(m, level) + " has no " + of.value_or("door and window") + " without a tag");
+            }
+            else if (!IdsParam(c, m, p, hosts, error))
+                return false;
+            std::vector<Tag> tags;
+            for (const Id h : hosts)
+            {
+                const Guid g = m.GuidOf(h);
+                tags.push_back(Tag{ g, std::nullopt, offset.value_or(m.TagOffset(g)), leader, label });
+            }
+            Model& mm = s.ModelMut();
+            Json ids = Json::array();
+            for (Tag& t : tags)
+                ids.push_back(mm.Insert(Element(std::move(t))));
+            result = Json{ { "ids", std::move(ids) } };
+            return true;
+        }
+
+        // 文字注释的 runs：[{from, to, bold?, italic?, underline?}, …]
+        bool RunsParam(Params& P, const Json& p, std::vector<TextRun>& out)
+        {
+            out.clear();
+            const Json* v = Get(p, "runs");
+            if (!v || v->is_null())
+                return true;
+            const std::string shape = "`runs` is [{from, to, bold?, italic?, underline?}, …], counted in characters";
+            if (!v->is_array() || v->size() > TextTypes::MaxRuns)
+                return P.Fail(shape);
+            for (const Json& r : *v)
+            {
+                if (!r.is_object())
+                    return P.Fail(shape);
+                TextRun run;
+                for (auto it = r.begin(); it != r.end(); ++it)
+                {
+                    const std::string& k = it.key();
+                    if (k == "from" || k == "to")
+                    {
+                        const auto n = AsWhole(*it);
+                        if (!n || *n > 1000000)
+                            return P.Fail(shape);
+                        (k == "from" ? run.from : run.to) = static_cast<size_t>(*n);
+                    }
+                    else if (k == "bold" || k == "italic" || k == "underline")
+                    {
+                        if (it->is_null())
+                            continue;
+                        if (!it->is_boolean())
+                            return P.Fail("`runs`: `" + k + "` is true or false");
+                        (k == "bold" ? run.bold : k == "italic" ? run.italic : run.underline) = it->get<bool>();
+                    }
+                    else
+                        return P.Fail("`runs`: unknown field `" + k + "`");
+                }
+                if (!r.contains("from") || !r.contains("to"))
+                    return P.Fail(shape);
+                out.push_back(run);
+            }
+            return true;
+        }
+
+        bool TextCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "text";
+            if (!Absent(p, "size"))
+                return Fail(error, c, "a note's size is its text type's: give `type` (`text_type` lists them, and makes one of a size)");
+            if (!Only(c, p, { "text", "at", "view", "level", "type", "angle", "leader", "override_format", "runs" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            const Json* t = Get(p, "text");
+            if (!t || t->is_null())
+                return P.Fail("`text` is required");
+            if (!t->is_string() || Text::CharCount(t->get_ref<const std::string&>()) > TextTypes::MaxNote)
+                return P.Fail("`text` must be text of at most " + std::to_string(TextTypes::MaxNote) + " characters, got " + Show(*t));
+            Note n;
+            n.text = t->get<std::string>();
+            std::optional<std::string> type;
+            std::optional<double> angle;
+            if (!P.PointReq("at", n.at) || !ViewParam(c, m, p, n.view, error) || !P.String("type", type) || !P.Num("angle", angle) ||
+                !P.PointOpt("leader", n.leader) || !P.Flag("override_format", n.overrideFormat) || !RunsParam(P, p, n.runs))
+                return false;
+            if (type)
+                n.typeName = std::string(Text::Trim(*type));
+            else if (const std::string* d = TextTypes::Default(m.textTypes))
+                n.typeName = *d;
+            else
+                return P.Fail("the project has no text type; make one first");
+            n.angle = angle.value_or(0.0);
+            const Id id = s.ModelMut().Insert(Element(std::move(n)));
+            result = Json{ { "id", id } };
+            return true;
+        }
+
+        bool TextTypeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "text_type";
+            if (!Only(c, p, { "name", "like", "rename", "delete", "font", "size", "bold", "italic", "underline", "width_factor", "color", "border",
+                              "border_offset", "border_pen" },
+                      error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given, like, font, rename;
+            if (!P.String("name", given) || !P.String("like", like) || !P.String("font", font) || !P.String("rename", rename))
+                return false;
+            if (!given || Text::Trim(*given).empty())
+            {
+                Json types = Json::object();
+                for (const auto& [n, t] : s.GetModel().textTypes)
+                    types[n] = ToJson(t);
+                result = Json{ { "types", std::move(types) } };
+                return true;
+            }
+            const std::string name(Text::Trim(*given));
+            const Kind kind = Kind::Of(Kind::Tag::TextType);
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                const Model& m0 = s.GetModel();
+                if (!m0.textTypes.count(name))
+                    return P.Fail("there's no text type `" + name + "`");
+                for (const auto& [id, e] : m0.elements.Items())
+                    if (const Note* n = e->As<Note>(); n && n->typeName == name)
+                        return P.Fail("note " + std::to_string(id) + " is of `" + name + "`; give it another type first");
+                s.ModelMut().textTypes.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            const Model& m0 = s.GetModel();
+            TextType t;
+            if (const auto it = m0.textTypes.find(name); it != m0.textTypes.end())
+                t = it->second;
+            else if (like)
+            {
+                const auto from = m0.textTypes.find(std::string(Text::Trim(*like)));
+                if (from == m0.textTypes.end())
+                    return P.Fail("there's no text type `" + *like + "` to start from");
+                t = from->second;
+            }
+            // 字体名记着（MiniBIM 只有一种单线字，都用它画）
+            if (font)
+            {
+                const std::string f(Text::Trim(*font));
+                if (f.empty())
+                    return P.Fail("`font` needs a font's name");
+                t.font = f;
+            }
+            for (const auto& [key, slot] : { std::pair{ "size", &t.size }, std::pair{ "width_factor", &t.widthFactor }, std::pair{ "border_offset", &t.borderOffset } })
+            {
+                std::optional<double> x;
+                if (!P.Num(key, x))
+                    return false;
+                if (x)
+                    *slot = *x;
+            }
+            for (const auto& [key, slot] : { std::pair{ "bold", &t.bold }, std::pair{ "italic", &t.italic }, std::pair{ "underline", &t.underline },
+                                             std::pair{ "border", &t.border } })
+                if (!P.Absent(key) && !P.Flag(key, *slot))
+                    return false;
+            if (!P.Absent("color"))
+            {
+                const auto col = Colour(*Get(p, "color"));
+                if (!col)
+                    return P.Fail("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not " + Show(*Get(p, "color")));
+                t.color = *col;
+            }
+            if (!P.Absent("border_pen"))
+            {
+                const auto pen = AsWhole(*Get(p, "border_pen"));
+                if (!pen || *pen > 16)
+                    return P.Fail("`border_pen` is a pen, 0 to 16, not " + Show(*Get(p, "border_pen")));
+                t.borderPen = static_cast<uint8_t>(*pen);
+            }
+            std::string now = name;
+            if (rename)
+            {
+                const std::string to(Text::Trim(*rename));
+                if (to.empty())
+                    return P.Fail("`rename` needs a name");
+                if (to != name && m0.textTypes.count(to))
+                    return P.Fail("there's already a text type `" + to + "`");
+                now = to;
+            }
+            if (!t.Check("text type `" + now + "`", error))
+            {
+                error = Bad(c, error);
+                return false;
+            }
+            if (now != name || m0.textTypes.find(name) == m0.textTypes.end() || !(m0.textTypes.at(name) == t))
+            {
+                Model& m = s.ModelMut();
+                if (now != name && m.textTypes.count(name))
+                {
+                    m.textTypes.erase(name);
+                    m.library.Renamed(kind, name, now);
+                    std::vector<Id> notes;
+                    for (const auto& [id, e] : m.elements.Items())
+                        if (const Note* n = e->As<Note>(); n && n->typeName == name)
+                            notes.push_back(id);
+                    for (const Id id : notes)
+                        m.elements.GetMut(id)->As<Note>()->typeName = now;
+                }
+                m.textTypes[now] = t;
+            }
+            result = Json{ { "name", now }, { "type", ToJson(t) } };
+            return true;
+        }
+
+        bool SpotCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "spot";
+            if (!Only(c, p, { "at", "view", "level", "host" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Spot sp;
+            if (!P.PointReq("at", sp.at) || !ViewParam(c, m, p, sp.view, error) || !P.IdOpt("host", sp.host))
+                return false;
+            if (!sp.host)
+            {
+                const auto h = m.SpotHost(sp.view, sp.at);
+                if (!h)
+                    return P.Fail("nothing to read at [" + Num(sp.at.x) + ", " + Num(sp.at.y) + "] on " + LevelName(m, sp.view) +
+                                  "; place it on a floor, a roof, a stair, a wall or a column");
+                sp.host = m.GuidOf(*h);
+            }
+            const auto elevation = m.SpotValue(sp);
+            const auto host = m.elements.IdOf(*sp.host);
+            const Id id = s.ModelMut().Insert(Element(std::move(sp)));
+            result = Json{ { "id", id }, { "elevation", elevation ? Json(Hundredth(*elevation)) : Json() }, { "host", host ? Json(*host) : Json() } };
+            return true;
+        }
+
+        // 点到微米、圆弧的转角到十亿分之一度：本来就整的（三下点出的四分之一圆是 90，不是 90.00000000000001）
+        Curve Rounded(Curve cv)
+        {
+            for (P2& q : cv.points)
+                q = Micron(q);
+            for (double& a : cv.arcs)
+                a = std::round(a * 1e9) / 1e9 + 0.0;
+            if (std::all_of(cv.arcs.begin(), cv.arcs.end(), [](double a) { return a == 0.0; }))
+                cv.arcs.clear();
+            cv.centre = Micron(cv.centre);
+            return cv;
+        }
+
+        bool DetailLineCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "detail_line";
+            if (!Only(c, p, { "view", "level", "style", "insulation", "centre_mark", "cloud", "revision", "start", "end", "through", "arc", "points", "arcs",
+                              "closed", "centre", "radius", "radii", "angle", "span", "control", "knots", "fit", "start_tangent", "end_tangent" },
+                      error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid view;
+            std::optional<std::string> style;
+            if (!ViewParam(c, m, p, view, error) || !P.String("style", style))
+                return false;
+            if (style)
+                style = std::string(Text::Trim(*style));
+            else if (const std::string* d = Lines::DefaultStyle(m.lineStyles, m.language))
+                style = *d;
+            else
+                return P.Fail("the project has no line style; make one first");
+            // 读法与文件里的详图线相同
+            Json v = p;
+            v.erase("level");
+            v["category"] = "line";
+            v["view"]     = ToJson(view);
+            v["style"]    = *style;
+            Element e;
+            std::string why;
+            if (!FromJson(v, e, why))
+            {
+                if (Text::StartsWith(why, "element: "))
+                    why.erase(0, 9);
+                return P.Fail(why);
+            }
+            DetailLine& l = *e.As<DetailLine>();
+            if (!l.curve.Check("the line", why))
+                return P.Fail(why);
+            l.curve = Rounded(l.curve);
+            if (!l.curve.Check("the line", why))
+                return P.Fail(why);
+            const Id id = s.ModelMut().Insert(std::move(e));
+            result = Json{ { "id", id } };
+            return true;
+        }
+
+        bool FilledRegionCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "filled_region";
+            if (!Only(c, p, { "sketch", "view", "level", "type", "line_style" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<std::vector<SketchLine>> lines;
+            if (!SketchParam(P, p, "sketch", {}, lines, true))
+                return false;
+            if (!lines)
+                return P.Fail("`sketch`, its outlines' lines, is required");
+            Sketch::Profile profile;
+            std::vector<Sketch::Problem> problems;
+            if (!Sketch::Solve(*lines, profile, problems))
+                return P.Fail("the sketch doesn't close into loops: " + Sketch::Say(problems, Sketch::Namer(*lines)));
+            FilledRegion r;
+            std::optional<std::string> type;
+            if (!ViewParam(c, m, p, r.view, error) || !P.String("type", type))
+                return false;
+            // 实心黑色，项目语言里的或英文的，否则第一个
+            if (type)
+                r.typeName = std::string(Text::Trim(*type));
+            else if (const std::string* d = Fills::DefaultRegionType(m.regionTypes, m.language))
+                r.typeName = *d;
+            else
+                return P.Fail("the project has no filled region type; make one first");
+            // 没说时为细线；null（或 Invisible）不画
+            const Json* ls = Get(p, "line_style");
+            if (!ls)
+            {
+                if (const std::string* d = Lines::DefaultStyle(m.lineStyles, m.language))
+                    r.lineStyle = *d;
+            }
+            else if (ls->is_string())
+            {
+                const std::string n(Text::Trim(ls->get<std::string>()));
+                if (Text::AsciiLower(n) != "invisible")
+                    r.lineStyle = n;
+            }
+            else if (!ls->is_null())
+                return P.Fail("`line_style` is a line style's name, or null for invisible lines, not " + Show(*ls));
+            r.sketch = std::move(*lines);
+            const Id id = s.ModelMut().Insert(Element(std::move(r)));
+            result = Json{ { "id", id }, { "area_m2", M2(profile.Area()) } };
+            return true;
+        }
+
+        bool MeasureCmd(Session&, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "measure";
+            Params P(c, p, error);
+            P2 a, b;
+            if (!P.PointReq("from", a) || !P.PointReq("to", b))
+                return false;
+            const Snap::Ruler r = Snap::Measure(a, b);
+            const auto to = [](double x, double k) { return std::round(x * k) / k + 0.0; };
+            result = Json{ { "length", to(r.length, 100.0) }, { "dx", to(r.dx, 100.0) }, { "dy", to(r.dy, 100.0) }, { "angle", to(r.angle, 1e4) } };
             return true;
         }
 
@@ -3822,6 +4492,51 @@ namespace MiniBIM::Bim
             { "update_by_face", N_("Update to Face"), { "UF" },
               "{mass? | ids?} rebuilds the walls, floors and roofs made by face (of the mass, or `ids`, or all) to the mass as it is now",
               UpdateByFaceCmd, true },
+            { "dimension", N_("Aligned Dimension"), { "DI" },
+              "{refs: [ref, …], at: [x, y], level?, kind?: aligned|angular|radial} aligned (the default): the distances between parallel references, "
+              "along a line through `at`; angular: the angle between two references that meet, on the side of `at`; radial: a round column's radius, "
+              "toward `at`. A ref is {id, face?}: a wall's centre (the default), left or right face (of its start-to-end direction), start or end; a "
+              "door's or window's centre, or its jamb toward its wall's start or end; a grid's line; a straight detail line, or its start or end "
+              "(radial: a circle or an arc of one). Or a point [x, y] on one of those (for radial, on a round column's edge). It follows what it measures",
+              DimensionCmd, true },
+            { "text", N_("Text"), { "TX" },
+              "{text, at: [x, y], view?, type?, angle?, leader?: [x, y], override_format?, runs?: [{from, to, bold?, italic?, underline?}, …]} a text "
+              "note, its first line's top left at `at`, in a level's plan (`view`, the lowest by default). Lettered as its text `type` says (2.5mm unless "
+              "told; `text_type` lists and makes them), turned `angle` degrees counter-clockwise; with `leader`, a line to that point. Lines break at \\n. "
+              "With `override_format`, each run makes characters `from` up to `to` bold, italic or underlined (true), or not (false)",
+              TextCmd, true },
+            { "text_type", N_("Text Types"), {},
+              "{name?, font?, size?, bold?, italic?, underline?, width_factor?, color?, border?, border_offset?, border_pen?, like?, rename?, delete?: true} "
+              "a text type of the project's: its font's name (kept; MiniBIM letters every note in its single-stroke font), its capitals' height on paper "
+              "(`size`, mm, 2.5 for a new one), bold, italic, underlined, `width_factor`, colour, and a border `border_offset` mm out in pen `border_pen`. "
+              "A new one starts as `like` says, or as 2.5mm Arial. `rename` renames it, its notes following; `delete` takes it away while no note is of "
+              "it. Without `name`, it lists every type",
+              TextTypeCmd, true },
+            { "spot", N_("Spot Elevation"), { "EL" },
+              "{at: [x, y], view?, host?} a spot elevation in a level's plan (the lowest by default): the height of the top of what stands on the level "
+              "at `at` (or of `host`), following it",
+              SpotCmd, true },
+            { "tag", N_("Tag by Category"), { "TG" },
+              "{ids?: [id,…], label?, level?, category?, offset?: [dx, dy], leader?} tags elements with a field of theirs: a door's or window's mark, a "
+              "room's name, else the type, or `label`, another field of its category's. `offset` mm from the point it names (beside the wall for a door "
+              "or window, else up and right); without ids, every door and window on the level not tagged yet, or of `category`",
+              TagCmd, true },
+            { "detail_line", N_("Detail Line"), { "DL" },
+              "{view?, style?, and a curve: `points` [[x, y], …] (with `arcs`, each segment's turn in degrees, and `closed`), `start` and `end` (with "
+              "`arc` degrees or a `through` point), or `centre` and `radius` (a circle)} a detail line in a level's plan (the lowest by default), drawn "
+              "in line style `style` (Thin Lines unless told), only there; `insulation` (a width), `cloud` (an arc length) and `revision` are kept; "
+              "with `centre_mark` true, a small cross marks the centre of its arcs or circle",
+              DetailLineCmd, true },
+            { "filled_region", N_("Filled Region"), { "FR" },
+              "{sketch: [[[x,y],[x,y]],…], view?, type?, line_style?: name | null} a filled region in a level's plan (the lowest by default): the loops "
+              "its sketch closes into (a loop inside one a hole, one inside that an island), filled as type `type` (Solid Black unless told) says, its "
+              "boundary in line style `line_style` (Thin Lines unless told; null, unseen). A sketch line may have its own `style`, or be `invisible`. "
+              "It draws over the model, under the annotation; edit its sketch with edit_boundary",
+              FilledRegionCmd, true },
+            { "measure", N_("Measure"), { "ME" },
+              "{from: [x, y], to: [x, y]} what a ruler laid between two points reads (mm): its `length`, its parts `dx` and `dy`, and its `angle` in "
+              "degrees from east, counter-clockwise; it changes nothing",
+              MeasureCmd, false },
             { "roof", N_("Roof"), {},
               "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, extrusion?, "
               "openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its base `offset` mm above it. "
@@ -3928,6 +4643,45 @@ namespace MiniBIM::Bim
     }
 
     // ── 给别处用的 ───────────────────────────────────────────────
+    // level 的平面剖切到的东西（墙的面、中心线与端头，门窗的中心与两边，轴网）里 keep 认的、离 p 最近的参照线，100 毫米以内
+    std::optional<Reference> ReferenceNear(const Model& m, Guid level, P2 p, const std::function<bool(const Segment&)>& keep)
+    {
+        const auto cut = [&](const Wall* w) { return w && m.CutBy(*w, level); };
+        std::optional<std::pair<Reference, double>> best;
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            const Opening* o = e->AsOpening();
+            if (!(cut(e->As<Wall>()) || (o && cut(m.GetWall(o->host))) || e->As<Grid>()))
+                continue;
+            const auto r = m.ReferenceAt(m.GuidOf(id), p, keep);
+            if (r && r->second <= 100.0 && (!best || r->second < best->second))
+                best = r;
+        }
+        return best ? std::optional<Reference>(best->first) : std::nullopt;
+    }
+
+    // level 上圆柱的边离 p 最近（100 毫米以内）的那根
+    std::optional<Reference> ArcNear(const Model& m, Guid level, P2 p)
+    {
+        std::optional<std::pair<Reference, double>> best;
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            const Column* col = e->AsColumn();
+            if (!col || !m.Same(col->level, level))
+                continue;
+            const Reference r{ m.GuidOf(id), Face::Centre };
+            P2 centre;
+            double radius = 0.0;
+            std::string why;
+            if (!m.ReferenceArc(r, centre, radius, why))
+                continue;
+            const double d = std::abs(p.Dist(centre) - radius);
+            if (d <= 100.0 && (!best || d < best->second))
+                best = std::pair{ r, d };
+        }
+        return best ? std::optional<Reference>(best->first) : std::nullopt;
+    }
+
     bool OpeningOf(const Model& m, const Json& p, bool isDoor, Opening& out, std::string& error)
     {
         return BuildOpening(m, p, isDoor, out, error);
@@ -4086,6 +4840,52 @@ namespace MiniBIM::Bim
             }
             v["gross_floor_area_m2"] = M2(gross);
             v["levels"]              = std::move(levels);
+        }
+        else if (e->IsAnnotation())
+        {
+            const auto level = m.LevelOf(*e);
+            const auto levelId = level ? m.elements.IdOf(*level) : std::nullopt;
+            if (const Dimension* d = e->As<Dimension>())
+            {
+                Json values = Json::array();
+                for (const double x : m.DimensionValues(*d))
+                    values.push_back(Hundredth(x));
+                v["values"] = std::move(values);
+            }
+            else if (const Tag* t = e->As<Tag>())
+            {
+                v["text"]  = m.TagText(*t);
+                v["level"] = levelId ? Json(*levelId) : Json();
+                const auto a = m.Anchor(t->host);
+                v["at"] = a ? ToJson(*a + t->offset) : Json();
+            }
+            else if (const Note* n = e->As<Note>())
+            {
+                v["level"] = levelId ? Json(*levelId) : Json();
+                const auto it = m.textTypes.find(n->typeName);
+                v["size"] = it != m.textTypes.end() ? Json(it->second.size) : Json();
+            }
+            else if (const FilledRegion* r = e->As<FilledRegion>())
+            {
+                Sketch::Profile profile;
+                std::vector<Sketch::Problem> problems;
+                v["area_m2"]        = M2(Sketch::Solve(r->sketch, profile, problems) ? profile.Area() : 0.0);
+                v["level"]          = levelId ? Json(*levelId) : Json();
+                v["pattern_origin"] = ToJson(r->patternOrigin);
+                v["pattern_angle"]  = r->patternAngle;
+            }
+            else if (const DetailLine* l = e->As<DetailLine>())
+            {
+                v["shape"]  = l->curve.Name();
+                v["length"] = Hundredth(l->curve.Length());
+                v["level"]  = levelId ? Json(*levelId) : Json();
+            }
+            else if (const Spot* sp = e->As<Spot>())
+            {
+                const auto z = m.SpotValue(*sp);
+                v["elevation"] = z ? Json(Hundredth(*z)) : Json();
+                v["level"]     = levelId ? Json(*levelId) : Json();
+            }
         }
         else if (const Room* r = e->As<Room>())
         {

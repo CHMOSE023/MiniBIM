@@ -70,7 +70,7 @@ namespace MiniGUI
         static constexpr float kButtonH    = 60.0f;
         static constexpr float kSectionH   = 20.0f;
         static constexpr float kButtonMinW = 54.0f;
-        static constexpr float kButtonMaxW = 100.0f;   // MiniCAD 为 76：BIM 的按钮名称长（"Update to Face"、西班牙语、葡萄牙语）
+        static constexpr float kButtonMaxW = 130.0f;   // MiniCAD 为 76：BIM 的按钮名称长（"Update to Face"、西班牙语、葡萄牙语的"Etiquetar por categoría"）
         static constexpr float kCollapsedW = 72.0f;
         static constexpr float kChevronW   = 26.0f;     // 选项卡行右端的收起 / 展开按钮
 

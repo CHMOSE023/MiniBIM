@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Palettes.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, apps/Common/src/GUI/Revit.cpp, apps/Common/src/GUI/RevitReport.*, apps/Common/src/GUI/OpenQueue.h, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Palettes.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Annotate.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, apps/Common/src/GUI/Recent.*, apps/Common/src/GUI/StartPage.cpp, apps/Common/src/GUI/Autosave.cpp, apps/Common/src/GUI/Settings.cpp, apps/Common/src/GUI/Shortcuts.*, apps/Common/src/GUI/ShortcutsDialog.cpp, apps/Common/src/GUI/Revit.cpp, apps/Common/src/GUI/RevitReport.*, apps/Common/src/GUI/OpenQueue.h, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, apps/Linux/src/Host/*, apps/Web/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -105,10 +105,15 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   "体量"选项卡（移植自界面的 `massing_tab`，命令 `massing.*`）：体量工具 `MainFrame::Tool::Mass` 单击底面轮廓的角点（`m_toolPts`），回到第一点或 Enter 时
   `MainFrame::FinishMass` 按选项栏的顶部（`ToolOptions::massTop`、`massHeight`，同墙）执行 `mass`；按面建模的五个按钮（体量楼层、面墙、面楼板、面屋顶、更新到面）
   只在选中了体量时可用（`MainFrame::SelectedMasses`），对每个选中的体量执行一次命令（`MainFrame::ByMass`）。显示体量随视图的图形覆盖移植
+  "注释"选项卡（移植自界面的 `annotate_tab`，命令 `annotate.*`，工具在 `Annotate.cpp`，`MainFrame::AnnotateTool`）：对齐、角度、径向尺寸单击参照
+  （`MainFrame::PickReference` 经 `ReferenceNear` / `ArcNear`，拾取的记在 `m_toolRefs`，虚线显示），够了之后在空处单击放尺寸线（`MainFrame::DimensionAt` 做预览）；
+  高程点、文字（选项栏输入文字、选文字类型）、按类别标记（单击有点可指的元素，选项栏可加引线，"全部标记"即 `MainFrame::TagAll`）；
+  详图线同墙链（选项栏选线样式），测量两下一把尺子、读数在光标旁。填充区域与遮罩区域是草图模式（`SketchOf::Region`、`SketchOf::Masking`），
+  完成时执行 `filled_region`（几个环用 `Sketch::Solve`），遮罩的用有 `masking` 的类型、不画边界线。注释的特性面板只读出它的平面与值，文字与标记的引线可改
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。
   没选东西时特性面板显示工具要放的"新建 …"，类型选择器选的是工具接下来放的类型（`ToolOptions::types`、门窗的族、构件的族与类型）
 - 草图模式（`SketchMode.cpp`，移植自界面的 `sketch.rs`）：`MainFrame::m_sketch` 有值时在草图里。入口是"修改 > 编辑边界"（`modify.editBoundary`，
-  选中一块楼板、天花板或迹线屋顶时，`MainFrame::EditBoundary` 经 `edit_boundary` 取线）与楼板、天花板、屋顶工具选项栏上的"边界线"（新建）。
+  选中一块楼板、天花板、迹线屋顶或填充区域时，`MainFrame::EditBoundary` 经 `edit_boundary` 取线）与楼板、天花板、屋顶工具选项栏上的"边界线"（新建）。
   `MainFrame::StartSketch` 换到功能区"修改"（按译文标题 `Ribbon::FindTab`）与直线工具；草图线（品红）只在 `MainFrame` 里，完成（`sketch.finish`，
   `MainFrame::FinishSketch`）时先用 `Sketch::SolveOne` 解，解不出就弹窗逐条说问题（`MainFrame::FriendlyProblems`）并把涉及的线标红，
   解得出才执行 `edit_boundary`、`floor`、`ceiling`、`roof` 的 `sketch`（保留的线带 `id`），然后选中结果回到修改；取消（`sketch.cancel`）丢掉草图。

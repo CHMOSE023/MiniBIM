@@ -22,7 +22,8 @@ namespace MiniBIM
                 { "level", N_("Level") },   { "grid", N_("Grid") },       { "wall", N_("Wall") },       { "floor", N_("Floor") },
                 { "ceiling", N_("Ceiling") }, { "door", N_("Door") },     { "window", N_("Window") },   { "room", N_("Room") },
                 { "roof", N_("Roof") },     { "component", N_("Component") }, { "roomseparator", N_("Room Separator") },
-                { "mass", N_("Mass") },
+                { "mass", N_("Mass") },       { "dimension", N_("Dimension") }, { "text", N_("Text Note") },
+                { "spot", N_("Spot Elevation") }, { "tag", N_("Tag") }, { "line", N_("Detail Line") }, { "region", N_("Filled Region") },
             };
             for (const auto& [c, label] : labels)
                 if (category == c)

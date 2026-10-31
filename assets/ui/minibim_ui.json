@@ -84,6 +84,17 @@
     "mep.patchPanel": { "icon": "PatchPanel.png" },
     "mep.cabling":    { "icon": "Cabling.png" },
     "massing.mass":   { "icon": "Mass.png" },
+    "annotate.aligned":       { "icon": "DimAligned.png" },
+    "annotate.angular":       { "icon": "DimAngular.png" },
+    "annotate.radial":        { "icon": "DimRadial.png" },
+    "annotate.spot":          { "icon": "SpotElevation.png" },
+    "annotate.detailLine":    { "icon": "DetailLine.png" },
+    "annotate.filledRegion":  { "icon": "FilledRegion.png" },
+    "annotate.maskingRegion": { "icon": "MaskingRegion.png" },
+    "annotate.text":          { "icon": "Text.png" },
+    "annotate.measure":       { "icon": "Measure.png" },
+    "annotate.tag":           { "icon": "Tag.png" },
+    "annotate.tagAll":        { "icon": "TagAll.png" },
     "massing.floors": { "icon": "MassFloors.png" },
     "massing.wallByFace":   { "icon": "WallByFace.png" },
     "massing.floorByFace":  { "icon": "FloorByFace.png" },
@@ -163,6 +174,19 @@
             { "title": "Select", "items": [ "modify.select" ] },
             { "title": "Outlets & Equipment", "items": [ "mep.dataOutlet", "mep.voiceOutlet", "mep.rack", "mep.patchPanel" ] },
             { "title": "Cabling", "items": [ "mep.cableTray", "mep.cabling" ] }
+          ]
+        },
+        // 注释：标高平面里的尺寸、详图线、区域、文字、测量与标记
+        {
+          "title": "Annotate",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Dimension", "items": [ "annotate.aligned", "annotate.angular", "annotate.radial", "annotate.spot" ] },
+            { "title": "Detail", "items": [ "annotate.detailLine" ] },
+            { "title": "Region", "items": [ "annotate.filledRegion", "annotate.maskingRegion" ] },
+            { "title": "Text", "items": [ "annotate.text" ] },
+            { "title": "Measure", "items": [ "annotate.measure" ] },
+            { "title": "Tag", "items": [ "annotate.tag", "annotate.tagAll" ] }
           ]
         },
         // 体量：概念体量；按面建模对选中的体量（没选体量时灰掉）。显示体量随视图的可见性移植

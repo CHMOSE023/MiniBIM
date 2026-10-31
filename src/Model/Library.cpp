@@ -235,6 +235,16 @@ namespace MiniBIM::Bim
         for (const auto& [f, fam] : families)
             for (const Fam::Parameter& p : fam.parameters)
                 out.emplace_back(Kind::Of(Kind::Tag::FamilyParameter), f + ": " + p.name);
+        for (const auto& [n, _] : linePatterns)
+            out.emplace_back(Kind::Of(Kind::Tag::LinePattern), n);
+        for (const auto& [n, _] : lineStyles)
+            out.emplace_back(Kind::Of(Kind::Tag::LineStyle), n);
+        for (const auto& [n, _] : fillPatterns)
+            out.emplace_back(Kind::Of(Kind::Tag::FillPattern), n);
+        for (const auto& [n, _] : regionTypes)
+            out.emplace_back(Kind::Of(Kind::Tag::FilledRegionType), n);
+        for (const auto& [n, _] : textTypes)
+            out.emplace_back(Kind::Of(Kind::Tag::TextType), n);
         return out;
     }
 
@@ -538,6 +548,14 @@ namespace MiniBIM::Bim
             if (changed)
                 *elements.GetMut(id) = std::move(copy);
         }
+        // 线样式的图案、填充区域类型的前景与背景图案
+        for (auto& [_, s] : lineStyles)
+            if (s.pattern)
+                f(Kind::Of(Kind::Tag::LinePattern), *s.pattern);
+        for (auto& [_, t] : regionTypes)
+            for (std::optional<std::string>* p : { &t.foreground, &t.background })
+                if (*p)
+                    f(Kind::Of(Kind::Tag::FillPattern), **p);
         const Kind material = Kind::Of(Kind::Tag::Material);
         for (auto& [_, x] : types.wall)
             for (Layer& l : x.layers)

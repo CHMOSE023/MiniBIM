@@ -175,6 +175,7 @@ namespace MiniBIM
         m_placeCentre  = false;
         m_alignRef.reset();
         m_trimFirst.reset();
+        m_toolRefs.clear();
         m_typedLength.clear();
         m_found.reset();
         BuildOptionsBar();
@@ -221,11 +222,12 @@ namespace MiniBIM
     {
         if (!m_typedLength.empty())
             m_typedLength.clear();
-        else if (!m_toolPts.empty() || m_alignRef || m_trimFirst)
+        else if (!m_toolPts.empty() || m_alignRef || m_trimFirst || !m_toolRefs.empty())
         {
             m_toolPts.clear();
             m_alignRef.reset();
             m_trimFirst.reset();
+            m_toolRefs.clear();
         }
         else if (m_tool != Tool::Modify)
         {
@@ -306,6 +308,17 @@ namespace MiniBIM
                                                         : N_("Click the line's end, or type a length and press Enter; back at the start closes the loop. Enter or Esc ends the chain.");
         case Tool::SketchRect: return m_toolPts.empty() ? N_("Click the rectangle's first corner.") : N_("Click the opposite corner.");
         case Tool::SketchPick: return N_("Pick walls: each adds a line along the wall's location line.");
+        case Tool::Dimension: return m_toolRefs.size() < 2 ? N_("Pick parallel wall faces, wall ends, doors, windows or grid lines to dimension.")
+                                                           : N_("Pick another reference, or click away from them where the dimension line goes. Esc starts over.");
+        case Tool::Angular:   return m_toolRefs.size() < 2 ? N_("Pick two lines that meet: wall faces, wall centre lines or grid lines.")
+                                                           : N_("Click where the arc goes. Esc starts over.");
+        case Tool::Radial:    return m_toolRefs.empty() ? N_("Pick a round column's edge.") : N_("Click where the radius line goes. Esc starts over.");
+        case Tool::Spot:      return N_("Click a floor, a roof, a stair, a wall or a column to read its top's elevation.");
+        case Tool::Text:      return N_("Type the note in the Options Bar, then click where it goes.");
+        case Tool::Tag:       return N_("Click an element to tag it; Tag All tags the doors and windows that have none.");
+        case Tool::DetailLine: return m_toolPts.empty() ? N_("Click the line's start.")
+                                                        : N_("Click the line's end, or type a length and press Enter. Enter or Esc ends the chain.");
+        case Tool::Measure:   return m_toolPts.size() == 1 ? N_("Click the second point.") : N_("Click the first point to measure from.");
         }
         return "";
     }
@@ -374,6 +387,10 @@ namespace MiniBIM
             { Tool::MirrorDraw, N_("Modify | Mirror Draw Axis") }, { Tool::Align, N_("Modify | Align") },
             { Tool::Trim, N_("Modify | Trim/Extend to Corner") }, { Tool::Split, N_("Modify | Split Element") },
             { Tool::Offset, N_("Modify | Offset") },         { Tool::Mass, N_("Modify | Create Mass") },
+            { Tool::Dimension, N_("Modify | Place Dimensions") }, { Tool::Angular, N_("Modify | Place Dimensions") },
+            { Tool::Radial, N_("Modify | Place Dimensions") }, { Tool::Spot, N_("Modify | Spot Elevation") },
+            { Tool::Text, N_("Modify | Place Text") },       { Tool::Tag, N_("Modify | Tag") },
+            { Tool::DetailLine, N_("Modify | Place Detail Lines") }, { Tool::Measure, N_("Modify | Measure") },
         };
         const std::string unit = Bim::UnitsOf::Name(m.units);
         // 高度：上面的某个标高（没选时上一层），或未连接时输入的高度（墙、柱）
@@ -409,11 +426,32 @@ namespace MiniBIM
             if (!now)
                 field(height, 70.0f, unit);
         };
+        // 库条目（线样式、文字类型……）的下拉框：选的记进 into，没选或已不在时显示 fallback
+        auto named = [&](const std::vector<std::string>& names, std::string& into, const std::string* fallback, float width)
+        {
+            int at = 0;
+            for (size_t i = 0; i < names.size(); ++i)
+                if (names[i] == into || (fallback && names[i] == *fallback && std::find(names.begin(), names.end(), into) == names.end()))
+                    at = static_cast<int>(i);
+            combo(names, at, width, [names, &into](int i)
+            {
+                if (i >= 0)
+                    into = names[static_cast<size_t>(i)];
+            });
+        };
+        auto keys = [](const auto& map)
+        {
+            std::vector<std::string> out;
+            for (const auto& [name, _] : map)
+                out.push_back(name);
+            return out;
+        };
         // 草图模式：画的是什么、完成与取消；新建天花板、屋顶时还有它们的设置
         if (m_sketch)
         {
             static const char* const titles[] = { N_("Modify | Create Floor Boundary"), N_("Modify | Create Ceiling Boundary"),
-                                                  N_("Modify | Create Roof Footprint"), N_("Modify | Edit Boundary") };
+                                                  N_("Modify | Create Roof Footprint"), N_("Modify | Edit Boundary"),
+                                                  N_("Modify | Create Filled Region Boundary"), N_("Modify | Create Masking Region Boundary") };
             bar->AddChild<Label>(Tr(titles[static_cast<size_t>(m_sketch->of)]), 13.0f)->SetBold(true);
             bar->AddChild<Separator>(true);
             // 完成、取消会重建选项栏：等这个按钮的回调回去之后再做
@@ -428,6 +466,16 @@ namespace MiniBIM
             {
                 label(Tr("Slope:"));
                 field(m_toolOpt.roofSlope, 50.0f, "°");
+            }
+            // 填充区域的类型（遮罩的除外）
+            else if (m_sketch->of == SketchOf::Region)
+            {
+                std::vector<std::string> types;
+                for (const auto& [name, t] : m.regionTypes)
+                    if (!t.masking)
+                        types.push_back(name);
+                label(Tr("Type:"));
+                named(types, m_toolOpt.regionType, Bim::Fills::DefaultRegionType(m.regionTypes, m.language), 150.0f);
             }
             return;
         }
@@ -595,6 +643,22 @@ namespace MiniBIM
             label(Tr("Offset:"));
             field(m_modifyOpt.offset, 80.0f, unit);
             check(Tr("Copy"), m_modifyOpt.offsetCopy);
+            break;
+        // 文字：写什么、用哪个文字类型
+        case Tool::Text:
+            label(Tr("Text:"));
+            field(m_toolOpt.noteText, 240.0f, Tr("the note"));
+            label(Tr("Type:"));
+            named(keys(m.textTypes), m_toolOpt.textType, Bim::TextTypes::Default(m.textTypes), 130.0f);
+            break;
+        case Tool::Tag:
+            check(Tr("Leader"), m_toolOpt.tagLeader);
+            bar->AddChild<Button>(Tr("Tag All"), [this] { m_platform->Post([this] { TagAll(); }); });
+            break;
+        case Tool::DetailLine:
+            label(Tr("Line Style:"));
+            named(keys(m.lineStyles), m_toolOpt.lineStyle, Bim::Lines::DefaultStyle(m.lineStyles, m.language), 150.0f);
+            check(Tr("Chain"), m_toolOpt.chain);
             break;
         case Tool::Level:
         {
@@ -863,10 +927,38 @@ namespace MiniBIM
         case Tool::SketchLine:
             SketchPoint(p);
             break;
+        // 详图线：同墙链；测量：两下一把尺子，再一下重量
+        case Tool::DetailLine:
+        {
+            if (m_toolPts.empty())
+            {
+                m_toolPts.push_back(p);
+                break;
+            }
+            const Bim::P2 last = m_toolPts.back();
+            if (last.Dist(p) <= Bim::Tol)
+                break;
+            Bim::Json params{ { "start", Pt(last) }, { "end", Pt(p) }, { "level", level } };
+            if (m.lineStyles.contains(m_toolOpt.lineStyle))
+                params["style"] = m_toolOpt.lineStyle;
+            if (RunCommand("detail_line", params, N_("Could not draw the detail line")))
+            {
+                if (m_toolOpt.chain)
+                    m_toolPts.push_back(p);
+                else
+                    m_toolPts.clear();
+            }
+            break;
+        }
+        case Tool::Measure:
+            if (m_toolPts.size() >= 2)
+                m_toolPts.clear();
+            if (m_toolPts.empty() || m_toolPts.back().Dist(p) > Bim::Tol)
+                m_toolPts.push_back(p);
+            break;
         default:
             break;
         }
-        (void)m;
         UpdateStatus();
         if (m_viewport)
             m_viewport->RequestRender();
@@ -884,8 +976,15 @@ namespace MiniBIM
         m_typedLength.clear();
         switch (m_tool)
         {
-        case Tool::Wall: case Tool::Grid: case Tool::Run: case Tool::Mass:
+        case Tool::Wall: case Tool::Grid: case Tool::Run: case Tool::Mass: case Tool::DetailLine:
             PlacePoint(SnapAt(pixel, m_toolPts, shift).at);
+            return;
+        // 测量的第二下从第一下量；量完的尺子不算起点
+        case Tool::Measure:
+            PlacePoint(SnapAt(pixel, m_toolPts.size() == 1 ? std::span<const Bim::P2>(m_toolPts) : std::span<const Bim::P2>(), shift).at);
+            return;
+        case Tool::Dimension: case Tool::Angular: case Tool::Radial: case Tool::Spot: case Tool::Text: case Tool::Tag:
+            AnnotateClick(pixel, modifiers);
             return;
         case Tool::Column: case Tool::Component: case Tool::Stand:
             PlacePoint(SnapAt(pixel, {}, false).at);
@@ -1014,8 +1113,8 @@ namespace MiniBIM
         case Key::Enter:
             if (!m_typedLength.empty())
                 PlaceTyped();
-            else if (m_tool == Tool::Wall || m_tool == Tool::SketchLine || m_tool == Tool::Run)
-                m_toolPts.clear();      // 结束墙链、草图线链、run 的链
+            else if (m_tool == Tool::Wall || m_tool == Tool::SketchLine || m_tool == Tool::Run || m_tool == Tool::DetailLine)
+                m_toolPts.clear();      // 结束墙链、草图线链、run 与详图线的链
             else if (m_tool == Tool::Mass && m_toolPts.size() >= 3)
                 FinishMass();
             break;
@@ -1047,7 +1146,8 @@ namespace MiniBIM
     bool MainFrame::OnPlanText(std::string_view text)
     {
         // 画了起点之后输入的是长度（Enter 时用）；空格转构件，不算
-        if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid && m_tool != Tool::SketchLine && m_tool != Tool::Run && m_tool != Tool::Mass) ||
+        if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid && m_tool != Tool::SketchLine && m_tool != Tool::Run && m_tool != Tool::Mass &&
+                                   m_tool != Tool::DetailLine) ||
             text == " " ||
             m_typedLength.size() > 40)
             return false;
@@ -1146,6 +1246,13 @@ namespace MiniBIM
         if (m_sketch)
         {
             BuildSketchPreview(d, tip);
+            showTip();
+            return;
+        }
+        // 注释工具：拾取的参照、会放下的注释（Annotate.cpp）
+        if (AnnotateTool(m_tool))
+        {
+            BuildAnnotatePreview(d, tip);
             showTip();
             return;
         }

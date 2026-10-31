@@ -14,7 +14,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Geom.h` | `geom.rs`、`walls.rs` 的 `Plane` | 平面几何：`P2`、环、面积、裁剪、三角剖分、平面图的面、区域 |
 | `src/Model/Units.h`、`src/Model/Language.h` | `units.rs`、`language.rs` | 项目单位（显示与输入）、项目语言（新名称用的词） |
 | `src/Model/Ids.h` | `ids.rs` | `Id`、`Guid`、`Elements`（按 ID 或 GUID 找元素） |
-| `src/Model/Model.h` | `model.rs` | 元素（标高、轴网、墙、楼板、天花板、门、窗、房间、房间分隔线、屋顶、构件、柱、结构柱、独立基础、九类 run、体量）、类型、材质、`Model::Check`；屋顶的坡面、房间的区域、构件与带族门窗的实体 |
+| `src/Model/Model.h` | `model.rs` | 元素（标高、轴网、墙、楼板、天花板、门、窗、房间、房间分隔线、屋顶、构件、柱、结构柱、独立基础、九类 run、体量；注释：尺寸、文字、高程点、标记、详图线、填充区域）、类型、材质、`Model::Check`；屋顶的坡面、房间的区域、构件与带族门窗的实体 |
 | `src/Model/Family.h` | `family.rs` | 族（`Bim::Family` 与 `Bim::Fam` 里的参数、公式、形体、符号）：公式求值、参数取值、检查、扫掠与旋转出三角形 |
 | `src/Model/Csg.h` | `csg.rs` | 族的空心形体用的网格布尔运算（BSP，工作表不递归，`Csg::Meter` 限制花费） |
 | `src/Model/FamilyLibrary.cpp` | `family.rs` 的 library、`fixtures.rs` | 新项目带的 34 个族：家具 10、门窗 6、各专业的器具 18 |
@@ -23,6 +23,9 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Snap.h` | `snap.rs` | 捕捉：平面上点下的点落在哪（端点、中点、交点、圆心、垂足、墙中心线、角度引导线、最近的 10 毫米），标尺的读数与刻度 |
 | `src/Model/Sketch.h` | `sketch.rs` | 草图：零散的直线与圆弧（`SketchLine`）解成闭合的环、嵌套成轮廓与洞（`Sketch::Solve`、`Sketch::SolveOne`），解不出时列出每个问题（相交、重叠、分叉、开口、没有面积、几个外轮廓）与涉及的线 |
 | `src/Model/Massing.h` | `massing.rs` | 体量做出的元素的记号（`Massing::FloorMark`、`Massing::Face`）、按面重建（`Massing::Follow`）、放样的轮廓与三角形、竖直的面、放样的检查 |
+| `src/Model/Styles.h` | `lines.rs`、`fills.rs`、`model.rs` 的 `TextType` | 注释的库条目：线型图案、线样式、填充图案、填充区域类型、文字类型，各语言的默认条目与检查 |
+| `src/Model/Curve.h` | `curves.rs` | 详图线的曲线：多段线（每段直线或圆弧）与圆；长度、映射、检查（椭圆与样条没有移植，读文件时略去那条线） |
+| `src/Model/Annotate.cpp` | `model.rs`、`render.rs` 的注释部分 | 注释在哪个平面、标记写什么、尺寸量到的线与值、高程点读谁、元素在平面上的点（`Model::Anchor`） |
 | `src/Model/Font.h` | `font.rs` | 平面图注释用的单线字（拉丁、西里尔大写，附加符号；没有的字画问号） |
 | `src/Model/Skeleton.h` | `skeleton.rs` | 多边形（含天井）的直骨架：坡屋顶的斜脊、天沟、屋脊与各坡面 |
 | `src/Model/Library.h` | `library.rs` | 库条目（类型、材质）与部件（类型的层）的 ID、GUID |
@@ -83,6 +86,16 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   复制、拆开的是普通元素（`Massing::Detach`），删掉体量时记号拿掉（`Massing::Forget`，要在删之前调，`Model::Same` 认元素要它还在），
   原地镜像的体量轮廓反着走、它的墙记着的边重新编号（`Massing::Mirrored`）。`update_by_face` 经 `Massing::Follow` 照体量现在的样子重建，面没了或斜了时整个拒绝。
   平面：剖切面穿过时那里的轮廓画虚线（`Render::MassColor`），捕捉它的角点，对齐认底面轮廓的边
+- 注释（5d，移植自 `model.rs`、`lines.rs`、`fills.rs`、`render.rs`）：`Dimension`（对齐、角度、径向，`Reference` 为元素的 GUID 与 `Face`）、`Note`（文字）、
+  `Spot`（高程点）、`Tag`（标记）、`DetailLine`（详图线）、`FilledRegion`（填充区域，草图可以是几个环，`Sketch::Solve`）；`Element::IsAnnotation`。
+  MiniBIM 还没有平面视图元素（随 5e），注释的视图是一个标高的 GUID（它自己的平面，`Model::AnnotationPlan`、`Model::AnnotationIn`）：`Dimension::view` 与 `Tag::view`
+  必须为空，读 BIMCraft 文件时在别的视图（平面视图、剖面、立面、图纸）里的注释、引用的东西已不在的标记与高程点略去，尺寸去掉不在的参照、不够时略去。
+  库条目 `Model::linePatterns`、`lineStyles`、`fillPatterns`、`regionTypes`、`textTypes` 写进项目文件；项目语言不是英语而文件里的正是英文默认条目时换成那种语言的。
+  文字的大小是文字类型的（`TextTypes::ForSize`：BIMCraft 旧文件里文字自带的 `size` 读入时换成同样大小的类型，没有时建一个 "<大小>mm"）。
+  文字用单线字（`Font.h`）画；样式的命令（线样式、填充图案、文字类型以外的库条目）随 5f。命令 `dimension`（DI）、`tag`（TG，不给 `id` 时标记全部）、`text`（TX）、
+  `text_type`、`spot`（EL）、`detail_line`（DL）、`filled_region`（FR）、`measure`（ME，不改模型）；`edit_boundary` 也编辑填充区域。
+  移动、复制、镜像、旋转、翻转跟着改注释（`Transformed`、`TagHeads`、`PlaceTag`）；删除连带：标记随宿主，尺寸随标高、参照少于两条时，别的随它的平面。
+  `ReferenceNear`、`ArcNear`（`Commands.h`）是 `dimension` 把点认成参照的办法，界面的尺寸工具也用
 - 捕捉 `Snap::At`：场景里只有已移植的元素（墙、轴网、构件、柱、楼板、天花板、屋顶），草图模式里界面另给还没进模型的草图线（`extraLines`、`extraPoints`）；
   详图线的象限点与切点、点云、视图隐藏的元素随那些模块移植。放门窗：`OpeningOf`（`door` / `window` 命令做出的门窗，不放进模型）、`Model::OpeningSpan`（它所在的一段墙）、
   `Model::Centred`（离中点近时吸过去）
@@ -123,7 +136,7 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 - `CommandTests`（`tests/Commands/CommandTests.cpp`）：像前端一样经命令驱动（移植自 BIMCraft 的 `tests.rs`、`render.rs` 的测试）：撤销、脚本、事务、建模、编辑、平面图与拾取、
   项目文件（含打开 BIMCraft 文件时略去的内容）、示例房屋、恶意参数扫描，结构（`TestStructure`）与 MEP（`TestMep`：七类 run 的命令、
   被拒、类型、编辑、平面与捕捉，起步设备族在各语言里都有、每个类型的形体高度对）与体量（`TestMassing`：体量、体量楼层再跑与 prune、按面建模、
-  `update_by_face`、放样）
+  `update_by_face`、放样）与注释（`TestAnnotations`：各注释命令、删除标高的连带、项目文件往返与平面、BIMCraft 旧文件的文字大小与别的视图里的注释、测量）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

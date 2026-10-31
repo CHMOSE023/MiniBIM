@@ -733,6 +733,101 @@ def _(i):
     i.poly([(40, 10), (50, 16), (40, 22)], A, A, w=2)
 
 
+def dim_ticks(i, x0, y0, x1, y1, c=A, w=3.5):
+    """尺寸线两端的斜短划（建筑尺寸的记号）"""
+    for x, y in ((x0, y0), (x1, y1)):
+        i.line([(x - 4, y + 4), (x + 4, y - 4)], c, w)
+
+
+@icon("DimAligned")        # annotate.aligned：对齐尺寸（两面灰色的墙，之间一条带斜短划的强调尺寸线）
+def _(i):
+    i.rect(6, 30, 14, 58, G, GF, w=3)
+    i.rect(50, 30, 58, 58, G, GF, w=3)
+    i.line([(10, 26), (10, 12)], G, 2.5); i.line([(54, 26), (54, 12)], G, 2.5)
+    i.line([(6, 18), (58, 18)], A, 3.5)
+    dim_ticks(i, 10, 18, 54, 18)
+
+
+@icon("DimAngular")        # annotate.angular：角度尺寸（两条相交的灰线，夹角里一段强调的弧）
+def _(i):
+    i.line([(8, 54), (58, 54)], G, 3.5)
+    i.line([(8, 54), (44, 12)], G, 3.5)
+    i.arc(8, 54, 34, -49, 0, A, 3.5)
+    i.dot(42, 54, 3); i.dot(30, 28, 3)
+
+
+@icon("DimRadial")         # annotate.radial：径向尺寸（灰色的圆柱，圆心到边一条带箭头的强调半径线）
+def _(i):
+    i.circle(32, 32, 22, G, GF, w=3.5)
+    i.dot(32, 32, 3)
+    i.arrow(32, 32, 47.5, 16.5, A, 3.5, 9)
+
+
+@icon("SpotElevation")     # annotate.spot：高程点（一块灰色的板，上面强调的三角记号与引线）
+def _(i):
+    i.poly([(6, 48), (40, 48), (58, 40), (24, 40)], G, GF, w=3)
+    i.poly([(26, 42), (20, 32), (32, 32)], A, AF, w=3)
+    i.line([(20, 32), (56, 32)], A, 3)
+    i.line([(32, 12), (56, 12)], G, 3); i.line([(32, 20), (50, 20)], G, 3)
+
+
+@icon("DetailLine")        # annotate.detailLine：详图线（一根强调的折线，两端的点，旁边一支灰色的笔）
+def _(i):
+    i.line([(8, 52), (24, 30), (40, 40), (56, 14)], A, 3.5)
+    for x, y in ((8, 52), (24, 30), (40, 40), (56, 14)):
+        i.dot(x, y, 3.5)
+
+
+@icon("FilledRegion")      # annotate.filledRegion：填充区域（灰框的一块，里面强调的斜线图案）
+def _(i):
+    i.rect(8, 8, 56, 56, G, AF, w=3.5)
+    for c in range(24, 112, 12):            # 斜线 x + y = c，截在框里
+        x0, x1 = max(10, c - 54), min(54, c - 10)
+        if x1 > x0:
+            i.line([(x0, c - x0), (x1, c - x1)], A, 2.5)
+
+
+@icon("MaskingRegion")     # annotate.maskingRegion：遮罩区域（灰色的线到强调的框就断开：框里的被盖住）
+def _(i):
+    for y in (14, 26, 38, 50):
+        if 20 < y < 44:
+            i.line([(6, y), (14, y)], G, 3); i.line([(50, y), (58, y)], G, 3)
+        else:
+            i.line([(6, y), (58, y)], G, 3)
+    i.rect(18, 20, 46, 44, A, w=3.5)
+
+
+@icon("Text")              # annotate.text：文字（一个大写的 A，下面两行灰色的字）
+def _(i):
+    i.line([(14, 40), (26, 8), (38, 40)], A, 4)
+    i.line([(19, 28), (33, 28)], A, 3.5)
+    i.line([(8, 48), (56, 48)], G, 3); i.line([(8, 56), (42, 56)], G, 3)
+
+
+@icon("Measure")           # annotate.measure：测量（一把斜放的尺子，刻度强调）
+def _(i):
+    i.poly([(4, 44), (44, 4), (60, 20), (20, 60)], G, GF, w=3)
+    for k in range(1, 6):
+        x, y = 4 + k * 6.7, 44 - k * 6.7
+        L = 9 if k % 2 else 5
+        i.line([(x, y), (x + L * 0.7, y + L * 0.7)], A, 3)
+
+
+@icon("Tag")               # annotate.tag：按类别标记（灰色的门洞，旁边一个强调的标记框）
+def _(i):
+    i.line([(6, 48), (20, 48)], G, 4); i.line([(44, 48), (58, 48)], G, 4)
+    i.arc(20, 48, 22, 270, 360, G, 2.5); i.line([(20, 48), (20, 26)], G, 3)
+    i.rect(34, 8, 58, 24, A, AF, w=3.5, r=4)
+    i.line([(40, 16), (52, 16)], A, 3)
+
+
+@icon("TagAll")            # annotate.tagAll：全部标记（斜排的三个强调标记框）
+def _(i):
+    for x, y in ((4, 42), (20, 24), (36, 6)):
+        i.rect(x, y, x + 24, y + 16, A, AF, w=3, r=4)
+        i.line([(x + 6, y + 8), (x + 18, y + 8)], A, 3)
+
+
 @icon("Materials")         # manage.materials：材质（三个色块的球，一块强调）
 def _(i):
     i.circle(32, 32, 24, G, w=3.5)

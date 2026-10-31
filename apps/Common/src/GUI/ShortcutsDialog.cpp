@@ -46,7 +46,9 @@ namespace MiniBIM
             { "wire", "mep.wire" }, { "down_conductor", "mep.downConductor" }, { "ground_conductor", "mep.groundConductor" },
             { "cabling", "mep.cabling" }, { "mass", "massing.mass" }, { "mass_floors", "massing.floors" },
             { "wall_by_face", "massing.wallByFace" }, { "floor_by_face", "massing.floorByFace" }, { "roof_by_face", "massing.roofByFace" },
-            { "update_by_face", "massing.updateByFace" },
+            { "update_by_face", "massing.updateByFace" }, { "dimension", "annotate.aligned" }, { "spot", "annotate.spot" },
+            { "detail_line", "annotate.detailLine" }, { "filled_region", "annotate.filledRegion" }, { "text", "annotate.text" },
+            { "measure", "annotate.measure" }, { "tag", "annotate.tag" },
         };
 
         const char* ToolOf(std::string_view bimCommand)

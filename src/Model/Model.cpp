@@ -439,6 +439,12 @@ namespace MiniBIM::Bim
             const char* operator()(const GroundConductor&) const { return "groundconductor"; }
             const char* operator()(const Cable&) const { return "cable"; }
             const char* operator()(const Mass&) const { return "mass"; }
+            const char* operator()(const Dimension&) const { return "dimension"; }
+            const char* operator()(const Note&) const { return "text"; }
+            const char* operator()(const Spot&) const { return "spot"; }
+            const char* operator()(const Tag&) const { return "tag"; }
+            const char* operator()(const DetailLine&) const { return "line"; }
+            const char* operator()(const FilledRegion&) const { return "region"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -479,6 +485,26 @@ namespace MiniBIM::Bim
                 f(ms.level);
                 if (ms.topLevel) f(*ms.topLevel);
             }
+            void operator()(Dimension& d) const
+            {
+                f(d.level);
+                if (d.view) f(*d.view);
+                for (Reference& r : d.refs)
+                    f(r.id);
+            }
+            void operator()(Note& n) const { f(n.view); }
+            void operator()(Spot& s) const
+            {
+                f(s.view);
+                if (s.host) f(*s.host);
+            }
+            void operator()(Tag& t) const
+            {
+                f(t.host);
+                if (t.view) f(*t.view);
+            }
+            void operator()(DetailLine& l) const { f(l.view); }
+            void operator()(FilledRegion& r) const { f(r.view); }
             void operator()(Component& c) const { f(c.level); }
             void operator()(Column& c) const { Stood(c); }
             void operator()(StructuralColumn& c) const { Stood(c); }
@@ -533,6 +559,19 @@ namespace MiniBIM::Bim
             f(Kind::Type(category), col->typeName);
         else if (Run* r = AsRun())
             f(Kind::Type(category), r->typeName);
+        else if (Note* n = As<Note>())
+            f(Kind::Of(Kind::Tag::TextType), n->typeName);
+        else if (DetailLine* l = As<DetailLine>())
+            f(Kind::Of(Kind::Tag::LineStyle), l->style);
+        else if (FilledRegion* r = As<FilledRegion>())
+        {
+            f(Kind::Of(Kind::Tag::FilledRegionType), r->typeName);
+            if (r->lineStyle)
+                f(Kind::Of(Kind::Tag::LineStyle), *r->lineStyle);
+            for (SketchLine& l : r->sketch)
+                if (l.style)
+                    f(Kind::Of(Kind::Tag::LineStyle), *l.style);
+        }
     }
 
     const std::vector<SketchLine>* Element::SketchOf() const
@@ -542,6 +581,8 @@ namespace MiniBIM::Bim
         if (const Ceiling* c = As<Ceiling>())
             return &c->sketch;
         if (const Roof* r = As<Roof>())
+            return &r->sketch;
+        if (const FilledRegion* r = As<FilledRegion>())
             return &r->sketch;
         return nullptr;
     }
@@ -669,6 +710,11 @@ namespace MiniBIM::Bim
         m.name     = std::string(name);
         m.uid      = FreshUid();
         m.language = language;
+        m.linePatterns = Lines::Patterns(language);
+        m.lineStyles   = Lines::Styles(language);
+        m.fillPatterns = Fills::Patterns(language);
+        m.regionTypes  = Fills::RegionTypes(language);
+        m.textTypes    = TextTypes::Defaults(language);
         // 起步的材质库：各自的颜色、剖切面图案、表面图案（BIMCraft 的贴图以后移植）
         struct Start
         {
@@ -1213,6 +1259,16 @@ namespace MiniBIM::Bim
                 return std::nullopt;
             return w->level;
         }
+        if (const Dimension* d = e.As<Dimension>())
+            return d->level;
+        if (const Tag* t = e.As<Tag>())
+        {
+            const Element* h = elements.Get(t->host);
+            return h && !h->As<Tag>() ? LevelOf(*h) : std::nullopt;
+        }
+        // 文字、高程点、详图线、填充区域在标高的平面里
+        if (const auto plan = AnnotationPlan(e); plan && GetLevel(*plan))
+            return GuidOf(*plan);
         return std::nullopt;
     }
 
@@ -1978,6 +2034,8 @@ namespace MiniBIM::Bim
                 return false;
             }
         }
+        if (!CheckStyles(error))
+            return false;
         for (const auto& [n, t] : types.ceiling)
         {
             // 更细的格子每隔几个像素就画一条线，大天花板上有几百万条
@@ -2091,6 +2149,11 @@ namespace MiniBIM::Bim
                         return false;
                     }
                 }
+            }
+            else if (e.IsAnnotation())
+            {
+                if (!CheckAnnotation(who, e, error))
+                    return false;
             }
             else if (const Ceiling* c = e.As<Ceiling>())
             {
