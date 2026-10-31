@@ -29,6 +29,7 @@ add_library(MiniBIMApp STATIC
     src/GUI/Recent.cpp
     src/GUI/StartPage.cpp
     src/GUI/Autosave.cpp
+    src/GUI/Settings.cpp
 )
 
 target_include_directories(MiniBIMApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${MINIBIM_VERSION_DIR})

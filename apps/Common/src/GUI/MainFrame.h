@@ -266,6 +266,9 @@ namespace MiniBIM
 
         void LoadSettings();
         void SaveSettings() const;
+        // 文件 > 设置（Settings.cpp）；主题按 m_themeSetting
+        void OpenSettings();
+        void ApplyTheme();
         std::string SettingsPath() const;
 
         // ── 最近打开（Recent.h，存在用户设置目录的 recent.json）──────────
@@ -318,6 +321,7 @@ namespace MiniBIM
         std::string                     m_uiError;            // 界面描述文件读不出或写错时的原因（状态栏显示）
 
         std::string m_languageSetting;                        // 用户选的语言，空 = 跟随系统
+        std::string m_themeSetting = "dark";                  // 界面主题：dark、light
         std::string m_languageOverride;
         std::vector<std::string> m_startupCommands;
         RecentFiles m_recent;

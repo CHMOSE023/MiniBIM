@@ -99,6 +99,7 @@ namespace MiniBIM
     void MainFrame::InitUI()
     {
         m_ui = std::make_unique<MiniGUI::UIContext>(&m_platform->GetUiBackend());
+        ApplyTheme();
         if (!m_platform->LoadUiFonts(m_ui->GetTextSystem()))
             LOG_ERROR("MainFrame: 没有找到界面字体");
         AppPlatform* platform = m_platform;
@@ -263,6 +264,8 @@ namespace MiniBIM
             return;
         }
         m_languageSetting = doc["language"].AsString("");
+        if (const std::string theme = doc["theme"].AsString(""); theme == "light" || theme == "dark")
+            m_themeSetting = theme;
         const double minutes = doc["autosave_minutes"].AsNumber(m_autosave.minutes);
         if (minutes >= 0 && minutes <= 120)
             m_autosave.minutes = static_cast<int>(minutes);
@@ -277,6 +280,7 @@ namespace MiniBIM
         std::filesystem::create_directories(ToPath(path).parent_path(), ec);
         MiniGUI::JsonValue doc = MiniGUI::JsonValue::MakeObject();
         doc.Set("language", m_languageSetting);
+        doc.Set("theme", m_themeSetting);
         doc.Set("autosave_minutes", static_cast<double>(m_autosave.minutes));
         std::ofstream out(ToPath(path), std::ios::binary | std::ios::trunc);
         out << doc.Dump(2) << '\n';

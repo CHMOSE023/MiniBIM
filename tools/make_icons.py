@@ -204,6 +204,18 @@ def _(i):
     i.arrow(44, 32, 8, 32, A, 4.5, 10)
 
 
+@icon("Settings")          # file.settings：设置（一个八齿的齿轮，中间的轴孔强调）
+def _(i):
+    import math
+    pts = []
+    for k in range(8):
+        for da, r in ((-0.22, 18), (-0.14, 26), (0.14, 26), (0.22, 18)):
+            a = k * math.pi / 4 + da
+            pts.append((32 + r * math.cos(a), 32 + r * math.sin(a)))
+    i.poly(pts, G, GF, w=3.5)
+    i.circle(32, 32, 8, A, AF, w=3.5)
+
+
 @icon("SampleHouse")       # file.sample：示例房屋（等轴测的房子，墙上一扇门）
 def _(i):
     cube(i, fill_all=True)

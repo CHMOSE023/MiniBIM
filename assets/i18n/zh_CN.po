@@ -17,7 +17,7 @@ msgstr "新建"
 msgid "Open"
 msgstr "打开"
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Settings.cpp
 msgid "Autosave"
 msgstr "自动保存"
 
@@ -293,7 +293,7 @@ msgstr "展开功能区（双击选项卡也可以）"
 msgid "Search commands"
 msgstr "搜索命令"
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp
 msgid "Close"
 msgstr "关闭"
 
@@ -626,6 +626,14 @@ msgid "The start page: new, open and the recent files; again to go back to the p
 msgstr "开始页：新建、打开与最近打开的文件；再点一次回到项目"
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Settings..."
+msgstr "设置..."
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The window's own settings: theme, language, palettes, autosave"
+msgstr "窗口自己的设置：主题、语言、面板、自动保存"
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Exit"
 msgstr "退出"
 
@@ -849,7 +857,7 @@ msgstr "缩放匹配"
 msgid "Fit the whole model in the view without changing the direction"
 msgstr "方向不变，整个模型放进视图"
 
-#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Properties"
 msgstr "特性"
 
@@ -857,7 +865,7 @@ msgstr "特性"
 msgid "Show or hide the Properties palette"
 msgstr "显示或隐藏特性面板"
 
-#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp
 msgid "Project Browser"
 msgstr "项目浏览器"
 
@@ -939,7 +947,7 @@ msgstr "无法搭建示例房屋"
 msgid "View"
 msgstr "视图"
 
-#: apps/Common/src/GUI/MainFrame.cpp
+#: apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp
 msgid "System Default"
 msgstr "跟随系统"
 
@@ -1385,6 +1393,58 @@ msgstr[0] "{0} 个月前"
 msgid "{0} year ago"
 msgid_plural "{0} years ago"
 msgstr[0] "{0} 年前"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "User Interface"
+msgstr "界面"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Files"
+msgstr "文件"
+
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Settings"
+msgstr "设置"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Theme"
+msgstr "主题"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Dark"
+msgstr "深色"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Light"
+msgstr "浅色"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The views keep their own colours."
+msgstr "视图保持自己的颜色。"
+
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Language"
+msgstr "语言"
+
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Palettes"
+msgstr "面板"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Autosave in the background"
+msgstr "在后台自动保存"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Save a recovery copy every"
+msgstr "保存恢复副本的间隔"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "min"
+msgstr "分钟"
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
+msgstr "保存过的项目，恢复副本放在项目旁边；没保存过的项目放在临时文件夹里。"
 
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "Line {0}"
@@ -1908,10 +1968,6 @@ msgid "Open Recent"
 msgstr "最近打开"
 
 #: assets/ui/minibim_ui.json
-msgid "Language"
-msgstr "语言"
-
-#: assets/ui/minibim_ui.json
 msgid "Edit"
 msgstr "编辑"
 
@@ -1952,13 +2008,5 @@ msgid "Navigate"
 msgstr "导航"
 
 #: assets/ui/minibim_ui.json
-msgid "Palettes"
-msgstr "面板"
-
-#: assets/ui/minibim_ui.json
 msgid "Manage"
 msgstr "管理"
-
-#: assets/ui/minibim_ui.json
-msgid "Settings"
-msgstr "设置"

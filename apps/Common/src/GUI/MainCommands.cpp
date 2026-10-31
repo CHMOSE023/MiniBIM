@@ -44,6 +44,7 @@ namespace MiniBIM
         add("file.sample", N_("Sample House"), N_("Open the sample house, built by commands"), [this] { Guard([this] { OpenSample(); }); });
         add("file.start", N_("Start Page"), N_("The start page: new, open and the recent files; again to go back to the project"),
             [this] { ToggleStartPage(); }, {}, [this] { return m_startShown; });
+        add("file.settings", N_("Settings..."), N_("The window's own settings: theme, language, palettes, autosave"), [this] { OpenSettings(); });
         add("file.exit", N_("Exit"), "", [this] { RequestExit(); });
 
         // ── 编辑 ─────────────────────────────────────────────────

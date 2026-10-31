@@ -18,7 +18,7 @@ msgstr ""
 msgid "Open"
 msgstr ""
 
-#: src/Commands/Commands.cpp
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Settings.cpp
 msgid "Autosave"
 msgstr ""
 
@@ -294,7 +294,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Settings.cpp
 msgid "Close"
 msgstr ""
 
@@ -627,6 +627,14 @@ msgid "The start page: new, open and the recent files; again to go back to the p
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
+msgid "Settings..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The window's own settings: theme, language, palettes, autosave"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
 msgid "Exit"
 msgstr ""
 
@@ -850,7 +858,7 @@ msgstr ""
 msgid "Fit the whole model in the view without changing the direction"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Properties"
 msgstr ""
 
@@ -858,7 +866,7 @@ msgstr ""
 msgid "Show or hide the Properties palette"
 msgstr ""
 
-#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp
 msgid "Project Browser"
 msgstr ""
 
@@ -942,7 +950,7 @@ msgstr ""
 msgid "View"
 msgstr ""
 
-#: apps/Common/src/GUI/MainFrame.cpp
+#: apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp
 msgid "System Default"
 msgstr ""
 
@@ -1398,6 +1406,58 @@ msgid "{0} year ago"
 msgid_plural "{0} years ago"
 msgstr[0] ""
 msgstr[1] ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "User Interface"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Files"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Settings"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Theme"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Dark"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Light"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The views keep their own colours."
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Language"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Palettes"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Autosave in the background"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Save a recovery copy every"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "min"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
+msgstr ""
 
 #: apps/Common/src/GUI/SketchMode.cpp
 msgid "Line {0}"
@@ -1921,10 +1981,6 @@ msgid "Open Recent"
 msgstr ""
 
 #: assets/ui/minibim_ui.json
-msgid "Language"
-msgstr ""
-
-#: assets/ui/minibim_ui.json
 msgid "Edit"
 msgstr ""
 
@@ -1965,13 +2021,5 @@ msgid "Navigate"
 msgstr ""
 
 #: assets/ui/minibim_ui.json
-msgid "Palettes"
-msgstr ""
-
-#: assets/ui/minibim_ui.json
 msgid "Manage"
-msgstr ""
-
-#: assets/ui/minibim_ui.json
-msgid "Settings"
 msgstr ""
