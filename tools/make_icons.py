@@ -400,6 +400,42 @@ def _(i):
     i.arrow(32, 24, 32, 40, A, 3, 7, both=True)
 
 
+@icon("EditBoundary")      # modify.editBoundary：编辑边界（俯视的一块楼板轮廓，一角有缺口，一支笔在描边）
+def _(i):
+    i.poly([(6, 10), (44, 10), (44, 30), (58, 30), (58, 56), (6, 56)], A, AF, w=3.5)
+    i.line([(30, 44), (56, 18)], G, 6)
+    i.d.polygon(i.P([(25, 49), (30, 44), (28, 46)]), fill=G)
+
+
+@icon("FinishSketch")      # sketch.finish：完成编辑模式（对勾）
+def _(i):
+    i.line([(10, 34), (26, 50), (54, 14)], A, 7)
+
+
+@icon("CancelSketch")      # sketch.cancel：取消编辑模式（叉）
+def _(i):
+    i.line([(14, 14), (50, 50)], G, 7); i.line([(50, 14), (14, 50)], G, 7)
+
+
+@icon("SketchLine")        # sketch.line：草图直线（一条斜线，两端的点）
+def _(i):
+    i.line([(10, 52), (54, 12)], A, 4)
+    i.dot(10, 52, 5); i.dot(54, 12, 5)
+
+
+@icon("SketchRectangle")   # sketch.rectangle：草图矩形（矩形，两个对角的点）
+def _(i):
+    i.rect(10, 16, 54, 48, A, w=4)
+    i.dot(10, 16, 5); i.dot(54, 48, 5)
+
+
+@icon("PickWalls")         # sketch.pickWalls：拾取墙（一段墙，沿它的一条线，鼠标箭头点在墙上）
+def _(i):
+    i.rect(4, 10, 56, 24, G, GF, w=3)
+    i.line([(4, 30), (56, 30)], A, 4)
+    i.poly([(30, 20), (30, 54), (38, 46), (44, 58), (50, 55), (44, 43), (54, 43)], G, AF, w=3)
+
+
 @icon("TypeProperties")    # modify.typeProperties：类型属性（特性表，右下一把扳手似的编辑笔）
 def _(i):
     i.rect(6, 6, 46, 50, G, w=3, r=3); i.d.rectangle(i.P([(6, 6), (46, 15)]), fill=GF)

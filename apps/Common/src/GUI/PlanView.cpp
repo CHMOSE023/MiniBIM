@@ -97,6 +97,8 @@ namespace MiniBIM
 
     void MainFrame::ShowModel3D()
     {
+        if (LeavingSketch())
+            return;
         // 放东西的工具只在平面上（标高除外）
         if (m_tool != Tool::Modify && m_tool != Tool::Level)
             SetTool(Tool::Modify);
@@ -113,6 +115,8 @@ namespace MiniBIM
         const Bim::Model& m = m_session.GetModel();
         if (!level)
             level = m_planLevel;
+        if (m_sketch && level && !m.Same(*level, m_sketch->level) && LeavingSketch())
+            return;
         if (!level || !m.GetLevel(*level))
         {
             const auto levels = m.Levels();
@@ -277,7 +281,13 @@ namespace MiniBIM
                 if (e.button == MouseButton::Left)
                 {
                     m_planClick = true;
-                    if (m_tool == Tool::Modify)
+                    // 草图模式里修改的是草图线：拖出来时是夹点或框选
+                    if (m_tool == Tool::Modify && m_sketch)
+                    {
+                        BeginSketchDrag(e.pixel);
+                        m_pendingDrag = PlanDrag::Move;
+                    }
+                    else if (m_tool == Tool::Modify)
                         BeginPlanDrag(e.pixel);
                 }
                 else
@@ -285,7 +295,12 @@ namespace MiniBIM
             }
             break;
         case PointerEventType::Up:
-            if (m_planDrag != PlanDrag::None && e.button == MouseButton::Left)
+            if (m_sketch && m_tool == Tool::Modify && e.button == MouseButton::Left && (m_planDrag != PlanDrag::None || m_planClick))
+            {
+                FinishSketchDrag(e.pixel, e.modifiers, m_planDrag != PlanDrag::None);
+                m_planDrag = PlanDrag::None;
+            }
+            else if (m_planDrag != PlanDrag::None && e.button == MouseButton::Left)
                 FinishPlanDrag(e.pixel, e.modifiers);
             else if (m_planClick && e.button == MouseButton::Left && m_tool != Tool::Modify)
                 ToolClick(e.pixel, e.modifiers);

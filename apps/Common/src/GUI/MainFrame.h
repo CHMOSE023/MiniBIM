@@ -3,6 +3,7 @@
 #include "GUI/AppPlatform.h"
 #include "Model/Align.h"
 #include "Model/Render.h"
+#include "Model/Sketch.h"
 #include "Model/Snap.h"
 #include "View/ModelScene.h"
 #include "View/OrbitCamera.h"
@@ -145,9 +146,12 @@ namespace MiniBIM
         // ── 工具（Tools.cpp）──────────────────────────────────────
         // 平面上单击做什么：选（修改），或放一类东西
         enum class Tool { Modify, Wall, Door, Window, Component, Roof, Floor, Ceiling, Room, Level, Grid,
-                          Move, Copy, Rotate, MirrorPick, MirrorDraw, Align, Trim, Split, Offset };
+                          Move, Copy, Rotate, MirrorPick, MirrorDraw, Align, Trim, Split, Offset,
+                          SketchLine, SketchRect, SketchPick };
         // 改选择集的工具（移动、复制、旋转、镜像）要先选东西
         static bool NeedsSelection(Tool t) { return t == Tool::Move || t == Tool::Copy || t == Tool::Rotate || t == Tool::MirrorPick || t == Tool::MirrorDraw; }
+        // 画草图线的工具（只在草图模式里）
+        static bool SketchTool(Tool t) { return t == Tool::SketchLine || t == Tool::SketchRect || t == Tool::SketchPick; }
         void SetTool(Tool tool);
         // Esc：先丢掉输入的长度，再丢掉画了一半的（墙链、轴网的起点），再退出工具，最后清空选择集
         void Escape();
@@ -212,6 +216,43 @@ namespace MiniBIM
         void OpenMaterials();
         // 执行模型命令，失败时不弹窗，原因放进 error（对话框里显示）
         bool RunQuiet(const char* id, const Bim::Json& params, std::string& error, Bim::Json* result = nullptr);
+
+        // ── 草图模式（SketchMode.cpp）：编辑边界、画新楼板 / 天花板 / 屋顶的轮廓 ──
+        enum class SketchOf { Floor, Ceiling, Roof, Edit };
+        struct SketchState
+        {
+            SketchOf of = SketchOf::Edit;
+            Bim::Id  edit = 0;                              // 编辑边界的元素
+            Bim::Guid level;                                // 它在哪个标高的平面上开始（完成前不离开）
+            std::vector<Bim::SketchLine> lines;
+            std::set<size_t>    picked;                     // 修改工具下选中的线（删除、夹点）
+            std::vector<size_t> wrong;                      // 上一次完成时说有问题的线（标红，改了草图就清掉）
+            std::vector<std::vector<Bim::SketchLine>> history;   // 每次改动前的线，Ctrl+Z 退回一步
+            std::optional<Bim::P2> grip;                    // 正在拖的线端
+        };
+        bool Sketching() const { return m_sketch.has_value(); }
+        void StartSketch(SketchOf of, Bim::Id edit, std::vector<Bim::SketchLine> lines);
+        void EditBoundary();
+        bool CanEditBoundary() const;
+        void FinishSketch();
+        void CancelSketch();
+        // 改草图之前调：记下现在的线（Ctrl+Z 用），清掉选中与标红
+        void SketchChanging();
+        void UndoSketch();
+        void DeleteSketchLines();
+        void SketchClick(MiniGUI::Vec2 pixel, uint8_t modifiers);
+        // 直线工具点下（或输入长度得到）的点：从上一点画一条，回到起点时环闭合
+        void SketchPoint(Bim::P2 p);
+        // 修改工具下：在草图线上单击选中（Ctrl 加减），拖选中线的端点（夹点），空白处框选
+        void BeginSketchDrag(MiniGUI::Vec2 pixel);
+        void FinishSketchDrag(MiniGUI::Vec2 pixel, uint8_t modifiers, bool dragged);
+        // 草图线与草图工具的预览（像素坐标）
+        void BuildSketchPreview(Bim::Render::Drawing& d, std::string& tip);
+        std::optional<size_t> SketchLineAt(MiniGUI::Vec2 pixel) const;
+        // 说给画的人听：每种问题一行，前几处在哪（项目单位）、哪几条线
+        std::string FriendlyProblems(const std::vector<Bim::Sketch::Problem>& problems) const;
+        // 草图模式里要离开它的平面（别的标高、三维）：说不行，返回 true
+        bool LeavingSketch();
         void RenderPlan(IRenderer& renderer, int pixelWidth, int pixelHeight);
         void OnPlanPointer(const MiniGUI::ViewportPointerEvent& e);
         // 平面的名称（标高名），以及选中的元素：状态栏用
@@ -327,6 +368,8 @@ namespace MiniBIM
         std::optional<std::pair<Bim::Id, bool>> m_grip;     // 拖的是哪面墙的哪一端（true 为起点）
         std::optional<Bim::Id>          m_dragElement;      // 按下时光标下的元素：拖动时没选中就先选中它
         MiniGUI::Vec2                   m_dragNow;
+        std::optional<SketchState> m_sketch;
+        bool            m_sketchBox = false;                // 草图模式下修改工具的拖动是框选（不是夹点）
         MiniGUI::Node*  m_planTipBox  = nullptr;            // 平面上跟着光标的读数（长度、角度、面积、捕捉到什么）
         MiniGUI::Label* m_planTip     = nullptr;
     };

@@ -89,7 +89,7 @@ msgstr "构件"
 msgid "Flip"
 msgstr "翻转"
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/SketchMode.cpp assets/ui/minibim_ui.json
 msgid "Modify"
 msgstr "修改"
 
@@ -108,6 +108,14 @@ msgstr "删除类型"
 #: src/Commands/Commands.cpp
 msgid "Rename Type"
 msgstr "重命名类型"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit Boundary"
+msgstr "编辑边界"
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/SketchMode.cpp
+msgid "Sketch"
+msgstr "草图"
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Align"
@@ -664,6 +672,50 @@ msgstr "翻转墙"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Turn the selected walls round: their exterior sides go to the other side"
 msgstr "翻转选中的墙：外侧换到另一边"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit the outline of the selected floor, ceiling or roof as sketch lines"
+msgstr "把选中的楼板、天花板或屋顶的轮廓当作草图线编辑"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Finish Edit Mode"
+msgstr "完成编辑模式"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Finish the sketch: its lines must make one closed outline, with any openings inside it"
+msgstr "完成草图：线要围成一个闭合的轮廓，洞口在它里面"
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Cancel Edit Mode"
+msgstr "取消编辑模式"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Leave the sketch without changing the model"
+msgstr "离开草图，不改模型"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Line"
+msgstr "线"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Line: click point to point; back at the start closes the loop"
+msgstr "线：逐点单击；回到起点时环闭合"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rectangle"
+msgstr "矩形"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rectangle: click two opposite corners"
+msgstr "矩形：单击两个对角"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pick Walls"
+msgstr "拾取墙"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pick Walls: each wall picked adds a line along it"
+msgstr "拾取墙：每拾取一面墙，沿它加一条线"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Wall: each click builds a wall; Enter or Esc ends the chain"
@@ -1253,6 +1305,110 @@ msgid "{0} element selected"
 msgid_plural "{0} elements selected"
 msgstr[0] "选中了 {0} 个元素"
 
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Line {0}"
+msgstr "线 {0}"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "New line {0}"
+msgstr "新线 {0}"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Could not edit the boundary"
+msgstr "无法编辑边界"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "{0} and {1}"
+msgstr "{0} 与 {1}"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "{0} at x {1}, y {2}"
+msgstr "{0}，在 x {1}，y {2}"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "There are no lines yet: draw the outline."
+msgstr "还没有线：先画出轮廓。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The sketch has too many lines."
+msgstr "草图的线太多。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A line has a point too far out to draw."
+msgstr "有一条线的点太远，画不出来。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A line is too short: its ends are 1 mm apart or less."
+msgstr "有一条线太短：两端相距不超过 1 毫米。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Lines intersect ({0}): a loop can't cross itself or another loop."
+msgstr "线相交（{0} 处）：环不能与自己或别的环交叉。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Lines overlap ({0}): one lies along another, or a line is drawn twice."
+msgstr "线重叠（{0} 处）：一条沿着另一条，或同一条画了两次。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Three or more lines meet at a point ({0}): a loop passes each point once."
+msgstr "三条以上的线交于一点（{0} 处）：环每个点只经过一次。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The loop is open: {0} line ends don't meet another line."
+msgstr "环没有闭合：{0} 个线端没有接上别的线。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A loop encloses no area."
+msgstr "有一个环围不出面积。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Draw one outline, with any openings inside it: these lines make {0} separate outlines."
+msgstr "只画一个轮廓，洞口在它里面：这些线围成了 {0} 个分开的轮廓。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "and {0} more"
+msgstr "还有 {0} 处"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The lines are shown in red."
+msgstr "这些线标成了红色。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The sketch isn't finished"
+msgstr "草图还没完成"
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the ceiling"
+msgstr "无法放置天花板"
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not a height"
+msgstr "“{0}”不是高度"
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the roof"
+msgstr "无法创建屋顶"
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not an angle in degrees"
+msgstr "“{0}”不是以度为单位的角度"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Could not finish the sketch"
+msgstr "无法完成草图"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A loop needs three lines: click a point that isn't the start."
+msgstr "一个环至少要三条线：单击一个不是起点的点。"
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Finish or cancel the sketch before leaving its plan."
+msgstr "先完成或取消草图，再离开它的平面。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a sketch line to select it, Ctrl adds; drag a selected line's end to move it. Delete removes, Ctrl+Z steps back."
+msgstr "单击草图线选中，Ctrl 加选；拖选中线的端点移动它。Delete 删除，Ctrl+Z 退回一步。"
+
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click to select, Ctrl adds or takes away, Esc clears; drag or middle-drag to pan, scroll to zoom"
 msgstr "单击选择，Ctrl 加选或减选，Esc 清空；拖动左键或中键平移，滚轮缩放"
@@ -1366,6 +1522,26 @@ msgid "Point to a wall: the offset goes to the cursor's side. Click to place it.
 msgstr "指向一面墙：偏移到光标那一侧，单击放置。"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click to start a line."
+msgstr "单击线的起点。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's end, or type a length and press Enter; back at the start closes the loop. Enter or Esc ends the chain."
+msgstr "单击线的终点，或输入长度后按 Enter；回到起点时环闭合。Enter 或 Esc 结束连续绘制。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the rectangle's first corner."
+msgstr "单击矩形的第一个角。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the opposite corner."
+msgstr "单击对角。"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick walls: each adds a line along the wall's location line."
+msgstr "拾取墙：每面墙沿它的定位线加一条线。"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Wall"
 msgstr "修改 | 放置墙"
 
@@ -1442,6 +1618,30 @@ msgid "Modify | Offset"
 msgstr "修改 | 偏移"
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Floor Boundary"
+msgstr "修改 | 创建楼层边界"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Ceiling Boundary"
+msgstr "修改 | 创建天花板边界"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Edit Boundary"
+msgstr "修改 | 编辑边界"
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Height Offset:"
+msgstr "高度偏移："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Slope:"
+msgstr "坡度："
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Boundary Line"
+msgstr "边界线"
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Pick a tool on the Architecture tab to place walls, doors, windows, roofs and more."
 msgstr "在“建筑”选项卡上选一个工具，放置墙、门、窗、屋顶等。"
 
@@ -1458,20 +1658,12 @@ msgid "Chain"
 msgstr "链"
 
 #: apps/Common/src/GUI/Tools.cpp
-msgid "Slope:"
-msgstr "坡度："
-
-#: apps/Common/src/GUI/Tools.cpp
 msgid "Overhang:"
 msgstr "悬挑："
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Gable"
 msgstr "山墙"
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Height Offset:"
-msgstr "高度偏移："
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Rotation:"
@@ -1488,10 +1680,6 @@ msgstr "多个"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Angle:"
 msgstr "角度："
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "`{0}` is not an angle in degrees"
-msgstr "“{0}”不是以度为单位的角度"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Place Centre"
@@ -1512,10 +1700,6 @@ msgstr "无法创建标高"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "`{0}` is not an elevation"
 msgstr "“{0}”不是高程"
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "`{0}` is not a height"
-msgstr "“{0}”不是高度"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not build the wall"
@@ -1540,14 +1724,6 @@ msgstr "无法放置窗"
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the room"
 msgstr "无法放置房间"
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Could not place the ceiling"
-msgstr "无法放置天花板"
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Could not create the roof"
-msgstr "无法创建屋顶"
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "The slope `{0}` and the overhang `{1}` must be numbers"
@@ -1616,6 +1792,14 @@ msgstr "房间和面积"
 #: assets/ui/minibim_ui.json
 msgid "Datum"
 msgstr "基准"
+
+#: assets/ui/minibim_ui.json
+msgid "Mode"
+msgstr "模式"
+
+#: assets/ui/minibim_ui.json
+msgid "Draw"
+msgstr "绘制"
 
 #: assets/ui/minibim_ui.json
 msgid "Navigate"

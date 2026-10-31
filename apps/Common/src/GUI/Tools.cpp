@@ -106,6 +106,9 @@ namespace MiniBIM
             ShowPlan(std::nullopt);
         if (NeedsSelection(tool) && m_selection.empty())
             return;
+        // 草图模式里只有修改和画草图线的工具；画草图线的工具只在草图模式里
+        if (tool != Tool::Modify && m_sketch.has_value() != SketchTool(tool))
+            return;
         m_tool = tool;
         if ((ToolCategory() || tool == Tool::Level) && !m_selection.empty())
             m_selection.clear();
@@ -139,6 +142,9 @@ namespace MiniBIM
             SetTool(Tool::Modify);
             return;
         }
+        // 草图模式里不退出草图（完成或取消在功能区与选项栏），只放下选中的线
+        else if (m_sketch)
+            m_sketch->picked.clear();
         else
         {
             SetSelection({});
@@ -169,7 +175,8 @@ namespace MiniBIM
     {
         switch (m_tool)
         {
-        case Tool::Modify:    return N_("Click to select, Ctrl adds or takes away, Esc clears; drag or middle-drag to pan, scroll to zoom");
+        case Tool::Modify:    return m_sketch ? N_("Click a sketch line to select it, Ctrl adds; drag a selected line's end to move it. Delete removes, Ctrl+Z steps back.")
+                                              : N_("Click to select, Ctrl adds or takes away, Esc clears; drag or middle-drag to pan, scroll to zoom");
         case Tool::Wall:      return m_toolPts.empty() ? N_("Click to enter the wall's start point.")
                                                        : N_("Click to build the wall to the next point, or type a length and press Enter. Enter or Esc ends the chain, Shift keeps it square.");
         case Tool::Door:      return N_("Click a wall to place the door.");
@@ -193,6 +200,10 @@ namespace MiniBIM
         case Tool::Trim:      return m_trimFirst ? N_("Pick the second wall, on the part to keep.") : N_("Pick the first wall, on the part to keep.");
         case Tool::Split:     return N_("Click a wall where to split it.");
         case Tool::Offset:    return N_("Point to a wall: the offset goes to the cursor's side. Click to place it.");
+        case Tool::SketchLine: return m_toolPts.empty() ? N_("Click to start a line.")
+                                                        : N_("Click the line's end, or type a length and press Enter; back at the start closes the loop. Enter or Esc ends the chain.");
+        case Tool::SketchRect: return m_toolPts.empty() ? N_("Click the rectangle's first corner.") : N_("Click the opposite corner.");
+        case Tool::SketchPick: return N_("Pick walls: each adds a line along the wall's location line.");
         }
         return "";
     }
@@ -261,13 +272,40 @@ namespace MiniBIM
             { Tool::Trim, N_("Modify | Trim/Extend to Corner") }, { Tool::Split, N_("Modify | Split Element") },
             { Tool::Offset, N_("Modify | Offset") },
         };
+        const std::string unit = Bim::UnitsOf::Name(m.units);
+        // 草图模式：画的是什么、完成与取消；新建天花板、屋顶时还有它们的设置
+        if (m_sketch)
+        {
+            static const char* const titles[] = { N_("Modify | Create Floor Boundary"), N_("Modify | Create Ceiling Boundary"),
+                                                  N_("Modify | Create Roof Footprint"), N_("Modify | Edit Boundary") };
+            bar->AddChild<Label>(Tr(titles[static_cast<size_t>(m_sketch->of)]), 13.0f)->SetBold(true);
+            bar->AddChild<Separator>(true);
+            // 完成、取消会重建选项栏：等这个按钮的回调回去之后再做
+            bar->AddChild<Button>(Tr("Finish Edit Mode"), [this] { m_platform->Post([this] { FinishSketch(); }); });
+            bar->AddChild<Button>(Tr("Cancel Edit Mode"), [this] { m_platform->Post([this] { CancelSketch(); }); });
+            if (m_sketch->of == SketchOf::Ceiling)
+            {
+                label(Tr("Height Offset:"));
+                field(m_toolOpt.ceilingHeight, 70.0f, unit);
+            }
+            else if (m_sketch->of == SketchOf::Roof)
+            {
+                label(Tr("Slope:"));
+                field(m_toolOpt.roofSlope, 50.0f, "°");
+            }
+            return;
+        }
+        // 楼板、天花板、屋顶也可以画轮廓（草图模式）
+        auto boundaryLine = [&](SketchOf of)
+        {
+            bar->AddChild<Button>(Tr("Boundary Line"), [this, of] { m_platform->Post([this, of] { StartSketch(of, 0, {}); }); });
+        };
         for (const auto& [t, name] : names)
             if (t == m_tool)
             {
                 bar->AddChild<Label>(Tr(name), 13.0f)->SetBold(true);
                 bar->AddChild<Separator>(true);
             }
-        const std::string unit = Bim::UnitsOf::Name(m.units);
         switch (m_tool)
         {
         case Tool::Modify:
@@ -329,10 +367,15 @@ namespace MiniBIM
             label(Tr("Overhang:"));
             field(m_toolOpt.roofOverhang, 70.0f, unit);
             check(Tr("Gable"), m_toolOpt.roofGable);
+            boundaryLine(SketchOf::Roof);
+            break;
+        case Tool::Floor:
+            boundaryLine(SketchOf::Floor);
             break;
         case Tool::Ceiling:
             label(Tr("Height Offset:"));
             field(m_toolOpt.ceilingHeight, 70.0f, unit);
+            boundaryLine(SketchOf::Ceiling);
             break;
         case Tool::Component:
         {
@@ -439,7 +482,22 @@ namespace MiniBIM
         const Bim::Render::View& v = *m_planView;
         const double px = m_dpiScale;
         const Bim::Snap::Reach reach{ SnapPx * px / v.scale, PickPx * px / v.scale };
-        return Bim::Snap::At(m_session.GetModel(), *m_planLevel, v.ToMm({ pixel.x, pixel.y }), reach, from, square, m_snaps);
+        // 草图模式下还捕捉草图自己的线：直线的端点、中点与线，圆弧的端点与中点
+        std::vector<Bim::Segment> lines;
+        std::vector<std::pair<Bim::P2, Bim::Snap::Kind>> points;
+        if (m_sketch)
+            for (const Bim::SketchLine& l : m_sketch->lines)
+            {
+                if (l.arc == 0.0)
+                    lines.emplace_back(l.start, l.end);
+                else
+                {
+                    points.emplace_back(l.start, Bim::Snap::Kind::Endpoint);
+                    points.emplace_back(l.end, Bim::Snap::Kind::Endpoint);
+                    points.emplace_back(Bim::Sketch::Middle(l), Bim::Snap::Kind::Midpoint);
+                }
+            }
+        return Bim::Snap::At(m_session.GetModel(), *m_planLevel, v.ToMm({ pixel.x, pixel.y }), reach, from, square, m_snaps, lines, points);
     }
 
     Bim::Json MainFrame::Typed(const std::string& category, Bim::Json p) const
@@ -531,6 +589,9 @@ namespace MiniBIM
                                                    { "angle", m_toolOpt.componentAngle } },
                            N_("Could not place the component"));
             break;
+        case Tool::SketchLine:
+            SketchPoint(p);
+            break;
         default:
             break;
         }
@@ -616,6 +677,9 @@ namespace MiniBIM
             }
             break;
         }
+        case Tool::SketchLine: case Tool::SketchRect: case Tool::SketchPick:
+            SketchClick(pixel, modifiers);
+            return;
         default:
             ModifyClick(pixel, modifiers);
             break;
@@ -675,8 +739,8 @@ namespace MiniBIM
         case Key::Enter:
             if (!m_typedLength.empty())
                 PlaceTyped();
-            else if (m_tool == Tool::Wall)
-                m_toolPts.clear();      // 结束墙链
+            else if (m_tool == Tool::Wall || m_tool == Tool::SketchLine)
+                m_toolPts.clear();      // 结束墙链、草图线链
             break;
         case Key::Backspace:
             if (m_typedLength.empty())
@@ -706,7 +770,7 @@ namespace MiniBIM
     bool MainFrame::OnPlanText(std::string_view text)
     {
         // 画了起点之后输入的是长度（Enter 时用）；空格转构件，不算
-        if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid) || text == " " || m_typedLength.size() > 40)
+        if (m_toolPts.empty() || (m_tool != Tool::Wall && m_tool != Tool::Grid && m_tool != Tool::SketchLine) || text == " " || m_typedLength.size() > 40)
             return false;
         for (const char c : text)
             if (static_cast<unsigned char>(c) < 0x20)
@@ -785,18 +849,29 @@ namespace MiniBIM
         if (m_tool == Tool::Level || !m_planLevel || !m_planView)
             return;
         std::string tip;
+        // 读数跟着光标，在它右上方
+        auto showTip = [&]
+        {
+            if (!m_planTipBox || tip.empty() || !m_hoverPixel)
+                return;
+            m_planTip->SetText(tip);
+            MiniGUI::LayoutStyle& s = m_planTipBox->EditLayoutStyle();
+            s.left = m_hoverPixel->x / m_dpiScale + 14.0f;
+            s.top  = std::max(0.0f, m_hoverPixel->y / m_dpiScale - 30.0f);
+            m_planTipBox->SetVisible(true);
+        };
+        // 草图模式：草图线与画草图线的工具（SketchMode.cpp）
+        if (m_sketch)
+        {
+            BuildSketchPreview(d, tip);
+            showTip();
+            return;
+        }
         // 修改与修改工具：夹点、框选、拖动、各工具的预览（Modify.cpp）
         if (m_tool == Tool::Modify || ToolCategory() == nullptr)
         {
             BuildModifyPreview(d, tip);
-            if (m_planTipBox && !tip.empty() && m_hoverPixel)
-            {
-                m_planTip->SetText(tip);
-                MiniGUI::LayoutStyle& s = m_planTipBox->EditLayoutStyle();
-                s.left = m_hoverPixel->x / m_dpiScale + 14.0f;
-                s.top  = std::max(0.0f, m_hoverPixel->y / m_dpiScale - 30.0f);
-                m_planTipBox->SetVisible(true);
-            }
+            showTip();
             return;
         }
         if (!m_hoverPixel)
@@ -911,14 +986,6 @@ namespace MiniBIM
         default:
             break;
         }
-        // 读数跟着光标，在它右上方
-        if (m_planTipBox && !tip.empty())
-        {
-            m_planTip->SetText(tip);
-            MiniGUI::LayoutStyle& s = m_planTipBox->EditLayoutStyle();
-            s.left = m_hoverPixel->x / px + 14.0f;
-            s.top  = std::max(0.0f, m_hoverPixel->y / px - 30.0f);
-            m_planTipBox->SetVisible(true);
-        }
+        showTip();
     }
 }

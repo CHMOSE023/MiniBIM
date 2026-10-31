@@ -1,5 +1,5 @@
 ---
-covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
+covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/src/GUI/MainCommands.cpp, apps/Common/src/GUI/PlanView.cpp, apps/Common/src/GUI/Panels.cpp, apps/Common/src/GUI/Tools.cpp, apps/Common/src/GUI/Modify.cpp, apps/Common/src/GUI/SketchMode.cpp, apps/Common/src/GUI/Dialogs.cpp, apps/Common/src/GUI/Parameters.*, tests/App/*, apps/Common/src/GUI/AppPlatform.h, apps/Win32/src/Host/*, src/UI/Widgets/UiLayout.*
 ---
 
 # 主窗口
@@ -54,7 +54,16 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   定位线、"链"在选项栏；门窗：单击墙，离那一段中点 10 像素内放正中；构件：空格转 90°；屋顶、楼板建好后选中并回到修改；标高：选项栏输入高程"创建"。
   画了起点后在视图里直接输入长度按 Enter（`MainFrame::PlaceTyped`），视口的按键经 `ViewportHost::SetOnKey` / `SetOnText`。
   没选东西时特性面板显示工具要放的"新建 …"，类型选择器选的是工具接下来放的类型（`ToolOptions::types`、门窗的族、构件的族与类型）
-- 选项栏（`MainFrame::BuildOptionsBar`）在换工具、换语言时重建，输入框里的文字存进 `MainFrame` 的 `ToolOptions`，用时再读（同 BIMCraft）
+- 草图模式（`SketchMode.cpp`，移植自界面的 `sketch.rs`）：`MainFrame::m_sketch` 有值时在草图里。入口是"修改 > 编辑边界"（`modify.editBoundary`，
+  选中一块楼板、天花板或迹线屋顶时，`MainFrame::EditBoundary` 经 `edit_boundary` 取线）与楼板、天花板、屋顶工具选项栏上的"边界线"（新建）。
+  `MainFrame::StartSketch` 换到功能区"修改"（按译文标题 `Ribbon::FindTab`）与直线工具；草图线（品红）只在 `MainFrame` 里，完成（`sketch.finish`，
+  `MainFrame::FinishSketch`）时先用 `Sketch::SolveOne` 解，解不出就弹窗逐条说问题（`MainFrame::FriendlyProblems`）并把涉及的线标红，
+  解得出才执行 `edit_boundary`、`floor`、`ceiling`、`roof` 的 `sketch`（保留的线带 `id`），然后选中结果回到修改；取消（`sketch.cancel`）丢掉草图。
+  画线工具 `Tool::SketchLine`（逐点，回到起点闭合，可输入长度）、`Tool::SketchRect`、`Tool::SketchPick`（沿墙的定位线，弧墙为圆弧），点经捕捉，
+  也捕捉草图自己的线（`Snap::At` 的 `extraLines`、`extraPoints`）。修改工具下单击选线（Ctrl 加减）、空白处拖框选、拖选中线的端点（那一点上的线端一起动）；
+  `edit.delete`、`edit.undo` 在草图里删线、退回草图的上一步（`MainFrame::UndoSketch`），重做与放东西、修改的工具灰掉；不能离开草图的平面
+  （`MainFrame::LeavingSketch`），换项目时丢掉草图
+- 选项栏（`MainFrame::BuildOptionsBar`）在换工具、换语言时重建（草图模式里是标题、完成与取消，新建天花板、屋顶时还有高度偏移、坡度），输入框里的文字存进 `MainFrame` 的 `ToolOptions`，用时再读（同 BIMCraft）
 - 对话框（`Dialogs.cpp`，移植自 `typeprops.rs` 与 `properties.rs` 的对话框）：都是 `MiniGUI::Dialog`，状态放在一个 `shared_ptr` 里，
   内容按状态整个重建（经 `AppPlatform::Post`，不在控件自己的回调里拆掉它）；命令经 `MainFrame::RunQuiet` 执行，失败时原因显示在对话框里而不弹窗。
   类型属性（`MainFrame::OpenTypeDialog`）：族（系统族的类别）与类型，复制…、重命名…；类型参数（宽度、高度、窗台、板块尺寸……）；墙、楼板、屋顶、天花板的层

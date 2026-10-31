@@ -45,10 +45,13 @@ namespace MiniBIM
         add("file.exit", N_("Exit"), "", [this] { RequestExit(); });
 
         // ── 编辑 ─────────────────────────────────────────────────
-        add("edit.undo", N_("Undo"), N_("Undo the last change"), [this] { StepHistory(false); }, [this] { return m_session.CanUndo(); });
-        add("edit.redo", N_("Redo"), N_("Redo the change undone last"), [this] { StepHistory(true); }, [this] { return m_session.CanRedo(); });
+        // 草图模式里撤销与删除的是草图线（SketchMode.cpp），模型的撤销等完成或取消之后
+        add("edit.undo", N_("Undo"), N_("Undo the last change"), [this] { if (m_sketch) UndoSketch(); else StepHistory(false); },
+            [this] { return m_sketch ? !m_sketch->history.empty() : m_session.CanUndo(); });
+        add("edit.redo", N_("Redo"), N_("Redo the change undone last"), [this] { StepHistory(true); }, [this] { return !m_sketch && m_session.CanRedo(); });
         add("edit.delete", N_("Delete"), N_("Delete the selected elements; a wall takes its doors and windows with it"),
-            [this] { DeleteSelection(); }, [this] { return !m_selection.empty(); });
+            [this] { if (m_sketch) DeleteSketchLines(); else DeleteSelection(); },
+            [this] { return m_sketch ? !m_sketch->picked.empty() : !m_selection.empty(); });
         add("edit.escape", N_("Cancel"), N_("Drop what the tool has drawn so far, then the tool, then the selection"), [this] { Escape(); });
         add("modify.select", N_("Modify"), N_("Select and change elements"), [this] { SetTool(Tool::Modify); }, {},
             [this] { return m_tool == Tool::Modify; });
@@ -56,7 +59,7 @@ namespace MiniBIM
         auto modifyTool = [&](const char* id, const char* label, const char* tooltip, Tool t)
         {
             add(id, label, tooltip, [this, t] { SetTool(m_tool == t ? Tool::Modify : t); },
-                [this, t] { return !NeedsSelection(t) || !m_selection.empty(); }, [this, t] { return m_tool == t; });
+                [this, t] { return !m_sketch && (!NeedsSelection(t) || !m_selection.empty()); }, [this, t] { return m_tool == t; });
         };
         modifyTool("modify.align", N_("Align"), N_("Align: pick a reference line, then what to line up with it"), Tool::Align);
         modifyTool("modify.offset", N_("Offset"), N_("Offset: pick a wall; a copy goes to the cursor's side"), Tool::Offset);
@@ -77,10 +80,27 @@ namespace MiniBIM
                 return std::any_of(m_selection.begin(), m_selection.end(), [&](Bim::Id id) { return m.GetWall(id) != nullptr; });
             });
 
+        // ── 草图模式（SketchMode.cpp）：编辑边界，完成、取消，画草图线的工具 ─────────
+        add("modify.editBoundary", N_("Edit Boundary"), N_("Edit the outline of the selected floor, ceiling or roof as sketch lines"),
+            [this] { EditBoundary(); }, [this] { return CanEditBoundary(); });
+        add("sketch.finish", N_("Finish Edit Mode"), N_("Finish the sketch: its lines must make one closed outline, with any openings inside it"),
+            [this] { FinishSketch(); }, [this] { return m_sketch.has_value(); });
+        add("sketch.cancel", N_("Cancel Edit Mode"), N_("Leave the sketch without changing the model"),
+            [this] { CancelSketch(); }, [this] { return m_sketch.has_value(); });
+        auto sketchTool = [&](const char* id, const char* label, const char* tooltip, Tool t)
+        {
+            add(id, label, tooltip, [this, t] { SetTool(m_tool == t ? Tool::Modify : t); }, [this] { return m_sketch.has_value(); },
+                [this, t] { return m_tool == t; });
+        };
+        sketchTool("sketch.line", N_("Line"), N_("Line: click point to point; back at the start closes the loop"), Tool::SketchLine);
+        sketchTool("sketch.rectangle", N_("Rectangle"), N_("Rectangle: click two opposite corners"), Tool::SketchRect);
+        sketchTool("sketch.pickWalls", N_("Pick Walls"), N_("Pick Walls: each wall picked adds a line along it"), Tool::SketchPick);
+
         // ── 建筑：放东西的工具（Tools.cpp）─────────────────────────
         auto tool = [&](const char* id, const char* label, const char* tooltip, Tool t)
         {
-            add(id, label, tooltip, [this, t] { SetTool(m_tool == t && t != Tool::Modify ? Tool::Modify : t); }, {}, [this, t] { return m_tool == t; });
+            add(id, label, tooltip, [this, t] { SetTool(m_tool == t && t != Tool::Modify ? Tool::Modify : t); },
+                [this, t] { return t == Tool::Modify || !m_sketch; }, [this, t] { return m_tool == t; });
         };
         tool("arch.wall", N_("Wall"), N_("Wall: each click builds a wall; Enter or Esc ends the chain"), Tool::Wall);
         tool("arch.door", N_("Door"), N_("Door: click a wall"), Tool::Door);
@@ -277,6 +297,12 @@ namespace MiniBIM
             m_sceneResets  = m_session.Resets();
             m_cameraFitted = false;
             m_selection.clear();
+            // 草图是上一个项目的
+            if (m_sketch)
+            {
+                m_sketch.reset();
+                SetTool(Tool::Modify);
+            }
             m_savedModel   = m_session.Snapshot();
         }
         OnPlanModelChanged();

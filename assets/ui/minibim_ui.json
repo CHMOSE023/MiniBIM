@@ -36,6 +36,12 @@
     "modify.copy":       { "icon": "Copy.png" },
     "modify.rotate":     { "icon": "Rotate.png" },
     "modify.trim":       { "icon": "Trim.png" },
+    "modify.editBoundary": { "icon": "EditBoundary.png" },
+    "sketch.finish":     { "icon": "FinishSketch.png" },
+    "sketch.cancel":     { "icon": "CancelSketch.png" },
+    "sketch.line":       { "icon": "SketchLine.png" },
+    "sketch.rectangle":  { "icon": "SketchRectangle.png" },
+    "sketch.pickWalls":  { "icon": "PickWalls.png" },
     "arch.wall":      { "icon": "Wall.png" },
     "arch.door":      { "icon": "Door.png" },
     "arch.window":    { "icon": "Window.png" },
@@ -87,7 +93,10 @@
             { "title": "Properties", "items": [ "view.properties", "modify.typeProperties" ] },
             { "title": "Modify", "items": [ "modify.align", "modify.offset", "modify.mirrorPick", "modify.mirrorDraw", "modify.split",
                                             "modify.move", "modify.copy", "modify.rotate", "modify.trim", "edit.delete" ] },
-            { "title": "Wall", "items": [ "modify.flip" ] }
+            { "title": "Wall", "items": [ "modify.flip" ] },
+            // 草图模式（编辑边界，楼板、天花板、屋顶的边界线）：完成、取消与画草图线的工具，不在草图模式时灰掉
+            { "title": "Mode", "items": [ "modify.editBoundary", "sketch.finish", "sketch.cancel" ] },
+            { "title": "Draw", "items": [ "sketch.line", "sketch.rectangle", "sketch.pickWalls" ] }
           ]
         },
         {

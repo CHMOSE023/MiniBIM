@@ -90,7 +90,7 @@ msgstr ""
 msgid "Flip"
 msgstr ""
 
-#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/SketchMode.cpp assets/ui/minibim_ui.json
 msgid "Modify"
 msgstr ""
 
@@ -108,6 +108,14 @@ msgstr ""
 
 #: src/Commands/Commands.cpp
 msgid "Rename Type"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit Boundary"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/SketchMode.cpp
+msgid "Sketch"
 msgstr ""
 
 #: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
@@ -664,6 +672,50 @@ msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Turn the selected walls round: their exterior sides go to the other side"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit the outline of the selected floor, ceiling or roof as sketch lines"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Finish Edit Mode"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Finish the sketch: its lines must make one closed outline, with any openings inside it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Cancel Edit Mode"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Leave the sketch without changing the model"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Line"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Line: click point to point; back at the start closes the loop"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rectangle"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rectangle: click two opposite corners"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pick Walls"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pick Walls: each wall picked adds a line along it"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -1261,6 +1313,110 @@ msgid_plural "{0} elements selected"
 msgstr[0] ""
 msgstr[1] ""
 
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Line {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "New line {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Could not edit the boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "{0} and {1}"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "{0} at x {1}, y {2}"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "There are no lines yet: draw the outline."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The sketch has too many lines."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A line has a point too far out to draw."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A line is too short: its ends are 1 mm apart or less."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Lines intersect ({0}): a loop can't cross itself or another loop."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Lines overlap ({0}): one lies along another, or a line is drawn twice."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Three or more lines meet at a point ({0}): a loop passes each point once."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The loop is open: {0} line ends don't meet another line."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A loop encloses no area."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Draw one outline, with any openings inside it: these lines make {0} separate outlines."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "and {0} more"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The lines are shown in red."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The sketch isn't finished"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the ceiling"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not a height"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the roof"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not an angle in degrees"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Could not finish the sketch"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A loop needs three lines: click a point that isn't the start."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Finish or cancel the sketch before leaving its plan."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a sketch line to select it, Ctrl adds; drag a selected line's end to move it. Delete removes, Ctrl+Z steps back."
+msgstr ""
+
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Click to select, Ctrl adds or takes away, Esc clears; drag or middle-drag to pan, scroll to zoom"
 msgstr ""
@@ -1374,6 +1530,26 @@ msgid "Point to a wall: the offset goes to the cursor's side. Click to place it.
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Click to start a line."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's end, or type a length and press Enter; back at the start closes the loop. Enter or Esc ends the chain."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the rectangle's first corner."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the opposite corner."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick walls: each adds a line along the wall's location line."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Modify | Place Wall"
 msgstr ""
 
@@ -1450,6 +1626,30 @@ msgid "Modify | Offset"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Floor Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Ceiling Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Edit Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Height Offset:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Slope:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Boundary Line"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
 msgid "Pick a tool on the Architecture tab to place walls, doors, windows, roofs and more."
 msgstr ""
 
@@ -1466,19 +1666,11 @@ msgid "Chain"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
-msgid "Slope:"
-msgstr ""
-
-#: apps/Common/src/GUI/Tools.cpp
 msgid "Overhang:"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Gable"
-msgstr ""
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Height Offset:"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -1495,10 +1687,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Angle:"
-msgstr ""
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "`{0}` is not an angle in degrees"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -1519,10 +1707,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "`{0}` is not an elevation"
-msgstr ""
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "`{0}` is not a height"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -1547,14 +1731,6 @@ msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
 msgid "Could not place the room"
-msgstr ""
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Could not place the ceiling"
-msgstr ""
-
-#: apps/Common/src/GUI/Tools.cpp
-msgid "Could not create the roof"
 msgstr ""
 
 #: apps/Common/src/GUI/Tools.cpp
@@ -1623,6 +1799,14 @@ msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Datum"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Mode"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Draw"
 msgstr ""
 
 #: assets/ui/minibim_ui.json
