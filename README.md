@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CHMOSE023/MiniBIM/releases">Download for Windows</a> ·
+  <a href="https://github.com/CHMOSE023/MiniBIM/releases">Download</a> (Windows, Linux, web) ·
   <a href="README_CN.md">简体中文</a>
 </p>
 
@@ -28,10 +28,17 @@
 MiniBIM reuses the user interface and renderer of [MiniCAD](https://github.com/CHMOSE023/MiniCAD), models with the SMLib
 geometry kernel, and is porting its BIM features from [BIMCraft](https://github.com/IPedrax/BIMCraft). The interface is multilingual.
 
-> MiniBIM is at stage 2, porting BIMCraft's model: levels, grids, walls, floors, ceilings, roofs, rooms, doors and windows, families and components, their types and materials,
-> columns, the command set with undo, project files (`.minibim`, the same format as BIMCraft's `.bimcraft`), floor plans, IFC import and export
-> (IFC2x3 / IFC4 in, IFC4 out) and opening Revit projects (`.rvt`, read-only, with a report of what was left out) are in. The window opens the sample house, built by commands and modelled in 3D with SMLib, and shows it in 3D
-> or as the plan of each level. What comes next is in [docs/PLAN.md](docs/PLAN.md) (in Chinese).
+Version 0.2.0 has BIMCraft's model, its interface and the rest of its ribbon tabs:
+
+- **Model**: levels, grids, walls, floors, ceilings, roofs, rooms, doors and windows, families and components with their types and materials,
+  columns; every edit is a command with undo; project files (`.minibim`, the same format as BIMCraft's `.bimcraft`)
+- **Views**: 3D modelled with SMLib, plans of each level, sections and elevations, schedules, sheets, visibility / graphics overrides, view templates and filters
+- **Tabs**: Architecture, Structure, Plumbing, Electrical, Lightning Protection, Data, Insert, Annotate, Massing, Modify, View and Manage
+- **Exchange**: IFC (IFC2x3 / IFC4 in, IFC4 out), Revit projects (`.rvt`, read-only, with a report of what was left out), linked models,
+  DXF import and link, point clouds (PTS, XYZ, PLY, LAS, E57)
+
+What's in each release is in [docs/release-notes](docs/release-notes); what comes next is in [docs/PLAN.md](docs/PLAN.md) (in Chinese):
+stairs, ramps and railings, groups, phases and design options, among others.
 
 ### Building on Windows
 
@@ -110,7 +117,7 @@ bindings (the emdawnwebgpu port) from GitHub.
 run_tests.bat
 ```
 
-It builds, runs `ctest` (translations, the camera, an SMLib smoke test) and checks that the translation catalogs are up to date
+It builds, runs `ctest` (the model, the commands, IFC, the Revit reader, the 3D scene, the main window, translations, the camera and an SMLib smoke test) and checks that the translation catalogs are up to date
 (`tools/extract_messages.py --check`) and that every icon the interface uses is generated (`tools/make_icons.py --check`). GitHub Actions builds the Windows, Linux and web versions and runs the tests on every pull request to `main`, and
 packages and publishes a release when a `v*` tag is pushed (`.github/workflows/build.yml`).
 
@@ -127,6 +134,8 @@ works.
 |---|---|
 | `src/` | The `MiniBIM` core library: translations (`I18n/`), the camera and the model's 3D scene (`View/`), math and renderer interfaces (`Core/`, `Render/`), the solid kernel interface (`Solid/`) |
 | `src/Model/`, `src/Commands/` | The building model, its commands and undo, ported from BIMCraft |
+| `src/Ifc/` | IFC exchange: STEP reading, IFC4 export, IFC2x3 / IFC4 import |
+| `src/Rvt/` | The Revit file reader (Apache-2.0, see License) |
 | `src/UI/` | The MiniGUI interface library (copied from MiniCAD) |
 | `apps/Common/` | The main window's interface and logic (platform-independent) |
 | `apps/Render/` | Renderers (D3D12 and D3D11 on Windows, Vulkan and OpenGL ES 3 on Linux, WebGPU and WebGL2 in the browser) |

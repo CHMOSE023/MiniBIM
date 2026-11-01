@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CHMOSE023/MiniBIM/releases">桌面版下载</a> ·
+  <a href="https://github.com/CHMOSE023/MiniBIM/releases">下载</a>（Windows、Linux、网页版） ·
   <a href="README.md">English</a>
 </p>
 
@@ -28,10 +28,16 @@
 MiniBIM 的界面与渲染沿用 [MiniCAD](https://github.com/CHMOSE023/MiniCAD)，几何内核使用 SMLib，
 建模功能移植自 [BIMCraft](https://github.com/IPedrax/BIMCraft)，界面支持多语言。
 
-> 目前处于第 2 阶段（移植 BIMCraft 的模型）：标高、轴网、墙、楼板、天花板、屋顶、房间、门窗、族与构件及其类型与材质，带撤销的命令，项目文件（`.minibim`，
-> 与 BIMCraft 的 `.bimcraft` 同一格式），楼层平面，以及 IFC 导入导出（读 IFC2x3 / IFC4，写 IFC4）已经移植。程序启动时打开用命令搭起来的示例房屋，
-> 三维经 SMLib 建模，可以切换三维与各标高的平面。
-> 后面的移植计划见 [docs/PLAN.md](docs/PLAN.md)。
+0.2.0 版已经移植了 BIMCraft 的模型、界面与其余各个选项卡：
+
+- **模型**：标高、轴网、墙、楼板、天花板、屋顶、房间、门窗、族与构件及其类型与材质、柱；每次编辑都是可撤销的命令；
+  项目文件（`.minibim`，与 BIMCraft 的 `.bimcraft` 同一格式）
+- **视图**：经 SMLib 建模的三维、各标高的平面、剖面与立面、明细表、图纸、可见性 / 图形替换、视图样板与过滤器
+- **选项卡**：建筑、结构、卫浴、电气、防雷、数据、插入、注释、体量、修改、视图、管理
+- **交换**：IFC（读 IFC2x3 / IFC4，写 IFC4）、Revit 项目（`.rvt`，只读，列出没带进来的内容）、链接模型、
+  DXF 导入与链接、点云（PTS、XYZ、PLY、LAS、E57）
+
+各版本的内容见 [docs/release-notes](docs/release-notes)；后面的移植计划（楼梯、坡道与栏杆，组，阶段与设计选项等）见 [docs/PLAN.md](docs/PLAN.md)。
 
 ### Windows 版编译
 
@@ -105,7 +111,7 @@ build_wasm.bat serve
 run_tests.bat
 ```
 
-编译后运行 `ctest`（多语言、相机、SMLib 冒烟测试），再检查词典是否需要更新（`tools/extract_messages.py --check`）、
+编译后运行 `ctest`（模型、命令、IFC、Revit 读取器、三维场景、主窗口、多语言、相机、SMLib 冒烟测试），再检查词典是否需要更新（`tools/extract_messages.py --check`）、
 界面用到的图标是否都已生成（`tools/make_icons.py --check`）。
 GitHub Actions 在每个到 `main` 的 PR 上编译 Windows 版、Linux 版和网页版并运行测试，推送 `v*` 标签时打包并发布（`.github/workflows/build.yml`）。
 
@@ -120,6 +126,8 @@ GitHub Actions 在每个到 `main` 的 PR 上编译 Windows 版、Linux 版和�
 |---|---|
 | `src/` | 核心库 `MiniBIM`：多语言（`I18n/`）、相机与模型的三维场景（`View/`）、数学与渲染接口（`Core/`、`Render/`）、实体内核接口（`Solid/`） |
 | `src/Model/`、`src/Commands/` | 建筑模型、命令与撤销（移植自 BIMCraft） |
+| `src/Ifc/` | IFC 交换：STEP 的读法、IFC4 导出、IFC2x3 / IFC4 导入 |
+| `src/Rvt/` | Revit 文件读取器（Apache-2.0，见"许可"） |
 | `src/UI/` | 界面库 MiniGUI（复制自 MiniCAD） |
 | `apps/Common/` | 主窗口的界面与逻辑（与平台无关） |
 | `apps/Render/` | 渲染后端（Windows 为 D3D12、D3D11，Linux 为 Vulkan、OpenGL ES 3，网页为 WebGPU、WebGL2） |
