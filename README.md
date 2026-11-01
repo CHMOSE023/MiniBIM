@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/CHMOSE023/MiniBIM/releases">Download</a> (Windows, Linux, web) ·
+  <a href="https://minibim.bimhub.top">Try it in the browser</a> ·
   <a href="README_CN.md">简体中文</a>
 </p>
 
@@ -119,7 +120,8 @@ run_tests.bat
 
 It builds, runs `ctest` (the model, the commands, IFC, the Revit reader, the 3D scene, the main window, translations, the camera and an SMLib smoke test) and checks that the translation catalogs are up to date
 (`tools/extract_messages.py --check`) and that every icon the interface uses is generated (`tools/make_icons.py --check`). GitHub Actions builds the Windows, Linux and web versions and runs the tests on every pull request to `main`, and
-packages and publishes a release when a `v*` tag is pushed (`.github/workflows/build.yml`).
+packages and publishes a release when a `v*` tag is pushed (`.github/workflows/build.yml`), then deploys the web version to
+https://minibim.bimhub.top (Cloudflare Pages, `.github/workflows/pages.yml`).
 
 ### Languages
 

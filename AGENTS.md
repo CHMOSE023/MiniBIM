@@ -108,3 +108,5 @@ Linux 任务也跑全部测试，移植来的核心代码要能在 GCC 上编译
 
 推送 `v*` 标签后 CI 编译、测试、打包 `MiniBIM-<标签>-windows-x64.zip`、`MiniBIM-<标签>-linux-x64.tar.gz`、`MiniBIM-<标签>-web.zip`，创建 GitHub Release。版本号只改根 `CMakeLists.txt` 的 `MINIBIM_VERSION`（三段或四段）。
 发布说明取自 `docs/release-notes/<标签>.md`，打标签前先写好（没有时只写一行默认说明）。
+Release 建好后，`.github/workflows/pages.yml` 把网页版部署到 Cloudflare Pages（项目 `minibim`，https://minibim.bimhub.top），
+要仓库 Secrets `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`（没设时跳过）；重新部署某个版本在 Actions 页面手动运行 Pages。

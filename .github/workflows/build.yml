@@ -3,10 +3,11 @@
 #     要在仓库的规则集里设必需检查时，选 "Windows (D3D12 / D3D11)" 与 "Assets"；不要加 paths-ignore，
 #     被跳过的必需检查会一直等待，PR 合不进去
 #   - 推送 v* 标签（例如 v0.1.0）时：同上，再创建 GitHub Release 并上传 Windows 版的 zip、Linux 版的 tar.gz、网页版的 zip；
-#     发布说明取自 docs/release-notes/<标签>.md（没有该文件时只写一行默认说明）。版本号只改根 CMakeLists.txt 的 MINIBIM_VERSION
+#     发布说明取自 docs/release-notes/<标签>.md（没有该文件时只写一行默认说明）。版本号只改根 CMakeLists.txt 的 MINIBIM_VERSION；
+#     之后经 pages.yml 把网页版部署到 Cloudflare Pages（https://minibim.bimhub.top）
 #   - 推送分支不自动运行；需要时在 Actions 页面手动运行（workflow_dispatch，只编译、测试、打包）
 # 三个平台：Windows 桌面版（D3D12 / D3D11）、Linux 版（SDL3，Vulkan / GLES3，也跑测试：核心代码要能在 GCC 上编译）、
-# 网页版（Emscripten，WebGPU / WebGL2）。网页版只打包，不部署到网站
+# 网页版（Emscripten，WebGPU / WebGL2）。网页版只在发布时部署到网站（pages.yml）
 name: Build
 
 on:
@@ -134,7 +135,7 @@ jobs:
           path: dist/*.tar.gz
           retention-days: 7
 
-  # ── 网页版：Emscripten + WebGPU / WebGL2（照 MiniCAD，不部署）─────────────
+  # ── 网页版：Emscripten + WebGPU / WebGL2（照 MiniCAD；发布后由 pages 任务部署）
   web:
     name: Web (WebAssembly)
     runs-on: ubuntu-latest
@@ -223,3 +224,13 @@ jobs:
           files: |
             dist/*.zip
             dist/*.tar.gz
+
+  # ── 网站：发布后把网页版部署到 Cloudflare Pages（见 pages.yml）──────────────
+  pages:
+    name: Pages
+    if: github.ref_type == 'tag'
+    needs: [release]
+    uses: ./.github/workflows/pages.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
