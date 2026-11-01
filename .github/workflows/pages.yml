@@ -3,7 +3,8 @@
 #   - 也可以在 Actions 页面手动运行（workflow_dispatch），重新部署某个已发布的版本（默认最新版本）
 # 网页版取自 GitHub Release 的 MiniBIM-<标签>-web.zip，不重新编译。
 # 需要仓库 Secrets：CLOUDFLARE_API_TOKEN（权限 Account > Cloudflare Pages > Edit）、CLOUDFLARE_ACCOUNT_ID；
-# 没设时跳过部署（fork 的仓库推标签不会因此失败）。Pages 项目第一次部署时自动创建，自定义域名在 Cloudflare 控制台里绑定
+# 没设时跳过部署（fork 的仓库推标签不会因此失败）。Pages 项目 minibim 与自定义域名已在 Cloudflare 控制台里建好
+# （Workers 和 Pages → 创建 → Pages → 拖放文件；用 API / wrangler 创建项目会返回 code 8000000）
 name: Pages
 
 on:
@@ -60,9 +61,7 @@ jobs:
         with:
           node-version: 22
 
-      # 项目已存在时 create 会报错，忽略；--branch main 即生产环境（项目的生产分支）
+      # --branch main 即生产环境（项目的生产分支）
       - name: Deploy
         if: steps.secrets.outputs.ok == 'true'
-        run: |
-          npx --yes wrangler@4 pages project create minibim --production-branch main || true
-          npx --yes wrangler@4 pages deploy site --project-name minibim --branch main --commit-dirty=true
+        run: npx --yes wrangler@4 pages deploy site --project-name minibim --branch main --commit-dirty=true
