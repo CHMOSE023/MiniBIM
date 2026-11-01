@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 # 版本号的唯一来源：发布时只改这里（MiniBIMVersion.h 由它生成，见 apps/Common：exe 版本信息、关于对话框、状态栏）
-set(MINIBIM_VERSION 0.1.0)
+set(MINIBIM_VERSION 0.2.0)
 
 project(MiniBIM VERSION ${MINIBIM_VERSION} LANGUAGES CXX)
 
