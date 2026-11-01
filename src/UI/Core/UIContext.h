@@ -138,6 +138,9 @@ namespace MiniGUI
         bool KeyDown  (Key key, uint8_t modifiers, bool repeat = false);
         bool KeyUp    (Key key, uint8_t modifiers);
         bool TextInput(std::string_view utf8);
+        // 没有节点要的文字（没有焦点，或焦点节点不处理）在没有弹层打开、不在输入法组合中时交给它，返回是否处理了：
+        // 宿主用来做直接打字母的快捷键（MiniBIM 的两个字母的快捷键）
+        void SetUnhandledTextHandler(std::function<bool(std::string_view)> handler) { m_unhandledText = std::move(handler); }
 
         // 输入法组合串（拼音等）：只发给焦点节点
         void CompositionStart ();
@@ -250,6 +253,7 @@ namespace MiniGUI
         std::vector<Timer>                             m_timers;
         TimerId                                        m_nextTimerId = 1;
         std::function<uint32_t()>                      m_clock;
+        std::function<bool(std::string_view)>          m_unhandledText;
         std::function<void(bool, uint32_t)>            m_timerScheduler;
 
         // 悬浮提示

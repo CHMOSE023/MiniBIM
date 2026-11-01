@@ -167,6 +167,14 @@ namespace MiniGUI
                 break;
 
             case PointerEventType::Down:
+                if (e.button == MouseButton::Right && at == Button::None && !m_pressed && m_panel->m_onMenu)
+                {
+                    // 右键标题栏：宿主弹出菜单（回调可能关掉本面板，之后不再访问成员）
+                    e.handled = true;
+                    auto cb = m_panel->m_onMenu;
+                    cb(e.position);
+                    return;
+                }
                 if (e.button != MouseButton::Left)
                     return;
                 e.handled = true;

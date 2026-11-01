@@ -2,10 +2,11 @@
 #   - 到 main 的 PR（开启、推送新提交）时：编译、测试、打包，检查词典与图标。
 #     要在仓库的规则集里设必需检查时，选 "Windows (D3D12 / D3D11)" 与 "Assets"；不要加 paths-ignore，
 #     被跳过的必需检查会一直等待，PR 合不进去
-#   - 推送 v* 标签（例如 v0.1.0）时：同上，再创建 GitHub Release 并上传 Windows 版的 zip；
+#   - 推送 v* 标签（例如 v0.1.0）时：同上，再创建 GitHub Release 并上传 Windows 版的 zip、Linux 版的 tar.gz、网页版的 zip；
 #     发布说明取自 docs/release-notes/<标签>.md（没有该文件时只写一行默认说明）。版本号只改根 CMakeLists.txt 的 MINIBIM_VERSION
 #   - 推送分支不自动运行；需要时在 Actions 页面手动运行（workflow_dispatch，只编译、测试、打包）
-# 第一阶段只有 Windows 桌面版；Linux 任务只编译核心库与测试，保证移植过来的核心代码在 GCC 上也能编译（网页版、Linux 版见 docs/PLAN.md 第 4 阶段）
+# 三个平台：Windows 桌面版（D3D12 / D3D11）、Linux 版（SDL3，Vulkan / GLES3，也跑测试：核心代码要能在 GCC 上编译）、
+# 网页版（Emscripten，WebGPU / WebGL2）。网页版只打包，不部署到网站
 name: Build
 
 on:
@@ -20,6 +21,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  EMSDK_VERSION: "5.0.7"      # 与本地 build_wasm.bat 验证过的版本一致
+  # Linux 版的窗口与输入库（Ubuntu 24.04 的 apt 里没有 SDL3，自己编译成静态库）；改版本时同时改校验和
+  SDL3_VERSION: "3.4.18"
+  SDL3_SHA256: "9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3"
   # 打包文件名里的版本：标签构建用标签名，其余用 dev
   PACKAGE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
 
@@ -64,11 +69,75 @@ jobs:
           path: dist/*.zip
           retention-days: 7
 
-  # ── Linux：核心库与测试（GCC）──────────────────────────────────────────────
-  # 界面与渲染还只有 Windows 版，这里不编；核心库、SMLib 与测试要能在 GCC 上编译运行
+  # ── Linux 版：SDL3 + Vulkan / OpenGL ES 3（照 MiniCAD）────────────────────
+  # 也跑全部测试：移植过来的核心代码要能在 GCC 上编译运行
   linux:
-    name: Linux (core + tests)
+    name: Linux (Vulkan / GLES3)
     runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 编译器、EGL / GLES、Vulkan 头文件与 glslangValidator，以及编译 SDL3 要的 X11 / Wayland 开发包
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libegl-dev libgles-dev libvulkan-dev glslang-tools \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libdbus-1-dev libudev-dev
+
+      # SDL3 编成静态库链进程序（发布包不用另带 .so）；装到工作区的 .sdl3，按版本缓存
+      - name: Cache SDL3
+        id: sdl3
+        uses: actions/cache@v4
+        with:
+          path: .sdl3
+          key: sdl3-${{ env.SDL3_VERSION }}-static-ubuntu-24.04
+
+      - name: Build SDL3
+        if: steps.sdl3.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/sdl3.tar.gz" "https://github.com/libsdl-org/SDL/releases/download/release-${SDL3_VERSION}/SDL3-${SDL3_VERSION}.tar.gz"
+          echo "${SDL3_SHA256}  $RUNNER_TEMP/sdl3.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/sdl3.tar.gz" -C "$RUNNER_TEMP"
+          cmake -S "$RUNNER_TEMP/SDL3-${SDL3_VERSION}" -B "$RUNNER_TEMP/sdl3-build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/.sdl3" -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          cmake --build "$RUNNER_TEMP/sdl3-build"
+          cmake --install "$RUNNER_TEMP/sdl3-build"
+
+      - name: Configure
+        run: cmake -S . -B out/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/.sdl3"
+
+      - name: Build
+        run: cmake --build out/linux
+
+      - name: Test
+        run: ctest --test-dir out/linux --output-on-failure
+
+      # 输出目录里已有 MiniBIMLinux 与构建后复制的 assets；运行时要系统的 EGL / GLES（Mesa）与 Vulkan 加载器
+      - name: Package
+        run: |
+          name="MiniBIM-$PACKAGE_VERSION-linux-x64"
+          mkdir -p "dist/$name"
+          cp -r out/linux/MiniBIMLinux/. "dist/$name/"
+          strip "dist/$name/MiniBIMLinux"
+          cp README*.md LICENSE THIRD_PARTY_NOTICES.md "dist/$name/"
+          cp 3rd/SMLib/LICENSE "dist/$name/LICENSE-SMLib"
+          cp src/Rvt/LICENSE "dist/$name/LICENSE-Rvt"
+          cp src/Rvt/NOTICE "dist/$name/NOTICE-Rvt"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniBIM-Linux
+          path: dist/*.tar.gz
+          retention-days: 7
+
+  # ── 网页版：Emscripten + WebGPU / WebGL2（照 MiniCAD，不部署）─────────────
+  web:
+    name: Web (WebAssembly)
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -76,14 +145,36 @@ jobs:
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: .emsdk-cache
+
       - name: Configure
-        run: cmake -S . -B out/linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: emcmake cmake -S . -B out/web -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build out/linux --target I18nTests ViewTests SMLibSmokeTests
+        run: cmake --build out/web --target MiniBIMWeb
 
-      - name: Test
-        run: ctest --test-dir out/linux --output-on-failure
+      # index.html / .js / .wasm / .data 放到任意静态网站即可运行
+      - name: Package
+        run: |
+          name="MiniBIM-$PACKAGE_VERSION-web"
+          mkdir -p "dist/$name"
+          cp out/web/MiniBIMWeb/index.* "dist/$name/"
+          cp README*.md LICENSE THIRD_PARTY_NOTICES.md "dist/$name/"
+          cp 3rd/SMLib/LICENSE "dist/$name/LICENSE-SMLib"
+          cp src/Rvt/LICENSE "dist/$name/LICENSE-Rvt"
+          cp src/Rvt/NOTICE "dist/$name/NOTICE-Rvt"
+          (cd dist && zip -r "$name.zip" "$name")
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniBIM-Web
+          path: dist/*.zip
+          retention-days: 7
 
   # ── 资源：词典与图标 ───────────────────────────────────────────────────────
   assets:
@@ -106,7 +197,7 @@ jobs:
   release:
     name: Release
     if: github.ref_type == 'tag'
-    needs: [windows, linux, assets]
+    needs: [windows, linux, web, assets]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -129,4 +220,6 @@ jobs:
         with:
           name: MiniBIM ${{ github.ref_name }}
           body_path: release-notes.md
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            dist/*.tar.gz

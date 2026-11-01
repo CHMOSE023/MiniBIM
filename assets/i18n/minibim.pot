@@ -10,6 +10,594 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "New"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/StartPage.cpp
+msgid "Open"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Settings.cpp
+msgid "Autosave"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Autosave.cpp
+msgid "Recover"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Insert from File"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Link Model"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Reload Links"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/Model/Snap.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Point Cloud"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Import CAD"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "CAD Layers"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Reload CAD"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Query"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Save"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Undo"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Redo"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Level"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Grid"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Wall"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Door"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Window"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Floor"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Ceiling"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Room"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Room Separator"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Column"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Structural Column"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Isolated Footing"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Beam"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall Footing"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Pipe"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Conduit"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Cable Tray"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Wire"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Down Conductor"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Earthing Conductor"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Cabling"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Mass"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Mass Floors"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall by Face"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor by Face"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Face"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Update to Face"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Aligned Dimension"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+msgid "Text"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Text Types"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Spot Elevation"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag by Category"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Detail Line"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Filled Region"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Measure"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Visibility/Graphics"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "View Scale"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Detail Level"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Visual Style"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Crop View"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Project Parameters"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Line Patterns"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Styles"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Fill Patterns"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Import Fill Patterns"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Export Fill Patterns"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purge Unused"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Weights"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Object Styles"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Sheet"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Place View"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Section"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Elevation View"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate View"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Schedule"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "View Filter"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "View Template"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Roof"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Edit Type"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Materials"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Load Family"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Component"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Flip"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/SketchMode.cpp assets/ui/minibim_ui.json
+msgid "Modify"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Move"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Copy"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Delete Type"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Rename Type"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit Boundary"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/SketchMode.cpp
+msgid "Sketch"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Align"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Rotate"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Mirror"
+msgstr ""
+
+#: src/Commands/Commands.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Trim/Extend to Corner"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Split"
+msgstr ""
+
+#: src/Commands/Commands.cpp src/UI/Widgets/TextBox.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Delete"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Project Units"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Area and Volume Computations"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Inspect"
+msgstr ""
+
+#: src/Commands/Commands.cpp
+msgid "Elements"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Wall Centreline"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Core Centreline"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Finish Face: Exterior"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Finish Face: Interior"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Core Face: Exterior"
+msgstr ""
+
+#: src/Model/Model.cpp
+msgid "Core Face: Interior"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Room Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Door Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Window Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Wall Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Floor Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Level Schedule"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Id"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Type"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Family"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Area"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Width"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Height"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Length"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Thickness"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp
+msgid "Depth"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "System"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Offset"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Mark"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Operation"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Name"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Count"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Volume"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Diameter"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Number"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Perimeter"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Sill"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Structural"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Slope"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Plan Area"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Gross Floor Area"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Elevation"
+msgstr ""
+
+#: src/Model/Schedule.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Line Style"
+msgstr ""
+
+#: src/Model/Schedule.cpp
+msgid "Kind"
+msgstr ""
+
+#: src/Model/Snap.cpp
+msgid "Endpoint"
+msgstr ""
+
+#: src/Model/Snap.cpp
+msgid "Midpoint"
+msgstr ""
+
+#: src/Model/Snap.cpp
+msgid "Intersection"
+msgstr ""
+
+#: src/Model/Snap.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Centre"
+msgstr ""
+
+#: src/Model/Snap.cpp
+msgid "Perpendicular"
+msgstr ""
+
+#: src/Model/Snap.cpp
+msgid "Nearest"
+msgstr ""
+
+#: src/Model/Snap.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Angle"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Millimetres"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Centimetres"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Metres"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Inches"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Feet"
+msgstr ""
+
+#: src/Model/Units.cpp
+msgid "Feet and inches"
+msgstr ""
+
 #: src/UI/Widgets/Binding.cpp src/UI/Widgets/NumberBox.cpp
 msgid "*Varies*"
 msgstr ""
@@ -38,7 +626,7 @@ msgstr ""
 msgid "Unknown command:"
 msgstr ""
 
-#: src/UI/Widgets/Dialog.h
+#: src/UI/Widgets/Dialog.h apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Linux/src/Host/LinuxApp.cpp apps/Web/src/Host/WebApp.cpp
 msgid "OK"
 msgstr ""
 
@@ -62,7 +650,7 @@ msgstr ""
 msgid "Search commands"
 msgstr ""
 
-#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/MainCommands.cpp
+#: src/UI/Widgets/TabView.cpp src/UI/Widgets/TitleBar.cpp apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Palettes.cpp apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Settings.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
 msgid "Close"
 msgstr ""
 
@@ -79,27 +667,11 @@ msgid "Close All"
 msgstr ""
 
 #: src/UI/Widgets/TextBox.cpp
-msgid "Undo"
-msgstr ""
-
-#: src/UI/Widgets/TextBox.cpp
-msgid "Redo"
-msgstr ""
-
-#: src/UI/Widgets/TextBox.cpp
 msgid "Cut"
 msgstr ""
 
 #: src/UI/Widgets/TextBox.cpp
-msgid "Copy"
-msgstr ""
-
-#: src/UI/Widgets/TextBox.cpp
 msgid "Paste"
-msgstr ""
-
-#: src/UI/Widgets/TextBox.cpp
-msgid "Delete"
 msgstr ""
 
 #: src/UI/Widgets/TextBox.cpp
@@ -118,16 +690,1126 @@ msgstr ""
 msgid "Maximize"
 msgstr ""
 
-#: apps/Common/src/GUI/DemoScene.cpp
+#: src/View/ModelScene.cpp
 msgid "This build has no solid modeling kernel (MINIBIM_WITH_SOLID is off)."
 msgstr ""
 
-#: apps/Common/src/GUI/DemoScene.cpp
-msgid "The solid modeling kernel failed to build the demo model."
+#: src/View/ModelScene.cpp
+msgid "Some elements could not be modelled in 3D; see the log for which."
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the dimension"
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the spot elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not place the text"
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Type the note in the Options Bar first."
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not tag the element"
+msgstr ""
+
+#: apps/Common/src/GUI/Annotate.cpp
+msgid "Could not tag the doors and windows"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Could not discard the recovery copy"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Untitled project"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Recovery copy found"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Discard"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Postpone"
+msgstr ""
+
+#: apps/Common/src/GUI/Autosave.cpp
+msgid "Could not recover the project"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp assets/ui/minibim_ui.json
+msgid "Structure"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Substrate"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Thermal"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Membrane"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Finish"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "None"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Solid Fill"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Diagonal"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Crosshatch"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Horizontal"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Vertical"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Square Grid"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Brick"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Concrete"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Insulation"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Construction"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Default Thickness"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Default Sill Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Tile Size"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "{0}: `{1}` is not a length"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "{0}: `{1}` is not a number"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Type Properties"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Family:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "System Family: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Type:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Duplicate..."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Rename..."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Name:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/Tools.cpp assets/ui/minibim_ui.json
+msgid "Create"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Rename"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Type Parameters"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Round"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Material:"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "(none)"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Layers"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Function"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Material"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Out"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Up"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "In"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Down"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Insert Layer"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Could not change the type"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Cancel"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Apply"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Materials and Finishes"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Color"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Transparency"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Cut Pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Surface Pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Visibility/Graphics: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "A dependent view follows its parent's graphics: change them there."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Greyed settings follow the template."
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Coarse"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Medium"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Fine"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Model Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp
+msgid "Annotation Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Filters"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Visible"
+msgstr ""
+
+#: apps/Common/src/GUI/Dialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Reset"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Preserve"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Invert"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Black and White"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Units"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Spacing (mm)"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "all the points"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Positioning"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Auto - Center to Center"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Its middle on the project's origin and its foot on the level"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Auto - Origin to Origin"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Where its file's coordinates put it, as the survey placed it"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "`{0}` is not a number"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Link CAD"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Colors"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Layers/Levels"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "All"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Import units"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Auto-Detect"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Its middle on the project's origin"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Its origin on the project's origin, where its file's coordinates put it"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Current view only"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "In this plan only, not in every plan of its level"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Could not link the model"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Could not insert from the file"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
+msgid "Manage Links"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reloaded {0} link."
+msgid_plural "Reloaded {0} links."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Loaded"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Not loaded"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reload"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Remove"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "This project links no models. Link one with Link Model."
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Linked CAD drawings"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "{0} was read again."
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "{0} hasn't changed."
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Reload All"
+msgstr ""
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Link Model..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Start an empty project with two levels"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/StartPage.cpp
+msgid "Open..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open a MiniBIM project, a BIMCraft one, or an IFC or Revit file as a new project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open a MiniBIM project, a BIMCraft one, or an IFC file as a new project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Revit.cpp
+msgid "Revit Import Report"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "What the last Revit file brought in, what it left out and why, with the element ids"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save the project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save As..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save the project under another name"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export IFC..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export the model as an IFC4 file for other BIM software"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/StartPage.cpp
+msgid "Sample House"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Open the sample house, built by commands"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Start Page"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The start page: new, open and the recent files; again to go back to the project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Settings..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The window's own settings: theme, language, palettes, autosave"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Keyboard Shortcuts..."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The two-letter shortcuts typed over the view (WA wall, DR door…): see, change, load from a file"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Exit"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Undo the last change"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Redo the change undone last"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Delete the selected elements; a wall takes its doors and windows with it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Drop what the tool has drawn so far, then the tool, then the selection"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Select and change elements"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Align: pick a reference line, then what to line up with it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Offset: pick a wall; a copy goes to the cursor's side"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror Pick Axis"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror, Pick Axis: pick a wall or grid to mirror across"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror Draw Axis"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mirror, Draw Axis: click the axis's two ends"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Split Element"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Split Element: click a wall where to split it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Move: click a base point, then where it goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Copy: click a base point, then where the copy goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rotate: click the angle's start, then its end"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Trim/Extend to Corner: pick two walls, on the parts to keep"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit the type of the selected elements, or of what the tool places"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's materials: their colours and patterns"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Values each element of chosen categories can hold, shown in Properties and schedules"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The pen each model category draws in, seen and cut"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "How wide each pen draws on paper, at each scale"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's line styles: pen, colour and line pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's fill patterns; import and export PAT files"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Take out types, families and the rest that nothing uses"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show another project as a reference that can't be edited (LK)"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The linked models: reload or remove them"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Bring the elements of another project into this one"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Import CAD: a DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Point Cloud: a laser scan (PTS, XYZ, PLY, LAS or E57) brought into the project, drawn in the 3D view and the plans and snapped to"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Link CAD: a DXF drawing shown in the plans of a level, read again from its file on Reload and when the project opens"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "What the view shows: hide or show categories; a plan's scale and detail level"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new plan view of this level, with this plan's view range, crop and graphics"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate with Detailing"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new plan view of this level, with copies of this plan's dimensions, tags and notes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Duplicate as Dependent"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A dependent view: it follows this plan's view range and graphics, has a crop of its own and shows its annotation"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Crop the plan to what it shows now, or uncrop it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Section: click its two ends; it looks to the left of the line"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Elevations"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Elevations of the building's four sides, those it doesn't have yet"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new sheet: paper with a title block, for views to go on"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Put a view not on a sheet yet on the sheet shown"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Schedule/Quantities"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A new schedule: a table of the elements of a category, their fields as columns"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "The project's view filters: the elements of some categories that meet rules, for views to hide or draw another way"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Create Template"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "A view template with this view's visibility/graphics, scale, detail level and view range"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Flip Wall"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Turn the selected walls round: their exterior sides go to the other side"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Edit the outline of the selected floor, ceiling, roof or filled region as sketch lines"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Finish Edit Mode"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Finish the sketch: its lines must make one closed outline, with any openings inside it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Cancel Edit Mode"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Leave the sketch without changing the model"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Line"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Line: click point to point; back at the start closes the loop"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rectangle"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rectangle: click two opposite corners"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pick Walls"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pick Walls: each wall picked adds a line along it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall: each click builds a wall; Enter or Esc ends the chain"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Door: click a wall"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Window: click a wall"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Column: click where it stands"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Component: a family's type, where you click; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor: click inside the walls to floor them"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Ceiling: click inside a room for a ceiling out to its walls"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Room: click inside walls"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Level: a new level at an elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Grid: click its two ends"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Structural Column: click where it stands"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor: Structural (SB): click inside the walls to floor them with a slab that carries load"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Isolated"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Isolated Footing (FI): click where the footing goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Plumbing"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Fitting"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Accessory"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Pipe Accessory (PA): a valve, where you click on a pipe's height; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Equipment"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Device"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Device (DV): an outlet or a switch, where you click on the wall; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Lighting"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Air Terminal"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Down Lead"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Electrode"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Inspection"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Conductor"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp assets/ui/minibim_ui.json
+msgid "Data"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Voice"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rack"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Rack (RK): a floor rack, where you click; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Patch Panel"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Mass Floors (MF): a floor at each level the selected masses cross"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the mass floors"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Wall by Face (WB): a wall on each edge of the selected masses' footprints"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not build the walls"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Floor by Face (FB): a floor on the selected masses' top faces"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the floor"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Roof by Face (RB): a roof on the selected masses' top faces"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not make the roof"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not update to the mass"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Aligned"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Angular"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Angular Dimension: pick two lines that meet, then click where the arc goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Radial"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Radial Dimension: pick a round column, then click where the radius goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Spot Elevation (EL): click a floor, a roof or a stair"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Detail Line (DL): click point to point; lines only this plan shows, in the Options Bar's line style"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Filled Region (FR): sketch an area filled with a pattern, in this view"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Masking Region"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Masking Region: sketch an area that hides what's under it, in this view"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Text (TX): type the note in the Options Bar, then click where it goes"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag by Category (TG): click an element to tag it with its type, a door's or window's mark, or a room's name"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Tag All"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Tag every door and window in this view that has no tag"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
+msgid "3D View"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the model in 3D"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Floor Plan"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of a level: the one shown last, or the lowest"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Level Above"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of the level above"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Level Below"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show the plan of the level below"
 msgstr ""
 
 #: apps/Common/src/GUI/MainCommands.cpp
@@ -146,20 +1828,146 @@ msgstr ""
 msgid "Fit the whole model in the view without changing the direction"
 msgstr ""
 
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Properties"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show or hide the Properties palette"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp
+msgid "Project Browser"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Show or hide the Project Browser"
+msgstr ""
+
 #: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/MainFrame.cpp
 msgid "About MiniBIM"
 msgstr ""
 
-#: apps/Common/src/GUI/MainFrame.cpp
-msgid "3D View"
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save changes to {0}?"
 msgstr ""
 
-#: apps/Common/src/GUI/MainFrame.cpp
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "If you don't, the changes since it was last saved are lost."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Don't Save"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not create a project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Revit.cpp
+msgid "Could not open the project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Opened with parts left out"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} item of this IFC file has no MiniBIM element yet, or breaks one of its rules, and was left out."
+msgid_plural "{0} items of this IFC file have no MiniBIM element yet, or break one of its rules, and were left out."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} item of this file isn't supported by this version yet and was left out. Saving the project drops it."
+msgid_plural "{0} items of this file aren't supported by this version yet and were left out. Saving the project drops them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Links not loaded"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "{0} linked model couldn't be read; it draws nothing until it's reloaded (Insert > Manage Links)."
+msgid_plural "{0} linked models couldn't be read; they draw nothing until they're reloaded (Insert > Manage Links)."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not save the project"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export IFC"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Save As"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "File name"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Your browser downloads the file when it is written."
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Export"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Clear Recent Files"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not export IFC"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not redo"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not undo"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Could not delete"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not flip the walls"
+msgstr ""
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Could not build the sample house"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Schedules.cpp assets/ui/minibim_ui.json
+msgid "View"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp apps/Common/src/GUI/Settings.cpp
 msgid "System Default"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
 msgid "Interface description file:"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to pan, scroll to zoom; click what it cuts to select it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "Drag to pan, scroll to zoom; click a view to select it, drag a selected one to move it"
+msgstr ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgid "The project has nothing to show in 3D yet; open a project or the sample house from the File menu"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
@@ -179,14 +1987,20 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
-msgid "{0} column"
-msgid_plural "{0} columns"
+msgid "{0} door"
+msgid_plural "{0} doors"
 msgstr[0] ""
 msgstr[1] ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
-msgctxt "list of three items"
-msgid "{0}, {1}, {2}"
+msgid "{0} window"
+msgid_plural "{0} windows"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/MainFrame.cpp
+msgctxt "list of four items"
+msgid "{0}, {1}, {2}, {3}"
 msgstr ""
 
 #: apps/Common/src/GUI/MainFrame.cpp
@@ -205,18 +2019,2117 @@ msgstr ""
 msgid "Language: {0}"
 msgstr ""
 
-#: assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "0 (hairline)"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Types"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Panels.cpp
+msgid "Families"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "View Filters"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "View Templates"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Family Type"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "{0} Type"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Parameters"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Parameter"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "A project parameter is a value each element of its categories can hold, shown in Properties and in schedules. Make one with New."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Type of Parameter"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Text"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Number"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Length"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "parameter type"
+msgid "Yes/No"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "What each pen draws on paper, in mm. The model's pens draw at the scale nearest a view's own; annotations' pens at any scale."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Scale"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "New scale 1 :"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Add"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Pen"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model at {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Annotation"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "The pen each category's lines draw in, in every plan and section, where it is seen and where a view cuts it. A view's Visibility/Graphics overrides them."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp apps/Common/src/GUI/Schedules.cpp
+msgid "Category"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "object style"
+msgid "Projection"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgctxt "object style"
+msgid "Cut"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Weight"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Line Pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Fill Pattern"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Import..."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Imported {0} fill pattern."
+msgid_plural "Imported {0} fill patterns."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Left out {0} that MiniBIM can't use."
+msgid_plural "Left out {0} that MiniBIM can't use."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Export..."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Exported the fill patterns."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Pattern Type"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Drafting"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Model patterns' lengths are mm in the building."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Drafting patterns' lengths are mm on paper, the same at any scale."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Solid fill"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Spacing"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "dashed"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Add Lines"
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Takes out what nothing in the project uses, and then what that leaves unused. A category keeps one type, and a family one type."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Nothing of these is unused."
+msgstr ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purge {0} Item"
+msgid_plural "Purge {0} Items"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ManageDialogs.cpp
+msgid "Purged {0} item."
+msgid_plural "Purged {0} items."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not move"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not copy"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not rotate"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not mirror"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not align"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not trim or extend the walls"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not split the wall"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Could not offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "Offset takes straight walls."
+msgstr ""
+
+#: apps/Common/src/GUI/Modify.cpp
+msgid "`{0}` is not a distance"
+msgstr ""
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Left"
+msgstr ""
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Right"
+msgstr ""
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Dock Bottom"
+msgstr ""
+
+#: apps/Common/src/GUI/Palettes.cpp
+msgid "Float"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Could not change the parameter"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "{0} ({1})"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Multiple Categories ({0})"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "New {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Floor Plan: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Elevation: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Section: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Sheet: {0} - {1}"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Multiple Categories"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Type Selector"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Unconnected"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Top"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Bottom"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Not enclosed: the walls around it don't close."
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Search"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Type Properties..."
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Floor Plans"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "3D Views"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Sections"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Schedules/Quantities"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Views (all)"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "Sheets (all)"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp
+msgid "{0} (not loaded)"
+msgstr ""
+
+#: apps/Common/src/GUI/Panels.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Linked Models"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Constraints"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Location Line"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Base Constraint"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Base Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Base is Attached"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Top Constraint"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Unconnected Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Top is Attached"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Dimensions"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Radius"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Other"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Start"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "End"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Identity Data"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Host Wall"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Flip Facing"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Flip Hand"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Sill Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Location"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Height Offset From Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Slope (°)"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
+msgid "Graphics"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Pattern Angle (°)"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Rotation (°)"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Top Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Reference Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Start Level Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "End Level Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Same as start"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Z Justification"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Volume (m³)"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Text Type"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Leader Line"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Region Type"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp assets/ui/minibim_ui.json
 msgid "File"
 msgstr ""
 
-#: assets/ui/minibim_ui.json
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Origin"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Drawing"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Linked File"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Entities"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Position"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Scan"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Points"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Base Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Extrusion Start"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Extrusion End"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Max Ridge Height"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Gable Ends"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "View Name"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Extents"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Associated Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Level Elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "View Range"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cut Plane"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "View Depth"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not a length"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Yes"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "No"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "`{0}` is not a point; type x, y"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Walls"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Doors"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Windows"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Floors"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Rooms"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Levels"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Grids"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Components"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Roofs"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Ceilings"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Room Separators"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Columns"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Structural Columns"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Footings"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Strip Footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Strip Footings"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Beams"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Pipes"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Conduits"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cable Trays"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Wires"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cable"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Cables"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Down Conductors"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Earthing Conductors"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Sheets"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Viewport"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Viewports"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Linked Model"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "CAD Import"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "CAD Imports"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Point Clouds"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Masses"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Mass Floor"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Dimension"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp
+msgid "Text Note"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Text Notes"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Spot Elevations"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp apps/Common/src/GUI/PlanView.cpp assets/ui/minibim_ui.json
+msgid "Tag"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Tags"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Detail Lines"
+msgstr ""
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Filled Regions"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not duplicate the view"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not crop the view"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Plan: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Selected: {0} {1}"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "{0} element selected"
+msgid_plural "{0} elements selected"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not make the elevations"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not make the sheet"
+msgstr ""
+
+#: apps/Common/src/GUI/PlanView.cpp
+msgid "Could not move the viewport"
+msgstr ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "Just now"
+msgstr ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} min ago"
+msgid_plural "{0} min ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} h ago"
+msgid_plural "{0} h ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "Yesterday"
+msgstr ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} day ago"
+msgid_plural "{0} days ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} month ago"
+msgid_plural "{0} months ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Recent.cpp
+msgid "{0} year ago"
+msgid_plural "{0} years ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "{0}: this build of MiniBIM was made without Revit support (MINIBIM_WITH_RVT=OFF); build it with that option on to read Revit files"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Couldn't open {0}: {1}"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Opening a Revit file: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "A big file can take a few minutes."
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Came in: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Left out: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Nothing was left out."
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp apps/Common/src/GUI/RevitReport.cpp
+msgid "Noted"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Copy Report"
+msgstr ""
+
+#: apps/Common/src/GUI/Revit.cpp
+msgid "Copied"
+msgstr ""
+
+#: apps/Common/src/GUI/RevitReport.cpp
+msgid "{0} element"
+msgid_plural "{0} elements"
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/RevitReport.cpp
+msgid "Opened from {0}: {1}, {2} left out."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "equals"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not equal"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is greater than"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is greater than or equal to"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is less than"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "is less than or equal to"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "contains"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not contain"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "begins with"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not begin with"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "ends with"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "does not end with"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "has a value"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "has no value"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Schedule: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "No rows yet: the {0} is empty."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Total"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Click a row's first cell to select what it lists."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "{0} Schedule"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "New Schedule"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Filter {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Make a filter with New, then choose its categories and rules."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Rules: elements of these categories that meet every rule"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Add Rule"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "It picks out {0} element."
+msgid_plural "It picks out {0} elements."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "A view not on a sheet yet goes on {0} - {1}, right of the views on it, at its own scale."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Every view is on a sheet already."
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Place"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "View Template {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "Create Template from Current View"
+msgstr ""
+
+#: apps/Common/src/GUI/Schedules.cpp
+msgid "A view template with {0}'s visibility/graphics, scale, detail level and view range."
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "User Interface"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Files"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Settings"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Theme"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Dark"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Light"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The views keep their own colours."
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Layout"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Floating"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The ribbon, the palettes and the bars as cards floating over the view"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Compact"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "The ribbon, the palettes and the bars flush to the window's edges"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
 msgid "Language"
 msgstr ""
 
+#: apps/Common/src/GUI/Settings.cpp assets/ui/minibim_ui.json
+msgid "Palettes"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Reset Palette Layout"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Autosave in the background"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Save a recovery copy every"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "min"
+msgstr ""
+
+#: apps/Common/src/GUI/Settings.cpp
+msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Keyboard Shortcuts"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Type two letters over the view to run a command (WA wall, DR door, ZF zoom to fit)."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Keys"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Assign"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Custom"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "A shortcut is two letters or digits."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Choose a command."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "{0} is already used by {1}: remove it there first."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "{0} runs {1}."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Load from File..."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Could not read the file: {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "That is too big to be a shortcuts file."
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Loaded {0} shortcut from the file."
+msgid_plural "Loaded {0} shortcuts from the file."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use)."
+msgid_plural "Skipped {0} (not two letters, a command MiniBIM doesn't have, or keys already in use)."
+msgstr[0] ""
+msgstr[1] ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Restore Defaults"
+msgstr ""
+
+#: apps/Common/src/GUI/ShortcutsDialog.cpp
+msgid "Back to the default shortcuts."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Line {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "New line {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Could not edit the boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "{0} and {1}"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "{0} at x {1}, y {2}"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "There are no lines yet: draw the outline."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The sketch has too many lines."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A line has a point too far out to draw."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A line is too short: its ends are 1 mm apart or less."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Lines intersect ({0}): a loop can't cross itself or another loop."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Lines overlap ({0}): one lies along another, or a line is drawn twice."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Three or more lines meet at a point ({0}): a loop passes each point once."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The loop is open: {0} line ends don't meet another line."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A loop encloses no area."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Draw one outline, with any openings inside it: these lines make {0} separate outlines."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "and {0} more"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The lines are shown in red."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The sketch isn't finished"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the ceiling"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not a height"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the roof"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not an angle in degrees"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Could not finish the sketch"
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "The project has no masking region type."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "A loop needs three lines: click a point that isn't the start."
+msgstr ""
+
+#: apps/Common/src/GUI/SketchMode.cpp
+msgid "Finish or cancel the sketch before leaving its plan."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Building information modelling, open and free."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgctxt "start page"
+msgid "Start"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "New Project"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "An empty project to model in."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "A MiniBIM or BIMCraft project, an IFC or a Revit file."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "A MiniBIM or BIMCraft project, or an IFC file."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "A small house to look around and try the tools on."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Back to {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "The project stays as you left it."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Recent"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "No recent projects yet"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "The projects you open or save show here."
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Not found"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Remove from List"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Source code on GitHub"
+msgstr ""
+
+#: apps/Common/src/GUI/StartPage.cpp
+msgid "Version {0}"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Beam"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Wall Footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Pipe"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Conduit"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Cable Tray"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Wire"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Down Conductor"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Earthing Conductor"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Cabling"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Structural Column"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Isolated Footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Plumbing Fixture"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Pipe Fitting"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Pipe Accessory"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Electrical Equipment"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Device"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Lighting Fixture"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Air Terminal"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Earthing Electrode"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Inspection Box"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Data Outlet"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Voice Outlet"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Rack"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Patch Panel"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a sketch line to select it, Ctrl adds; drag a selected line's end to move it. Delete removes, Ctrl+Z steps back."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to select, Ctrl adds or takes away, Esc clears; drag or middle-drag to pan, scroll to zoom"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the wall's start point."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to build the wall to the next point, or type a length and press Enter. Enter or Esc ends the chain, Shift keeps it square."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a wall to place the door."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a wall to place the window."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place a column, as high as the Options Bar says."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place a structural column, as high as the Options Bar says."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to place an isolated footing: its top at the Options Bar's offset, as thick as it says."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the run: a chain of clicks makes one for each step, Esc ends it."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the run, or type a length and press Enter. Esc stops the chain."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the component goes; Space turns it a quarter turn."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the first corner of the mass's footprint."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the footprint's next corner. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click inside the walls to roof them, on the level above: the overhang runs past their faces."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click inside the walls to floor them: the slab runs under their outline, its top at the level."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click inside a room: a ceiling out to its walls' faces, as high as the Options Bar says."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click inside walls to place a room; the outline shows the room you'd get."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Type the new level's elevation in the Options Bar, then Create."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the grid's start point."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the grid's end point."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the section's start point."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to enter the section's end point; it looks to the left of the line."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a base point to measure from."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the base point goes. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the copy's base point goes. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the centre of rotation."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the angle, or type an angle in the Options Bar."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the angle. Esc cancels."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a wall or grid to mirror across."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the start of the mirror axis."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the end of the mirror axis."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the element's highlighted edge to move and turn onto the reference."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the second wall, on the part to keep."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick the first wall, on the part to keep."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a wall where to split it."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Point to a wall: the offset goes to the cursor's side. Click to place it."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click to start a line."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's end, or type a length and press Enter; back at the start closes the loop. Enter or Esc ends the chain."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the rectangle's first corner."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the opposite corner."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick walls: each adds a line along the wall's location line."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick parallel wall faces, wall ends, doors, windows or grid lines to dimension."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick another reference, or click away from them where the dimension line goes. Esc starts over."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick two lines that meet: wall faces, wall centre lines or grid lines."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the arc goes. Esc starts over."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a round column's edge."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click where the radius line goes. Esc starts over."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click a floor, a roof, a stair, a wall or a column to read its top's elevation."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Type the note in the Options Bar, then click where it goes."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click an element to tag it; Tag All tags the doors and windows that have none."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's start."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the line's end, or type a length and press Enter. Enter or Esc ends the chain."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the second point."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Click the first point to measure from."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Wall"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Door"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Window"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Column"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Component"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Roof Footprint"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Floor"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Ceiling"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Room"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Level"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Grid"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Move"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Copy"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Rotate"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Mirror Pick Axis"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Mirror Draw Axis"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Align"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Trim/Extend to Corner"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Split Element"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Offset"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Mass"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Dimensions"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Spot Elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Text"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Tag"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Place Detail Lines"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Measure"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Section"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Height:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Floor Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Ceiling Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Edit Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Filled Region Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Modify | Create Masking Region Boundary"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Height Offset:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Slope:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Boundary Line"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Pick a tool on the Architecture tab to place walls, doors, windows, roofs and more."
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Location Line:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Chain"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Overhang:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Gable"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Thickness:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Top Offset:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Justification:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Offset:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Rotation:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Constrain"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Multiple"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Angle:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Place Centre"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Text:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "the note"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Leader"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Line Style:"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "the next free name"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the level"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "`{0}` is not an elevation"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not build the wall"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the grid"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the section"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the column"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the footing"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the run"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the component"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not draw the detail line"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the door"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the window"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not place the room"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "The slope `{0}` and the overhang `{1}` must be numbers"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the floor"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Not a length"
+msgstr ""
+
+#: apps/Common/src/GUI/Tools.cpp
+msgid "Could not create the mass"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Shortcuts file"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Fill pattern file"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "DXF drawings"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Point clouds"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "All projects"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "MiniBIM project"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "BIMCraft project"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "IFC file"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Revit project"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "All files"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp
+msgid "Could not show the file dialog"
+msgstr ""
+
+#: apps/Linux/src/Host/LinuxApp.cpp
+msgid "{0}\n\nThe file dialog needs xdg-desktop-portal or zenity. You can also give a project file on the command line."
+msgstr ""
+
+#: apps/Web/src/Host/WebApp.cpp
+msgid "Could not read the file"
+msgstr ""
+
 #: assets/ui/minibim_ui.json
-msgid "View"
+msgid "Open Recent"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Edit"
 msgstr ""
 
 #: assets/ui/minibim_ui.json
 msgid "Help"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Architecture"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Select"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Build"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Room & Area"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Datum"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Foundation"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Plumbing & Piping"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Electrical"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Conduit & Wire"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Lightning Protection"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Capture & Descent"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Earthing"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Outlets & Equipment"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Insert"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Link"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Import"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Annotate"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Detail"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Region"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Massing"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Conceptual Mass"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Model by Face"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Mode"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Draw"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Sheet Composition"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Navigate"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Manage"
+msgstr ""
+
+#: assets/ui/minibim_ui.json
+msgid "Clean Up"
 msgstr ""

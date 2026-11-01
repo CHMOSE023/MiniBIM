@@ -18,8 +18,27 @@ add_custom_target(MiniBIMVersionHeader
 
 add_library(MiniBIMApp STATIC
     src/GUI/MainFrame.cpp
+    src/GUI/InsertDialogs.cpp
+    src/GUI/ManageDialogs.cpp
     src/GUI/MainCommands.cpp
-    src/GUI/DemoScene.cpp
+    src/GUI/PlanView.cpp
+    src/GUI/Palettes.cpp
+    src/GUI/Panels.cpp
+    src/GUI/Tools.cpp
+    src/GUI/Annotate.cpp
+    src/GUI/Modify.cpp
+    src/GUI/SketchMode.cpp
+    src/GUI/Dialogs.cpp
+    src/GUI/Schedules.cpp
+    src/GUI/Parameters.cpp
+    src/GUI/Recent.cpp
+    src/GUI/Revit.cpp
+    src/GUI/RevitReport.cpp
+    src/GUI/StartPage.cpp
+    src/GUI/Autosave.cpp
+    src/GUI/Settings.cpp
+    src/GUI/Shortcuts.cpp
+    src/GUI/ShortcutsDialog.cpp
 )
 
 target_include_directories(MiniBIMApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${MINIBIM_VERSION_DIR})

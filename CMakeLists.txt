@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 # 版本号的唯一来源：发布时只改这里（MiniBIMVersion.h 由它生成，见 apps/Common：exe 版本信息、关于对话框、状态栏）
-set(MINIBIM_VERSION 0.1.0)
+set(MINIBIM_VERSION 0.2.0)
 
 project(MiniBIM VERSION ${MINIBIM_VERSION} LANGUAGES CXX)
 
@@ -48,7 +48,10 @@ include(cmake/SMLib.cmake)
 # ── MiniBIM（平台无关的核心库）───────────────────────────────────────
 include(cmake/MiniBIM.cmake)
 
-# ── 渲染后端（apps/Render，第一阶段只有 Windows）──────────────────────
+# ── Revit 文件读取器（Apache-2.0，可选，MINIBIM_WITH_RVT）────────────────
+include(cmake/Rvt.cmake)
+
+# ── 渲染后端（apps/Render：Windows 为 D3D12 / D3D11，Linux 为 Vulkan / GLES3，网页为 WebGPU / WebGL2）──
 include(cmake/Render.cmake)
 
 # ── 平台应用 ────────────────────────────────────────────────────────
@@ -57,7 +60,12 @@ add_subdirectory("apps/Common")     # 主窗口界面与逻辑（各平台宿主
 if(WIN32 AND NOT EMSCRIPTEN)
     add_subdirectory("apps/Win32")
 endif()
-# 网页版（apps/Web）、Linux 版（apps/Linux）：docs/PLAN.md 第 4 阶段，参照 MiniCAD 的同名目录
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    add_subdirectory("apps/Linux")  # 缺 SDL3 或 OpenGL ES 3 时跳过（只编核心库与测试）
+endif()
+if(EMSCRIPTEN)
+    add_subdirectory("apps/Web")    # build_wasm.bat
+endif()
 
 # ── 测试 ────────────────────────────────────────────────────────────
 option(MINIBIM_BUILD_TESTS "Build MiniBIM tests" ON)

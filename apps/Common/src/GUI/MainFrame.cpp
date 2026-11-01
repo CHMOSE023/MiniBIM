@@ -5,6 +5,7 @@
 #include "Data/Json.h"
 #include "I18n/Translator.h"
 #include "MiniBIMVersion.h"
+#include "Model/Insert.h"
 #include "Render/IRenderer.h"
 #include "Style/Theme.hpp"
 #include "Widgets/Dialog.h"
@@ -44,6 +45,7 @@ namespace MiniBIM
 
     MainFrame::~MainFrame()
     {
+        AbandonRevit();
         MiniGUI::SetTranslator({});
     }
 
@@ -65,6 +67,11 @@ namespace MiniBIM
         translator.SetCatalogDir(platform.GetResourceDir() + "/i18n");
         MiniGUI::SetTranslator([](std::string_view english) { return Tr(english); });
         LoadSettings();
+        if (const std::string dir = platform.GetUserDataDir(); !dir.empty())
+        {
+            m_recentPath = dir + "/recent.json";
+            m_recent     = RecentFiles::Load(m_recentPath);
+        }
         const std::string code = !m_languageOverride.empty() ? m_languageOverride
                                : !m_languageSetting.empty()  ? m_languageSetting
                                                              : platform.GetSystemLanguage();
@@ -72,14 +79,33 @@ namespace MiniBIM
                  m_languageSetting.c_str(), platform.GetSystemLanguage().c_str());
 
         InitUI();
-        BuildDemoScene();
         OnResize(width, height, pixelScale);
+        // 给了项目文件就打开它；给了 --run 的界面命令就在示例房屋上执行（看界面效果时用）；否则显示开始页。
+        // Revit 文件要读好一会儿：窗口先出来（开始页），再在后台读
+        const bool revit  = !m_startupFile.empty() && RevitReport::IsRevit(m_startupFile);
+        const bool opened = !m_startupFile.empty() && !revit && OpenPath(m_startupFile);
+        if (!opened && !m_startupCommands.empty())
+            OpenSample();
+        else if (!opened)
+        {
+            m_savedModel = m_session.Snapshot();    // 开始页后面的空项目算保存过的
+            OnModelChanged();
+            ShowStartPage(true, false);
+        }
+        // 打开了要打开的之后再开始：之前的换项目不算（启动时找的副本按这一份文档算）
+        EnableAutosave();
+        if (revit)
+            OpenRevit(m_startupFile);
+        for (const std::string& id : m_startupCommands)
+            if (!m_commands.Execute(id))
+                LOG_WARN("启动参数 --run：没有界面命令 %s", id.c_str());
         return true;
     }
 
     void MainFrame::InitUI()
     {
         m_ui = std::make_unique<MiniGUI::UIContext>(&m_platform->GetUiBackend());
+        ApplyTheme();
         if (!m_platform->LoadUiFonts(m_ui->GetTextSystem()))
             LOG_ERROR("MainFrame: 没有找到界面字体");
         AppPlatform* platform = m_platform;
@@ -88,14 +114,23 @@ namespace MiniBIM
         RegisterCommands();
         m_commands.BindShortcuts(m_ui->GetShortcuts());
         m_commands.AddListener([this] { UpdateStatus(); });
+        // 视图上（或没有焦点时）打的字母：两个字母的快捷键
+        m_ui->SetUnhandledTextHandler([this](std::string_view text) { return OnShortcutText(text); });
 
         // ── 宿主面板，交给界面描述文件摆放（标题写英文原文，UiLayout 应用时翻译）──
         m_layout = std::make_unique<MiniGUI::UiLayout>(m_commands, m_platform->GetResourceDir() + "/icons");
-        m_layout->RegisterPanel("viewport",  CreateViewport(), N_("3D View"));
-        m_layout->RegisterPanel("statusbar", CreateStatusBar());
+        m_layout->RegisterPanel("canvas",     CreateViewport());
+        m_layout->RegisterPanel("viewport",   CreateViewArea(), N_("View"));
+        m_layout->RegisterPanel("options",    CreateOptionsBar());
+        m_layout->RegisterPanel("properties", CreateProperties(), N_("Properties"));
+        m_layout->RegisterPanel("browser",    CreateBrowser(), N_("Project Browser"));
+        m_layout->RegisterPanel("statusbar",  CreateStatusBar());
         m_layout->SetDynamicMenuItems("languages", [this] { return BuildLanguageMenu(); });
+        m_layout->SetDynamicMenuItems("recent", [this] { return BuildRecentMenu(); });
 
-        m_uiHost = m_ui->GetRoot()->AddChild<MiniGUI::Node>();
+        // 界面描述生成的部分放在 m_uiHost 里；开始页（StartPage.cpp）是它旁边绝对定位的一层（根节点把子节点都拉满，不排版）
+        m_appHost = m_ui->GetRoot()->AddChild<MiniGUI::Node>();
+        m_uiHost  = m_appHost->AddChild<MiniGUI::Node>();
         MiniGUI::LayoutStyle hs;
         hs.grow = 1.0f;
         m_uiHost->SetLayoutStyle(hs);
@@ -111,23 +146,28 @@ namespace MiniBIM
                 m_uiPath = m_platform->GetResourceDir() + "/ui/minibim_ui.json";
         }
         ReloadUi();
+        BuildOptionsBar();
+        CreateStartPage();
     }
 
-    void MainFrame::ReloadUi()
+    void MainFrame::ReloadUi(bool restore)
     {
         m_uiFileTime = FileTime(m_uiPath);
+        m_layout->SetVariant(m_compactLayout ? "compact" : "");    // 紧凑布局：界面描述文件里的变体 compact
         if (m_layout->ApplyFile(m_uiHost, m_uiPath))
         {
             m_uiError.clear();
             for (const std::string& w : m_layout->GetWarnings())
                 LOG_WARN("界面描述文件：%s", w.c_str());
+            AttachDock(restore);
         }
         else
         {
             m_uiError = m_layout->GetError();
             LOG_ERROR("界面描述文件：%s", m_uiError.c_str());
         }
-        if (MiniGUI::TitleBar* bar = GetTitleBar())
+        MiniGUI::TitleBar* bar = GetTitleBar();
+        if (bar && m_platform->HasWindowControls())
         {
             MiniGUI::TitleBar::WindowActions actions;
             actions.minimize       = [this] { m_platform->MinimizeWindow(); };
@@ -144,7 +184,7 @@ namespace MiniBIM
     void MainFrame::CheckUiFileChanged()
     {
         if (FileTime(m_uiPath) != m_uiFileTime)
-            ReloadUi();
+            ReloadUi(false);    // 改的多半就是布局：用文件里的，不恢复用户的
     }
 
     void MainFrame::OnResize(float width, float height, float pixelScale)
@@ -153,14 +193,21 @@ namespace MiniBIM
             return;
         m_dpiScale = pixelScale;
         m_ui->SetDisplaySize({ width, height }, pixelScale);
+        if (m_startShown && StartColumns() != m_startColumns)
+            PostStartPage();
         m_ui->Update();
         m_commands.NotifyStateChanged();    // 最大化按钮切换"还原"图标
     }
 
     void MainFrame::RequestExit()
     {
-        // 还没有文档，不用询问保存
-        m_platform->Quit();
+        // 有没保存的改动时先问
+        Guard([this]
+        {
+            // 保存过或说了不保存：这份文档的恢复副本不要了（工作线程在 MainFrame 销毁前做完）
+            RetireAutosave();
+            m_platform->Quit();
+        });
     }
 
     // =========================================================
@@ -197,8 +244,12 @@ namespace MiniBIM
 
     void MainFrame::RetranslateUi()
     {
-        // 界面描述生成的部分（标题栏、菜单、命令名称）整体重建；宿主面板里的文字由 UpdateStatus 等按当前语言重写
+        // 界面描述生成的部分（标题栏、菜单、命令名称、布局）整体重建；宿主面板里的文字由 UpdateStatus、RefreshPanels 按当前语言重写
         ReloadUi();
+        RefreshPanels();
+        BuildOptionsBar();
+        if (m_startShown)
+            BuildStartPage();
         m_ui->Update();
     }
 
@@ -225,6 +276,20 @@ namespace MiniBIM
             return;
         }
         m_languageSetting = doc["language"].AsString("");
+        if (const std::string theme = doc["theme"].AsString(""); theme == "light" || theme == "dark")
+            m_themeSetting = theme;
+        m_compactLayout = doc["layout"].AsString("") == "compact";
+        const double minutes = doc["autosave_minutes"].AsNumber(m_autosave.minutes);
+        if (minutes >= 0 && minutes <= 120)
+            m_autosave.minutes = static_cast<int>(minutes);
+        if (const MiniGUI::JsonValue& keys = doc["shortcuts"]; keys.IsObject())
+            m_shortcuts.FromJson(Bim::Json::parse(keys.Dump(), nullptr, false));
+        if (const MiniGUI::JsonValue& dock = doc["dock"]; dock.IsObject())
+        {
+            m_dockLayout = dock;
+            for (const MiniGUI::JsonValue& id : doc["dock_panels"].GetArray())
+                m_dockPanels.push_back(id.AsString());
+        }
     }
 
     void MainFrame::SaveSettings() const
@@ -236,6 +301,21 @@ namespace MiniBIM
         std::filesystem::create_directories(ToPath(path).parent_path(), ec);
         MiniGUI::JsonValue doc = MiniGUI::JsonValue::MakeObject();
         doc.Set("language", m_languageSetting);
+        doc.Set("theme", m_themeSetting);
+        doc.Set("layout", m_compactLayout ? "compact" : "floating");
+        doc.Set("autosave_minutes", static_cast<double>(m_autosave.minutes));
+        MiniGUI::JsonValue keys;
+        MiniGUI::JsonError err;
+        if (MiniGUI::ParseJson(m_shortcuts.ToJson().dump(), keys, err))
+            doc.Set("shortcuts", std::move(keys));
+        if (m_dockLayout.IsObject())
+        {
+            doc.Set("dock", m_dockLayout);
+            MiniGUI::JsonValue panels = MiniGUI::JsonValue::MakeArray();
+            for (const std::string& id : m_dockPanels)
+                panels.Push(id);
+            doc.Set("dock_panels", std::move(panels));
+        }
         std::ofstream out(ToPath(path), std::ios::binary | std::ios::trunc);
         out << doc.Dump(2) << '\n';
         if (!out)
@@ -247,7 +327,14 @@ namespace MiniBIM
     // =========================================================
     void MainFrame::UpdateTitle()
     {
-        const std::string title = "MiniBIM " MINIBIM_VERSION_STRING;
+        // 项目：保存过的显示文件名，否则显示项目名称
+        std::string project = m_session.GetModel().name;
+        if (const auto& path = m_session.Path())
+            project = ToUtf8(ToPath(*path).filename());
+        // 有没保存的改动时项目名前加 *
+        if (!project.empty() && Dirty())
+            project = "*" + project;
+        const std::string title = (project.empty() ? std::string() : project + " - ") + "MiniBIM " MINIBIM_VERSION_STRING;
         m_platform->SetTitle(title);
         if (MiniGUI::TitleBar* bar = GetTitleBar())
             bar->SetTitle(title);
@@ -281,18 +368,32 @@ namespace MiniBIM
             m_statusHint->SetText(Tr("Interface description file:") + " " + m_uiError);
         else if (!m_sceneError.empty())
             m_statusHint->SetText(Tr(m_sceneError));
+        // Revit 导入进来了多少：直到模型变了或拿起了工具
+        else if (HasRevitReport() && m_session.Snapshot() == m_revitModel && m_tool == Tool::Modify)
+            m_statusHint->SetText(RevitReport::StatusLine(*m_revitReport));
+        else if (m_planLevel || m_tool != Tool::Modify)
+            m_statusHint->SetText(Tr(ToolPrompt()));
+        else if (m_sectionOf)
+            m_statusHint->SetText(Tr("Drag to pan, scroll to zoom; click what it cuts to select it"));
+        else if (m_sheetOf)
+            m_statusHint->SetText(Tr("Drag to pan, scroll to zoom; click a view to select it, drag a selected one to move it"));
+        else if (m_scene.Empty())
+            m_statusHint->SetText(Tr("The project has nothing to show in 3D yet; open a project or the sample house from the File menu"));
         else
             m_statusHint->SetText(Tr("Drag to orbit, middle- or right-drag to pan, scroll to zoom"));
 
-        const DemoScene::Counts& c = m_scene.GetCounts();
+        const ModelScene::Counts& c = m_scene.GetCounts();
         std::string info;
-        if (!m_scene.Empty())
+        if (m_planLevel || m_sectionOf || m_sheetOf)
+            info = PlanStatus() + "    ";
+        else if (!m_scene.Empty())
         {
             // 列表的分隔符也随语言（中文用"，"）
             const std::string walls   = Format(TrN("{0} wall", "{0} walls", c.walls), { std::to_string(c.walls) });
             const std::string floors  = Format(TrN("{0} floor", "{0} floors", c.floors), { std::to_string(c.floors) });
-            const std::string columns = Format(TrN("{0} column", "{0} columns", c.columns), { std::to_string(c.columns) });
-            info = Format(TrC("list of three items", "{0}, {1}, {2}"), { walls, floors, columns }) + "    ";
+            const std::string doors   = Format(TrN("{0} door", "{0} doors", c.doors), { std::to_string(c.doors) });
+            const std::string windows = Format(TrN("{0} window", "{0} windows", c.windows), { std::to_string(c.windows) });
+            info = Format(TrC("list of four items", "{0}, {1}, {2}, {3}"), { walls, floors, doors, windows }) + "    ";
         }
         info += Format(Tr("Graphics: {0}"), { m_platform->GetGraphicsName() });
         info += "    v" MINIBIM_VERSION_STRING;
@@ -312,13 +413,19 @@ namespace MiniBIM
     // =========================================================
     // 三维视口
     // =========================================================
-    void MainFrame::BuildDemoScene()
+    void MainFrame::RebuildScene()
     {
         m_sceneError.clear();
-        if (!m_scene.Build(m_platform->GetSolidKernel(), m_sceneError))
-            LOG_WARN("演示模型：%s", m_sceneError.c_str());
-        m_cameraFitted = false;
-        UpdateStatus();
+        m_sceneModel = m_session.Snapshot();
+        m_seenModel  = Bim::Links::Seen(m_sceneModel);
+        if (!m_scene.Build(*m_seenModel, m_platform->GetSolidKernel(), m_sceneError))
+            LOG_WARN("三维场景：%s", m_sceneError.c_str());
+        ++m_sceneVersion;
+    }
+
+    const Bim::Model& MainFrame::SeenModel() const
+    {
+        return m_seenModel && m_sceneModel == m_session.Snapshot() ? *m_seenModel : m_session.GetModel();
     }
 
     std::unique_ptr<MiniGUI::Node> MainFrame::CreateViewport()
@@ -326,12 +433,57 @@ namespace MiniBIM
         auto vp = std::make_unique<MiniGUI::ViewportHost>();
         vp->SetOnRender ([this](int w, int h) { RenderViewport(w, h); });
         vp->SetOnPointer([this](const MiniGUI::ViewportPointerEvent& e) { OnViewportPointer(e); });
+        vp->SetOnKey    ([this](const MiniGUI::KeyEvent& e) { return OnPlanKey(e); });
+        vp->SetOnText   ([this](std::string_view text) { return OnPlanText(text); });
+        // 平面上跟着光标的读数（长度与角度、面积、捕捉到什么）：画在视口上面，不挡点击
+        m_planTipBox = vp->AddChild<MiniGUI::Panel>(MiniGUI::Theme::TooltipBackground);
+        MiniGUI::LayoutStyle tip;
+        tip.position = MiniGUI::PositionType::Absolute;
+        tip.padding  = MiniGUI::Edges::Make(6.0f, 2.0f, 6.0f, 2.0f);
+        m_planTipBox->SetLayoutStyle(tip);
+        m_planTipBox->SetHitTestVisible(false);
+        m_planTipBox->SetVisible(false);
+        m_planTip = m_planTipBox->AddChild<MiniGUI::Label>(std::string(), 12.0f, MiniGUI::Theme::Text);
+        m_planTip->SetHitTestVisible(false);
         m_viewport = vp.get();
         return vp;
     }
 
+    // 停靠区里视图的位置（面板 "viewport"，没有标题栏、不能关）：浮动停靠区里是透明、点击穿透的"洞"，露出下面铺满的视口（"canvas"），
+    // 范围就是视口没被功能区、面板挡住的部分（UpdateFitInsets）；面板停在视图的哪一侧也按它判断（Palettes.cpp）
+    std::unique_ptr<MiniGUI::Node> MainFrame::CreateViewArea()
+    {
+        auto area = std::make_unique<MiniGUI::Node>();
+        area->SetHitTestVisible(false);
+        m_viewArea = area.get();
+        return area;
+    }
+
+    // 照 MiniCAD 的 UpdateFitInsets：框住模型（三维）、整个平面时放进没被挡住的区域，以它的中心为中心
+    void MainFrame::UpdateFitInsets(int pixelWidth, int pixelHeight)
+    {
+        for (double& inset : m_fitInsets)
+            inset = 0.0;
+        if (m_viewArea && m_viewArea->GetContext())
+        {
+            const MiniGUI::Rect vp = m_viewport->GetScreenBounds(), free = m_viewArea->GetScreenBounds();
+            if (free.Width() >= 50.0f && free.Height() >= 50.0f && vp.Width() >= 1.0f && vp.Height() >= 1.0f)
+            {
+                const double sx = pixelWidth / static_cast<double>(vp.Width()), sy = pixelHeight / static_cast<double>(vp.Height());
+                m_fitInsets[0] = std::max(0.0f, free.min.x - vp.min.x) * sx;
+                m_fitInsets[1] = std::max(0.0f, free.min.y - vp.min.y) * sy;
+                m_fitInsets[2] = std::max(0.0f, vp.max.x - free.max.x) * sx;
+                m_fitInsets[3] = std::max(0.0f, vp.max.y - free.max.y) * sy;
+            }
+        }
+        m_camera.SetFitInsets(m_fitInsets[0], m_fitInsets[1], m_fitInsets[2], m_fitInsets[3]);
+    }
+
     void MainFrame::HomeView()
     {
+        // 主视图是三维的
+        if (m_planLevel)
+            ShowModel3D();
         if (!m_scene.Empty())
             m_camera.HomeView(m_scene.GetBounds());
         m_viewport->RequestRender();
@@ -339,7 +491,13 @@ namespace MiniBIM
 
     void MainFrame::ZoomToFit()
     {
-        if (!m_scene.Empty())
+        if (m_sheetOf)
+            m_sheetView.reset();
+        else if (m_sectionOf)
+            m_sectionView.reset();
+        else if (m_planLevel)
+            m_planView.reset();
+        else if (!m_scene.Empty())
             m_camera.ZoomToFit(m_scene.GetBounds());
         m_viewport->RequestRender();
     }
@@ -347,6 +505,21 @@ namespace MiniBIM
     void MainFrame::OnViewportPointer(const MiniGUI::ViewportPointerEvent& e)
     {
         using namespace MiniGUI;
+        if (m_sheetOf)
+        {
+            OnSheetPointer(e);
+            return;
+        }
+        if (m_sectionOf)
+        {
+            OnSectionPointer(e);
+            return;
+        }
+        if (m_planLevel)
+        {
+            OnPlanPointer(e);
+            return;
+        }
         switch (e.type)
         {
         case PointerEventType::Down:
@@ -355,9 +528,31 @@ namespace MiniBIM
                 const bool shift = (e.modifiers & static_cast<uint8_t>(ModifierKey::Shift)) != 0;
                 m_drag = (e.button == MouseButton::Left || shift) ? Drag::Orbit : Drag::Pan;
                 m_lastPixel = e.pixel;
+                m_downPixel = e.pixel;
             }
             break;
         case PointerEventType::Up:
+            // 左键没拖动：拾取射线最先碰到的元素（Ctrl 加进或拿出），同平面上的单击
+            if (e.button == MouseButton::Left && std::hypot(e.pixel.x - m_downPixel.x, e.pixel.y - m_downPixel.y) <= 4.0f * m_dpiScale &&
+                m_camera.GetViewportWidth() > 0 && m_camera.GetViewportHeight() > 0)
+            {
+                const double x = 2.0 * e.pixel.x / m_camera.GetViewportWidth() - 1.0, y = 1.0 - 2.0 * e.pixel.y / m_camera.GetViewportHeight();
+                const Math::Point3 origin = Math::Mat4::Inverse(m_camera.GetViewProj()).TransformPoint({ x, y, 0.0 });
+                // 点云的点按光标周围几个像素拾取
+                const double reach = 4.0 * m_dpiScale * m_camera.GetViewHeight() / m_camera.GetViewportHeight();
+                const std::optional<Bim::Id> hit = m_scene.Pick(origin, m_camera.GetForward(), reach);
+                const bool ctrl = (e.modifiers & static_cast<uint8_t>(ModifierKey::Ctrl)) != 0;
+                std::vector<Bim::Id> picked = ctrl ? m_selection : std::vector<Bim::Id>{};
+                if (hit)
+                {
+                    const auto at = std::find(picked.begin(), picked.end(), *hit);
+                    if (at == picked.end())
+                        picked.push_back(*hit);
+                    else
+                        picked.erase(at);
+                }
+                SetSelection(std::move(picked));
+            }
             if (e.buttons == 0)
                 m_drag = Drag::None;
             break;
@@ -391,6 +586,7 @@ namespace MiniBIM
         if (target.GetWidth() != pixelWidth || target.GetHeight() != pixelHeight)
             target.Resize(pixelWidth, pixelHeight);
         m_camera.SetViewportSize(pixelWidth, pixelHeight);
+        UpdateFitInsets(pixelWidth, pixelHeight);
         if (!m_cameraFitted && !m_scene.Empty())
         {
             m_camera.HomeView(m_scene.GetBounds());
@@ -410,10 +606,18 @@ namespace MiniBIM
         };
         renderer.Submit(bg, Math::Mat4::Identity(), PrimitiveType::Triangle, false);
 
-        if (!m_scene.Empty())
+        if (m_sheetOf)
+            RenderSheet(renderer, pixelWidth, pixelHeight);
+        else if (m_sectionOf)
+            RenderSection(renderer, pixelWidth, pixelHeight);
+        else if (m_planLevel)
+            RenderPlan(renderer, pixelWidth, pixelHeight);
+        else if (!m_scene.Empty())
         {
             const Math::Mat4 viewProj = m_camera.GetViewProj();
-            renderer.SubmitCached(0, 1, m_scene.GetTriangles(), viewProj, PrimitiveType::Triangle, true);
+            renderer.SubmitCached(0, m_sceneVersion, m_scene.GetTriangles(), viewProj, PrimitiveType::Triangle, true);
+            if (!m_scene.GetPoints().empty())
+                renderer.SubmitCached(1, m_sceneVersion, m_scene.GetPoints(), viewProj, PrimitiveType::Point, true);
 
             // 边：沿视线往相机挪一个像素对应的长度（正交投影下屏幕位置不变），免得与所在的面争深度
             const Math::Vec3 toward = m_camera.GetForward() * (-std::max(0.5, m_camera.GetViewHeight() / pixelHeight));
@@ -426,6 +630,36 @@ namespace MiniBIM
                 m_edgeVerts.push_back({ { static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z) }, edge });
             }
             renderer.Submit(m_edgeVerts, viewProj, PrimitiveType::Line, true);
+
+            // 选中的元素：它的三角形再画一遍，强调色，同样往相机挪一点
+            m_edgeVerts.clear();
+            const VertexColor picked(0.0f, 0.47f, 0.84f, 1.0f);
+            for (const Bim::Id id : m_selection)
+            {
+                const auto [first, last] = m_scene.RangeOf(id);
+                for (size_t i = first; i < last; ++i)
+                {
+                    const auto& p = m_scene.GetTriangles()[i].pos;
+                    const Math::Point3 q = Math::Point3{ p.x, p.y, p.z } + toward;
+                    m_edgeVerts.push_back({ { static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z) }, picked });
+                }
+            }
+            if (!m_edgeVerts.empty())
+                renderer.Submit(m_edgeVerts, viewProj, PrimitiveType::Triangle, true);
+            // 选中的点云：它的点再画一遍，强调色
+            m_edgeVerts.clear();
+            for (const Bim::Id id : m_selection)
+            {
+                const auto [first, last] = m_scene.PointsOf(id);
+                for (size_t i = first; i < last; ++i)
+                {
+                    const auto& p = m_scene.GetPoints()[i].pos;
+                    const Math::Point3 q = Math::Point3{ p.x, p.y, p.z } + toward;
+                    m_edgeVerts.push_back({ { static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z) }, picked });
+                }
+            }
+            if (!m_edgeVerts.empty())
+                renderer.Submit(m_edgeVerts, viewProj, PrimitiveType::Point, true);
         }
         renderer.EndFrame();
 
@@ -455,5 +689,17 @@ namespace MiniBIM
         m_platform->BeginUiPass();
         m_ui->Render();
         m_platform->EndUiPass();
+        // 没有后台线程时：Revit 文件的提示框画出来了再读（读的时候窗口不动）
+        if (m_revitJob && m_revitJob->here && !m_revitJob->drawn)
+        {
+            m_revitJob->drawn = true;
+            m_platform->Post([this] { ReadRevit(); });
+        }
+        // 拖进来的文件等着 Revit 文件读完、对话框关掉：这一帧已经空下来了就打开
+        if (m_opens.Waiting() && !m_opensPosted && !ImportingRevit() && !m_ui->HasModal())
+        {
+            m_opensPosted = true;
+            m_platform->Post([this] { TakeOpens(); });
+        }
     }
 }

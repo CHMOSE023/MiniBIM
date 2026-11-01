@@ -1,0 +1,8500 @@
+// 移植自 BIMCraft crates/core/src/commands.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
+//
+// 命令表：脚本、界面（以后还有命令行与 AI 代理）能做的一切。参数是 JSON，长度单位毫米。命令构造元素，
+// 然后由 Model::Check 检查整个模型（Session::Execute），所以命令只需要仔细读参数。
+// 第 2a 步移植了项目文件、撤销、标高、轴网、墙、门窗、楼板、类型、材质与编辑（修改、移动、复制、删除、翻转），
+// 其余命令按 docs/PLAN.md 第 2 阶段的顺序陆续加进来
+#include "Commands/Commands.h"
+#include "Model/Massing.h"
+#include "I18n/Translator.h"
+#include "Ifc/Ifc.h"
+#include "Model/Align.h"
+#include "Model/Insert.h"
+#include "Model/Sketch.h"
+#include "Model/ModelJson.h"
+#include "Model/Pat.h"
+#include "Model/Render.h"
+#include "Model/Schedule.h"
+#include "Model/Snap.h"
+#include "Model/Text.h"
+#include "Model/Walls.h"
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <map>
+#include <set>
+#include <sstream>
+#include <tuple>
+
+namespace MiniBIM::Bim
+{
+    namespace
+    {
+        constexpr double kPi = 3.14159265358979323846;
+        // 这么大或更大的项目文件拒绝
+        constexpr uintmax_t kMaxFile = uintmax_t(256) << 20;
+        // open 最多列出这么多略去的字段（再说一共几个）
+        constexpr size_t kMaxLeftOut = 100;
+
+        std::string Bad(const char* c, const std::string& msg) { return std::string(c) + ": " + msg; }
+        bool Fail(std::string& error, const char* c, const std::string& msg)
+        {
+            error = Bad(c, msg);
+            return false;
+        }
+
+        // 报错里显示参数值：不合法的 UTF-8 换成替换字符，不抛异常
+        std::string Show(const Json& v) { return v.dump(-1, ' ', false, Json::error_handler_t::replace); }
+        std::string Num(double x) { return Text::Shortest(x); }
+
+        std::filesystem::path ToPath(const std::string& utf8) { return std::filesystem::path(std::u8string(utf8.begin(), utf8.end())); }
+
+        bool Absent(const Json& p, const char* key)
+        {
+            if (!p.is_object())
+                return true;
+            const auto it = p.find(key);
+            return it == p.end() || it->is_null();
+        }
+
+        const Json* Get(const Json& p, const char* key)
+        {
+            if (!p.is_object())
+                return nullptr;
+            const auto it = p.find(key);
+            return it == p.end() ? nullptr : &*it;
+        }
+
+        // [x, y]，毫米：有限、在模型的范围以内
+        std::optional<P2> PointOf(const Json& v)
+        {
+            if (!v.is_array() || v.size() != 2 || !v[0].is_number() || !v[1].is_number())
+                return std::nullopt;
+            const P2 p(v[0].get<double>(), v[1].get<double>());
+            if (!p.IsFinite() || std::abs(p.x) > MaxCoord || std::abs(p.y) > MaxCoord)
+                return std::nullopt;
+            return p;
+        }
+
+        // 读一条命令的参数：出错时 error 写明是哪条命令、哪个参数，返回 false
+        class Params
+        {
+        public:
+            Params(const char* c, const Json& p, std::string& error) : m_c(c), m_p(p), m_error(error) {}
+
+            const Json& Raw() const { return m_p; }
+            bool Absent(const char* key) const { return Bim::Absent(m_p, key); }
+            bool Fail(const std::string& msg) { return Bim::Fail(m_error, m_c, msg); }
+
+            bool PointOpt(const char* key, std::optional<P2>& out)
+            {
+                out.reset();
+                if (Absent(key))
+                    return true;
+                const Json& v = *Get(m_p, key);
+                out = PointOf(v);
+                return out ? true : Fail("`" + std::string(key) + "` must be a point [x, y] in mm, got " + Show(v));
+            }
+
+            bool PointReq(const char* key, P2& out)
+            {
+                std::optional<P2> p;
+                if (!PointOpt(key, p))
+                    return false;
+                if (!p)
+                    return Fail("`" + std::string(key) + "` [x, y] is required");
+                out = *p;
+                return true;
+            }
+
+            bool Points(const char* key, std::vector<P2>& out)
+            {
+                const Json* a = Get(m_p, key);
+                if (!a || !a->is_array())
+                    return Fail("`" + std::string(key) + "` [[x, y], …] is required");
+                if (a->size() > MaxPoints)
+                    return Fail("`" + std::string(key) + "` has more than " + std::to_string(MaxPoints) + " points");
+                out.clear();
+                for (const Json& v : *a)
+                {
+                    const auto p = PointOf(v);
+                    if (!p)
+                        return Fail("`" + std::string(key) + "`: " + Show(v) + " is not a point [x, y] in mm");
+                    out.push_back(*p);
+                }
+                return true;
+            }
+
+            bool Num(const char* key, std::optional<double>& out)
+            {
+                out.reset();
+                if (Absent(key))
+                    return true;
+                const Json& v = *Get(m_p, key);
+                if (v.is_number())
+                {
+                    const double x = v.get<double>();
+                    if (std::isfinite(x) && std::abs(x) <= MaxCoord)
+                    {
+                        out = x;
+                        return true;
+                    }
+                }
+                return Fail("`" + std::string(key) + "` must be a number in mm, got " + Show(v));
+            }
+
+            bool Flag(const char* key, bool& out)
+            {
+                out = false;
+                if (Absent(key))
+                    return true;
+                const Json& v = *Get(m_p, key);
+                if (!v.is_boolean())
+                    return Fail("`" + std::string(key) + "` must be true or false, got " + Show(v));
+                out = v.get<bool>();
+                return true;
+            }
+
+            bool String(const char* key, std::optional<std::string>& out)
+            {
+                out.reset();
+                if (Absent(key))
+                    return true;
+                const Json& v = *Get(m_p, key);
+                if (v.is_string() && Text::CharCount(v.get_ref<const std::string&>()) <= MaxText)
+                {
+                    out = v.get<std::string>();
+                    return true;
+                }
+                return Fail("`" + std::string(key) + "` must be text of at most " + std::to_string(MaxText) + " characters, got " + Show(v));
+            }
+
+            // key 给出的元素（ID 或 GUID）：给 GUID；给的是 ID 时先原样保留，由模型解析
+            bool IdOpt(const char* key, std::optional<Guid>& out)
+            {
+                out.reset();
+                if (Absent(key))
+                    return true;
+                const Json& v = *Get(m_p, key);
+                Guid g;
+                std::string why;
+                if (!FromJson(v, g, why))
+                    return Fail("`" + std::string(key) + "` must be an element id or GUID, got " + Show(v));
+                out = g;
+                return true;
+            }
+
+            bool Count(const char* key, size_t def, size_t& out)
+            {
+                out = def;
+                if (Absent(key))
+                    return true;
+                const Json& v = *Get(m_p, key);
+                const auto whole = AsWhole(v);
+                if (!whole)
+                    return Fail("`" + std::string(key) + "` must be a whole number, got " + Show(v));
+                out = static_cast<size_t>(*whole);
+                return true;
+            }
+
+        private:
+            const char*  m_c;
+            const Json&  m_p;
+            std::string& m_error;
+        };
+
+        // 模型里的元素，按 ID 或 GUID
+        bool ElementId(const char* c, const Model& m, const Json& v, Id& out, std::string& error)
+        {
+            Guid g;
+            std::string why;
+            if (!FromJson(v, g, why))
+                return Fail(error, c, Show(v) + " is not an element id or GUID");
+            const auto id = m.elements.IdOf(g);
+            if (!id)
+                return Fail(error, c, "no element " + g.ToString());
+            out = *id;
+            return true;
+        }
+
+        // ids [id, …] 或一个 id：模型的元素，按 ID 或 GUID，各一次，按给出的顺序
+        bool IdsParam(const char* c, const Model& m, const Json& p, std::vector<Id>& out, std::string& error)
+        {
+            out.clear();
+            const Json* ids = Get(p, "ids");
+            const Json* one = Get(p, "id");
+            std::vector<Id> given;
+            if (ids && ids->is_array())
+            {
+                if (ids->size() > MaxPoints)
+                    return Fail(error, c, "`ids` lists more than " + std::to_string(MaxPoints) + " elements");
+                for (const Json& v : *ids)
+                {
+                    Id id = 0;
+                    if (!ElementId(c, m, v, id, error))
+                        return false;
+                    given.push_back(id);
+                }
+            }
+            else if ((!ids || ids->is_null()) && one)
+            {
+                Id id = 0;
+                if (!ElementId(c, m, *one, id, error))
+                    return false;
+                given.push_back(id);
+            }
+            else
+                return Fail(error, c, "`ids` [id, …] is required");
+            std::set<Id> seen;
+            for (const Id id : given)
+                if (seen.insert(id).second)
+                    out.push_back(id);
+            return true;
+        }
+
+        // key 指的平面（名称、ID 或 GUID）：标高自己的平面（没给时为最低的标高），或标高的平面视图。给出标高的 GUID，
+        // 是平面视图时还有它的 GUID：注释在哪个视图里
+        bool PlanParam(const char* c, const Model& m, const Json& p, const char* key, Guid& level, std::optional<Guid>& view, std::string& error)
+        {
+            const auto levels = m.Levels();
+            Id id = 0;
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+            {
+                if (levels.empty())
+                    return Fail(error, c, "the model has no levels");
+                id = levels.front().first;
+            }
+            else if (v->is_string() && !Guid::Parse(v->get<std::string>()))
+            {
+                const std::string n = v->get<std::string>();
+                const auto it = std::find_if(levels.begin(), levels.end(), [&](const auto& l) { return l.second->name == n; });
+                std::optional<Id> found = it == levels.end() ? std::nullopt : std::optional<Id>(it->first);
+                for (const auto& [eid, e] : m.elements.Items())
+                    if (const PlanView* pv = e->As<PlanView>(); !found && pv && pv->name == n)
+                        found = eid;
+                if (!found)
+                {
+                    std::string names;
+                    for (const auto& [_, l] : levels)
+                        names += (names.empty() ? "" : ", ") + l->name;
+                    return Fail(error, c, "no level or plan view named `" + n + "` (the levels are: " + names + ")");
+                }
+                id = *found;
+            }
+            else
+            {
+                Guid g;
+                std::string why;
+                const auto found = FromJson(*v, g, why) ? m.elements.IdOf(g) : std::nullopt;
+                if (!found || !m.PlanLevel(m.GuidOf(*found)))
+                    return Fail(error, c, "`" + std::string(key) + "`: " + Show(*v) + " is not a level or a plan view");
+                id = *found;
+            }
+            const Guid g = m.GuidOf(id);
+            level = m.PlanLevel(g).value_or(g);
+            view  = m.GetPlanView(g) ? std::optional<Guid>(g) : std::nullopt;
+            return true;
+        }
+
+        // key 指的标高（名称、ID 或 GUID），给它的 GUID；没给时为最低的标高。标高的平面视图也指它的标高
+        bool LevelParam(const char* c, const Model& m, const Json& p, const char* key, Guid& out, std::string& error)
+        {
+            std::optional<Guid> view;
+            return PlanParam(c, m, p, key, out, view, error);
+        }
+
+        // type，没给时为类别的默认类型（Model::DefaultType）。不存在的名称由 Model::Check 报出并列出已有的
+        bool TypeParam(Params& P, const Model& m, const char* category, std::string& out)
+        {
+            std::optional<std::string> n;
+            if (!P.String("type", n))
+                return false;
+            if (n)
+            {
+                out = *n;
+                return true;
+            }
+            const auto d = m.DefaultType(category);
+            if (!d)
+                return P.Fail("the model has no types for this");
+            out = *d;
+            return true;
+        }
+
+        double Hundredth(double x) { return std::round(x * 100.0) / 100.0; }
+        // 平方毫米换成平方米，到百分位
+        double M2(double mm2) { return std::round(mm2 / 1e4) / 100.0; }
+
+        std::string LevelName(const Model& m, Guid id)
+        {
+            const Level* l = m.GetLevel(id);
+            return l ? l->name : "level " + m.Shown(id);
+        }
+
+        // 点在墙定位线上离起点多远
+        double Along(const Wall& w, P2 p) { return Walls::Axis::Of(w).Project(p).first; }
+        // 点到墙中心线的距离
+        double OffCentre(const Model& m, const Wall& w, P2 p) { return Walls::Axis::Of(w).Distance(p, Walls::Centre(m, w)); }
+
+        // level 的平面剖切到的、离 at 最近的墙（在中心线两侧半个墙厚再加 100 毫米以内），以及 at 沿它多远
+        std::optional<std::pair<Guid, double>> WallAt(const Model& m, Guid level, P2 at)
+        {
+            std::optional<std::tuple<Guid, const Wall*, double>> best;
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const Wall* w = e->As<Wall>();
+                if (!w || !m.CutBy(*w, level))
+                    continue;
+                const double d = OffCentre(m, *w, at);
+                if (d > m.Thickness(*w) / 2.0 + 100.0)
+                    continue;
+                if (!best || d < std::get<2>(*best))
+                    best = std::tuple{ m.GuidOf(id), w, d };
+            }
+            if (!best)
+                return std::nullopt;
+            return std::pair{ std::get<0>(*best), Along(*std::get<1>(*best), at) };
+        }
+
+
+        // 给出的环：去掉连续重复的点和末尾回到起点的点
+        Ring CleanRing(const std::vector<P2>& given)
+        {
+            Ring r;
+            for (const P2& q : given)
+                if (r.empty() || r.back().Dist(q) > Tol)
+                    r.push_back(q);
+            while (r.size() > 1 && r.front().Dist(r.back()) <= Tol)
+                r.pop_back();
+            return r;
+        }
+
+        // key 下给出的环（楼板的洞口），各按 CleanRing 清理
+        bool Rings(Params& P, const char* key, std::optional<std::vector<Ring>>& out)
+        {
+            out.reset();
+            if (P.Absent(key))
+                return true;
+            const Json& v = *Get(P.Raw(), key);
+            if (!v.is_array())
+                return P.Fail("`" + std::string(key) + "` must be a list of outlines [[[x,y],…],…]");
+            std::vector<Ring> rings;
+            for (const Json& r : v)
+            {
+                if (!r.is_array())
+                    return P.Fail("`" + std::string(key) + "` must be a list of outlines [[[x,y],…],…]");
+                std::vector<P2> pts;
+                for (const Json& q : r)
+                {
+                    P2 p;
+                    std::string why;
+                    if (!FromJson(q, p, why))
+                        return P.Fail("`" + std::string(key) + "` must be a list of outlines [[[x,y],…],…]");
+                    pts.push_back(p);
+                }
+                rings.push_back(CleanRing(pts));
+            }
+            out = std::move(rings);
+            return true;
+        }
+
+        // 照 Revit 给轴网起名：上一个轴网的字母的下一个，否则下一个数
+        std::string NextGridName(const Model& m)
+        {
+            std::vector<std::string> names;
+            for (const auto& [_, e] : m.elements.Items())
+                if (const Grid* g = e->As<Grid>())
+                    names.push_back(g->name);
+            if (!names.empty() && names.back().size() == 1)
+            {
+                const char ch = names.back()[0];
+                if (ch >= 'A' && ch < 'Z')
+                {
+                    const std::string next(1, static_cast<char>(ch + 1));
+                    if (std::find(names.begin(), names.end(), next) == names.end())
+                        return next;
+                }
+            }
+            return NextNumber(names);
+        }
+
+        std::vector<std::string> Marks(const Model& m, bool doors)
+        {
+            std::vector<std::string> out;
+            for (const auto& [_, e] : m.elements.Items())
+                if ((doors && e->IsDoor()) || (!doors && e->IsWindow()))
+                    out.push_back(e->AsOpening()->mark);
+            return out;
+        }
+
+        // 读整个文件（UTF-8 路径）
+        bool ReadFile(const std::string& path, std::string& out, std::string& error)
+        {
+            std::error_code ec;
+            const uintmax_t size = std::filesystem::file_size(ToPath(path), ec);
+            if (ec)
+            {
+                error = path + ": " + ec.message();
+                return false;
+            }
+            if (size >= kMaxFile)
+            {
+                error = path + " is too large (" + std::to_string(size) + " bytes)";
+                return false;
+            }
+            std::ifstream in(ToPath(path), std::ios::binary);
+            if (!in)
+            {
+                error = path + ": can't be read";
+                return false;
+            }
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            out = ss.str();
+            return true;
+        }
+
+        // 原子地写文件：先写旁边的临时文件，再换过去，写到一半失败时原来的文件还在
+        bool AtomicWrite(const std::string& path, const std::string& text, std::string& error)
+        {
+            const std::filesystem::path target = ToPath(path);
+            std::filesystem::path temp = target;
+            temp += ".tmp";
+            {
+                std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+                out << text;
+                out.flush();
+                if (!out)
+                {
+                    error = path + ": can't be written";
+                    std::error_code ec;
+                    std::filesystem::remove(temp, ec);
+                    return false;
+                }
+            }
+            std::error_code ec;
+            std::filesystem::rename(temp, target, ec);
+            if (ec)
+            {
+                error = path + ": " + ec.message();
+                std::filesystem::remove(temp, ec);
+                return false;
+            }
+            return true;
+        }
+
+        std::string Extension(const std::string& path)
+        {
+            const std::u8string e = ToPath(path).extension().u8string();
+            std::string ext(e.begin(), e.end());
+            if (!ext.empty() && ext.front() == '.')
+                ext.erase(0, 1);
+            return Text::AsciiLower(ext);
+        }
+
+        // ── 文件与历史 ───────────────────────────────────────────
+        bool New(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "new";
+            Params P(c, p, error);
+            std::optional<std::string> code, name;
+            if (!P.String("language", code) || !P.String("name", name))
+                return false;
+            Language language = Language::English;
+            if (code)
+            {
+                const auto l = LanguageOf::FromCode(*code);
+                if (!l)
+                    return P.Fail("`" + *code + "` is no language here; there are en (English), pt (Português) and es (Español)");
+                language = *l;
+            }
+            const std::string n = name.value_or(LanguageOf::Word(language, "Project"));
+            s.Reset(Model::New(n, language), std::nullopt);
+            result = Json{ { "name", n }, { "language", LanguageOf::Code(language) } };
+            return true;
+        }
+
+        bool OpenFile(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "open";
+            Params P(c, p, error);
+            std::optional<std::string> path;
+            if (!P.String("path", path))
+                return false;
+            if (!path)
+                return P.Fail("`path` is required");
+            std::string text, why;
+            // IFC 作为新项目进来：保存时再问存到哪里
+            if (Extension(*path) == "ifc")
+            {
+                if (!ReadFile(*path, text, why))
+                    return P.Fail(why);
+                const std::u8string stem = ToPath(*path).stem().u8string();
+                Ifc::Imported i;
+                if (!Ifc::Import(text, stem.empty() ? std::string("Project") : std::string(stem.begin(), stem.end()), i, why))
+                    return P.Fail(*path + ": " + why);
+                std::map<std::string, size_t> counts;
+                for (const auto& [_, e] : i.model.elements.Items())
+                    ++counts[e->Category()];
+                Json elements = Json::object();
+                for (const auto& [category, n] : counts)
+                    elements[category] = n;
+                result = Json{ { "path", *path },
+                               { "name", i.model.name },
+                               { "format", i.schema },
+                               { "elements", std::move(elements) },
+                               { "skipped", i.skipped },
+                               { "moved", i.moved ? ToJson(*i.moved) : Json() } };
+                s.Reset(std::move(i.model), std::nullopt);
+                return true;
+            }
+            if (!ReadFile(*path, text, why))
+                return P.Fail(why);
+            Model m;
+            std::vector<std::string> leftOut;
+            if (!Model::Read(text, m, leftOut, why))
+                return P.Fail(*path + " is not a project file: " + why);
+            m.AdoptMaterials();
+            m.SyncLibrary();
+            if (!m.Check(why))
+                return P.Fail(*path + ": " + why);
+            const std::string name = m.name;
+            s.Reset(std::move(m), *path);
+            result = Json{ { "path", *path }, { "name", name } };
+            if (!leftOut.empty())
+            {
+                // 恶意的文件可能列出上百万个键：结果只列前面一些，再说一共几个
+                Json list = Json::array();
+                for (size_t i = 0; i < leftOut.size() && i < kMaxLeftOut; ++i)
+                    list.push_back(leftOut[i]);
+                result["left_out"]       = std::move(list);
+                result["left_out_count"] = leftOut.size();
+            }
+            return true;
+        }
+
+        bool Save(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "save";
+            Params P(c, p, error);
+            std::optional<std::string> given;
+            if (!P.String("path", given))
+                return false;
+            if (!given && !s.Path())
+                return P.Fail("`path` is required: this project hasn't been saved yet");
+            const std::string path = given ? *given : *s.Path();
+            const std::string ext = Extension(path);
+            std::string text, why;
+            if (ext == "ifc")
+            {
+                if (!AtomicWrite(path, Ifc::Export(s.GetModel()), why))
+                    return P.Fail(why);
+                result = Json{ { "path", path }, { "format", "IFC4" } };
+                return true;
+            }
+            if (ext == "pdf" || ext == "svg" || ext == "png")
+                return P.Fail("exporting ." + ext + " isn't ported yet (docs/PLAN.md, phase 2)");
+            if (!s.GetModel().ToFile(text, why) || !AtomicWrite(path, text, why))
+                return P.Fail(why);
+            s.SetPath(path);
+            result = Json{ { "path", path }, { "format", "project" } };
+            return true;
+        }
+
+        // 恢复副本（自动保存，Autosave.h）：原子地写，留着项目的路径与撤销历史
+        bool AutosaveCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "autosave";
+            Params P(c, p, error);
+            std::optional<std::string> path;
+            if (!P.String("path", path))
+                return false;
+            if (!path)
+                return P.Fail("`path` is required");
+            if (s.Path() && *s.Path() == *path)
+                return P.Fail("the recovery file must differ from the saved project");
+            std::string text, why;
+            if (!s.GetModel().ToFile(text, why))
+                return P.Fail(why);
+            if (text.size() >= kMaxFile)
+                return P.Fail("the recovery snapshot exceeds the project file size limit");
+            if (!AtomicWrite(*path, text, why))
+                return P.Fail(why);
+            result = Json{ { "path", *path }, { "format", "project" } };
+            return true;
+        }
+
+        // path 相对于项目文件（项目还没存过时照给的）
+        std::string Beside(const Session& s, const std::string& path)
+        {
+            const std::filesystem::path at = ToPath(path);
+            if (!s.Path() || !at.is_relative())
+                return path;
+            const std::u8string full = (ToPath(*s.Path()).parent_path() / at).u8string();
+            return std::string(full.begin(), full.end());
+        }
+
+        // 链接的 path 说的项目，照 open 那样读：不跟着它自己的链接
+        bool ReadLink(const Session& s, const std::string& path, std::shared_ptr<const Model>& out, std::string& error)
+        {
+            Session other;
+            Json r;
+            if (!OpenFile(other, Json{ { "path", Beside(s, path) } }, r, error))
+            {
+                if (error.rfind("open: ", 0) == 0)
+                    error.erase(0, 6);
+                return false;
+            }
+            out = other.Snapshot();
+            return true;
+        }
+
+        // 再读项目的每个链接；读不到的链接，{name, error}
+        Json Relink(Session& s)
+        {
+            std::vector<std::pair<std::string, std::string>> links;
+            for (const auto& [_, e] : s.GetModel().elements.Items())
+                if (const Link* l = e->As<Link>())
+                    links.emplace_back(l->name, l->path);
+            Json failed = Json::array();
+            for (const auto& [name, path] : links)
+            {
+                std::shared_ptr<const Model> m;
+                std::string why;
+                if (ReadLink(s, path, m, why))
+                    s.ModelMut().loaded[path] = std::move(m);
+                else
+                {
+                    if (s.GetModel().loaded.count(path))
+                        s.ModelMut().loaded.erase(path);
+                    failed.push_back(Json{ { "name", name }, { "error", why } });
+                }
+            }
+            return failed;
+        }
+
+        Json RelinkCads(Session& s);
+
+        // 打开的结果，加上项目读完后读不到的链接与链接的图纸
+
+        void WithLinks(Session& s, Json& result)
+        {
+            Json failed = Relink(s);
+            if (!failed.empty())
+                result["links_not_loaded"] = std::move(failed);
+            Json cads = RelinkCads(s);
+            if (!cads.empty())
+                result["cads_not_reloaded"] = std::move(cads);
+        }
+
+        bool Open(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            if (!OpenFile(s, p, result, error))
+                return false;
+            WithLinks(s, result);
+            return true;
+        }
+
+        // 打开并检查一份恢复副本；之后保存存到 project，没有时（没保存过的项目）要另存
+        bool Recover(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "recover";
+            // 先读完参数再打开（打开会换掉会话）：参数不对时什么都不恢复
+            Params P(c, p, error);
+            std::optional<std::string> path, project;
+            if (!P.String("path", path) || !P.String("project", project))
+                return false;
+            if (!OpenFile(s, Json{ { "path", path ? Json(*path) : Json() } }, result, error))
+            {
+                if (error.rfind("open:", 0) == 0)
+                    error = "recover:" + error.substr(5);
+                return false;
+            }
+            // 它的链接从项目所在的地方读，不从恢复副本那里
+            s.SetPath(project);
+            result["project"] = project ? Json(*project) : Json();
+            WithLinks(s, result);
+            return true;
+        }
+
+        // ── 插入：链接与从文件插入（移植自 BIMCraft commands.rs 的 insert_from、link_model、reload）──
+        bool InsertFrom(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "insert";
+            Params P(c, p, error);
+            std::optional<std::string> path;
+            if (!P.String("path", path))
+                return false;
+            if (!path)
+                return P.Fail("`path` is required");
+            // 照 open 那样读，在它自己的会话里
+            Session other;
+            Json r;
+            std::string why;
+            if (!OpenFile(other, Json{ { "path", *path } }, r, why))
+                return P.Fail(why.rfind("open: ", 0) == 0 ? why.substr(6) : why);
+            std::vector<Id> ids;
+            if (!P.Absent("ids") && !IdsParam(c, other.GetModel(), p, ids, error))
+                return false;
+            Inserted made;
+            if (!Insert(s.ModelMut(), other.GetModel(), ids, false, made, why))
+                return P.Fail(why);
+            Json there = Json::object();
+            for (const auto& [a, b] : made.ids)
+                there[std::to_string(a)] = b;
+            result = Json{ { "ids", std::move(there) }, { "copies", made.copies }, { "library", made.library }, { "left_out", made.leftOut } };
+            return true;
+        }
+
+        bool LinkModel(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "link";
+            Params P(c, p, error);
+            std::optional<std::string> path, name;
+            std::optional<P2> at;
+            std::optional<double> angle;
+            if (!P.String("path", path) || !P.String("name", name) || !P.PointOpt("at", at) || !P.Num("angle", angle))
+                return false;
+            if (!path)
+                return P.Fail("`path` is required");
+            std::shared_ptr<const Model> other;
+            std::string why;
+            if (!ReadLink(s, *path, other, why))
+                return P.Fail(why);
+            if (!name)
+            {
+                const std::u8string stem = ToPath(*path).stem().u8string();
+                name = stem.empty() ? std::string("Link") : std::string(stem.begin(), stem.end());
+            }
+            const size_t elements = other->elements.Items().size();
+            Model& m = s.ModelMut();
+            const Id id = m.Insert(Element(Link{ *name, *path, at.value_or(P2(0.0, 0.0)), angle.value_or(0.0) }));
+            m.loaded[*path] = std::move(other);
+            result = Json{ { "id", id }, { "name", *name }, { "elements", elements } };
+            return true;
+        }
+
+        bool Reload(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "reload";
+            Params P(c, p, error);
+            std::optional<Guid> only;
+            if (!P.IdOpt("id", only))
+                return false;
+            const Model& m = s.GetModel();
+            if (only)
+            {
+                const auto id = m.elements.IdOf(*only);
+                const Element* e = id ? m.elements.Get(*id) : nullptr;
+                if (!e || !e->As<Link>())
+                    return P.Fail("element " + Show(ToJson(*only)) + " is not a link");
+            }
+            std::vector<std::pair<std::string, std::string>> want;
+            for (const auto& [id, e] : m.elements.Items())
+                if (const Link* l = e->As<Link>())
+                    if (!only || m.Same(m.GuidOf(id), *only))
+                        want.emplace_back(l->name, l->path);
+            Json reloaded = Json::array(), failed = Json::array();
+            for (const auto& [name, path] : want)
+            {
+                std::shared_ptr<const Model> other;
+                std::string why;
+                if (ReadLink(s, path, other, why))
+                {
+                    s.ModelMut().loaded[path] = std::move(other);
+                    reloaded.push_back(name);
+                }
+                else
+                    failed.push_back(Json{ { "name", name }, { "error", why } });
+            }
+            result = Json{ { "reloaded", std::move(reloaded) }, { "failed", std::move(failed) } };
+            return true;
+        }
+
+        // ── CAD 图纸（第 5g2 步，移植自 BIMCraft commands.rs 的 import_cad 等）──────────────
+        bool        Only(const char* c, const Json& p, std::initializer_list<const char*> keys, std::string& error);
+        std::string ViewTitle(const Model& m, Guid id);
+        bool        NotDependent(const char* c, const Model& m, Guid view, const char* what, std::string& error);
+        bool        AnyViewParam(const char* c, const Model& m, const Json& p, Guid& out, std::string& error);
+
+        // DXF 文件 path（相对于项目文件）的字节，或为什么带不进来
+        bool ReadDxfFile(const Session& s, const std::string& path, std::string& out, std::string& error)
+        {
+            const std::string full = Beside(s, path);
+            const std::u8string e = ToPath(full).extension().u8string();
+            const std::string ext = Text::AsciiLower(std::string(e.begin(), e.end()));
+            if (ext == ".dwg")
+            {
+                error = full + ": MiniBIM doesn't read DWG yet; save it as DXF (any version, ASCII) from the program that made it, "
+                               "or convert it with a DWG to DXF converter, and bring that in";
+                return false;
+            }
+            if (ext != ".dxf")
+            {
+                error = full + ": a " + (ext.empty() ? std::string("file with no extension") : ext + " file") + " isn't a CAD drawing MiniBIM reads; it reads DXF";
+                return false;
+            }
+            std::error_code ec;
+            const uintmax_t size = std::filesystem::file_size(ToPath(full), ec);
+            if (ec)
+            {
+                error = full + ": " + ec.message();
+                return false;
+            }
+            if (size > Dxf::MaxBytes)
+            {
+                error = full + " is too large (" + std::to_string(size) + " bytes; up to " + std::to_string(Dxf::MaxBytes) + ")";
+                return false;
+            }
+            std::ifstream in(ToPath(full), std::ios::binary);
+            if (!in)
+            {
+                error = full + ": can't be read";
+                return false;
+            }
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            out = ss.str();
+            return true;
+        }
+
+        // id 说的 CAD 导入，按 ID 或 GUID
+        bool CadImportParam(const char* c, const Model& m, const Json& p, Id& id, const CadImport*& out, std::string& error)
+        {
+            const Json* v = Get(p, "id");
+            if (!v || v->is_null())
+                return Fail(error, c, "`id`, a CAD import's id or GUID, is required");
+            if (!ElementId(c, m, *v, id, error))
+                return false;
+            const Element* e = m.elements.Get(id);
+            out = e->As<CadImport>();
+            if (!out)
+                return Fail(error, c, std::string(e->Category()) + " " + std::to_string(id) + " isn't a CAD import");
+            return true;
+        }
+
+        // key，图纸的图层名称的列表，每个都是它有的
+        bool LayerList(const char* c, const Json& p, const char* key, const Cad& cad, std::vector<std::string>& out, std::string& error)
+        {
+            out.clear();
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            if (!v->is_array() || v->size() > Cads::MaxHidden)
+                return Fail(error, c, std::string("`") + key + "` is a list of layer names, of up to " + std::to_string(Cads::MaxHidden) + ", not " + Show(*v));
+            const Dxf::Drawing& d = cad.Drawing();
+            for (const Json& n : *v)
+            {
+                if (!n.is_string())
+                    return Fail(error, c, std::string("`") + key + "` lists layers by name, not " + Show(n));
+                const std::string name = n.get<std::string>();
+                if (!d.LayerOf(name))
+                {
+                    std::string names;
+                    for (size_t i = 0; i < d.layers.size() && i < 20; ++i)
+                        names += (i ? ", " : "") + d.layers[i].name;
+                    return Fail(error, c, "the drawing has no layer `" + name + "` (it has: " + names + (d.layers.size() > 20 ? "…" : "") + ")");
+                }
+                out.push_back(name);
+            }
+            return true;
+        }
+
+        Json RgbJson(const std::optional<Dxf::Rgb>& c) { return c ? Json::array({ c->r, c->g, c->b }) : Json(nullptr); }
+
+        // 回复列出的图纸的图层：各带颜色、线型，以及显示不显示
+        Json LayersJson(const Cad& cad, const std::set<std::string>& hidden, const std::set<std::string>* inView)
+        {
+            Json rows = Json::array();
+            for (const Dxf::Layer& l : cad.Drawing().layers)
+            {
+                Json row = Json{ { "name", l.name }, { "color", RgbJson(l.color.ToRgb()) }, { "linetype", l.linetype }, { "shown", !hidden.count(l.name) } };
+                if (inView)
+                    row["shown_in_view"] = !hidden.count(l.name) && !inView->count(l.name);
+                rows.push_back(std::move(row));
+            }
+            return rows;
+        }
+
+        // 文件里关闭或冻结的图层：只导入可见图层时隐藏的
+        std::set<std::string> OffLayers(const Cad& cad)
+        {
+            std::set<std::string> out;
+            for (const Dxf::Layer& l : cad.Drawing().layers)
+                if (l.off || l.frozen)
+                    out.insert(l.name);
+            return out;
+        }
+
+        // 长度单位的名称到毫米
+        std::optional<double> UnitMm(std::string_view name)
+        {
+            const std::string n = Text::AsciiLower(Text::Trim(name));
+            if (n == "mm") return 1.0;
+            if (n == "cm") return 10.0;
+            if (n == "m") return 1000.0;
+            if (n == "in") return 25.4;
+            if (n == "ft") return 304.8;
+            return std::nullopt;
+        }
+
+        // 带进一张 DXF 图纸，或再放一张项目存的，作为元素：Revit 的导入 CAD（与链接 CAD）
+        bool ImportCad(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "import_cad";
+            if (!Only(c, p, { "path", "cad", "name", "level", "view", "at", "position", "units", "scale", "angle", "layers", "colors", "link" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            std::optional<Guid> view;
+            if (P.Absent("view"))
+            {
+                if (!LevelParam(c, m, p, "level", level, error))
+                    return false;
+            }
+            else
+            {
+                std::optional<Guid> plan;
+                if (!PlanParam(c, m, p, "view", level, plan, error))
+                    return false;
+                if (!P.Absent("level"))
+                {
+                    Guid given;
+                    if (!LevelParam(c, m, p, "level", given, error))
+                        return false;
+                    if (!m.Same(given, level))
+                        return P.Fail("`view` is a plan of another level than `level`; give the one, or a plan of the other");
+                }
+                view = plan.value_or(level);
+            }
+            bool link = false;
+            std::optional<std::string> path, held, given;
+            if (!P.Flag("link", link) || !P.String("path", path) || !P.String("cad", held) || !P.String("name", given))
+                return false;
+            if (path && held)
+                return P.Fail("give `path`, a DXF file to bring in, or `cad`, a drawing the project holds; not both");
+            if (!path && !held)
+                return P.Fail("give `path`, a DXF file to bring in, or `cad`, the name of a drawing the project holds");
+            std::string name;
+            Cad cad;
+            bool fresh = false;
+            if (held)
+            {
+                const auto it = m.cads.find(*held);
+                if (it == m.cads.end())
+                {
+                    std::string names;
+                    for (const auto& [n, _] : m.cads)
+                        names += (names.empty() ? "" : ", ") + n;
+                    return P.Fail("the project holds no CAD drawing named `" + *held + "` (it holds: " + (names.empty() ? std::string("none") : names) + ")");
+                }
+                name = *held;
+                cad  = it->second;
+            }
+            else
+            {
+                const std::filesystem::path fp = ToPath(*path);
+                const std::u8string file = fp.filename().u8string(), stem = fp.stem().u8string();
+                const std::string source = file.empty() ? *path : std::string(file.begin(), file.end());
+                name = given ? *given : stem.empty() ? std::string("Drawing") : Text::TakeChars(std::string(stem.begin(), stem.end()), MaxText);
+                if (Text::Trim(name).empty())
+                    return P.Fail("a CAD drawing needs a `name`");
+                if (m.cads.count(name))
+                    return P.Fail("the project already holds a CAD drawing named `" + name +
+                                  "`: place it again with `cad`, or bring this file in under another `name`");
+                if (m.cads.size() >= Cads::MaxCads)
+                    return P.Fail("the project holds " + std::to_string(Cads::MaxCads) + " CAD drawings already; delete the imports of one first");
+                std::string bytes, why;
+                if (!ReadDxfFile(s, *path, bytes, why))
+                    return P.Fail(why);
+                size_t all = bytes.size();
+                for (const auto& [_, x] : m.cads)
+                    all += x.Size();
+                if (all > Cads::MaxHeld)
+                    return P.Fail("the project's CAD drawings would hold " + std::to_string(all) + " bytes; it holds up to " + std::to_string(Cads::MaxHeld));
+                if (!Cad::Make(source, link ? std::optional<std::string>(*path) : std::nullopt, std::move(bytes), cad, why))
+                    return P.Fail(*path + ": " + why);
+                fresh = true;
+            }
+            if (link && !fresh)
+                return P.Fail("`link` is for a file brought in by `path`; a drawing the project holds stays as it's held");
+            const Dxf::Drawing& dxf = cad.Drawing();
+            std::optional<std::string> units;
+            std::optional<double> k;
+            if (!P.String("units", units) || !P.Num("scale", k))
+                return false;
+            if (units && k)
+                return P.Fail("give `units` or `scale`, not both");
+            double scale = 1.0;
+            if (k)
+            {
+                if (!(*k >= Cads::MinScale && *k <= Cads::MaxScale))
+                    return P.Fail("`scale` is mm to each of the drawing's units, from " + Num(Cads::MinScale) + " to " + Num(Cads::MaxScale) + ", not " + Num(*k));
+                scale = *k;
+            }
+            else if (!units || *units == "auto")
+                scale = dxf.scale.value_or(1.0);
+            else if (const auto u = UnitMm(*units))
+                scale = *u;
+            else
+                return P.Fail("`units` is auto, mm, cm, m, in or ft, not " + *units);
+            const std::array<P2, 2> bulk = cad.Bulk().value_or(std::array<P2, 2>{});
+            std::optional<std::string> position;
+            if (!P.String("position", position))
+                return false;
+            P2 origin = (bulk[0] + bulk[1]) * 0.5;
+            if (position && *position == "origin")
+                origin = P2(0.0, 0.0);
+            else if (position && *position != "center" && *position != "centre")
+                return P.Fail("`position` is center (the middle of the drawing on `at`) or origin (its origin on `at`), not " + *position);
+            std::optional<P2> at;
+            std::optional<double> angle;
+            if (!P.PointOpt("at", at) || !P.Num("angle", angle))
+                return false;
+            std::set<std::string> hidden;
+            const Json* layers = Get(p, "layers");
+            if (!layers || layers->is_null() || (layers->is_string() && layers->get<std::string>() == "visible"))
+                hidden = OffLayers(cad);
+            else if (layers->is_string() && layers->get<std::string>() == "all")
+                ;
+            else if (layers->is_array())
+            {
+                std::vector<std::string> keep;
+                if (!LayerList(c, p, "layers", cad, keep, error))
+                    return false;
+                for (const Dxf::Layer& l : dxf.layers)
+                    if (std::find(keep.begin(), keep.end(), l.name) == keep.end())
+                        hidden.insert(l.name);
+            }
+            else
+                return P.Fail("`layers` is visible (those the file has on and thawed), all, or a list of the layers to show, not " + Show(*layers));
+            std::optional<std::string> colorName;
+            if (!P.String("colors", colorName))
+                return false;
+            CadColors colors = CadColors::Preserve;
+            if (colorName)
+            {
+                const auto cc = CadColorsFrom(*colorName);
+                if (!cc)
+                    return P.Fail("`colors` is preserve, invert or black, not " + *colorName);
+                colors = *cc;
+            }
+            // 读它用的单位：给的，否则文件的
+            std::string unit;
+            if (units && *units != "auto")
+                unit = *units + " (its file says " + dxf.unit + ")";
+            else if (k)
+                unit = "a scale of its own (its file says " + dxf.unit + ")";
+            else if (dxf.scale)
+                unit = dxf.unit;
+            else
+                unit = dxf.unit + " (read as mm unless `units` says)";
+            const size_t entities = dxf.entities.size(), layerCount = dxf.layers.size(), far = cad.Far();
+            Json leftOut = Json::object();
+            for (const auto& [what, n] : dxf.leftOut)
+                leftOut[what] = n;
+            const std::string source = cad.Source();
+            Model& mm = s.ModelMut();
+            if (fresh)
+                mm.cads.emplace(name, std::move(cad));
+            CadImport ci;
+            ci.cad    = name;
+            ci.level  = level;
+            ci.at     = at.value_or(P2(0.0, 0.0));
+            ci.origin = origin;
+            ci.scale  = scale;
+            ci.angle  = angle.value_or(0.0);
+            ci.view   = view;
+            ci.hidden = std::move(hidden);
+            ci.colors = colors;
+            const Id id = mm.Insert(Element(std::move(ci)));
+            const auto extents = mm.CadBox(id);
+            result = Json{ { "id", id },           { "cad", name },          { "source", source },     { "unit", unit },  { "scale", scale },
+                           { "entities", entities }, { "layers", layerCount }, { "far", far },          { "left_out", std::move(leftOut) } };
+            result["extents"] = extents ? Json::array({ ToJson((*extents)[0]), ToJson((*extents)[1]) }) : Json(nullptr);
+            if (far > 0)
+                result["warning"] = std::to_string(far) +
+                                    " of its entities lie far from the rest of the drawing: they're drawn where they are, and left out of its extents. "
+                                    "Delete them in the program that made the drawing, or hide their layers";
+            return true;
+        }
+
+        // 带进一次扫描（文件，或一次扫描的几个测站的文件），或再放一次项目存的，作为元素：中心放在 at、脚放在标高上，或在文件坐标说的地方
+        bool PointCloudCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "point_cloud";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            if (!LevelParam(c, m, p, "level", level, error))
+                return false;
+            std::optional<std::vector<std::string>> paths;
+            if (const Json* v = Get(p, "path"); v && !v->is_null())
+            {
+                if (v->is_string())
+                    paths = std::vector<std::string>{ v->get<std::string>() };
+                else if (v->is_array() && v->empty())
+                    return P.Fail("`path` is a scan file, or a list of the files of one scan's stations, not an empty list");
+                else if (v->is_array() && v->size() > Clouds::MaxStations)
+                    return P.Fail("a scan comes from up to " + std::to_string(Clouds::MaxStations) + " files, not " + std::to_string(v->size()));
+                else if (v->is_array())
+                {
+                    paths.emplace();
+                    for (const Json& x : *v)
+                    {
+                        if (!x.is_string())
+                            return P.Fail("`path` lists files by their paths, not " + Show(x));
+                        paths->push_back(x.get<std::string>());
+                    }
+                }
+                else
+                    return P.Fail("`path` is a scan file, or a list of the files of one scan's stations, not " + Show(*v));
+            }
+            std::optional<std::string> held;
+            if (!P.String("cloud", held))
+                return false;
+            if (paths && held)
+                return P.Fail("give `path`, a scan file to bring in, or `cloud`, a scan the project holds; not both");
+            if (!paths && !held)
+                return P.Fail("give `path`, a scan file (PTS, XYZ, PLY, LAS or E57) to bring in, or `cloud`, the name of a scan the project holds");
+            std::string name;
+            Cloud scan;
+            bool fresh = false;
+            if (held)
+            {
+                const auto it = m.clouds.find(*held);
+                if (it == m.clouds.end())
+                {
+                    std::string names;
+                    for (const auto& [n, _] : m.clouds)
+                        names += (names.empty() ? "" : ", ") + n;
+                    return P.Fail("the project holds no scan named `" + *held + "` (it holds: " + (names.empty() ? std::string("none") : names) + ")");
+                }
+                name = *held;
+                scan = it->second;
+            }
+            else
+            {
+                std::vector<Clouds::Format> formats;
+                for (const std::string& path : *paths)
+                {
+                    const std::u8string e = ToPath(path).extension().u8string();
+                    Clouds::Format f{};
+                    std::string why;
+                    if (!Clouds::FormatFrom(std::string(e.begin(), e.end()), f, why))
+                        return P.Fail(path + ": " + why);
+                    formats.push_back(f);
+                }
+                const std::u8string stem = ToPath(paths->front()).stem().u8string();
+                std::optional<std::string> given;
+                if (!P.String("name", given))
+                    return false;
+                name = given ? *given : stem.empty() ? std::string("scan") : Text::TakeChars(std::string(stem.begin(), stem.end()), MaxText);
+                if (Text::Trim(name).empty())
+                    return P.Fail("a scan needs a `name`");
+                if (m.clouds.count(name))
+                    return P.Fail("the project already holds a scan named `" + name + "`: place it again with `cloud`, or bring this file in under another `name`");
+                if (m.clouds.size() >= Clouds::MaxClouds)
+                    return P.Fail("the project holds " + std::to_string(Clouds::MaxClouds) + " scans already; delete the point clouds of one first");
+                std::optional<std::string> units;
+                std::optional<double> spacingOpt;
+                if (!P.String("units", units) || !P.Num("spacing", spacingOpt))
+                    return false;
+                double scale = 1000.0;
+                if (units)
+                {
+                    const auto u = Clouds::Unit(*units);
+                    if (!u)
+                        return P.Fail("`units` is one of mm, cm, m, in, ft, not " + *units);
+                    scale = *u;
+                }
+                const double spacing = spacingOpt.value_or(0.0);
+                // 项目别的扫描留下的点数，各文件分
+                size_t points = 0;
+                for (const auto& [_, x] : m.clouds)
+                    points += x.Size();
+                const size_t cap = points >= Clouds::MaxPoints ? 0 : Clouds::MaxPoints - points;
+                if (cap == 0)
+                    return P.Fail("the project's scans hold " + std::to_string(points) + " points, all it may; delete the point clouds of one first");
+                Clouds::Options o;
+                o.scale   = scale;
+                o.spacing = spacing;
+                o.cap     = std::max<size_t>(cap / paths->size(), 1);
+                std::vector<std::pair<std::string, Clouds::Scan>> scans;
+                for (size_t i = 0; i < paths->size(); ++i)
+                {
+                    const std::string& path = (*paths)[i];
+                    std::error_code ec;
+                    const uintmax_t size = std::filesystem::file_size(ToPath(path), ec);
+                    if (ec)
+                        return P.Fail(path + ": " + ec.message());
+                    if (size > Clouds::MaxBytes)
+                        return P.Fail(path + " is too large (" + std::to_string(size) + " bytes; up to " + std::to_string(Clouds::MaxBytes) + ")");
+                    std::ifstream in(ToPath(path), std::ios::binary);
+                    if (!in)
+                        return P.Fail(path + ": can't be read");
+                    std::ostringstream ss;
+                    ss << in.rdbuf();
+                    const std::string bytes = ss.str();
+                    Clouds::Scan read;
+                    std::string why;
+                    if (!Clouds::Read(bytes, formats[i], o, read, why))
+                        return P.Fail(path + ": " + why);
+                    const std::u8string file = ToPath(path).filename().u8string();
+                    scans.emplace_back(std::string(file.begin(), file.end()), std::move(read));
+                }
+                std::string why;
+                bool ok = false;
+                if (scans.size() == 1)
+                    ok = Cloud::Make(scans.front().first, std::move(scans.front().second), scan, why);
+                else
+                {
+                    Clouds::Scan merged;
+                    std::vector<Clouds::Station> stations;
+                    ok = Clouds::Merge(std::move(scans), spacing, merged, stations, why) && Cloud::OfStations(std::move(merged), std::move(stations), scan, why);
+                }
+                if (!ok)
+                    return P.Fail(why);
+                fresh = true;
+            }
+            const double foot = scan.Bounds().first[2];
+            const Clouds::D3 origin = scan.Origin();
+            std::optional<std::string> originName;
+            if (!P.String("origin", originName))
+                return false;
+            P2 at(0.0, 0.0);
+            double offset = -foot;
+            if (!originName || *originName == "centre" || *originName == "center")
+                ;
+            else if (*originName == "file")
+            {
+                const double z = origin[2] - m.Elevation(level);
+                if (!(std::abs(origin[0]) <= MaxCoord && std::abs(origin[1]) <= MaxCoord && std::abs(z) <= MaxCoord))
+                    return P.Fail("the scan's middle lies at [" + Num(origin[0]) + ", " + Num(origin[1]) + ", " + Num(origin[2]) + "] mm in its file, past the " +
+                                  Num(MaxCoord) + " mm a model reaches: place it by its `centre`");
+                at     = P2(origin[0], origin[1]);
+                offset = z;
+            }
+            else
+                return P.Fail("`origin` is centre (its middle on `at`, its foot on the level) or file (where its file puts it), not " + *originName);
+            std::optional<P2> atGiven;
+            std::optional<double> offsetGiven, angle;
+            if (!P.PointOpt("at", atGiven) || !P.Num("offset", offsetGiven) || !P.Num("angle", angle))
+                return false;
+            if (atGiven)
+                at = *atGiven;
+            if (offsetGiven)
+                offset = *offsetGiven;
+            const size_t points = scan.Size(), read = scan.Read();
+            Model& mm = s.ModelMut();
+            if (fresh)
+                mm.clouds.emplace(name, std::move(scan));
+            const Id id = mm.Insert(Element(PointCloud{ name, level, at, offset, angle.value_or(0.0) }));
+            result = Json{ { "id", id }, { "cloud", name }, { "points", points }, { "read", read }, { "origin", Json::array({ origin[0], origin[1], origin[2] }) } };
+            return true;
+        }
+
+        // 导入的图层，以及它显示哪些：在每个视图，或在一个视图（它的可见性/图形的"导入的类别"）
+        bool CadLayers(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "cad_layers";
+            if (!Only(c, p, { "id", "hide", "show", "view" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Id id = 0;
+            const CadImport* ci = nullptr;
+            if (!CadImportParam(c, m, p, id, ci, error))
+                return false;
+            const auto it = m.cads.find(ci->cad);
+            if (it == m.cads.end())
+                return Fail(error, c, "the project holds no CAD drawing named `" + ci->cad + "`");
+            const Cad cad = it->second;
+            std::vector<std::string> hide, show;
+            if (!LayerList(c, p, "hide", cad, hide, error) || !LayerList(c, p, "show", cad, show, error))
+                return false;
+            for (const std::string& h : hide)
+                if (std::find(show.begin(), show.end(), h) != show.end())
+                    return Fail(error, c, "layer `" + h + "` is in `hide` and in `show`; give it in one");
+            const std::string name = ci->cad;
+            std::set<std::string> hidden = ci->hidden;
+            std::optional<std::set<std::string>> inView;
+            if (Bim::Absent(p, "view"))
+            {
+                hidden.insert(hide.begin(), hide.end());
+                for (const std::string& l : show)
+                    hidden.erase(l);
+                if (hidden != ci->hidden)
+                    s.ModelMut().elements.GetMut(id)->As<CadImport>()->hidden = hidden;
+            }
+            else
+            {
+                Guid v;
+                if (!AnyViewParam(c, m, p, v, error))
+                    return false;
+                const Graphics* og = m.ViewGraphics(v);
+                if (!og)
+                    return Fail(error, c, ViewTitle(m, v) + " isn't a plan, a section, an elevation or a 3D view");
+                Graphics g = *og;
+                const auto had = g.layers.find(name);
+                const std::set<std::string> was = had == g.layers.end() ? std::set<std::string>{} : had->second;
+                std::set<std::string> now = was;
+                now.insert(hide.begin(), hide.end());
+                for (const std::string& l : show)
+                    now.erase(l);
+                if (now != was)
+                {
+                    if (!NotDependent(c, m, v, "graphics", error))
+                        return false;
+                    if (now.empty())
+                        g.layers.erase(name);
+                    else
+                        g.layers[name] = now;
+                    std::string why;
+                    if (!g.Check(m, why))
+                        return Fail(error, c, why);
+                    *s.ModelMut().ViewGraphicsMut(v) = std::move(g);
+                }
+                inView = std::move(now);
+            }
+            result = Json{ { "id", id }, { "cad", name }, { "layers", LayersJson(cad, hidden, inView ? &*inView : nullptr) } };
+            return true;
+        }
+
+        // 从文件再读一张链接的图纸
+        bool ReloadCad(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "reload_cad";
+            if (!Only(c, p, { "cad" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> name;
+            if (!P.String("cad", name))
+                return false;
+            if (!name)
+                return P.Fail("`cad`, the name of a linked CAD drawing, is required");
+            const auto it = s.GetModel().cads.find(*name);
+            if (it == s.GetModel().cads.end())
+                return P.Fail("the project holds no CAD drawing named `" + *name + "`");
+            const Cad cad = it->second;
+            if (!cad.Path())
+                return P.Fail("CAD drawing `" + *name + "` isn't linked; bring it in again with `import_cad` and `link`");
+            const std::string path = *cad.Path();
+            std::string bytes, why;
+            if (!ReadDxfFile(s, path, bytes, why))
+                return P.Fail(why);
+            if (cad.SameBytes(bytes))
+            {
+                result = Json{ { "cad", *name }, { "changed", false } };
+                return true;
+            }
+            Cad fresh;
+            if (!Cad::Make(cad.Source(), path, std::move(bytes), fresh, why))
+                return P.Fail(path + ": " + why);
+            const size_t entities = fresh.Drawing().entities.size();
+            s.ModelMut().cads[*name] = std::move(fresh);
+            result = Json{ { "cad", *name }, { "changed", true }, { "entities", entities } };
+            return true;
+        }
+
+        // 再读每张链接的图纸，同打开项目；读不了的，{cad, error}。文件不见了的图纸留着项目存的
+        Json RelinkCads(Session& s)
+        {
+            std::vector<std::pair<std::string, std::string>> linked;
+            for (const auto& [n, cad] : s.GetModel().cads)
+                if (cad.Path())
+                    linked.emplace_back(n, *cad.Path());
+            Json failed = Json::array();
+            for (const auto& [name, path] : linked)
+            {
+                std::string bytes, why;
+                bool ok = ReadDxfFile(s, path, bytes, why);
+                if (ok)
+                {
+                    const Cad& held = s.GetModel().cads.at(name);
+                    if (held.SameBytes(bytes))
+                        continue;
+                    Cad fresh;
+                    ok = Cad::Make(held.Source(), path, std::move(bytes), fresh, why);
+                    if (ok)
+                        s.ModelMut().cads[name] = std::move(fresh);
+                }
+                if (!ok)
+                    failed.push_back(Json{ { "cad", name }, { "error", why } });
+            }
+            return failed;
+        }
+
+        // 导入里离一点最近的东西：Revit 的查询
+        bool CadQuery(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "cad_query";
+            if (!Only(c, p, { "id", "at", "reach" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            Id id = 0;
+            const CadImport* ci = nullptr;
+            P2 at;
+            std::optional<double> reachOpt;
+            if (!CadImportParam(c, m, p, id, ci, error) || !P.PointReq("at", at) || !P.Num("reach", reachOpt))
+                return false;
+            const double reach = reachOpt.value_or(100.0);
+            if (!(reach > 0.0))
+                return P.Fail("`reach` is how far from `at` to look, mm, above 0, not " + Num(reach));
+            const auto it = m.cads.find(ci->cad);
+            if (it == m.cads.end())
+                return P.Fail("the project holds no CAD drawing named `" + ci->cad + "`");
+            const Cad& cad = it->second;
+            const auto hit = Cads::Nearest(cad, *ci, at, reach);
+            if (!hit)
+            {
+                result = Json{ { "id", id }, { "found", false } };
+                return true;
+            }
+            const Dxf::Entity& e = *hit->first;
+            std::optional<std::string> linetype = e.linetype;
+            if (!linetype)
+                if (const Dxf::Layer* l = cad.Drawing().LayerOf(e.layer))
+                    linetype = l->linetype;
+            result = Json{ { "id", id },
+                           { "found", true },
+                           { "kind", Cads::Kind(e.shape) },
+                           { "layer", e.layer },
+                           { "color", RgbJson(cad.ColorOf(e, CadColors::Preserve)) },
+                           { "linetype", linetype ? Json(*linetype) : Json(nullptr) },
+                           { "weight", e.weight ? Json(*e.weight) : Json(nullptr) },
+                           { "distance", Hundredth(hit->second) } };
+            return true;
+        }
+
+        // undo、redo 走几步：count，默认 1
+        bool StepsParam(const char* c, const Json& p, size_t& out, std::string& error)
+        {
+            if (p.is_object())
+                for (auto it = p.begin(); it != p.end(); ++it)
+                    if (it.key() != "count")
+                        return Fail(error, c, "unknown parameter `" + it.key() + "`");
+            Params P(c, p, error);
+            return P.Count("count", 1, out);
+        }
+
+        bool Undo(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            size_t n = 1;
+            return StepsParam("undo", p, n, error) && s.StepBack(false, n, result, error);
+        }
+
+        bool Redo(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            size_t n = 1;
+            return StepsParam("redo", p, n, error) && s.StepBack(true, n, result, error);
+        }
+
+        // ── 建模 ─────────────────────────────────────────────────
+        bool LevelCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "level";
+            Params P(c, p, error);
+            std::optional<double> elevation;
+            std::optional<std::string> name;
+            if (!P.Num("elevation", elevation) || !P.String("name", name))
+                return false;
+            if (!elevation)
+                return P.Fail("`elevation` in mm is required");
+            const Model& m = s.GetModel();
+            std::set<std::string> taken;
+            for (const auto& [_, l] : m.Levels())
+                taken.insert(l->name);
+            if (!name)
+            {
+                const std::string word = LanguageOf::Word(m.language, "Level");
+                for (size_t n = taken.size() + 1;; ++n)
+                    if (!taken.count(word + " " + std::to_string(n)))
+                    {
+                        name = word + " " + std::to_string(n);
+                        break;
+                    }
+            }
+            std::optional<std::array<P2, 2>> extent;
+            if (!P.Absent("extent"))
+            {
+                std::vector<P2> pts;
+                if (!P.Points("extent", pts))
+                    return false;
+                if (pts.size() != 2)
+                    return P.Fail("`extent` is two corners, [[x, y], [x, y]]: south-west, then north-east");
+                extent = std::array<P2, 2>{ pts[0], pts[1] };
+            }
+            Level l;
+            l.name      = *name;
+            l.elevation = *elevation;
+            l.extent    = extent;
+            const Id id = s.ModelMut().Insert(std::move(l));
+            result = Json{ { "id", id }, { "name", *name } };
+            return true;
+        }
+
+        bool GridCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "grid";
+            Params P(c, p, error);
+            P2 start, end;
+            std::optional<std::string> name;
+            if (!P.PointReq("start", start) || !P.PointReq("end", end) || !P.String("name", name))
+                return false;
+            const std::string n = name ? *name : NextGridName(s.GetModel());
+            const Id id = s.ModelMut().Insert(Grid{ n, start, end });
+            result = Json{ { "id", id }, { "name", n } };
+            return true;
+        }
+
+        std::string LocationNames(const std::string& n)
+        {
+            std::string names;
+            for (Location l : LocationOf::All)
+                names += (names.empty() ? "" : ", ") + std::string(LocationOf::Name(l));
+            return "`location` is one of " + names + ", not `" + n + "`";
+        }
+
+        bool WallCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "wall";
+            Params P(c, p, error);
+            std::vector<P2> pts;
+            if (!P.Points("points", pts))
+                return false;
+            if (pts.size() < 2)
+                return P.Fail("`points` needs at least 2 points");
+            bool closed = false;
+            if (!P.Flag("closed", closed))
+                return false;
+            if (closed)
+                pts.push_back(pts.front());
+            const Model& m = s.GetModel();
+            Guid level;
+            std::string typeName;
+            std::optional<double> height, baseOffset, arc;
+            if (!LevelParam(c, m, p, "level", level, error) || !TypeParam(P, m, "wall", typeName) || !P.Num("height", height))
+                return false;
+            std::optional<Guid> topLevel;
+            if (P.Absent("top_level"))
+            {
+                if (!height)
+                    topLevel = m.LevelAbove(level);
+            }
+            else
+            {
+                Guid t;
+                if (!LevelParam(c, m, p, "top_level", t, error))
+                    return false;
+                topLevel = t;
+            }
+            std::optional<std::string> location;
+            std::optional<Guid> attachTop, attachBase;
+            if (!P.Num("base_offset", baseOffset) || !P.Num("arc", arc) || !P.String("location", location) ||
+                !P.IdOpt("attach_top", attachTop) || !P.IdOpt("attach_base", attachBase))
+                return false;
+            Location loc = Location::Centre;
+            if (location)
+            {
+                const auto l = LocationOf::FromName(*location);
+                if (!l)
+                    return P.Fail(LocationNames(*location));
+                loc = *l;
+            }
+            Model& mm = s.ModelMut();
+            Json ids = Json::array();
+            for (size_t i = 0; i + 1 < pts.size(); ++i)
+            {
+                Wall w;
+                w.typeName   = typeName;
+                w.level      = level;
+                w.start      = pts[i];
+                w.end        = pts[i + 1];
+                w.topLevel   = topLevel;
+                w.height     = height.value_or(DefaultHeight);
+                w.baseOffset = baseOffset.value_or(0.0);
+                w.arc        = arc.value_or(0.0);
+                w.location   = loc;
+                w.attachTop  = attachTop;
+                w.attachBase = attachBase;
+                ids.push_back(mm.Insert(std::move(w)));
+            }
+            result = Json{ { "ids", ids } };
+            return true;
+        }
+
+        // 墙绕定位线翻过来：反向，外侧到了另一边；门窗留在原处，开向与铰链照旧
+        bool Flip(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "flip";
+            const Model& m0 = s.GetModel();
+            std::vector<Id> ids;
+            if (!IdsParam(c, m0, p, ids, error))
+                return false;
+            for (const Id id : ids)
+                if (!m0.GetWall(id))
+                    return Fail(error, c, std::string(m0.elements.Get(id)->Category()) + " " + std::to_string(id) + " isn't a wall");
+            std::map<Guid, double> lengths;
+            for (const Id id : ids)
+                lengths[m0.GuidOf(id)] = Walls::Axis::Of(*m0.GetWall(id)).Length();
+            std::vector<Id> openings;
+            for (const auto& [id, e] : m0.elements.Items())
+                if (const Opening* o = e->AsOpening(); o && lengths.count(o->host))
+                    openings.push_back(id);
+            Model& m = s.ModelMut();
+            for (const Id id : ids)
+            {
+                Wall* w = m.elements.GetMut(id)->As<Wall>();
+                std::swap(w->start, w->end);
+                w->arc = -w->arc + 0.0;
+            }
+            std::map<Guid, Guid> hostOf;
+            for (const Id id : openings)
+            {
+                Opening* o = m.elements.GetMut(id)->AsOpening();
+                o->offset     = lengths[o->host] - o->offset;
+                o->flipFacing = !o->flipFacing;
+                o->flipHand   = !o->flipHand;
+                hostOf[m.GuidOf(id)] = o->host;
+            }
+            // 尺寸量着同样的线：翻转的墙左右对调、起点终点对调，它的门窗的两边也对调
+            std::vector<Id> dims;
+            for (const auto& [id, e] : m.elements.Items())
+                if (e->As<Dimension>())
+                    dims.push_back(id);
+            for (const Id id : dims)
+                for (Reference& r : m.elements.GetMut(id)->As<Dimension>()->refs)
+                {
+                    const Guid g = m.GuidOf(r.id);
+                    if (lengths.count(g))
+                        r.face = FaceOf::Flipped(r.face);
+                    else if (const auto h = hostOf.find(g); h != hostOf.end() && lengths.count(h->second))
+                        r.face = FaceOf::Mirrored(r.face);
+                }
+            result = Json{ { "flipped", ids } };
+            return true;
+        }
+
+        // p 要的门或窗，还没放进模型：door、window 命令放进去的
+        bool BuildOpening(const Model& m, const Json& p, bool isDoor, Opening& o, std::string& error)
+        {
+            const char* c = isDoor ? "door" : "window";
+            Params P(c, p, error);
+            // 族的类型，或项目自己的类型
+            std::optional<std::string> family;
+            if (!P.String("family", family))
+                return false;
+            std::string typeName;
+            std::optional<double> familySill;
+            if (family)
+            {
+                const Fam::Category kind = isDoor ? Fam::Category::Door : Fam::Category::Window;
+                const auto f = m.families.find(*family);
+                if (f == m.families.end() || f->second.category != kind)
+                {
+                    std::string names;
+                    for (const auto& [n, x] : m.families)
+                        if (x.category == kind)
+                            names += (names.empty() ? "" : ", ") + n;
+                    return P.Fail("there's no " + std::string(c) + " family `" + *family + "` (there are: " + names + ")");
+                }
+                std::optional<std::string> t;
+                if (!P.String("type", t))
+                    return false;
+                if (t)
+                    typeName = *t;
+                else if (!f->second.types.empty())
+                    typeName = f->second.types.begin()->first;
+                else
+                    return P.Fail("family `" + *family + "` has no type");
+                Fam::Values values;
+                std::string why;
+                if (!f->second.Values(typeName, {}, values, why))
+                    return P.Fail(why);
+                if (const auto v = values.find(Fam::Sill); v != values.end())
+                    if (const double* x = std::get_if<double>(&v->second))
+                        familySill = *x;
+            }
+            else if (!TypeParam(P, m, c, typeName))
+                return false;
+            std::optional<P2> at;
+            std::optional<Guid> wall;
+            if (!P.PointOpt("at", at) || !P.IdOpt("wall", wall))
+                return false;
+            Guid host;
+            double alongAt = 0.0;
+            if (wall)
+            {
+                const Wall* w = m.GetWall(*wall);
+                if (!w)
+                    return P.Fail(wall->ToString() + " is not a wall");
+                host    = m.GuidOf(*wall);
+                alongAt = at ? Along(*w, *at) : w->start.Dist(w->end) / 2.0;
+            }
+            else
+            {
+                if (!at)
+                    return P.Fail("give `at` [x, y] on a wall, or `wall` with `offset`");
+                Guid level;
+                if (!LevelParam(c, m, p, "level", level, error))
+                    return false;
+                const auto found = WallAt(m, level, *at);
+                if (!found)
+                    return P.Fail("no wall at [" + Num(at->x) + ", " + Num(at->y) + "] on " + LevelName(m, level));
+                host    = found->first;
+                alongAt = found->second;
+            }
+            std::optional<double> offset, sill;
+            std::optional<std::string> mark;
+            if (!P.Num("offset", offset) || !P.Num("sill", sill) || !P.String("mark", mark))
+                return false;
+            const auto& types = isDoor ? m.types.door : m.types.window;
+            const auto t = types.find(typeName);
+            const double defaultSill = familySill ? *familySill : (family ? (isDoor ? 0.0 : 900.0) : (t == types.end() ? 0.0 : t->second.sill));
+            o.family   = family;
+            o.typeName = typeName;
+            o.host     = host;
+            o.offset   = offset.value_or(alongAt);
+            o.sill     = isDoor ? 0.0 : sill.value_or(defaultSill);
+            o.mark     = mark ? *mark : NextNumber(Marks(m, isDoor));
+            return P.Flag("flip_facing", o.flipFacing) && P.Flag("flip_hand", o.flipHand);
+        }
+
+        bool OpeningCmd(Session& s, const Json& p, Json& result, std::string& error, bool isDoor)
+        {
+            Opening o;
+            if (!BuildOpening(s.GetModel(), p, isDoor, o, error))
+                return false;
+            const auto host = s.GetModel().elements.IdOf(o.host);
+            const double offset = o.offset;
+            const std::string mark = o.mark;
+            const Id id = isDoor ? s.ModelMut().Insert(Door{ std::move(o) }) : s.ModelMut().Insert(Window{ std::move(o) });
+            result = Json{ { "id", id }, { "host", host ? Json(*host) : Json(nullptr) }, { "offset", offset }, { "mark", mark } };
+            return true;
+        }
+
+        // ── 草图（移植自 commands.rs 的 sketch_param、sketched、edit_boundary）────────────
+        // 命令里的草图线：[[x,y],[x,y]] 直线，[[x,y],[x,y],[x,y]] 从第一点到第二点、经过第三点的圆弧，或 {id?, start, end, arc? | through?}；
+        // 带 id 的保留 old（正在编辑的草图）里那条线的 ID 与 GUID
+        // styled 时（填充区域的边界）线还可以带 style（线样式）与 invisible
+        bool SketchParam(Params& P, const Json& p, const char* key, const std::vector<SketchLine>& old, std::optional<std::vector<SketchLine>>& out,
+                         bool styled = false)
+        {
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            const std::string shape = "`" + std::string(key) + "` is a list of lines, each [[x,y],[x,y]], an arc [[x,y],[x,y],[x,y]] (its ends, then a "
+                                      "point it passes through) or {id?, start, end, arc? | through?}";
+            if (!v->is_array())
+                return P.Fail(shape);
+            if (v->size() > MaxPoints)
+                return P.Fail("`" + std::string(key) + "` lists more than " + std::to_string(MaxPoints));
+            std::vector<SketchLine> lines;
+            for (size_t i = 0; i < v->size(); ++i)
+            {
+                const Json& g = (*v)[i];
+                const std::string at = "`" + std::string(key) + "` line " + std::to_string(i);
+                std::string why;
+                SketchLine l;
+                if (g.is_array())
+                {
+                    std::vector<P2> pts;
+                    for (const Json& q : g)
+                    {
+                        P2 pt;
+                        if (!FromJson(q, pt, why))
+                            return P.Fail(at + ": " + why);
+                        pts.push_back(pt);
+                    }
+                    if (pts.size() == 2)
+                    {
+                        l.start = pts[0];
+                        l.end   = pts[1];
+                    }
+                    else if (pts.size() == 3)
+                        l = Sketch::ArcThrough(pts[0], pts[1], pts[2]);
+                    else
+                        return P.Fail(shape);
+                }
+                else if (g.is_object())
+                {
+                    for (auto it = g.begin(); it != g.end(); ++it)
+                        if (it.key() != "id" && it.key() != "guid" && it.key() != "start" && it.key() != "end" && it.key() != "arc" && it.key() != "through" &&
+                            !(styled && (it.key() == "style" || it.key() == "invisible")))
+                            return P.Fail(at + ": `" + it.key() + "` isn't one it takes; lines and arcs are ported, other curves aren't yet");
+                    if (styled && g.contains("style") && !g["style"].is_null())
+                    {
+                        if (!g["style"].is_string())
+                            return P.Fail(at + ": `style` is a line style's name");
+                        l.style = std::string(Text::Trim(g["style"].get<std::string>()));
+                    }
+                    if (styled && g.contains("invisible") && !g["invisible"].is_null())
+                    {
+                        if (!g["invisible"].is_boolean())
+                            return P.Fail(at + ": `invisible` is true or false");
+                        l.invisible = g["invisible"].get<bool>();
+                    }
+                    if (!g.contains("start") || !g.contains("end") || !FromJson(g["start"], l.start, why) || !FromJson(g["end"], l.end, why))
+                        return P.Fail(at + " needs `start` and `end` [x, y]" + (why.empty() ? "" : ": " + why));
+                    if (g.contains("arc") && g.contains("through"))
+                        return P.Fail(at + ": give an arc's `through` point or its `arc` turn, not both");
+                    if (g.contains("arc"))
+                    {
+                        if (!g["arc"].is_number())
+                            return P.Fail(at + ": `arc` is degrees");
+                        l.arc = g["arc"].get<double>();
+                    }
+                    if (g.contains("through"))
+                    {
+                        P2 t;
+                        if (!FromJson(g["through"], t, why))
+                            return P.Fail(at + ": `through`: " + why);
+                        l.arc = Sketch::ArcThrough(l.start, l.end, t).arc;
+                    }
+                    if (g.contains("id") && !g["id"].is_null())
+                    {
+                        const auto id = AsWhole(g["id"]);
+                        const auto was = id ? std::find_if(old.begin(), old.end(), [&](const SketchLine& o) { return o.id == static_cast<Id>(*id); })
+                                            : old.end();
+                        if (was == old.end())
+                            return P.Fail(at + ": " + g["id"].dump() + " isn't a line of this sketch; leave `id` out for a new one");
+                        l.id   = was->id;
+                        l.guid = was->guid;
+                    }
+                }
+                else
+                    return P.Fail(shape);
+                lines.push_back(l);
+            }
+            out = std::move(lines);
+            return true;
+        }
+
+        // `sketch` 解成一个外轮廓（逆时针）与它的洞（顺时针），与线一起；没给时为空。与 boundary 或 holes 一起给时拒绝
+        bool Sketched(Params& P, const Json& p, const char* holes, const std::vector<SketchLine>& old,
+                      std::optional<std::pair<Geom::Region, std::vector<SketchLine>>>& out)
+        {
+            std::optional<std::vector<SketchLine>> lines;
+            if (!SketchParam(P, p, "sketch", old, lines))
+                return false;
+            if (!lines)
+                return true;
+            for (const char* k : { "boundary", holes })
+                if (*k && !P.Absent(k))
+                    return P.Fail(std::string("give the outline as `sketch` or `boundary`") + (*holes ? std::string(" (with `") + holes + "`)" : std::string()) + ", not both");
+            Geom::Region r;
+            std::vector<Sketch::Problem> problems;
+            if (!Sketch::SolveOne(*lines, r, problems))
+                return P.Fail("the sketch isn't one outline: " + Sketch::Say(problems, Sketch::Namer(*lines)));
+            out = std::pair{ std::move(r), std::move(*lines) };
+            return true;
+        }
+
+        // 元素现在的草图：记着的，还是它的轮廓与洞时；否则它们的边，当作新的线
+        std::optional<std::vector<SketchLine>> BoundaryNow(const Element& e)
+        {
+            Ring outline;
+            std::vector<Ring> holes;
+            if (const Floor* f = e.As<Floor>())
+                std::tie(outline, holes) = std::pair{ f->boundary, f->openings };
+            else if (const Ceiling* c = e.As<Ceiling>())
+                std::tie(outline, holes) = std::pair{ c->boundary, c->openings };
+            else if (const Roof* r = e.As<Roof>(); r && !r->extrusion)
+                std::tie(outline, holes) = std::pair{ r->boundary, r->courtyards };
+            else
+                return std::nullopt;
+            const auto* kept = e.SketchOf();
+            if (kept && !kept->empty() && Sketch::Draws(*kept, outline, holes))
+                return *kept;
+            return Sketch::LinesOf(outline, holes);
+        }
+
+        bool EditBoundaryCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "edit_boundary";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<Guid> g;
+            if (!P.IdOpt("id", g))
+                return false;
+            if (!g)
+                return P.Fail("`id`, the floor, ceiling, roof or filled region to edit, is required");
+            const auto id = m.elements.IdOf(*g);
+            if (!id)
+                return P.Fail("no element " + g->ToString());
+            Element e = *m.elements.Get(*id);
+            // 填充区域：任意多个环，线带线样式
+            if (FilledRegion* fr = e.As<FilledRegion>())
+            {
+                std::optional<std::vector<SketchLine>> lines;
+                if (!SketchParam(P, p, "sketch", fr->sketch, lines, true))
+                    return false;
+                if (!lines)
+                {
+                    result = Json{ { "id", *id }, { "sketch", SketchJson(fr->sketch) } };
+                    return true;
+                }
+                Sketch::Profile profile;
+                std::vector<Sketch::Problem> problems;
+                if (!Sketch::Solve(*lines, profile, problems))
+                    return P.Fail("the sketch doesn't close into loops: " + Sketch::Say(problems, Sketch::Namer(*lines)));
+                fr->sketch = std::move(*lines);
+                s.ModelMut().elements.Insert(*id, std::move(e));
+                result = Json{ { "id", *id }, { "area_m2", M2(profile.Area()) } };
+                return true;
+            }
+            if (const Roof* r = e.As<Roof>(); r && r->extrusion)
+                return P.Fail(std::to_string(*id) + " is an extrusion roof: change its profile, `modify` its `extrusion`");
+            const auto now = BoundaryNow(e);
+            if (!now)
+                return P.Fail(std::to_string(*id) + " isn't a floor, a ceiling, a roof's footprint or a filled region");
+            std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sk;
+            if (!Sketched(P, p, "", *now, sk))
+                return false;
+            if (!sk)
+            {
+                result = Json{ { "id", *id }, { "sketch", SketchJson(*now) } };
+                return true;
+            }
+            auto& [r, lines] = *sk;
+            const double area = r.Area();
+            if (Floor* f = e.As<Floor>())
+                std::tie(f->boundary, f->openings, f->sketch) = std::tuple{ r.outer, r.holes, lines };
+            else if (Ceiling* x = e.As<Ceiling>())
+                std::tie(x->boundary, x->openings, x->sketch) = std::tuple{ r.outer, r.holes, lines };
+            else if (Roof* old = e.As<Roof>())
+            {
+                // 山墙留在新迹线上还有同一条边的地方，方向随意
+                const std::vector<Segment> before = old->Edges();
+                std::vector<Segment> kept;
+                for (const size_t k : old->gables)
+                    if (k < before.size())
+                        kept.push_back(before[k]);
+                old->boundary   = r.outer;
+                old->courtyards = r.holes;
+                old->sketch     = lines;
+                old->gables.clear();
+                const std::vector<Segment> after = old->Edges();
+                for (size_t k = 0; k < after.size(); ++k)
+                    for (const Segment& was : kept)
+                        if ((after[k].first.Dist(was.first) <= Tol && after[k].second.Dist(was.second) <= Tol) ||
+                            (after[k].first.Dist(was.second) <= Tol && after[k].second.Dist(was.first) <= Tol))
+                        {
+                            old->gables.push_back(k);
+                            break;
+                        }
+            }
+            s.ModelMut().elements.Insert(*id, std::move(e));
+            result = Json{ { "id", *id }, { "area_m2", M2(area) } };
+            return true;
+        }
+
+        bool SketchCmd(Session&, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "sketch";
+            Params P(c, p, error);
+            std::optional<std::vector<SketchLine>> lines;
+            if (!SketchParam(P, p, "lines", {}, lines))
+                return false;
+            if (!lines)
+                return P.Fail("`lines` [[[x,y],[x,y]],…] is required");
+            Sketch::Profile profile;
+            std::vector<Sketch::Problem> problems;
+            if (!Sketch::Solve(*lines, profile, problems))
+                return P.Fail("the lines don't make closed loops: " + Sketch::Say(problems, Sketch::Namer(*lines)));
+            auto RingJson = [](const Ring& ring)
+            {
+                Json out = Json::array();
+                for (const P2& q : ring)
+                    out.push_back(ToJson(q));
+                return out;
+            };
+            Json regions = Json::array();
+            for (const Geom::Region& r : profile.regions)
+            {
+                Json holes = Json::array();
+                for (const Ring& h : r.holes)
+                    holes.push_back(RingJson(h));
+                regions.push_back(Json{ { "outline", RingJson(r.outer) }, { "holes", std::move(holes) }, { "area_m2", M2(r.Area()) } });
+            }
+            result = Json{ { "regions", std::move(regions) }, { "area_m2", M2(profile.Area()) } };
+            return true;
+        }
+
+        bool DoorCmd(Session& s, const Json& p, Json& result, std::string& error) { return OpeningCmd(s, p, result, error, true); }
+        bool WindowCmd(Session& s, const Json& p, Json& result, std::string& error) { return OpeningCmd(s, p, result, error, false); }
+
+        bool FloorCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "floor";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            std::string typeName;
+            if (!LevelParam(c, m, p, "level", level, error) || !TypeParam(P, m, "floor", typeName))
+                return false;
+            std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sketched;
+            if (!Sketched(P, p, "openings", {}, sketched))
+                return false;
+            Ring boundary;
+            std::vector<Ring> found;
+            if (sketched)
+            {
+                boundary = sketched->first.outer;
+                found    = sketched->first.holes;
+            }
+            else if (P.Absent("boundary"))
+            {
+                const auto outline = FloorOutline(m, level);
+                if (!outline)
+                    return P.Fail("no walls enclose an area on " + LevelName(m, level) + "; give `boundary`");
+                boundary = outline->first;
+                found    = outline->second;
+            }
+            else
+            {
+                std::vector<P2> pts;
+                if (!P.Points("boundary", pts))
+                    return false;
+                boundary = CleanRing(pts);
+            }
+            std::optional<std::vector<Ring>> openings;
+            if (!Rings(P, "openings", openings))
+                return false;
+            if (Geom::Area(boundary) < 0.0)
+                std::reverse(boundary.begin(), boundary.end());
+            std::optional<std::array<P2, 2>> arrow;
+            if (!P.Absent("arrow"))
+            {
+                std::vector<P2> pts;
+                if (!P.Points("arrow", pts))
+                    return false;
+                if (pts.size() != 2)
+                    return P.Fail("`arrow` is [[x, y], [x, y]]: its tail, then its head");
+                arrow = std::array<P2, 2>{ pts[0], pts[1] };
+            }
+            std::optional<double> offset, slope;
+            bool structural = false;
+            if (!P.Num("offset", offset) || !P.Num("slope", slope) || !P.Flag("structural", structural))
+                return false;
+            Floor f;
+            f.typeName   = typeName;
+            f.level      = level;
+            f.boundary   = boundary;
+            f.openings   = openings ? *openings : found;
+            f.offset     = offset.value_or(0.0);
+            f.slope      = slope.value_or(0.0);
+            f.arrow      = arrow;
+            f.structural = structural;
+            if (sketched)
+                f.sketch = sketched->second;
+            // 洞口在它里面、互不相交，否则模型拒绝
+            double area = Geom::Area(f.boundary);
+            for (const Ring& o : f.openings)
+                area -= std::abs(Geom::Area(o));
+            const Id id = s.ModelMut().Insert(std::move(f));
+            result = Json{ { "id", id }, { "area_m2", M2(area) } };
+            return true;
+        }
+
+        bool CeilingCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "ceiling";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            std::string typeName;
+            if (!LevelParam(c, m, p, "level", level, error) || !TypeParam(P, m, "ceiling", typeName))
+                return false;
+            std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sketched;
+            if (!Sketched(P, p, "openings", {}, sketched))
+                return false;
+            std::optional<P2> at;
+            if (!P.PointOpt("point", at))
+                return false;
+            Ring boundary;
+            std::vector<Ring> found;
+            if (sketched)
+            {
+                boundary = sketched->first.outer;
+                found    = sketched->first.holes;
+            }
+            else if (!P.Absent("boundary"))
+            {
+                std::vector<P2> pts;
+                if (!P.Points("boundary", pts))
+                    return false;
+                boundary = CleanRing(pts);
+            }
+            else if (at)
+            {
+                // 房间的空地：墙面围着这一点的部分，以及立在其中的墙（顺时针，同楼板的洞口）
+                const auto r = Geom::RegionAt(m.FaceLines(level), *at, Tol);
+                if (!r)
+                    return P.Fail("no walls on " + LevelName(m, level) + " close around [" + Num(at->x) + ", " + Num(at->y) + "]; give `boundary`");
+                for (const P2& q : Geom::Corners(r->outer))
+                    boundary.push_back(Micron(q));
+                for (const Ring& h : r->holes)
+                    found.push_back(Tidy(Ring(h.rbegin(), h.rend())));
+            }
+            else
+                return P.Fail("`point` [x, y] in a room, `boundary` [[x, y], …] or `sketch` is required");
+            if (Geom::Area(boundary) < 0.0)
+                std::reverse(boundary.begin(), boundary.end());
+            std::optional<std::vector<Ring>> openings;
+            std::optional<double> offset;
+            if (!Rings(P, "openings", openings) || !P.Num("offset", offset))
+                return false;
+            Ceiling x;
+            x.typeName = typeName;
+            x.level    = level;
+            x.boundary = boundary;
+            x.openings = openings ? *openings : found;
+            x.offset   = offset.value_or(CeilingHeight);
+            if (sketched)
+                x.sketch = sketched->second;
+            // 洞口在它里面、互不相交，否则模型拒绝
+            double area = Geom::Area(x.boundary);
+            for (const Ring& o : x.openings)
+                area -= std::abs(Geom::Area(o));
+            const Id id = s.ModelMut().Insert(std::move(x));
+            result = Json{ { "id", id }, { "area_m2", M2(area) } };
+            return true;
+        }
+
+        bool RoomCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "room";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            P2 point;
+            Guid level;
+            if (!P.PointReq("point", point) || !LevelParam(c, m, p, "level", level, error))
+                return false;
+            std::optional<std::string> name, number;
+            if (!P.String("name", name) || !P.String("number", number))
+                return false;
+            Room r;
+            r.level = level;
+            r.point = point;
+            r.name  = name ? *name : LanguageOf::Word(m.language, "Room");
+            if (number)
+                r.number = *number;
+            else
+            {
+                std::vector<std::string> taken;
+                for (const auto& [_, e] : m.elements.Items())
+                    if (const Room* x = e->As<Room>())
+                        taken.push_back(x->number);
+                r.number = NextNumber(taken);
+            }
+            if (const auto wall = m.WallHolding(r, m.roomArea))
+                return P.Fail("[" + Num(point.x) + ", " + Num(point.y) + "] lies inside wall " + m.Shown(*wall) +
+                              "; place a room in the space between walls, not in a wall");
+            const auto region = m.RoomRegion(r);
+            if (!region)
+                return P.Fail("[" + Num(point.x) + ", " + Num(point.y) + "] isn't enclosed by walls on " + LevelName(m, level) +
+                              "; place rooms inside a closed loop of walls");
+            const double area = M2(region->Area());
+            const std::string n = r.number;
+            const Id id = s.ModelMut().Insert(std::move(r));
+            result = Json{ { "id", id }, { "number", n }, { "area_m2", area } };
+            return true;
+        }
+
+        bool RoomSeparatorCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "room_separator";
+            Params P(c, p, error);
+            std::vector<P2> pts;
+            if (!P.Points("points", pts))
+                return false;
+            if (pts.size() < 2)
+                return P.Fail("`points` needs at least 2 points");
+            bool closed = false;
+            if (!P.Flag("closed", closed))
+                return false;
+            if (closed)
+                pts.push_back(pts.front());
+            Guid level;
+            if (!LevelParam(c, s.GetModel(), p, "level", level, error))
+                return false;
+            Model& m = s.ModelMut();
+            Json ids = Json::array();
+            for (size_t i = 0; i + 1 < pts.size(); ++i)
+                ids.push_back(m.Insert(RoomSeparator{ level, pts[i], pts[i + 1] }));
+            result = Json{ { "ids", std::move(ids) } };
+            return true;
+        }
+
+        // extrusion：{line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}
+        bool ExtrusionParam(Params& P, std::optional<Extrusion>& out)
+        {
+            out.reset();
+            if (P.Absent("extrusion"))
+                return true;
+            const Json& v = *Get(P.Raw(), "extrusion");
+            const std::string shape = "`extrusion` is {line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}: ";
+            if (!v.is_object())
+                return P.Fail(shape + "got " + Show(v));
+            for (auto it = v.begin(); it != v.end(); ++it)
+                if (it.key() != "line" && it.key() != "profile" && it.key() != "from" && it.key() != "to")
+                    return P.Fail(shape + "unknown field `" + it.key() + "`");
+            std::string why;
+            Params X("roof", v, why);
+            std::vector<P2> line;
+            Extrusion x;
+            std::optional<double> from, to;
+            if (!X.Points("line", line) || !X.Points("profile", x.profile) || !X.Num("from", from) || !X.Num("to", to))
+                return P.Fail(shape + why.substr(std::string("roof: ").size()));
+            if (line.size() != 2)
+                return P.Fail(shape + "`line` is two points [[x,y],[x,y]]");
+            if (!to)
+                return P.Fail(shape + "missing field `to`");
+            x.line = { line[0], line[1] };
+            x.from = from.value_or(0.0);
+            x.to   = *to;
+            out = std::move(x);
+            return true;
+        }
+
+        // gables：边的编号
+        bool GablesParam(Params& P, std::vector<size_t>& out)
+        {
+            out.clear();
+            if (P.Absent("gables"))
+                return true;
+            const Json& v = *Get(P.Raw(), "gables");
+            if (!v.is_array())
+                return P.Fail("`gables` is a list of edge numbers: got " + Show(v));
+            if (v.size() > MaxPoints)
+                return P.Fail("`gables` lists more than " + std::to_string(MaxPoints));
+            for (const Json& n : v)
+            {
+                const auto k = AsWhole(n);
+                if (!k)
+                    return P.Fail("`gables` is a list of edge numbers: got " + Show(n));
+                out.push_back(static_cast<size_t>(*k));
+            }
+            return true;
+        }
+
+        bool RoofCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "roof";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            if (P.Absent("level"))
+            {
+                const auto levels = m.Levels();
+                if (levels.empty())
+                    return P.Fail("the model has no levels");
+                level = m.GuidOf(levels.size() > 1 ? levels[1].first : levels[0].first);
+            }
+            else if (!LevelParam(c, m, p, "level", level, error))
+                return false;
+            std::string typeName;
+            std::optional<Extrusion> extrusion;
+            if (!TypeParam(P, m, "roof", typeName) || !ExtrusionParam(P, extrusion))
+                return false;
+            std::optional<std::pair<Geom::Region, std::vector<SketchLine>>> sketched;
+            if (!Sketched(P, p, "courtyards", {}, sketched))
+                return false;
+            if (sketched && extrusion)
+                return P.Fail("an extrusion roof has no footprint to sketch");
+            const bool given = !P.Absent("boundary") || sketched;
+            std::optional<double> overhang;
+            if (!P.Num("overhang", overhang))
+                return false;
+            Roof r;
+            r.overhang = overhang.value_or(given || extrusion ? 0.0 : 500.0);
+            std::vector<Ring> found;
+            if (sketched)
+            {
+                r.boundary = sketched->first.outer;
+                found      = sketched->first.holes;
+                r.sketch   = sketched->second;
+            }
+            else if (given)
+            {
+                std::vector<P2> pts;
+                if (!P.Points("boundary", pts))
+                    return false;
+                r.boundary = CleanRing(pts);
+            }
+            else if (!extrusion)
+            {
+                std::string why;
+                const auto footprint = RoofFootprint(m, level, r.overhang, why);
+                if (!footprint)
+                    return P.Fail(why);
+                r.boundary = footprint->first;
+                found      = footprint->second;
+            }
+            std::optional<std::vector<Ring>> courtyards, openings;
+            std::optional<double> slope, offset;
+            if (!Rings(P, "courtyards", courtyards))
+                return false;
+            if (!extrusion && !P.Num("slope", slope))
+                return false;
+            if (!P.Flag("gable", r.gable) || !GablesParam(P, r.gables) || !P.Num("offset", offset) || !Rings(P, "openings", openings) ||
+                !P.IdOpt("join", r.join))
+                return false;
+            r.typeName   = typeName;
+            r.level      = level;
+            r.courtyards = courtyards ? *courtyards : found;
+            r.slope      = extrusion ? 0.0 : slope.value_or(30.0);
+            r.offset     = offset.value_or(0.0);
+            r.openings   = openings ? *openings : std::vector<Ring>{};
+            r.extrusion  = std::move(extrusion);
+            const Id id = s.ModelMut().Insert(std::move(r));
+            result = Json{ { "id", id } };
+            return true;
+        }
+
+        // ── 族与构件 ─────────────────────────────────────────────
+        void Merge(Json& into, const Json& patch);
+
+        // old 里同一位置的部件把 ID 和 GUID 交给 fresh 里自己没有的：原地不动的保留它们
+        template <class T>
+        void KeepParts(const std::vector<T>& old, std::vector<T>& fresh)
+        {
+            for (size_t i = 0; i < old.size() && i < fresh.size(); ++i)
+                if (fresh[i].id == 0 && fresh[i].guid.IsNil())
+                {
+                    fresh[i].id   = old[i].id;
+                    fresh[i].guid = old[i].guid;
+                }
+        }
+
+        bool FamilyCmd(Session& s, const Json& given, Json& result, std::string& error)
+        {
+            const char* c = "family";
+            Json p = given;
+            // 从文件读：文件里的字段，名称取给出的、文件自己的，或文件名
+            {
+                Params P(c, p, error);
+                std::optional<std::string> path;
+                if (!P.String("path", path))
+                    return false;
+                if (path)
+                {
+                    std::string text, why;
+                    if (!ReadFile(*path, text, why))
+                        return P.Fail(why);
+                    Json loaded = Json::parse(text, nullptr, false);
+                    if (loaded.is_discarded())
+                        return P.Fail(*path + " is not a family: it isn't JSON");
+                    if (!loaded.is_object())
+                        return P.Fail(*path + " is not a family: it isn't an object");
+                    const std::u8string stem = ToPath(*path).stem().u8string();
+                    Json name = !Absent(p, "name") ? p["name"] : (loaded.contains("name") ? loaded["name"] : Json(std::string(stem.begin(), stem.end())));
+                    // 只取它带的族：文件说要改名或删除不算数
+                    Json fam = Json::object();
+                    for (const char* k : { "category", "parameters", "types", "forms", "symbols", "operation" })
+                        if (loaded.contains(k))
+                            fam[k] = loaded[k];
+                    fam["name"] = name;
+                    p = std::move(fam);
+                }
+            }
+            Params P(c, p, error);
+            std::optional<std::string> nameGiven;
+            if (!P.String("name", nameGiven))
+                return false;
+            const std::string name = nameGiven ? std::string(Text::Trim(*nameGiven)) : std::string();
+            if (name.empty())
+                return P.Fail("`name` is required");
+            // 项目的族存成文件：path 能把它读回来
+            std::optional<std::string> saveTo;
+            if (!P.String("save", saveTo))
+                return false;
+            if (saveTo)
+            {
+                const auto f = s.GetModel().families.find(name);
+                if (f == s.GetModel().families.end())
+                    return P.Fail("there's no family `" + name + "` to save");
+                Json v = ToJson(f->second);
+                v["name"] = name;
+                std::string why;
+                if (!AtomicWrite(*saveTo, v.dump(2), why))
+                    return P.Fail(*saveTo + ": " + why);
+                result = Json{ { "saved", name }, { "path", *saveTo } };
+                return true;
+            }
+            Model& m = s.ModelMut();
+            const auto users = [&](const std::string& n)
+            {
+                std::vector<Id> out;
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const auto fo = e->FamilyOf(); fo && fo->first == n)
+                        out.push_back(id);
+                return out;
+            };
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                if (!m.families.count(name))
+                    return P.Fail("there's no family `" + name + "`");
+                const auto used = users(name);
+                if (!used.empty())
+                {
+                    std::string ids;
+                    for (const Id id : used)
+                        ids += (ids.empty() ? "" : ", ") + std::to_string(id);
+                    return P.Fail("elements " + ids + " are of `" + name + "`; delete them first");
+                }
+                m.families.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            Family f = m.families.count(name) ? m.families.at(name) : Family{};
+            // 给出的每个字段按族读：读不懂的说是哪个字段
+            const auto part = [&](const char* key, Family& out) -> bool
+            {
+                Json one = Json::object();
+                one[key] = *Get(p, key);
+                std::string why;
+                if (!FromJson(one, out, why))
+                    return P.Fail("`" + std::string(key) + "`: " + why);
+                return true;
+            };
+            if (!Absent(p, "category"))
+            {
+                Family x;
+                if (!part("category", x))
+                    return false;
+                f.category = x.category;
+            }
+            if (!Absent(p, "parameters"))
+            {
+                Family x;
+                if (!part("parameters", x))
+                    return false;
+                f.parameters = std::move(x.parameters);
+            }
+            if (!Absent(p, "forms"))
+            {
+                Family x;
+                if (!part("forms", x))
+                    return false;
+                KeepParts(f.forms, x.forms);
+                f.forms = std::move(x.forms);
+            }
+            if (!Absent(p, "symbols"))
+            {
+                Family x;
+                if (!part("symbols", x))
+                    return false;
+                KeepParts(f.symbols, x.symbols);
+                f.symbols = std::move(x.symbols);
+            }
+            std::optional<std::string> op;
+            if (!P.String("operation", op))
+                return false;
+            if (op)
+            {
+                if (Text::Trim(*op).empty())
+                    f.operation.reset();
+                else
+                {
+                    f.operation = OperationOf::Parse(*op);
+                    if (!f.operation)
+                        return P.Fail("`operation` is one of swing, double-swing, sliding, double-sliding, folding, fixed, not `" + *op + "`");
+                }
+            }
+            if (!Absent(p, "types"))
+            {
+                Json types = ToJson(f)["types"];
+                Merge(types, *Get(p, "types"));
+                Family x;
+                Json one = Json{ { "types", types } };
+                std::string why;
+                if (!FromJson(one, x, why))
+                    return P.Fail("`types`: " + why);
+                f.types = std::move(x.types);
+            }
+            std::string now = name;
+            std::optional<std::string> rename;
+            if (!P.String("rename", rename))
+                return false;
+            if (rename)
+            {
+                const std::string to(Text::Trim(*rename));
+                if (to.empty())
+                    return P.Fail("`rename` needs a name");
+                if (to != name && m.families.count(to))
+                    return P.Fail("there's a family `" + to + "` already");
+                m.families.erase(name);
+                m.library.FamilyRenamed(name, to);
+                for (const Id id : users(name))
+                    *m.elements.GetMut(id)->FamilyMut() = to;
+                now = to;
+            }
+            m.families[now] = f;
+            result = Json{ { "name", now }, { "family", ToJson(f) } };
+            return true;
+        }
+
+        bool ComponentCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "component";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<std::string> family;
+            if (!P.String("family", family))
+                return false;
+            if (!family)
+                return P.Fail("`family` is required; `inspect` lists the families");
+            const auto f = m.families.find(*family);
+            if (f == m.families.end())
+            {
+                std::string names;
+                for (const auto& [n, _] : m.families)
+                    names += (names.empty() ? "" : ", ") + n;
+                return P.Fail("family `" + *family + "` doesn't exist (there are: " + names + ")");
+            }
+            std::optional<std::string> type;
+            if (!P.String("type", type))
+                return false;
+            Component comp;
+            comp.family = *family;
+            if (type)
+                comp.typeName = *type;
+            else if (!f->second.types.empty())
+                comp.typeName = f->second.types.begin()->first;
+            else
+                return P.Fail("family `" + *family + "` has no type");
+            if (!Absent(p, "params"))
+            {
+                const Json& v = *Get(p, "params");
+                if (!v.is_object())
+                    return P.Fail("`params` is {parameter: value}, not " + Show(v));
+                for (auto it = v.begin(); it != v.end(); ++it)
+                    if (!it.value().is_null())
+                        comp.params[it.key()] = it.value();
+            }
+            std::optional<double> angle, offset;
+            if (!LevelParam(c, m, p, "level", comp.level, error) || !P.PointReq("at", comp.at) || !P.Num("angle", angle) || !P.Num("offset", offset) ||
+                !P.Flag("mirrored", comp.mirrored))
+                return false;
+            comp.angle  = angle.value_or(0.0);
+            comp.offset = offset.value_or(0.0);
+            const Id id = s.ModelMut().Insert(std::move(comp));
+            result = Json{ { "id", id } };
+            return true;
+        }
+
+        // 命令要的柱（category 为 column、structuralcolumn 或 footing），还没放进模型：工具预览一次单击会放下的
+        bool StoodOfImpl(const Model& m, const Json& p, const std::string& category, Element& out, std::string& error)
+        {
+            const char* c = CommandOf(category);
+            Params P(c, p, error);
+            Column col;
+            std::optional<double> angle, height, baseOffset;
+            if (!P.PointReq("at", col.at) || !LevelParam(c, m, p, "level", col.level, error) || !TypeParam(P, m, category.c_str(), col.typeName) ||
+                !P.Num("angle", angle))
+                return false;
+            // 独立基础是平放的柱：厚 thickness，顶面高出标高 offset
+            if (category == "footing")
+            {
+                std::optional<double> thickness, top;
+                if (!P.Num("thickness", thickness) || !P.Num("offset", top))
+                    return false;
+                const double th = thickness.value_or(400.0);
+                if (th <= 0.0)
+                    return P.Fail("`thickness` must be above zero, got " + Num(th));
+                col.angle      = angle.value_or(0.0);
+                col.height     = th;
+                col.baseOffset = top.value_or(0.0) - th;
+                out = Element(Footing{ std::move(col) });
+                return true;
+            }
+            if (!P.Num("height", height) || !P.Num("base_offset", baseOffset))
+                return false;
+            // 到上一个标高，或给了 height 时那么高，或到 top_level
+            if (P.Absent("top_level"))
+            {
+                if (!height)
+                    col.topLevel = m.LevelAbove(col.level);
+            }
+            else
+            {
+                Guid t;
+                if (!LevelParam(c, m, p, "top_level", t, error))
+                    return false;
+                col.topLevel = t;
+            }
+            col.angle      = angle.value_or(0.0);
+            col.height     = height.value_or(DefaultHeight);
+            col.baseOffset = baseOffset.value_or(0.0);
+            if (category == "column")
+                out = Element(std::move(col));
+            else
+                out = Element(StructuralColumn{ std::move(col) });
+            return true;
+        }
+
+        bool ColumnCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Element e;
+            if (!StoodOfImpl(s.GetModel(), p, "column", e, error))
+                return false;
+            result = Json{ { "id", s.ModelMut().Insert(std::move(e)) } };
+            return true;
+        }
+
+        bool StructuralColumnCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Element e;
+            if (!StoodOfImpl(s.GetModel(), p, "structuralcolumn", e, error))
+                return false;
+            result = Json{ { "id", s.ModelMut().Insert(std::move(e)) } };
+            return true;
+        }
+
+        bool FootingCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Element e;
+            if (!StoodOfImpl(s.GetModel(), p, "footing", e, error))
+                return false;
+            result = Json{ { "id", s.ModelMut().Insert(std::move(e)) } };
+            return true;
+        }
+
+        // 命令要的 run（类别 category：梁、条形基础……），points 每一段一个，还没放进模型：工具预览一次单击会放下的
+        bool RunsOfImpl(const Model& m, const Json& p, const std::string& category, std::vector<Element>& out, std::string& error)
+        {
+            const char* c = CommandOf(category);
+            Params P(c, p, error);
+            std::vector<P2> pts;
+            bool closed = false;
+            if (!P.Points("points", pts) || !P.Flag("closed", closed))
+                return false;
+            if (pts.size() < 2)
+                return P.Fail("`points` needs at least 2 points");
+            if (closed)
+                pts.push_back(pts.front());
+            Run r;
+            std::optional<double> offset, endOffset;
+            std::optional<std::string> justify, system;
+            if (!LevelParam(c, m, p, "level", r.level, error) || !TypeParam(P, m, category.c_str(), r.typeName) || !P.Num("offset", offset) ||
+                !P.Num("end_offset", endOffset) || !P.String("justify", justify) || !P.String("system", system))
+                return false;
+            if (endOffset && pts.size() != 2)
+                return P.Fail("`end_offset` is the height of one run's end: give 2 points");
+            r.justify = Runs::DefaultJustify(category);
+            if (justify)
+            {
+                const auto j = JustifyOf::FromName(*justify);
+                if (!j)
+                    return P.Fail("`justify` is top, centre or bottom, not `" + *justify + "`");
+                r.justify = *j;
+            }
+            r.offset    = offset.value_or(0.0);
+            r.endOffset = endOffset;
+            r.system    = system.value_or("");
+            out.clear();
+            for (size_t i = 0; i + 1 < pts.size(); ++i)
+            {
+                Run one   = r;
+                one.start = pts[i];
+                one.end   = pts[i + 1];
+                const auto e = Element::OfRun(category, std::move(one));
+                if (!e)
+                    return P.Fail("`" + category + "` has no runs");
+                out.push_back(*e);
+            }
+            return true;
+        }
+
+        bool Chain(Session& s, const Json& p, const char* category, Json& result, std::string& error)
+        {
+            std::vector<Element> made;
+            if (!RunsOfImpl(s.GetModel(), p, category, made, error))
+                return false;
+            Json ids = Json::array();
+            for (Element& e : made)
+                ids.push_back(s.ModelMut().Insert(std::move(e)));
+            result = Json{ { "ids", ids } };
+            return true;
+        }
+
+        bool BeamCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "beam", r, e); }
+        bool StripFootingCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "stripfooting", r, e); }
+        bool PipeCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "pipe", r, e); }
+        bool ConduitCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "conduit", r, e); }
+        bool CableTrayCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "cabletray", r, e); }
+        bool WireCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "wire", r, e); }
+        bool DownConductorCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "downconductor", r, e); }
+        bool GroundConductorCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "groundconductor", r, e); }
+        bool CablingCmd(Session& s, const Json& p, Json& r, std::string& e) { return Chain(s, p, "cable", r, e); }
+
+        // ── 类型与材质 ───────────────────────────────────────────
+        // 一层，严格地读（拼错的键报错）
+        bool LayerParam(const char* c, const Json& v, Layer& l, std::string& error)
+        {
+            if (!v.is_object())
+                return Fail(error, c, "`layers`: a layer is {function?, material?, thickness}, not " + Show(v));
+            for (auto it = v.begin(); it != v.end(); ++it)
+            {
+                const std::string& k = it.key();
+                if (k != "id" && k != "guid" && k != "function" && k != "material" && k != "thickness")
+                    return Fail(error, c, "`layers`: unknown field `" + k + "`, expected one of id, guid, function, material, thickness");
+            }
+            const auto th = v.find("thickness");
+            if (th == v.end() || !th->is_number())
+                return Fail(error, c, "`layers`: missing field `thickness`");
+            l.thickness = th->get<double>();
+            if (const auto f = v.find("function"); f != v.end() && !f->is_null())
+            {
+                const auto fn = f->is_string() ? FunctionOf::FromName(f->get<std::string>()) : std::nullopt;
+                if (!fn)
+                    return Fail(error, c, "`layers`: unknown variant " + Show(*f) + ", expected one of structure, substrate, thermal, membrane, finish");
+                l.function = *fn;
+            }
+            if (const auto mat = v.find("material"); mat != v.end() && !mat->is_null())
+            {
+                if (!mat->is_string())
+                    return Fail(error, c, "`layers`: `material` must be text, got " + Show(*mat));
+                l.material = mat->get<std::string>();
+            }
+            if (const auto id = v.find("id"); id != v.end() && !id->is_null())
+            {
+                const auto whole = AsWhole(*id);
+                if (!whole)
+                    return Fail(error, c, "`layers`: `id` must be a whole number");
+                l.id = *whole;
+            }
+            if (const auto g = v.find("guid"); g != v.end() && !g->is_null())
+            {
+                std::string why;
+                if (!FromJson(*g, l.guid, why))
+                    return Fail(error, c, "`layers`: " + why);
+            }
+            return true;
+        }
+
+        // 带层的类型的厚度与各层：type 命令的参数，在同名的已有类型（old）之上。给了层时为各层之和；
+        // 只给新厚度时差值加到第一个结构层（没有时为最厚的层）
+        bool Layered(const char* c, Params& P, const std::string& category, const std::optional<std::pair<double, std::vector<Layer>>>& old,
+                     std::optional<double> thickness, double& outThickness, std::vector<Layer>& outLayers, std::string& error)
+        {
+            auto need = [&](const char* what) { return Fail(error, c, "a new " + category + " type needs `" + what + "`"); };
+            std::optional<std::vector<Layer>> layers;
+            if (!P.Absent("layers"))
+            {
+                const Json& v = *Get(P.Raw(), "layers");
+                if (!v.is_array() || v.size() > MaxLayers)
+                    return Fail(error, c, "`layers` is a list of at most " + std::to_string(MaxLayers) + " layers");
+                std::vector<Layer> list;
+                for (const Json& x : v)
+                {
+                    Layer l;
+                    if (!LayerParam(c, x, l, error))
+                        return false;
+                    list.push_back(std::move(l));
+                }
+                // 位置没变的层保留它的 ID 和 GUID
+                if (old)
+                    for (size_t i = 0; i < list.size() && i < old->second.size(); ++i)
+                        if (list[i].id == 0 && list[i].guid.IsNil())
+                        {
+                            list[i].id   = old->second[i].id;
+                            list[i].guid = old->second[i].guid;
+                        }
+                layers = std::move(list);
+            }
+            if (layers && !layers->empty())
+            {
+                double sum = 0.0;
+                for (const Layer& l : *layers)
+                    sum += l.thickness;
+                if (thickness && std::abs(*thickness - sum) > 1e-6)
+                    return Fail(error, c, "its layers add up to " + Num(sum) + " mm, not the " + Num(*thickness) + " mm given");
+                outThickness = sum;
+                outLayers    = std::move(*layers);
+                return true;
+            }
+            if (layers)
+            {
+                if (!thickness)
+                    return need("thickness");
+                outThickness = *thickness;
+                outLayers.clear();
+                return true;
+            }
+            if (thickness)
+            {
+                std::vector<Layer> list = old ? old->second : std::vector<Layer>{};
+                if (old && !old->second.empty())
+                {
+                    std::optional<size_t> k;
+                    for (size_t i = 0; i < list.size() && !k; ++i)
+                        if (list[i].function == Function::Structure)
+                            k = i;
+                    if (!k)
+                    {
+                        // 最厚的层（相同时取后面的，照 Rust 的 max_by）
+                        size_t best = 0;
+                        for (size_t i = 1; i < list.size(); ++i)
+                            if (list[i].thickness >= list[best].thickness)
+                                best = i;
+                        k = best;
+                    }
+                    Layer& l = list[*k];
+                    l.thickness += *thickness - old->first;
+                    if (l.thickness <= 0.0)
+                        return Fail(error, c, "at " + Num(*thickness) + " mm its structure would be " + Num(l.thickness) + " mm thick; change its layers");
+                }
+                outThickness = *thickness;
+                outLayers    = std::move(list);
+                return true;
+            }
+            if (!old)
+                return need("thickness");
+            outThickness = old->first;
+            outLayers    = old->second;
+            return true;
+        }
+
+        bool TypeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "type";
+            Params P(c, p, error);
+            std::optional<std::string> cat, name;
+            if (!P.String("category", cat))
+                return false;
+            if (!cat)
+                return P.Fail("`category` is required: wall, floor, ceiling, door, window or roof");
+            const std::string category = NormalizeCategory(*cat);
+            if (!P.String("name", name))
+                return false;
+            if (!name || Text::Trim(*name).empty())
+                return P.Fail("`name` is required");
+            std::optional<double> thickness, width, height, sill;
+            if (!P.Num("thickness", thickness) || !P.Num("width", width) || !P.Num("height", height) || !P.Num("sill", sill))
+                return false;
+            auto need = [&](const char* what) { return P.Fail("a new " + category + " type needs `" + what + "`"); };
+            Model& m = s.ModelMut();
+            Json t;
+            if (category == "wall" || category == "floor")
+            {
+                std::optional<std::pair<double, std::vector<Layer>>> old;
+                if (category == "wall")
+                {
+                    if (const auto it = m.types.wall.find(*name); it != m.types.wall.end())
+                        old = std::pair{ it->second.thickness, it->second.layers };
+                }
+                else if (const auto it = m.types.floor.find(*name); it != m.types.floor.end())
+                    old = std::pair{ it->second.thickness, it->second.layers };
+                double th = 0.0;
+                std::vector<Layer> layers;
+                if (!Layered(c, P, category, old, thickness, th, layers, error))
+                    return false;
+                if (category == "wall")
+                    m.types.wall[*name] = WallType{ th, layers };
+                else
+                    m.types.floor[*name] = FloorType{ th, layers };
+                Types one;
+                one.wall[*name] = WallType{ th, layers };
+                t = Bim::ToJson(one)["wall"][*name];
+            }
+            else if (category == "roof" || category == "ceiling")
+            {
+                std::optional<std::pair<double, std::vector<Layer>>> old;
+                std::optional<double> oldGrid;
+                if (category == "roof")
+                {
+                    if (const auto it = m.types.roof.find(*name); it != m.types.roof.end())
+                        old = std::pair{ it->second.thickness, it->second.layers };
+                }
+                else if (const auto it = m.types.ceiling.find(*name); it != m.types.ceiling.end())
+                {
+                    old = std::pair{ it->second.thickness, it->second.layers };
+                    oldGrid = it->second.grid;
+                }
+                double th = 0.0;
+                std::vector<Layer> layers;
+                if (!Layered(c, P, category, old, thickness, th, layers, error))
+                    return false;
+                Types one;
+                if (category == "roof")
+                {
+                    m.types.roof[*name] = RoofType{ th, layers };
+                    one.roof[*name] = m.types.roof[*name];
+                }
+                else
+                {
+                    std::optional<double> grid;
+                    if (!P.Num("grid", grid))
+                        return false;
+                    m.types.ceiling[*name] = CeilingType{ th, grid ? *grid : oldGrid.value_or(0.0), layers };
+                    one.ceiling[*name] = m.types.ceiling[*name];
+                }
+                t = Bim::ToJson(one)[category][*name];
+            }
+            else if (category == "door" || category == "window")
+            {
+                auto& map = category == "door" ? m.types.door : m.types.window;
+                std::optional<OpeningType> old;
+                if (const auto it = map.find(*name); it != map.end())
+                    old = it->second;
+                std::optional<std::string> op;
+                if (!P.String("operation", op))
+                    return false;
+                std::optional<Operation> operation = old ? old->operation : std::nullopt;
+                if (op)
+                {
+                    if (Text::Trim(*op).empty())
+                        operation.reset();
+                    else
+                    {
+                        operation = OperationOf::Parse(*op);
+                        if (!operation)
+                            return P.Fail("`operation` is one of swing, double-swing, sliding, double-sliding, folding, fixed, not `" + *op + "`");
+                    }
+                }
+                OpeningType ty;
+                if (!width && !old)
+                    return need("width");
+                if (!height && !old)
+                    return need("height");
+                ty.width     = width ? *width : old->width;
+                ty.height    = height ? *height : old->height;
+                ty.sill      = sill ? *sill : (old ? old->sill : (category == "window" ? 900.0 : 0.0));
+                ty.operation = operation;
+                map[*name] = ty;
+                Types one;
+                one.door[*name] = ty;
+                t = Bim::ToJson(one)["door"][*name];
+            }
+            else if (category == "column" || category == "structuralcolumn" || category == "footing")
+            {
+                auto& map = category == "column" ? m.types.column : category == "footing" ? m.types.footing : m.types.structuralColumn;
+                std::optional<ColumnType> old;
+                if (const auto it = map.find(*name); it != map.end())
+                    old = it->second;
+                if (!width && !old)
+                    return need("width");
+                bool round = old && old->round;
+                if (!P.Absent("round") && !P.Flag("round", round))
+                    return false;
+                std::optional<double> depth;
+                if (!P.Num("depth", depth))
+                    return false;
+                ColumnType ty;
+                ty.width = width ? *width : old->width;
+                ty.round = round;
+                // 圆柱的进深即直径
+                ty.depth = round ? ty.width : depth ? *depth : old ? old->depth : ty.width;
+                map[*name] = ty;
+                Types one;
+                one.column[*name] = ty;
+                t = Bim::ToJson(one)["column"][*name];
+            }
+            // 梁或别的 run 的：截面宽 width、高 depth，或圆的；用库里的一种材质做
+            else if (IsRunCategory(category))
+            {
+                auto& map = m.types.runs[category];
+                std::optional<RunType> old;
+                if (const auto it = map.find(*name); it != map.end())
+                    old = it->second;
+                if (!width && !old)
+                    return need("width");
+                bool round = old && old->round;
+                if (!P.Absent("round") && !P.Flag("round", round))
+                    return false;
+                std::optional<double> depth;
+                std::optional<std::string> material;
+                if (!P.Num("depth", depth) || !P.String("material", material))
+                    return false;
+                RunType ty;
+                ty.width = width ? *width : old->width;
+                ty.round = round;
+                if (round)
+                    ty.depth = ty.width;
+                else if (depth)
+                    ty.depth = *depth;
+                else if (old)
+                    ty.depth = old->depth;
+                else
+                    return need("depth");
+                ty.material = material ? *material : old ? old->material : "";
+                map[*name] = ty;
+                Types one;
+                one.runs[category][*name] = ty;
+                t = Bim::ToJson(one)["runs"][category][*name];
+            }
+            else
+                return P.Fail("`" + category + "` has no types here; use wall, floor, ceiling, door, window, column, structural column, footing, roof or a "
+                              "run's category (beam, strip footing, pipe, conduit, cable tray, wire, down conductor, ground conductor, cable)");
+            result = Json{ { "category", category }, { "name", *name }, { "type", t } };
+            return true;
+        }
+
+        // "#rrggbb" 或 [r, g, b]
+        std::optional<std::array<uint8_t, 3>> Colour(const Json& v)
+        {
+            if (v.is_string())
+            {
+                const std::string hex = v.get<std::string>();
+                if (hex.size() != 7 || hex[0] != '#')
+                    return std::nullopt;
+                std::array<uint8_t, 3> out{};
+                for (size_t i = 0; i < 3; ++i)
+                {
+                    int x = 0;
+                    for (size_t k = 0; k < 2; ++k)
+                    {
+                        const char ch = hex[1 + i * 2 + k];
+                        const int d = ch >= '0' && ch <= '9' ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : ch >= 'A' && ch <= 'F' ? ch - 'A' + 10 : -1;
+                        if (d < 0)
+                            return std::nullopt;
+                        x = x * 16 + d;
+                    }
+                    out[i] = static_cast<uint8_t>(x);
+                }
+                return out;
+            }
+            if (v.is_array() && v.size() == 3)
+            {
+                std::array<uint8_t, 3> out{};
+                for (size_t i = 0; i < 3; ++i)
+                {
+                    const auto byte = AsWhole(v[i]);
+                    if (!byte || *byte > 255)
+                        return std::nullopt;
+                    out[i] = static_cast<uint8_t>(*byte);
+                }
+                return out;
+            }
+            return std::nullopt;
+        }
+
+        bool MaterialCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "material";
+            Params P(c, p, error);
+            std::optional<std::string> given;
+            bool del = false;
+            if (!P.String("name", given) || !P.Flag("delete", del))
+                return false;
+            const std::string name = given ? std::string(Text::Trim(*given)) : std::string();
+            if (name.empty())
+                return P.Fail("`name` is required");
+            Model& m = s.ModelMut();
+            if (del)
+            {
+                if (!m.materials.count(name))
+                    return P.Fail("the library has no `" + name + "`");
+                for (const Model::Layered& t : m.LayeredTypes())
+                    for (const Layer& l : *t.layers)
+                        if (l.material == name)
+                            return P.Fail("`" + name + "` is in " + t.category + " type `" + *t.name + "`'s layers; take it out of them first");
+                if (const auto user = m.MaterialUser(name))
+                    return P.Fail("`" + name + "` is in " + *user + "; take it out of it first");
+                m.materials.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            if (!P.Absent("texture"))
+                return P.Fail("textures aren't ported yet (docs/PLAN.md, phase 2)");
+            Material mat = m.materials.count(name) ? m.materials[name] : Material{};
+            if (!P.Absent("color"))
+            {
+                const Json& v = *Get(p, "color");
+                const auto colour = Colour(v);
+                if (!colour)
+                    return P.Fail("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not " + Show(v));
+                mat.color = *colour;
+            }
+            if (!P.Absent("transparency"))
+            {
+                const Json& v = *Get(p, "transparency");
+                if (!v.is_number_integer() || v.get<int64_t>() < 0 || v.get<int64_t>() > 100)
+                    return P.Fail("`transparency` is a whole percent, 0 to 100, not " + Show(v));
+                mat.transparency = static_cast<uint8_t>(v.get<int64_t>());
+            }
+            for (const auto& [key, slot] : { std::pair{ "cut", &mat.cut }, std::pair{ "surface", &mat.surface } })
+            {
+                if (P.Absent(key))
+                    continue;
+                const Json& v = *Get(p, key);
+                const auto pattern = v.is_string() ? PatternOf::FromName(v.get<std::string>()) : std::nullopt;
+                if (!pattern)
+                    return P.Fail("`" + std::string(key) + "`: " + Show(v) +
+                                  " isn't a pattern: one of none, solid, diagonal, crosshatch, horizontal, vertical, grid, brick, concrete, insulation");
+                *slot = *pattern;
+            }
+            std::optional<std::string> rename;
+            if (!P.String("rename", rename))
+                return false;
+            std::string now = name;
+            if (rename)
+            {
+                const std::string to(Text::Trim(*rename));
+                if (to.empty())
+                    return P.Fail("`rename` needs a name");
+                if (to != name && m.materials.count(to))
+                    return P.Fail("the library already has `" + to + "`");
+                m.materials.erase(name);
+                m.library.Renamed(Kind::Of(Kind::Tag::Material), name, to);
+                for (auto& [_, t] : m.types.wall)
+                    for (Layer& l : t.layers)
+                        if (l.material == name)
+                            l.material = to;
+                for (auto& [_, t] : m.types.floor)
+                    for (Layer& l : t.layers)
+                        if (l.material == name)
+                            l.material = to;
+                for (auto& [_, t] : m.types.roof)
+                    for (Layer& l : t.layers)
+                        if (l.material == name)
+                            l.material = to;
+                for (auto& [_, t] : m.types.ceiling)
+                    for (Layer& l : t.layers)
+                        if (l.material == name)
+                            l.material = to;
+                m.RenameMaterialInFamilies(name, to);
+                now = to;
+            }
+            m.materials[now] = mat;
+            std::map<std::string, Material> one{ { now, mat } };
+            result = Json{ { "name", now }, { "material", Bim::ToJson(one)[now] } };
+            return true;
+        }
+
+        // ── 编辑 ─────────────────────────────────────────────────
+        // patch 合并进 into：对象逐键合并，null 是去掉那个键
+        void Merge(Json& into, const Json& patch)
+        {
+            if (!patch.is_object())
+            {
+                into = patch;
+                return;
+            }
+            if (!into.is_object())
+                into = Json::object();
+            for (auto it = patch.begin(); it != patch.end(); ++it)
+            {
+                if (it->is_null())
+                    into.erase(it.key());
+                else
+                {
+                    if (!into.contains(it.key()))
+                        into[it.key()] = nullptr;
+                    Merge(into[it.key()], *it);
+                }
+            }
+        }
+
+        // ── 体量（移植自 BIMCraft commands.rs 的 mass、mass_floors、…_by_face）──────────
+        bool DeleteCmd(Session& s, const Json& p, Json& result, std::string& error);
+
+        // 体量的底面积（平方米）、高（毫米）、体积（立方米）
+        std::tuple<double, double, double> MassSize(const Model& m, const Mass& ms)
+        {
+            const auto [bottom, top] = m.MassSpan(ms);
+            return { M2(std::abs(Geom::Area(ms.boundary))), top - bottom, std::round(m.MassVolume(ms, bottom, top) / 1e7) / 100.0 };
+        }
+
+        bool MassCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "mass";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Mass ms;
+            std::vector<P2> boundary;
+            if (!LevelParam(c, m, p, "level", ms.level, error) || !P.Points("boundary", boundary))
+                return false;
+            std::optional<std::vector<P2>> top;
+            const bool hasTop = !P.Absent("top"), hasLean = !P.Absent("lean");
+            if (hasTop && hasLean)
+                return P.Fail("give `top`, an outline, or `lean`, how far the top moves sideways, not both");
+            if (hasTop)
+            {
+                std::vector<P2> t;
+                if (!P.Points("top", t))
+                    return false;
+                top = std::move(t);
+            }
+            else if (hasLean)
+            {
+                P2 by;
+                if (!P.PointReq("lean", by))
+                    return false;
+                std::vector<P2> t;
+                for (const P2& q : boundary)
+                    t.push_back(q + by);
+                top = std::move(t);
+            }
+            // 逆时针，顶部轮廓同向、点点对应
+            if (Geom::Area(boundary) < 0.0)
+            {
+                std::reverse(boundary.begin(), boundary.end());
+                if (top)
+                    std::reverse(top->begin(), top->end());
+            }
+            std::optional<double> height, baseOffset;
+            std::optional<std::string> name;
+            if (!P.Num("height", height) || !P.Num("base_offset", baseOffset) || !P.String("name", name))
+                return false;
+            // 到上一个标高（同管井），或给了 height 时那么高，或到 top_level
+            if (P.Absent("top_level"))
+            {
+                if (!height)
+                    ms.topLevel = m.LevelAbove(ms.level);
+            }
+            else
+            {
+                Guid t;
+                if (!LevelParam(c, m, p, "top_level", t, error))
+                    return false;
+                ms.topLevel = t;
+            }
+            ms.height     = height.value_or(DefaultHeight);
+            ms.baseOffset = baseOffset.value_or(0.0);
+            ms.name       = name ? *name : LanguageOf::Word(m.language, "Mass");
+            ms.boundary   = std::move(boundary);
+            if (top && *top != ms.boundary)
+                ms.top = std::move(*top);
+            const auto [area, h, volume] = MassSize(m, ms);
+            const Id id = s.ModelMut().Insert(std::move(ms));
+            result = Json{ { "id", id }, { "area_m2", area }, { "height", h }, { "volume_m3", volume } };
+            return true;
+        }
+
+        // mass 指的体量
+        bool MassOf(const char* c, const Model& m, const Json& p, Id& id, Mass& out, std::string& error)
+        {
+            if (Absent(p, "mass"))
+                return Fail(error, c, "`mass`, the id of a mass, is required");
+            Guid g;
+            std::string why;
+            if (!FromJson(p["mass"], g, why))
+                return Fail(error, c, "`mass`: " + why);
+            const auto found = m.elements.IdOf(g);
+            const Element* e = found ? m.elements.Get(*found) : nullptr;
+            if (!e || !e->As<Mass>())
+                return Fail(error, c, m.Shown(g) + " isn't a mass");
+            id  = *found;
+            out = *e->As<Mass>();
+            return true;
+        }
+
+        // made（一个 ID 或一列）里的元素在 key 下记上 value：它们的 ID
+        std::vector<Id> MarkMade(Session& s, const Json& made, const char* key, const Json& value)
+        {
+            std::vector<Id> ids;
+            if (made.is_array())
+            {
+                for (const Json& v : made)
+                    if (v.is_number_integer())
+                        ids.push_back(v.get<Id>());
+            }
+            else if (made.is_number_integer())
+                ids.push_back(made.get<Id>());
+            for (const Id id : ids)
+                if (Element* e = s.ModelMut().elements.GetMut(id); e && e->ParamsMut())
+                    (*e->ParamsMut())[key] = value;
+            return ids;
+        }
+
+        // p 里 keys 给了的参数，交给做元素的命令
+        Json Passing(const Json& p, std::initializer_list<const char*> keys, Json to)
+        {
+            for (const char* k : keys)
+                if (!Absent(p, k))
+                    to[k] = p[k];
+            return to;
+        }
+
+        Json RingJsonOf(const Ring& ring)
+        {
+            Json a = Json::array();
+            for (const P2& q : ring)
+                a.push_back(ToJson(q));
+            return a;
+        }
+
+        bool MassFloorsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "mass_floors";
+            Params P(c, p, error);
+            std::vector<std::pair<Id, Mass>> masses;
+            if (!Absent(p, "mass"))
+            {
+                Id id;
+                Mass ms;
+                if (!MassOf(c, s.GetModel(), p, id, ms, error))
+                    return false;
+                masses.emplace_back(id, std::move(ms));
+            }
+            else
+                for (const auto& [id, e] : s.GetModel().elements.Items())
+                    if (const Mass* ms = e->As<Mass>())
+                        masses.emplace_back(id, *ms);
+            if (masses.empty())
+                return P.Fail("no mass; make one with `mass`");
+            bool prune = false;
+            std::optional<std::string> kind;
+            if (!P.Flag("prune", prune) || !P.String("type", kind))
+                return false;
+            std::vector<Id> ids, made, updated, stale, removed;
+            for (const auto& [mass, ms] : masses)
+            {
+                const Guid massGuid = s.GetModel().GuidOf(mass);
+                const auto held     = Massing::FloorsOf(s.GetModel(), massGuid);
+                const auto slices   = s.GetModel().MassSlices(ms);
+                std::vector<Guid> levels;
+                for (const auto& sl : slices)
+                {
+                    const Model& m   = s.GetModel();
+                    const Guid level = m.GuidOf(sl.level);
+                    levels.push_back(level);
+                    // 体量在这个标高处的轮廓：底面轮廓，放样的在两个轮廓之间
+                    const Ring ring = m.MassOutline(ms, sl.z);
+                    const auto it = std::find_if(held.begin(), held.end(), [&](const auto& h) { return m.Same(h.second, level); });
+                    if (it == held.end())
+                    {
+                        Json one;
+                        if (!FloorCmd(s, Passing(p, { "type" }, Json{ { "boundary", RingJsonOf(ring) }, { "level", ToJson(level) } }), one, error))
+                            return false;
+                        for (const Id id : MarkMade(s, one["id"], Massing::FloorMark,
+                                                    Json{ { "mass", ToJson(massGuid) }, { "level", ToJson(level) } }))
+                        {
+                            made.push_back(id);
+                            ids.push_back(id);
+                        }
+                        continue;
+                    }
+                    const Id f = it->first;
+                    ids.push_back(f);
+                    // 轮廓（与类型）已经对的楼板不动，再跑一次不是一步撤销
+                    const Floor* fl = m.elements.Get(f)->As<Floor>();
+                    if (fl->boundary != ring || (kind && *kind != fl->typeName))
+                    {
+                        if (kind && !m.types.floor.count(*kind))
+                            return P.Fail("floor type `" + *kind + "` doesn't exist");
+                        Floor* mf = s.ModelMut().elements.GetMut(f)->As<Floor>();
+                        mf->boundary = ring;
+                        if (kind)
+                            mf->typeName = *kind;
+                        updated.push_back(f);
+                    }
+                }
+                for (const auto& [f, level] : held)
+                    if (std::none_of(levels.begin(), levels.end(), [&](const Guid& l) { return s.GetModel().Same(l, level); }))
+                        (prune ? removed : stale).push_back(f);
+            }
+            if (!removed.empty())
+            {
+                Json gone;
+                if (!DeleteCmd(s, Json{ { "ids", removed } }, gone, error))
+                    return false;
+            }
+            result = Json{ { "ids", ids }, { "made", made }, { "updated", updated }, { "stale", stale }, { "removed", removed } };
+            return true;
+        }
+
+        bool WallByFaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "wall_by_face";
+            Id mass;
+            Mass ms;
+            if (!MassOf(c, s.GetModel(), p, mass, ms, error))
+                return false;
+            const Ring ring = ms.Footprint(), crown = ms.TopRing();
+            const size_t n = ring.size();
+            // 墙是竖直的，只立在顶边正在底边上方的面上
+            std::set<size_t> faces;
+            if (Absent(p, "faces"))
+            {
+                for (size_t f = 0; f < n; ++f)
+                    if (Massing::Plumb(ring, crown, f))
+                        faces.insert(f);
+                if (faces.empty())
+                    return Fail(error, c, "every face of the mass leans, and a wall stands plumb; none can stand on one");
+            }
+            else
+            {
+                const Json& a = p["faces"];
+                if (!a.is_array() || a.size() > MaxPoints)
+                    return Fail(error, c, "`faces` must be a list of edge numbers, got " + a.dump());
+                for (const Json& v : a)
+                {
+                    if (!v.is_number_integer() || v.get<int64_t>() < 0 || v.get<uint64_t>() >= n)
+                        return Fail(error, c, "face " + v.dump() + " isn't an edge of the footprint: 0 to " + std::to_string(n == 0 ? 0 : n - 1) +
+                                                  ", from its first point");
+                    const size_t f = v.get<size_t>();
+                    if (!Massing::Plumb(ring, crown, f))
+                        return Fail(error, c, "face " + std::to_string(f) + " leans, and a wall stands plumb");
+                    faces.insert(f);
+                }
+            }
+            const Json top = ms.topLevel ? Json{ { "top_level", ToJson(*ms.topLevel) } } : Json{ { "height", ms.height } };
+            const Guid massGuid = s.GetModel().GuidOf(mass);
+            Json ids = Json::array();
+            for (const size_t f : faces)
+            {
+                // 逆时针时体量在边的左边；墙的外侧在它的左边，所以反过来走
+                const P2 a = ring[f], b = ring[(f + 1) % n];
+                Json q{ { "points", Json::array({ ToJson(b), ToJson(a) }) }, { "level", ToJson(ms.level) }, { "base_offset", ms.baseOffset },
+                        { "location", "exterior-finish" } };
+                q.update(top);
+                Json made;
+                if (!WallCmd(s, Passing(p, { "type", "location" }, q), made, error))
+                    return false;
+                for (const Id id : MarkMade(s, made["ids"], Massing::Face, Json{ { "mass", ToJson(massGuid) }, { "face", f } }))
+                    ids.push_back(id);
+            }
+            result = Json{ { "ids", ids } };
+            return true;
+        }
+
+        // 体量的顶面在哪里：一个标高，高出它多少
+        std::pair<Guid, double> TopFace(const Mass& ms)
+        {
+            return ms.topLevel ? std::pair{ *ms.topLevel, 0.0 } : std::pair{ ms.level, ms.baseOffset + ms.height };
+        }
+
+        bool FloorByFaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Id mass;
+            Mass ms;
+            if (!MassOf("floor_by_face", s.GetModel(), p, mass, ms, error))
+                return false;
+            const auto [level, offset] = TopFace(ms);
+            if (!FloorCmd(s, Passing(p, { "type" }, Json{ { "boundary", RingJsonOf(ms.TopRing()) }, { "level", ToJson(level) }, { "offset", offset } }),
+                          result, error))
+                return false;
+            MarkMade(s, result["id"], Massing::Face, Json{ { "mass", ToJson(s.GetModel().GuidOf(mass)) }, { "face", "top" } });
+            return true;
+        }
+
+        bool RoofByFaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            Id mass;
+            Mass ms;
+            if (!MassOf("roof_by_face", s.GetModel(), p, mass, ms, error))
+                return false;
+            const auto [level, offset] = TopFace(ms);
+            const Json q{ { "boundary", RingJsonOf(ms.TopRing()) }, { "level", ToJson(level) }, { "offset", offset }, { "slope", 0 }, { "overhang", 0 } };
+            if (!RoofCmd(s, Passing(p, { "type", "slope", "overhang" }, q), result, error))
+                return false;
+            MarkMade(s, result["id"], Massing::Face, Json{ { "mass", ToJson(s.GetModel().GuidOf(mass)) }, { "face", "top" } });
+            return true;
+        }
+
+        bool UpdateByFaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "update_by_face";
+            const Model& m = s.GetModel();
+            const bool hasIds = !Absent(p, "ids") || !Absent(p, "id"), hasMass = !Absent(p, "mass");
+            if (hasIds && hasMass)
+                return Fail(error, c, "give `ids` or `mass`, not both");
+            std::vector<Id> ids;
+            if (hasMass)
+            {
+                Id mass;
+                Mass ms;
+                if (!MassOf(c, m, p, mass, ms, error))
+                    return false;
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const auto f = Massing::FaceOf(*e); f && m.Same(f->first, m.GuidOf(mass)))
+                        ids.push_back(id);
+            }
+            else if (hasIds)
+            {
+                if (!IdsParam(c, m, p, ids, error))
+                    return false;
+                for (const Id id : ids)
+                    if (!Massing::FaceOf(*m.elements.Get(id)))
+                        return Fail(error, c, std::to_string(id) + " isn't made by face; `wall_by_face`, `floor_by_face` and `roof_by_face` make them");
+            }
+            else
+                for (const auto& [id, e] : m.elements.Items())
+                    if (Massing::FaceOf(*e))
+                        ids.push_back(id);
+            if (ids.empty())
+                return Fail(error, c,
+                            "nothing is made by face: `wall_by_face`, `floor_by_face` and `roof_by_face` make walls, floors and roofs that follow a mass");
+            std::vector<std::pair<Id, Element>> changed;
+            std::vector<Id> same;
+            std::vector<std::string> gone;
+            for (const Id id : ids)
+            {
+                const Element* e = m.elements.Get(id);
+                const auto face  = Massing::FaceOf(*e);
+                if (!face)
+                    continue;
+                Element now = *e;
+                const auto mid = m.elements.IdOf(face->first);
+                const Element* me = mid ? m.elements.Get(*mid) : nullptr;
+                if (!me || !me->As<Mass>())
+                {
+                    gone.push_back(std::string(e->Category()) + " " + std::to_string(id) + " was made from mass " + m.Shown(face->first) +
+                                   ", which isn't there");
+                    continue;
+                }
+                std::string why;
+                if (!Massing::Follow(now, *me->As<Mass>(), *mid, face->second, why))
+                    gone.push_back(std::string(e->Category()) + " " + std::to_string(id) + " " + why);
+                else if (now == *e)
+                    same.push_back(id);
+                else
+                    changed.emplace_back(id, std::move(now));
+            }
+            if (!gone.empty())
+            {
+                std::string all;
+                for (const std::string& g : gone)
+                    all += (all.empty() ? "" : "; ") + g;
+                return Fail(error, c, all);
+            }
+            std::vector<Id> updated;
+            for (auto& [id, e] : changed)
+            {
+                updated.push_back(id);
+                s.ModelMut().elements.Insert(id, std::move(e));
+            }
+            result = Json{ { "updated", updated }, { "unchanged", same } };
+            return true;
+        }
+
+        bool Modify(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "modify";
+            if (!p.is_object())
+                return Fail(error, c, "params must be {id | ids, …fields}");
+            const Model& m = s.GetModel();
+            std::vector<Id> ids;
+            if (!IdsParam(c, m, p, ids, error))
+                return false;
+            std::vector<std::pair<Id, Element>> edited, rescaled;
+            for (const Id id : ids)
+            {
+                const Element* e = m.elements.Get(id);
+                Json v = ToJson(*e);
+                for (auto it = p.begin(); it != p.end(); ++it)
+                {
+                    const std::string& k = it.key();
+                    if (k == "id" || k == "ids")
+                        continue;
+                    Json val = *it;
+                    if (k == "category")
+                    {
+                        if (v["category"] == val)
+                            continue;
+                        return Fail(error, c, "`category` can't change; delete the element and create another");
+                    }
+                    if ((k == "level" || k == "top_level" || (k == "view" && e->IsAnnotation())) && val.is_string())
+                    {
+                        Guid g;
+                        if (!LevelParam(c, m, p, k.c_str(), g, error))
+                            return false;
+                        val = ToJson(g);
+                    }
+                    if (v.contains(k) && v[k].is_object() && val.is_object())
+                        Merge(v[k], val);       // 对象字段（平面的视图范围）合并
+                    else
+                    {
+                        Json fresh = nullptr;
+                        Merge(fresh, val);
+                        v[k] = std::move(fresh);
+                    }
+                }
+                Element e2;
+                std::string why;
+                if (!FromJson(v, e2, why))
+                {
+                    if (Text::StartsWith(why, "element: "))
+                        why.erase(0, 9);
+                    return Fail(error, c, "element " + std::to_string(id) + ": " + why);
+                }
+                if (!m.CheckFollowed(*e, e2, why))
+                    return Fail(error, c, "element " + std::to_string(id) + ": " + why);
+                // 换了定位线的墙留在原处：定位线横移
+                const Wall* old = e->As<Wall>();
+                Wall* w = e2.As<Wall>();
+                if (old && w && old->location != w->location && !p.contains("start") && !p.contains("end"))
+                {
+                    Wall was = *w;
+                    was.location = old->location;
+                    const double before = Walls::Faces(m, was).first, after = Walls::Faces(m, *w).first;
+                    const Walls::Axis axis = Walls::Axis::Of(*w);
+                    const double length = axis.Length();
+                    w->start = Micron(axis.At(0.0, before - after));
+                    w->end   = Micron(axis.At(length, before - after));
+                    // 圆弧上，门窗的偏移随它变长变短
+                    const double k = Walls::Axis::Of(*w).Length() / std::max(length, 1e-9);
+                    if (std::abs(k - 1.0) > 1e-12)
+                        for (const auto& [oid, oe] : m.elements.Items())
+                            if (const Opening* o = oe->AsOpening(); o && m.Same(o->host, m.GuidOf(id)))
+                            {
+                                Element copy = *oe;
+                                copy.AsOpening()->offset *= k;
+                                rescaled.emplace_back(oid, std::move(copy));
+                            }
+                }
+                edited.emplace_back(id, std::move(e2));
+            }
+            for (auto& r : rescaled)
+                edited.push_back(std::move(r));
+            Model& mm = s.ModelMut();
+            for (auto& [id, e] : edited)
+                mm.elements.Insert(id, std::move(e));
+            if (!p.contains("ids") && ids.size() == 1)
+                result = ElementJson(s.GetModel(), ids.front());
+            else
+                result = Json{ { "modified", ids } };
+            return true;
+        }
+
+        // 命令怎样带动元素：经 map（平移、旋转或镜像）。平移时单独选中的门窗只沿墙滑动 slide 的那部分；
+        // mirror 时是镜像：墙反过来走（外侧仍在镜像过去的那边），楼板、天花板的轮廓反向，构件翻过来，门换到另一侧门框
+        struct Motion
+        {
+            std::function<P2(P2)> map;
+            std::optional<P2>     slide;
+            bool                  mirror = false;
+        };
+
+        // 方向 angle 度
+        P2 Heading(double angle) { return P2(std::cos(angle * kPi / 180.0), std::sin(angle * kPi / 180.0)); }
+
+        // f 把点 at 和从它出发的方向 angle 带到哪里
+        std::pair<P2, double> Turned(const std::function<P2(P2)>& f, P2 at, double angle)
+        {
+            const P2 a = f(at), b = f(at + Heading(angle) * 1000.0);
+            return { a, std::round(std::atan2(b.y - a.y, b.x - a.x) * 180.0 / kPi * 1e9) / 1e9 };
+        }
+
+        // 被 mo 带动后的元素。标高在平面上没有位置；单独选中的门窗只能沿墙平移，否则随墙动
+        bool Transformed(const char* c, const Model& m, Id id, const Motion& mo, const std::set<Id>& with, Element& out, std::string& error)
+        {
+            out = *m.elements.Get(id);
+            const auto& f = mo.map;
+            if (out.As<Level>())
+                return Fail(error, c, "level " + std::to_string(id) + " has no place in plan; change its elevation, or add a level");
+            if (out.As<Sheet>())
+                return Fail(error, c, "sheet " + std::to_string(id) + " has no place in plan; move the views on it");
+            if (out.As<Schedule>() || out.As<View3D>() || out.As<PlanView>())
+                return Fail(error, c, std::string(out.Category()) + " " + std::to_string(id) + " has no place in plan; move its viewport on its sheet");
+            // 视口在它的图纸上挪：图纸上的毫米
+            if (Viewport* vp = out.As<Viewport>())
+            {
+                vp->at = f(vp->at);
+                return true;
+            }
+            // 草图随元素走，线保留 ID；镜像时圆弧反过来转
+            if (std::vector<SketchLine>* lines = out.SketchOf())
+                for (SketchLine& l : *lines)
+                {
+                    l.start = f(l.start);
+                    l.end   = f(l.end);
+                    if (mo.mirror)
+                        l.arc = -l.arc + 0.0;
+                }
+            if (Wall* w = out.As<Wall>())
+            {
+                const P2 a = f(w->start), b = f(w->end);
+                w->start = mo.mirror ? b : a;
+                w->end   = mo.mirror ? a : b;
+            }
+            else if (Grid* g = out.As<Grid>())
+            {
+                g->start = f(g->start);
+                g->end   = f(g->end);
+            }
+            else if (Section* sv = out.As<Section>() ? out.As<Section>() : out.As<Elevation>())
+            {
+                sv->start = f(sv->start);
+                sv->end   = f(sv->end);
+                // 镜像过去的仍看线的左边：反过来的那边
+                if (mo.mirror)
+                    std::swap(sv->start, sv->end);
+            }
+            else if (Floor* fl = out.As<Floor>())
+            {
+                for (P2& q : fl->boundary)
+                    q = f(q);
+                for (Ring& r : fl->openings)
+                    for (P2& q : r)
+                        q = f(q);
+                // 镜像让轮廓变成顺时针；楼板的轮廓保持逆时针
+                if (mo.mirror)
+                    std::reverse(fl->boundary.begin(), fl->boundary.end());
+                if (fl->arrow)
+                    for (P2& q : *fl->arrow)
+                        q = f(q);
+                std::tie(fl->patternOrigin, fl->patternAngle) = Turned(f, fl->patternOrigin, fl->patternAngle);
+            }
+            else if (RoomSeparator* rs = out.As<RoomSeparator>())
+            {
+                rs->start = f(rs->start);
+                rs->end   = f(rs->end);
+            }
+            else if (Ceiling* cl = out.As<Ceiling>())
+            {
+                for (P2& q : cl->boundary)
+                    q = f(q);
+                for (Ring& r : cl->openings)
+                    for (P2& q : r)
+                        q = f(q);
+                if (mo.mirror)
+                    std::reverse(cl->boundary.begin(), cl->boundary.end());
+            }
+            else if (Room* r = out.As<Room>())
+                r->point = f(r->point);
+            // 顶部轮廓同向、点点对应
+            else if (Mass* ms = out.As<Mass>())
+            {
+                for (Ring* ring : { &ms->boundary, ms->top ? &*ms->top : nullptr })
+                {
+                    if (!ring)
+                        continue;
+                    for (P2& q : *ring)
+                        q = f(q);
+                    if (mo.mirror)
+                        std::reverse(ring->begin(), ring->end());
+                }
+            }
+            else if (Column* col = out.AsColumn())
+                std::tie(col->at, col->angle) = Turned(f, col->at, col->angle);
+            else if (Run* run = out.AsRun())
+            {
+                run->start = f(run->start);
+                run->end   = f(run->end);
+            }
+            // 镜像是族翻过来
+            else if (Component* cp = out.As<Component>())
+            {
+                std::tie(cp->at, cp->angle) = Turned(f, cp->at, cp->angle);
+                cp->mirrored = cp->mirrored != mo.mirror;
+            }
+            else if (Link* lk = out.As<Link>())
+                std::tie(lk->at, lk->angle) = Turned(f, lk->at, lk->angle);
+            else if (CadImport* ci = out.As<CadImport>())
+            {
+                if (mo.mirror)
+                    return Fail(error, c, "CAD import " + std::to_string(id) + " can't be mirrored; mirror it in the program that made the drawing, or turn it");
+                std::tie(ci->at, ci->angle) = Turned(f, ci->at, ci->angle);
+            }
+            else if (PointCloud* pc = out.As<PointCloud>())
+            {
+                if (mo.mirror)
+                    return Fail(error, c, "point cloud " + std::to_string(id) + " can't be mirrored: a scan is what was measured; move it or turn it");
+                std::tie(pc->at, pc->angle) = Turned(f, pc->at, pc->angle);
+            }
+            else if (Roof* r = out.As<Roof>())
+            {
+                // 边保持编号，山墙随之
+                for (P2& q : r->boundary)
+                    q = f(q);
+                for (std::vector<Ring>* rings : { &r->courtyards, &r->openings })
+                    for (Ring& ring : *rings)
+                        for (P2& q : ring)
+                            q = f(q);
+                if (r->extrusion)
+                {
+                    for (P2& q : r->extrusion->line)
+                        q = f(q);
+                    // 镜像过去扫向另一边
+                    if (mo.mirror)
+                        std::tie(r->extrusion->from, r->extrusion->to) = std::pair{ -r->extrusion->to + 0.0, -r->extrusion->from + 0.0 };
+                }
+            }
+            else if (Note* n = out.As<Note>())
+            {
+                // 镜像过去的文字仍然正着读
+                const auto [at, angle] = Turned(f, n->at, n->angle);
+                n->at = at;
+                if (!mo.mirror)
+                    n->angle = angle;
+                if (n->leader)
+                    n->leader = f(*n->leader);
+            }
+            else if (Spot* sp = out.As<Spot>())
+                sp->at = f(sp->at);
+            else if (DetailLine* l = out.As<DetailLine>())
+                l->curve = l->curve.Map([&](P2 q) { return Micron(f(q)); }, mo.mirror);
+            // 草图在上面跟着走了，图案也跟着
+            else if (FilledRegion* fr = out.As<FilledRegion>())
+                std::tie(fr->patternOrigin, fr->patternAngle) = Turned(f, fr->patternOrigin, fr->patternAngle);
+            else if (Dimension* d = out.As<Dimension>())
+                d->at = f(d->at);
+            // 标记的位置跟着它的宿主：见 Relocate 与 Duplicate
+            else if (Opening* o = out.AsOpening())
+            {
+                const auto host = m.elements.IdOf(o->host);
+                const bool within = host && with.count(*host);
+                if (!within)
+                {
+                    const Wall* hostWall = m.GetWall(o->host);
+                    if (!mo.slide || !hostWall)
+                        return Fail(error, c, std::string(out.Category()) + " " + std::to_string(id) + " turns and mirrors only with its wall; select the wall too");
+                    o->offset += mo.slide->Dot((hostWall->end - hostWall->start).Unit());
+                }
+            }
+            return true;
+        }
+
+        // 选中的标记的头被 mo 带到哪里
+        std::vector<std::pair<Id, P2>> TagHeads(const Model& m, const std::vector<Id>& ids, const Motion& mo)
+        {
+            std::vector<std::pair<Id, P2>> out;
+            for (const Id id : ids)
+                if (const Tag* t = m.elements.Get(id)->As<Tag>())
+                    if (const auto a = m.Anchor(t->host))
+                        out.emplace_back(id, mo.map(*a + t->offset));
+            return out;
+        }
+
+        // 标记 id 的头放到 head，不管它的宿主怎样动了
+        void PlaceTag(Model& m, Id id, P2 head)
+        {
+            const Element* e = m.elements.Get(id);
+            const Tag* t = e ? e->As<Tag>() : nullptr;
+            const auto a = t ? m.Anchor(t->host) : std::nullopt;
+            if (a)
+                m.elements.GetMut(id)->As<Tag>()->offset = Micron(head - *a);
+        }
+
+        bool Relocate(const char* c, Session& s, const std::vector<Id>& ids, const Motion& mo, std::optional<bool> end, std::string& error)
+        {
+            const Model& m = s.GetModel();
+            const auto& f = mo.map;
+            const std::set<Id> moving(ids.begin(), ids.end());
+            std::set<Guid> movingGuids;
+            for (const Id id : ids)
+                movingGuids.insert(m.GuidOf(id));
+            const auto heads = TagHeads(m, ids, mo);
+            // 整个带走的墙上的门窗随墙走
+            auto carried = [&](Guid host) { return movingGuids.count(host) && !end; };
+            std::map<Id, Wall> walls;
+            std::vector<std::pair<Id, Element>> others;
+            for (const Id id : ids)
+            {
+                Element e;
+                if (!Transformed(c, m, id, mo, moving, e, error))
+                    return false;
+                if (Wall* w = e.As<Wall>())
+                {
+                    const Wall* old = m.GetWall(id);
+                    if (end && *end)
+                        w->end = old->end;
+                    else if (end && !*end)
+                        w->start = old->start;
+                    walls[id] = *w;
+                }
+                else if (const Opening* o = e.AsOpening(); o && movingGuids.count(o->host))
+                    continue;
+                else
+                    others.emplace_back(id, std::move(e));
+            }
+            // 带走的墙原来落在不动的墙上的端头，沿带走的墙滑回那面墙上（单独移动的端头去它该去的地方）
+            if (!end)
+            {
+                for (auto& [id, w] : walls)
+                {
+                    const Wall* before = m.GetWall(id);
+                    if (!before || before->arc != 0.0)
+                        continue;
+                    const P2 l0 = w.start, l1 = w.end;
+                    for (const auto& [endRef, was] : { std::pair{ &w.start, before->start }, std::pair{ &w.end, before->end } })
+                    {
+                        for (const auto& [other, oe] : m.elements.Items())
+                        {
+                            const Wall* o = oe->As<Wall>();
+                            if (!o || moving.count(other) || o->arc != 0.0 || !Walls::Stacked(m, *o, *before) ||
+                                Geom::DistToSegment(was, o->start, o->end) > Tol)
+                                continue;
+                            if (const auto x = Geom::LineIntersection(l0, l1, o->start, o->end))
+                                *endRef = Micron(*x);
+                            break;
+                        }
+                    }
+                }
+            }
+            // 不动的墙伸缩，保持与带走的墙相接：端头在带走的墙的端头上的跟着走；在它墙身上的沿自己的方向滑到它上面
+            std::vector<std::pair<Wall, Wall>> moved;
+            for (const auto& [id, w] : walls)
+                if (const Wall* old = m.GetWall(id))
+                    moved.emplace_back(*old, w);
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const Wall* w = e->As<Wall>();
+                if (!w || moving.count(id))
+                    continue;
+                Wall n = *w;
+                for (const auto& [endRef, at] : { std::pair{ &n.start, w->start }, std::pair{ &n.end, w->end } })
+                {
+                    for (const auto& [before, after] : moved)
+                    {
+                        if (!Walls::Stacked(m, *w, before))
+                            continue;
+                        if (at.Dist(before.start) <= Tol || at.Dist(before.end) <= Tol)
+                        {
+                            *endRef = at.Dist(before.start) <= Tol ? after.start : after.end;
+                            break;
+                        }
+                        if (Walls::Axis::Of(before).Distance(at, 0.0) <= Tol)
+                        {
+                            const bool straight = w->arc == 0.0 && after.arc == 0.0;
+                            const auto x = straight ? Geom::LineIntersection(w->start, w->end, after.start, after.end) : std::nullopt;
+                            *endRef = x ? Micron(*x) : f(at);
+                            break;
+                        }
+                    }
+                }
+                if (!(n == *w))
+                    walls[id] = n;
+            }
+            // 变了的墙上的门窗留在原处，或随墙走
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const Opening* o = e->AsOpening();
+                if (!o)
+                    continue;
+                const auto host = m.elements.IdOf(o->host);
+                if (!host)
+                    continue;
+                const Wall* before = m.GetWall(*host);
+                const auto after = walls.find(*host);
+                if (!before || after == walls.end())
+                    continue;
+                const bool along = carried(o->host) || moving.count(id);
+                const P2 spot = Walls::Axis::Of(*before).At(o->offset, 0.0);
+                const P2 at = along ? f(spot) : spot;
+                Element copy = *e;
+                Opening* n = copy.AsOpening();
+                const Walls::Axis axis = Walls::Axis::Of(after->second);
+                n->offset = after->second.arc == 0.0 ? (at - after->second.start).Dot(axis.Tangent(0.0)) : axis.Project(at).first;
+                // 镜像过去墙反着走：门挂到另一侧门框，仍朝同一边开
+                if (mo.mirror && carried(o->host))
+                    n->flipHand = !n->flipHand;
+                const Id oid = id;
+                others.erase(std::remove_if(others.begin(), others.end(), [oid](const auto& x) { return x.first == oid; }), others.end());
+                others.emplace_back(oid, std::move(copy));
+            }
+            Model& mm = s.ModelMut();
+            for (auto& [id, w] : walls)
+                mm.elements.Insert(id, std::move(w));
+            std::vector<Id> flipped;
+            for (auto& [id, e] : others)
+            {
+                if (mo.mirror && e.As<Mass>())
+                    flipped.push_back(id);
+                mm.elements.Insert(id, std::move(e));
+            }
+            // 镜像的体量轮廓反着走：按面做的墙记着的边重新编号
+            for (const Id id : flipped)
+                Massing::Mirrored(mm, id);
+            // 尺寸量着镜像过去的墙上同样的线：墙反着走，起点终点对调，它的门窗的两边也对调
+            if (mo.mirror && !end)
+            {
+                std::map<Guid, Guid> hostOf;
+                std::vector<Id> dims;
+                for (const auto& [id, e] : mm.elements.Items())
+                {
+                    if (const Opening* o = e->AsOpening())
+                        hostOf[mm.GuidOf(id)] = mm.GuidOf(o->host);
+                    if (e->As<Dimension>())
+                        dims.push_back(id);
+                }
+                const auto turned = [&](Guid g)
+                {
+                    const auto h = hostOf.find(g);
+                    return movingGuids.count(g) || (h != hostOf.end() && movingGuids.count(h->second));
+                };
+                for (const Id id : dims)
+                    for (Reference& r : mm.elements.GetMut(id)->As<Dimension>()->refs)
+                        if (turned(mm.GuidOf(r.id)))
+                            r.face = FaceOf::Mirrored(r.face);
+            }
+            for (const auto& [id, head] : heads)
+                PlaceTag(mm, id, head);
+            return true;
+        }
+
+        // 被 mo 带动的元素的副本，带上复制的墙上的门窗；副本的 ID
+        bool Duplicate(const char* c, Session& s, const std::vector<Id>& ids, const Motion& mo, Json& result, std::string& error)
+        {
+            const Model& m = s.GetModel();
+            const std::set<Id> copying(ids.begin(), ids.end());
+            std::set<Guid> copyingGuids;
+            for (const Id id : ids)
+                copyingGuids.insert(m.GuidOf(id));
+            std::vector<std::pair<Id, Element>> copies;
+            // 尺寸、标记、高程点最后复制：它们可能指着副本
+            std::vector<std::pair<Id, Element>> notes;
+            const auto headList = TagHeads(m, ids, mo);
+            const std::map<Id, P2> heads(headList.begin(), headList.end());
+            for (const Id id : ids)
+            {
+                Element e;
+                if (!Transformed(c, m, id, mo, copying, e, error))
+                    return false;
+                // 复制的墙带上它的门窗，见下
+                if (const Opening* o = e.AsOpening(); o && copyingGuids.count(o->host))
+                    continue;
+                if (e.As<Dimension>() || e.As<Tag>() || e.As<Spot>())
+                    notes.emplace_back(id, std::move(e));
+                else
+                    copies.emplace_back(id, std::move(e));
+            }
+            for (const auto& [id, e] : m.elements.Items())
+                if (const Opening* o = e->AsOpening(); o && copyingGuids.count(o->host))
+                {
+                    Element copy = *e;
+                    // 镜像的副本反着走：从另一端量，挂在另一侧门框
+                    if (mo.mirror)
+                    {
+                        Opening* n = copy.AsOpening();
+                        if (const Wall* w = m.GetWall(n->host))
+                            n->offset = Walls::Axis::Of(*w).Length() - n->offset;
+                        n->flipHand = !n->flipHand;
+                    }
+                    copies.emplace_back(id, std::move(copy));
+                }
+            Model& mm = s.ModelMut();
+            std::vector<Id> made;
+            std::map<Guid, Guid> hosts;
+            for (auto& [from, e] : copies)
+            {
+                if (Grid* g = e.As<Grid>())
+                    g->name = NextGridName(mm);
+                else if (Room* r = e.As<Room>())
+                {
+                    std::vector<std::string> numbers;
+                    for (const auto& [_, x] : mm.elements.Items())
+                        if (const Room* rr = x->As<Room>())
+                            numbers.push_back(rr->number);
+                    r->number = NextNumber(numbers);
+                }
+                else if (Opening* o = e.AsOpening())
+                {
+                    if (const auto it = hosts.find(o->host); it != hosts.end())
+                        o->host = it->second;
+                    o->mark = NextNumber(Marks(mm, e.IsDoor()));
+                }
+                if (auto* params = e.ParamsMut())
+                    Massing::Detach(*params);
+                const Guid original = mm.GuidOf(from);
+                const Id id = mm.Insert(std::move(e));
+                hosts[original] = mm.GuidOf(id);
+                made.push_back(id);
+            }
+            // 与屋顶或楼板一起复制的墙贴着副本
+            for (const Id id : made)
+            {
+                const Wall* w = mm.GetWall(id);
+                if (!w || (!w->attachTop && !w->attachBase))
+                    continue;
+                Wall* ww = mm.elements.GetMut(id)->As<Wall>();
+                for (std::optional<Guid>* at : { &ww->attachTop, &ww->attachBase })
+                    if (*at)
+                        if (const auto it = hosts.find(**at); it != hosts.end())
+                            *at = it->second;
+            }
+            // 复制的尺寸、标记、高程点挂到它们量的、写的、读的东西的副本上（有的话）
+            const auto copied = [&](Guid g)
+            {
+                const auto it = hosts.find(mm.GuidOf(g));
+                return it != hosts.end() ? std::optional<Guid>(it->second) : std::nullopt;
+            };
+            for (auto& [from, e] : notes)
+            {
+                if (Dimension* d = e.As<Dimension>())
+                {
+                    for (Reference& r : d->refs)
+                        if (const auto to = copied(r.id))
+                        {
+                            r.id = *to;
+                            if (mo.mirror)
+                                r.face = FaceOf::Mirrored(r.face);
+                        }
+                }
+                else if (Tag* t = e.As<Tag>())
+                    t->host = copied(t->host).value_or(t->host);
+                else if (Spot* sp = e.As<Spot>(); sp && sp->host)
+                    sp->host = copied(*sp->host).value_or(*sp->host);
+                const Id id = mm.Insert(std::move(e));
+                if (const auto h = heads.find(from); h != heads.end())
+                    PlaceTag(mm, id, h->second);
+                made.push_back(id);
+            }
+            result = Json{ { "ids", made } };
+            return true;
+        }
+
+        bool MoveCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "move";
+            Params P(c, p, error);
+            std::vector<Id> ids;
+            P2 by;
+            std::optional<std::string> endName;
+            if (!IdsParam(c, s.GetModel(), p, ids, error) || !P.PointReq("by", by) || !P.String("end", endName))
+                return false;
+            // 只移动一端：true 为起点，false 为终点
+            std::optional<bool> end;
+            if (endName)
+            {
+                if (*endName == "start")
+                    end = true;
+                else if (*endName == "end")
+                    end = false;
+                else
+                    return P.Fail("`end` is `start` or `end`, not `" + *endName + "`");
+            }
+            if (end && !(ids.size() == 1 && s.GetModel().GetWall(ids.front())))
+                return P.Fail("`end` moves an end of one wall; give `ids` one wall");
+            if (!Relocate(c, s, ids, Motion{ [by](P2 q) { return q + by; }, by }, end, error))
+                return false;
+            result = Json{ { "moved", ids } };
+            return true;
+        }
+
+        bool CopyCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "copy";
+            Params P(c, p, error);
+            std::vector<Id> ids;
+            P2 by;
+            if (!IdsParam(c, s.GetModel(), p, ids, error) || !P.PointReq("by", by))
+                return false;
+            return Duplicate(c, s, ids, Motion{ [by](P2 q) { return q + by; }, by }, result, error);
+        }
+
+        P2 Rotated(P2 q, P2 about, double angle)
+        {
+            const double r = angle * kPi / 180.0, sn = std::sin(r), cs = std::cos(r);
+            const P2 d = q - about;
+            return Micron(about + P2(d.x * cs - d.y * sn, d.x * sn + d.y * cs));
+        }
+
+        bool RotateCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "rotate";
+            Params P(c, p, error);
+            std::vector<Id> ids;
+            P2 about;
+            std::optional<double> angle;
+            bool copy = false;
+            if (!IdsParam(c, s.GetModel(), p, ids, error) || !P.PointReq("about", about) || !P.Num("angle", angle) || !P.Flag("copy", copy))
+                return false;
+            if (!angle)
+                return P.Fail("`angle` in degrees, counter-clockwise, is required");
+            const double a = *angle;
+            const Motion mo{ [about, a](P2 q) { return Rotated(q, about, a); }, std::nullopt, false };
+            if (copy)
+                return Duplicate(c, s, ids, mo, result, error);
+            if (!Relocate(c, s, ids, mo, std::nullopt, error))
+                return false;
+            result = Json{ { "rotated", ids } };
+            return true;
+        }
+
+        bool MirrorCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "mirror";
+            Params P(c, p, error);
+            std::vector<Id> ids;
+            std::vector<P2> axis;
+            bool copy = false;
+            if (!IdsParam(c, s.GetModel(), p, ids, error) || !P.Points("axis", axis) || !P.Flag("copy", copy))
+                return false;
+            if (axis.size() != 2 || !(axis[0].Dist(axis[1]) > Tol))
+                return P.Fail("`axis` is two different points [[x, y], [x, y]]");
+            const P2 a = axis[0], u = (axis[1] - axis[0]).Unit();
+            const Motion mo{ [a, u](P2 q) { const P2 d = q - a; return Micron(a + u * (2.0 * d.Dot(u)) - d); }, std::nullopt, true };
+            if (copy)
+                return Duplicate(c, s, ids, mo, result, error);
+            if (!Relocate(c, s, ids, mo, std::nullopt, error))
+                return false;
+            result = Json{ { "mirrored", ids } };
+            return true;
+        }
+
+        bool CornerCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "corner";
+            Params P(c, p, error);
+            std::vector<Id> ids;
+            if (!IdsParam(c, s.GetModel(), p, ids, error))
+                return false;
+            const Model& m = s.GetModel();
+            if (ids.size() != 2 || !m.GetWall(ids[0]) || !m.GetWall(ids[1]))
+                return P.Fail("`ids` takes two walls");
+            const Wall wa = *m.GetWall(ids[0]), wb = *m.GetWall(ids[1]);
+            if (wa.arc != 0.0 || wb.arc != 0.0)
+                return P.Fail("it trims and extends straight walls; a curved one changes by its ends or its `arc`");
+            std::vector<P2> keep;
+            if (!P.Absent("keep") && !P.Points("keep", keep))
+                return false;
+            if (!keep.empty() && keep.size() != 2)
+                return P.Fail("`keep` is a point on each wall, [[x, y], [x, y]]");
+            const auto x = Geom::LineIntersection(wa.start, wa.end, wb.start, wb.end);
+            if (!x)
+                return P.Fail("the walls are parallel: they never meet");
+            const P2 hit = Micron(*x);
+            for (size_t i = 0; i < 2; ++i)
+            {
+                const Wall* now = s.GetModel().GetWall(ids[i]);
+                if (!now)
+                    continue;
+                const Wall w = *now;
+                const P2 u = (w.end - w.start).Unit();
+                auto at = [&](P2 q) { return (q - w.start).Dot(u); };
+                // 去拐角的那一端：离保留的那部分远的一端，否则离拐角近的一端
+                const bool start = !keep.empty() ? at(keep[i]) > at(hit) : hit.Dist(w.start) < hit.Dist(w.end);
+                const P2 by = hit - (start ? w.start : w.end);
+                if (by.Length() > 1e-6 && !Relocate(c, s, { ids[i] }, Motion{ [by](P2 q) { return q + by; }, by, false }, start, error))
+                    return false;
+            }
+            result = Json{ { "corner", ToJson(hit) } };
+            return true;
+        }
+
+        bool SplitCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "split";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<Guid> g;
+            P2 at;
+            if (!P.IdOpt("id", g))
+                return false;
+            if (!g)
+                return P.Fail("`id`, a wall, is required");
+            const Wall* found = m.GetWall(*g);
+            if (!found)
+                return P.Fail(g->ToString() + " is not a wall");
+            if (!P.PointReq("at", at))
+                return false;
+            const Wall w = *found;
+            const Id id = *m.elements.IdOf(*g);
+            const Walls::Axis axis = Walls::Axis::Of(w);
+            if (axis.Distance(at, 0.0) > m.Thickness(w) / 2.0 + 100.0)
+                return P.Fail("[" + Num(at.x) + ", " + Num(at.y) + "] isn't on wall " + std::to_string(id));
+            const double len = axis.Length();
+            // 直墙沿它取到微米；弧墙按它的比例
+            const double along = w.arc == 0.0 ? std::round(axis.Project(at).first * 1e3) / 1e3 : axis.Project(at).first;
+            if (along <= Tol || along >= len - Tol)
+                return P.Fail("split between the wall's ends");
+            const P2 cut = Micron(axis.At(along, 0.0));
+            // 门窗随它所在的那一段；跨在切口上的挡着
+            std::vector<Id> later;
+            for (const auto& [oid, e] : m.elements.Items())
+            {
+                const Opening* o = e->AsOpening();
+                if (!o || !m.Same(o->host, *g))
+                    continue;
+                const auto t = m.OpeningTypeOf(*e);
+                const double half = t ? t->width / 2.0 : 0.0;
+                if (o->offset + half <= along + Tol)
+                    continue;
+                if (o->offset - half < along - Tol)
+                    return P.Fail(std::string(e->Category()) + " " + std::to_string(oid) + " is in the way; split elsewhere");
+                later.push_back(oid);
+            }
+            Wall first = w, second = w;
+            first.end    = cut;
+            second.start = cut;
+            Massing::Detach(first.params);
+            Massing::Detach(second.params);
+            // 弧按长度分转角
+            first.arc  = std::round(first.arc * along / len * 1e9) / 1e9;
+            second.arc = std::round((w.arc - first.arc) * 1e9) / 1e9;
+            Model& mm = s.ModelMut();
+            mm.elements.Insert(id, Element{ first });
+            const Id made = mm.Insert(Element{ second });
+            const Guid host = mm.GuidOf(made);
+            for (const Id oid : later)
+            {
+                Opening* o = mm.elements.GetMut(oid)->AsOpening();
+                o->host = host;
+                o->offset -= along;
+            }
+            result = Json{ { "ids", Json::array({ id, made }) } };
+            return true;
+        }
+
+        bool AlignCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "align";
+            Params P(c, p, error);
+            std::optional<Guid> g;
+            if (!P.IdOpt("id", g))
+                return false;
+            if (!g)
+                return P.Fail("`id` is required");
+            std::vector<P2> reference, line;
+            if (!P.Points("reference", reference) || !P.Points("line", line))
+                return false;
+            if (reference.size() != 2)
+                return P.Fail("`reference` must contain two points");
+            if (line.size() != 2)
+                return P.Fail("`line` must contain two points");
+            Align::Placement pl;
+            std::string why;
+            if (!Align::Placement::Make({ reference[0], reference[1] }, { line[0], line[1] }, pl, why))
+                return Fail(error, c, why);
+            const Model& m = s.GetModel();
+            const auto id = m.elements.IdOf(*g);
+            if (!id)
+                return P.Fail("no element " + g->ToString());
+            if (Align::Lines(m, *id).empty())
+                return P.Fail("element " + std::to_string(*id) + " has no straight alignment line in plan");
+            const Element* e = m.elements.Get(*id);
+            if (const Opening* o = e->AsOpening())
+                if (const Wall* w = m.GetWall(o->host); w && (std::abs(pl.angle) > 1e-9 || std::abs(pl.by.Cross((w->end - w->start).Unit())) > Tol))
+                    return P.Fail("a door or window can only slide along its host wall; align its jambs, or align the wall");
+            const std::optional<P2> slide = std::abs(pl.angle) <= 1e-9 ? std::optional<P2>(pl.by) : std::nullopt;
+            if (!Relocate(c, s, { *id }, Motion{ [pl](P2 q) { return pl.Map(q); }, slide, false }, std::nullopt, error))
+                return false;
+            result = Json{ { "aligned", *id }, { "angle", pl.angle }, { "by", ToJson(pl.by) } };
+            return true;
+        }
+
+        // 名字列表，报错里用：" (there are: a, b)"
+        std::string KnownNames(const std::vector<std::string>& names)
+        {
+            std::string out;
+            for (const std::string& n : names)
+                out += (out.empty() ? "" : ", ") + n;
+            return out.empty() ? std::string() : " (there are: " + out + ")";
+        }
+
+        // 参数说的库条目：类别与类型（category、type）、族（family）、族的类型（family、type，库里写作"族: 类型"）
+        bool EntryOf(Params& P, const Model& m, Kind& kind, std::string& name)
+        {
+            std::optional<std::string> category, family, type;
+            if (!P.String("category", category) || !P.String("family", family) || !P.String("type", type))
+                return false;
+            if (category && !family && type)
+            {
+                const auto names = m.TypeNames(*category);
+                if (std::find(names.begin(), names.end(), *type) == names.end())
+                    return P.Fail("there is no " + *category + " type `" + *type + "`" + KnownNames(names));
+                kind = Kind::Type(*category);
+                name = *type;
+                return true;
+            }
+            if (!category && family)
+            {
+                const auto f = m.families.find(*family);
+                if (f == m.families.end())
+                {
+                    std::vector<std::string> names;
+                    for (const auto& [n, _] : m.families)
+                        names.push_back(n);
+                    return P.Fail("there is no family `" + *family + "`" + KnownNames(names));
+                }
+                if (!type)
+                {
+                    kind = Kind::Of(Kind::Tag::Family);
+                    name = *family;
+                    return true;
+                }
+                if (!f->second.types.count(*type))
+                {
+                    std::vector<std::string> names;
+                    for (const auto& [n, _] : f->second.types)
+                        names.push_back(n);
+                    return P.Fail("family `" + *family + "` has no type `" + *type + "`" + KnownNames(names));
+                }
+                kind = Kind::Of(Kind::Tag::FamilyType);
+                name = *family + ": " + *type;
+                return true;
+            }
+            return P.Fail("give `category` and `type`, or `family`, or `family` and `type`");
+        }
+
+        // 每个库条目被引用了几次：元素的类型与族、类型的层的材质……没被引用的是没用的
+        std::map<std::pair<Kind, std::string>, size_t> LibraryUses(const Model& m)
+        {
+            std::map<std::pair<Kind, std::string>, size_t> uses;
+            Model copy = m;
+            copy.LibRefsMut([&](const Kind& k, std::string& n) { ++uses[{ k, n }]; });
+            return uses;
+        }
+
+        // 一类类型的表：类别的
+        template <class F>
+        bool WithTypes(Model& m, const std::string& category, F f)
+        {
+            if (category == "wall") return f(m.types.wall);
+            if (category == "floor") return f(m.types.floor);
+            if (category == "door") return f(m.types.door);
+            if (category == "window") return f(m.types.window);
+            if (category == "column") return f(m.types.column);
+            if (category == "roof") return f(m.types.roof);
+            if (category == "ceiling") return f(m.types.ceiling);
+            if (category == "structuralcolumn") return f(m.types.structuralColumn);
+            if (category == "footing") return f(m.types.footing);
+            if (IsRunCategory(category))
+            {
+                const auto it = m.types.runs.find(category);
+                return it != m.types.runs.end() && f(it->second);
+            }
+            return false;
+        }
+
+        bool DeleteTypeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "delete_type";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Kind kind;
+            std::string name;
+            if (!EntryOf(P, m, kind, name))
+                return false;
+            const std::string label = kind.Label();
+            const auto uses = LibraryUses(m);
+            if (const auto u = uses.find({ kind, name }); u != uses.end() && u->second > 0)
+                return P.Fail(label + " `" + name + "` is used " + std::to_string(u->second) + " time" + (u->second == 1 ? "" : "s") +
+                              ": change or delete what uses it first");
+            if (kind.tag == Kind::Tag::Type && m.TypeNames(kind.category).size() <= 1)
+                return P.Fail("`" + name + "` is the last " + label + ": a " + kind.category + " needs one; make another first");
+            const size_t colon = name.find(": ");
+            if (kind.tag == Kind::Tag::FamilyType && m.families.at(name.substr(0, colon)).types.size() <= 1)
+                return P.Fail("`" + name + "` is its family's last type: delete the family");
+            Model& mm = s.ModelMut();
+            if (kind.tag == Kind::Tag::Type)
+                WithTypes(mm, kind.category, [&](auto& t) { return t.erase(name) > 0; });
+            else if (kind.tag == Kind::Tag::Family)
+                mm.families.erase(name);
+            else
+                mm.families.at(name.substr(0, colon)).types.erase(name.substr(colon + 2));
+            result = Json{ { "deleted", Json{ { "kind", label }, { "name", name } } } };
+            return true;
+        }
+
+        bool RenameTypeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "rename_type";
+            Params P(c, p, error);
+            if (p.is_object())
+                for (auto it = p.begin(); it != p.end(); ++it)
+                    if (it.key() != "category" && it.key() != "family" && it.key() != "type" && it.key() != "name")
+                        return P.Fail("`" + it.key() + "` isn't one of its parameters: category, family, type, name");
+            std::optional<std::string> given;
+            if (!P.String("name", given))
+                return false;
+            const std::string to = given ? std::string(Text::Trim(*given)) : std::string();
+            if (to.empty())
+                return P.Fail("`name` is required: the type's new name");
+            Kind kind;
+            std::string from;
+            if (!EntryOf(P, s.GetModel(), kind, from))
+                return false;
+            if (kind.tag == Kind::Tag::Family)
+                return P.Fail("give the family's `type` to rename; families rename with `family` and `rename`");
+            const std::string label = kind.Label();
+            // 族的类型在库里是"族: 类型"
+            const size_t colon = from.find(": ");
+            const std::string toEntry = kind.tag == Kind::Tag::FamilyType ? from.substr(0, colon) + ": " + to : to;
+            const std::string shownFrom = kind.tag == Kind::Tag::FamilyType ? from.substr(colon + 2) : from;
+            if (toEntry == from)
+            {
+                result = Json{ { "renamed", Json{ { "kind", label }, { "from", shownFrom }, { "to", to } } } };
+                return true;
+            }
+            for (const auto& [k, n] : s.GetModel().LibraryNames())
+                if (k == kind && n == toEntry)
+                    return P.Fail("there's already a " + label + " `" + to + "`");
+            Model& m = s.ModelMut();
+            auto move = [&](auto& table, const std::string& a, const std::string& b)
+            {
+                auto node = table.extract(a);
+                if (node.empty())
+                    return false;
+                node.key() = b;
+                table.insert(std::move(node));
+                return true;
+            };
+            const bool moved = kind.tag == Kind::Tag::Type ? WithTypes(m, kind.category, [&](auto& t) { return move(t, from, to); })
+                                                           : move(m.families.at(from.substr(0, colon)).types, shownFrom, to);
+            if (!moved)
+                return P.Fail("there is no " + label + " `" + from + "`");
+            // 库里的条目保留 GUID；引用它的元素跟着改名
+            m.library.Renamed(kind, from, toEntry);
+            m.LibRefsMut([&](const Kind& k, std::string& n)
+            {
+                if (k == kind && n == from)
+                    n = toEntry;
+            });
+            result = Json{ { "renamed", Json{ { "kind", label }, { "from", shownFrom }, { "to", to } } } };
+            return true;
+        }
+
+        bool DeleteCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "delete";
+            const Model& m = s.GetModel();
+            std::vector<Id> ids;
+            if (!IdsParam(c, m, p, ids, error))
+                return false;
+            std::set<Guid> gone;
+            for (const Id id : ids)
+                gone.insert(m.GuidOf(id));
+            // 挂在要删的东西上的也删：墙的门窗
+            for (bool more = true; more;)
+            {
+                more = false;
+                for (const auto& [id, e] : m.elements.Items())
+                {
+                    const Guid g = m.GuidOf(id);
+                    if (gone.count(g))
+                        continue;
+                    const auto in = [&](const std::optional<Guid>& x) { return x && gone.count(m.GuidOf(*x)); };
+                    bool hangs = false;
+                    if (const Opening* o = e->AsOpening())
+                        hangs = gone.count(m.GuidOf(o->host)) > 0;
+                    // 平面视图跟着它的标高与父视图
+                    else if (const PlanView* v = e->As<PlanView>())
+                        hangs = in(v->level) || in(v->parent);
+                    // 注释跟着它在的视图（标高的平面或平面视图）走，标记跟着它的宿主，高程点跟着它读的东西
+                    else if (const Tag* t = e->As<Tag>())
+                        hangs = in(t->host) || in(t->view);
+                    else if (const Dimension* d = e->As<Dimension>())
+                        hangs = in(d->level) || in(d->view);
+                    else if (const Spot* sp = e->As<Spot>())
+                        hangs = in(sp->view) || in(sp->host);
+                    // 视口跟着它的图纸与它放的视图
+                    else if (const Viewport* vp = e->As<Viewport>())
+                        hangs = in(vp->sheet) || in(vp->view);
+                    // 仅当前视图的导入跟着它的视图
+                    else if (const CadImport* ci = e->As<CadImport>())
+                        hangs = in(ci->view);
+                    else if (e->IsAnnotation())
+                        hangs = in(m.AnnotationPlan(*e));
+                    if (hangs)
+                    {
+                        gone.insert(g);
+                        more = true;
+                    }
+                }
+            }
+            // 尺寸去掉删了的参照；剩下不到两个时也删
+            std::vector<std::pair<Id, Dimension>> trimmed;
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const Dimension* d = e->As<Dimension>();
+                if (!d || gone.count(m.GuidOf(id)) ||
+                    std::none_of(d->refs.begin(), d->refs.end(), [&](const Reference& r) { return gone.count(m.GuidOf(r.id)) > 0; }))
+                    continue;
+                Dimension t = *d;
+                std::erase_if(t.refs, [&](const Reference& r) { return gone.count(m.GuidOf(r.id)) > 0; });
+                if (t.refs.size() < 2)
+                    gone.insert(m.GuidOf(id));
+                else
+                    trimmed.emplace_back(id, std::move(t));
+            }
+            Json deleted = Json::array();
+            for (const auto& [id, _] : m.elements.Items())
+                if (gone.count(m.GuidOf(id)))
+                    deleted.push_back(id);
+            Model& mm = s.ModelMut();
+            for (auto& [id, d] : trimmed)
+                mm.elements.Insert(id, std::move(d));
+            // 记号认体量要它还在：先拿掉记号再删
+            Massing::Forget(mm, gone);
+            for (const Guid g : gone)
+                mm.elements.Remove(g);
+            // 贴着的屋顶或楼板删了的墙松开，插进的屋顶删了的屋顶不再插进
+            const auto goneRef = [&](const std::optional<Guid>& at) { return at && gone.count(*at); };
+            std::vector<Id> loose;
+            for (const auto& [id, e] : mm.elements.Items())
+            {
+                const Wall* w = e->As<Wall>();
+                const Roof* r = e->As<Roof>();
+                if ((w && (goneRef(w->attachTop) || goneRef(w->attachBase))) || (r && goneRef(r->join)))
+                    loose.push_back(id);
+            }
+            for (const Id id : loose)
+            {
+                Element* e = mm.elements.GetMut(id);
+                if (Wall* w = e->As<Wall>())
+                {
+                    if (goneRef(w->attachTop))
+                        w->attachTop.reset();
+                    if (goneRef(w->attachBase))
+                        w->attachBase.reset();
+                }
+                else if (Roof* r = e->As<Roof>())
+                    r->join.reset();
+            }
+            result = Json{ { "deleted", deleted } };
+            return true;
+        }
+
+        // 只收 keys 里的参数
+        bool Only(const char* c, const Json& p, std::initializer_list<const char*> keys, std::string& error)
+        {
+            if (!p.is_object())
+                return Fail(error, c, "params must be an object");
+            for (auto it = p.begin(); it != p.end(); ++it)
+                if (std::none_of(keys.begin(), keys.end(), [&](const char* k) { return it.key() == k; }))
+                    return Fail(error, c, "unknown parameter `" + it.key() + "`");
+            return true;
+        }
+
+        // ── 视图（移植自 BIMCraft 的视图选项卡，第 5e 步）─────────────
+        // 报错里怎么称呼元素 id：视图的名称，否则类别与 ID
+        std::string ViewTitle(const Model& m, Guid id)
+        {
+            if (const std::string* n = m.ViewName(id))
+                return *n;
+            if (const Sheet* sh = m.GetSheet(id))
+                return "sheet " + sh->number;
+            const Element* e = m.elements.Get(id);
+            return std::string(e ? e->Category() : "element") + " " + m.Shown(id);
+        }
+
+        // view 是默认三维视图：{3D} 或 3D
+        bool Is3D(const Json& p)
+        {
+            const Json* v = Get(p, "view");
+            if (!v || !v->is_string())
+                return false;
+            const std::string n = Text::AsciiLower(v->get<std::string>());
+            return n == "{3d}" || n == "3d";
+        }
+
+        // view：视图的名称、ID 或 GUID（标高的平面、平面视图、三维视图），没给时为 level 的平面（默认最低的标高）
+        bool AnyViewParam(const char* c, const Model& m, const Json& p, Guid& out, std::string& error)
+        {
+            const Json* v = Get(p, "view");
+            if (!v || v->is_null())
+            {
+                Guid level;
+                std::optional<Guid> view;
+                if (!PlanParam(c, m, p, "level", level, view, error))
+                    return false;
+                out = view.value_or(level);
+                return true;
+            }
+            if (v->is_string() && !Guid::Parse(v->get<std::string>()))
+            {
+                const std::string n = v->get<std::string>();
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const std::string* name = m.ViewName(m.GuidOf(id)); name && *name == n)
+                    {
+                        out = m.GuidOf(id);
+                        return true;
+                    }
+                return Fail(error, c, "no view named `" + n + "`");
+            }
+            Guid g;
+            std::string why;
+            const auto found = FromJson(*v, g, why) ? m.elements.IdOf(g) : std::nullopt;
+            if (!found)
+                return Fail(error, c, "`view`: " + Show(*v) + " is not a view");
+            out = m.GuidOf(*found);
+            return true;
+        }
+
+        // 相关视图跟着父视图的视图范围与图形：要改的 what 在父视图里改
+        bool NotDependent(const char* c, const Model& m, Guid view, const char* what, std::string& error)
+        {
+            const PlanView* v = m.GetPlanView(view);
+            if (!v || !v->parent)
+                return true;
+            return Fail(error, c, ViewTitle(m, view) + " is a dependent view: it follows its parent, `" + ViewTitle(m, *v->parent) + "`, in its " + what +
+                                      "; change them there");
+        }
+
+        // given：类别（不分大小写、单复数），要是视图画的
+        bool DrawnCategory(const char* c, const std::string& given, std::string& out, std::string& error)
+        {
+            out = NormalizeCategory(given);
+            if (GraphicsOf::Drawn(out))
+                return true;
+            return Fail(error, c, "`" + given + "` isn't a category views draw; there are: " + GraphicsOf::Names());
+        }
+
+        bool DrawnCategories(const char* c, const Json& p, const char* key, std::vector<std::string>& out, std::string& error)
+        {
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            if (!v->is_array() || v->size() > GraphicsOf::MaxEntries)
+                return Fail(error, c, "`" + std::string(key) + "` is a list of categories, [\"walls\", \"rooms\"…], not " + Show(*v));
+            for (const Json& x : *v)
+            {
+                if (!x.is_string())
+                    return Fail(error, c, "`" + std::string(key) + "`: " + Show(x) + " is not a category");
+                std::string name;
+                if (!DrawnCategory(c, x.get<std::string>(), name, error))
+                    return false;
+                out.push_back(std::move(name));
+            }
+            return true;
+        }
+
+        bool DrawnElement(const char* c, const Model& m, const Json& v, Guid& out, std::string& error)
+        {
+            Guid g;
+            std::string why;
+            const auto id = FromJson(v, g, why) ? m.elements.IdOf(g) : std::nullopt;
+            if (!FromJson(v, g, why))
+                return Fail(error, c, Show(v) + " is not an element id or GUID");
+            if (!id)
+                return Fail(error, c, "no element " + Show(v));
+            const Element* e = m.elements.Get(*id);
+            if (!GraphicsOf::Drawn(e->Category()))
+                return Fail(error, c, "element " + std::to_string(*id) + " is a " + e->Category() + ", and views don't draw those");
+            out = m.GuidOf(*id);
+            return true;
+        }
+
+        bool DrawnElements(const char* c, const Model& m, const Json& p, const char* key, std::vector<Guid>& out, std::string& error)
+        {
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            if (!v->is_array() || v->size() > GraphicsOf::MaxEntries)
+                return Fail(error, c, "`" + std::string(key) + "` is a list of element ids, not " + Show(*v));
+            for (const Json& x : *v)
+            {
+                Guid g;
+                if (!DrawnElement(c, m, x, g, error))
+                    return false;
+                out.push_back(g);
+            }
+            return true;
+        }
+
+        // 覆盖 from 合并上 patch（null 去掉一项）
+        bool MergedOverride(const char* c, const std::string& what, const Override* from, const Json& patch, Override& out, std::string& error)
+        {
+            Json now = ToJson(from ? *from : Override{});
+            Merge(now, patch);
+            std::string why;
+            if (!FromJson(now, out, why))
+                return Fail(error, c, what + ": " + why);
+            return true;
+        }
+
+        // 视图的设置，graphics 命令回答的：隐藏与覆盖的类别、比例、详细程度、视觉样式
+        // 视图隐藏的各 CAD 图纸的图层
+        Json LayersOf(const Graphics& g)
+        {
+            Json out = Json::object();
+            for (const auto& [cad, names] : g.layers)
+                out[cad] = Json(std::vector<std::string>(names.begin(), names.end()));
+            return out;
+        }
+
+        Json GraphicsReply(const Model& m, const Graphics& g)
+        {
+            Json hidden = Json::array(), cats = Json::object(), hiddenEls = Json::array(), els = Json::object();
+            for (const auto& [name, o] : g.categories)
+            {
+                if (o.hidden)
+                    hidden.push_back(name);
+                cats[name] = ToJson(o);
+            }
+            for (const auto& [guid, o] : g.elements)
+                if (const auto id = m.elements.IdOf(guid))
+                {
+                    if (o.hidden)
+                        hiddenEls.push_back(*id);
+                    els[std::to_string(*id)] = ToJson(o);
+                }
+            Json filters = Json::array();
+            for (const Applied& a : g.filters)
+                filters.push_back(ToJson(a));
+            return Json{ { "template", g.templateName ? Json(*g.templateName) : Json(nullptr) },
+                         { "hidden", std::move(hidden) },
+                         { "categories", std::move(cats) },
+                         { "filters", std::move(filters) },
+                         { "hidden_elements", std::move(hiddenEls) },
+                         { "elements", std::move(els) },
+                         { "scale", g.scale ? Json(*g.scale) : Json(nullptr) },
+                         { "detail", Text::AsciiLower(DetailOf::Name(g.detail)) },
+                         { "visual_style", VisualStyleOf::Key(g.style) },
+                         { "layers", LayersOf(g) } };
+        }
+
+        // p 要对图形 g 做的改动：隐藏与显示类别和元素、覆盖、套用的过滤器、跟随的样板。样板（ofTemplate）只有类别与过滤器
+        bool EditGraphics(const char* c, const Model& m, const Json& p, Graphics& g, bool ofTemplate, std::string& error)
+        {
+            const auto given = [&](const char* k) { return !Absent(p, k); };
+            for (const char* k : { "phase", "phase_filter", "options" })
+                if (given(k))
+                    return Fail(error, c, std::string("`") + k + "`: phases and design options aren't in MiniBIM yet");
+            if (ofTemplate)
+                for (const char* k : { "hide_elements", "show_elements", "elements", "template", "layers" })
+                    if (given(k) || (std::string_view(k) == "template" && p.contains("template")))
+                        return Fail(error, c, std::string("`") + k + "` is a view's own; a template holds categories, filters, a phase and design options");
+            // 这次改完之后跟随的样板：给了的（null 为不再跟随），否则原来的
+            std::optional<std::string> templateThen = g.templateName;
+            if (const auto it = p.find("template"); it != p.end())
+            {
+                if (it->is_null())
+                    templateThen.reset();
+                else if (it->is_string())
+                    templateThen = it->get<std::string>();
+                else
+                    return Fail(error, c, "`template` is a view template's name, or null, not " + Show(*it));
+            }
+            const auto controlled = templateThen ? m.viewTemplates.find(*templateThen) : m.viewTemplates.end();
+            Params P(c, p, error);
+            bool reset = false;
+            if (!P.Flag("reset", reset))
+                return false;
+            if (!reset && controlled != m.viewTemplates.end())
+                for (const auto& [touches, group, what] : { std::tuple{ given("hide") || given("show") || given("categories"), Group::Categories, "categories" },
+                                                            std::tuple{ given("filters"), Group::Filters, "filters" } })
+                    if (touches && controlled->second.controls.count(group))
+                        return Fail(error, c, std::string("its ") + what + " follow view template `" + *templateThen +
+                                                  "`; change the template, or `template: null` to stop following it");
+            if (reset)
+                g = Graphics{};
+            std::vector<std::string> hide, show;
+            std::vector<Guid> hideEls, showEls;
+            if (!DrawnCategories(c, p, "hide", hide, error) || !DrawnCategories(c, p, "show", show, error) ||
+                !DrawnElements(c, m, p, "hide_elements", hideEls, error) || !DrawnElements(c, m, p, "show_elements", showEls, error))
+                return false;
+            for (const std::string& n : hide)
+                g.categories[n].hidden = true;
+            for (const std::string& n : show)
+                if (const auto it = g.categories.find(n); it != g.categories.end())
+                {
+                    it->second.hidden = false;
+                    if (it->second.Empty())
+                        g.categories.erase(it);
+                }
+            for (const Guid id : hideEls)
+                g.elements[id].hidden = true;
+            for (const Guid id : showEls)
+                if (const auto it = g.elements.find(id); it != g.elements.end())
+                {
+                    it->second.hidden = false;
+                    if (it->second.Empty())
+                        g.elements.erase(it);
+                }
+            if (const Json* cats = Get(p, "categories"); cats && !cats->is_null())
+            {
+                if (!cats->is_object() || cats->size() > GraphicsOf::MaxEntries)
+                    return P.Fail("`categories` is {category: override}, not " + Show(*cats));
+                for (auto it = cats->begin(); it != cats->end(); ++it)
+                {
+                    std::string name;
+                    if (!DrawnCategory(c, it.key(), name, error))
+                        return false;
+                    Override over;
+                    const auto had = g.categories.find(name);
+                    if (!it->is_null() && !MergedOverride(c, "category `" + name + "`", had == g.categories.end() ? nullptr : &had->second, *it, over, error))
+                        return false;
+                    if (over.Empty())
+                        g.categories.erase(name);
+                    else
+                        g.categories[name] = std::move(over);
+                }
+            }
+            if (const Json* els = Get(p, "elements"); els && !els->is_null())
+            {
+                if (!els->is_object() || els->size() > GraphicsOf::MaxEntries)
+                    return P.Fail("`elements` is {id: override}, not " + Show(*els));
+                for (auto it = els->begin(); it != els->end(); ++it)
+                {
+                    const auto parsed = Guid::Parse(it.key());
+                    if (!parsed)
+                        return P.Fail("`elements`: `" + it.key() + "` is not an element id or GUID");
+                    Guid id;
+                    if (!DrawnElement(c, m, Json(it.key()), id, error))
+                        return false;
+                    Override over;
+                    const auto had = g.elements.find(id);
+                    if (!it->is_null() &&
+                        !MergedOverride(c, "element " + m.Shown(id), had == g.elements.end() ? nullptr : &had->second, *it, over, error))
+                        return false;
+                    if (over.Empty())
+                        g.elements.erase(id);
+                    else
+                        g.elements[id] = std::move(over);
+                }
+            }
+            if (const Json* fs = Get(p, "filters"); fs && !fs->is_null())
+            {
+                if (!fs->is_array() || fs->size() > GraphicsOf::MaxApplied)
+                    return P.Fail("`filters` is [{filter, hidden?, projection?, cut?, …}, …] (up to " + std::to_string(GraphicsOf::MaxApplied) + "), not " +
+                                  Show(*fs));
+                std::vector<Applied> list;
+                for (const Json& f : *fs)
+                {
+                    Applied a;
+                    std::string why;
+                    if (!FromJson(f, a, why))
+                        return P.Fail("filter " + Show(f) + ": " + why);
+                    list.push_back(std::move(a));
+                }
+                g.filters = std::move(list);
+            }
+            if (const Json* ls = Get(p, "layers"); ls && !ls->is_null())
+            {
+                if (!ls->is_object() || ls->size() > Cads::MaxCads)
+                    return Fail(error, c, "`layers` is {drawing: [layer, …] | null}, not " + Show(*ls));
+                for (auto it = ls->begin(); it != ls->end(); ++it)
+                {
+                    const auto cad = m.cads.find(it.key());
+                    if (cad == m.cads.end())
+                        return Fail(error, c, "`layers`: the project has no CAD drawing `" + it.key() + "` (see `elements` of category cadimport)");
+                    std::set<std::string> names;
+                    if (it->is_array() && it->size() <= Cads::MaxHidden)
+                    {
+                        for (const Json& n : *it)
+                        {
+                            if (!n.is_string())
+                                return Fail(error, c, "`layers`: `" + it.key() + "` lists layers by name, not " + Show(n));
+                            names.insert(n.get<std::string>());
+                        }
+                    }
+                    else if (!it->is_null())
+                        return Fail(error, c, "`layers`: `" + it.key() + "` is a list of the layers to hide, or null, not " + Show(*it));
+                    for (const std::string& n : names)
+                        if (!cad->second.Drawing().LayerOf(n))
+                            return Fail(error, c, "`layers`: `" + it.key() + "` has no layer `" + n + "` (see `cad_layers`)");
+                    if (names.empty())
+                        g.layers.erase(it.key());
+                    else
+                        g.layers[it.key()] = std::move(names);
+                }
+            }
+            if (p.contains("template"))
+                g.templateName = templateThen;
+            return true;
+        }
+
+        bool GraphicsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "graphics";
+            if (!Only(c, p, { "view", "level", "hide", "show", "hide_elements", "show_elements", "categories", "elements", "reset", "filters", "phase",
+                              "phase_filter", "options", "layers", "template" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            // 默认三维视图在第一次改动它时建出来；只问它、什么也不改时不建
+            std::optional<Guid> view;
+            if (Is3D(p))
+            {
+                if (const auto id = m.Default3D())
+                    view = m.GuidOf(*id);
+            }
+            else
+            {
+                Guid g;
+                if (!AnyViewParam(c, m, p, g, error))
+                    return false;
+                view = g;
+            }
+            Graphics was;
+            if (view)
+            {
+                const Graphics* g = m.ViewGraphics(*view);
+                if (!g)
+                    return P.Fail(ViewTitle(m, *view) + " isn't a plan, a section, an elevation or a 3D view");
+                was = *g;
+            }
+            Graphics g = was;
+            if (!EditGraphics(c, m, p, g, false, error))
+                return false;
+            if (g != was)
+            {
+                if (view && !NotDependent(c, m, *view, "graphics", error))
+                    return false;
+                std::string why;
+                if (!g.Check(m, why))
+                    return P.Fail(why);
+                Model& mm = s.ModelMut();
+                if (!view)
+                {
+                    View3D v3;
+                    v3.name = View3D::DefaultName;
+                    view    = mm.GuidOf(mm.Insert(Element(std::move(v3))));
+                }
+                *mm.ViewGraphicsMut(*view) = g;
+            }
+            const Model& now = s.GetModel();
+            result = GraphicsReply(now, g);
+            result["view"] = view ? Json(*now.elements.IdOf(*view)) : Json(nullptr);
+            const std::string* name = view ? now.ViewName(*view) : nullptr;
+            result["name"] = name ? *name : std::string(View3D::DefaultName);
+            return true;
+        }
+
+        // 视图能自己设 group 的那组设置吗：相关视图跟父视图，跟随的样板控制它时由样板设
+        bool OwnToSet(const char* c, const Model& m, Guid view, Group group, const char* what, std::string& error)
+        {
+            if (!NotDependent(c, m, view, what, error))
+                return false;
+            const Graphics* g = m.ViewGraphics(view);
+            if (const std::string* t = g ? g->ControlledBy(m, group) : nullptr)
+                return Fail(error, c, std::string("its ") + what + " follow view template `" + *t + "`; change the template, or `template: null` to stop following it");
+            return true;
+        }
+
+        // 有比例与详细程度的视图：标高的平面、平面视图、剖面、立面
+        bool ScaledView(const char* c, const Model& m, const Json& p, Guid& out, std::string& error)
+        {
+            if (!AnyViewParam(c, m, p, out, error))
+                return false;
+            if (m.PlanLevel(out) || m.GetSection(out))
+                return true;
+            return Fail(error, c, ViewTitle(m, out) + " isn't a plan, a section or an elevation; only those have one");
+        }
+
+        // 视图的图形改成 f 改过的；没有变化时模型不动（不留撤销步）
+        void ChangeGraphics(Session& s, Guid view, const std::function<void(Graphics&)>& f)
+        {
+            const Graphics* had = s.GetModel().ViewGraphics(view);
+            Graphics g = had ? *had : Graphics{};
+            const Graphics was = g;
+            f(g);
+            if (g != was)
+                if (Graphics* slot = s.ModelMut().ViewGraphicsMut(view))
+                    *slot = std::move(g);
+        }
+
+        bool ScaleCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "scale";
+            if (!Only(c, p, { "view", "level", "scale" }, error))
+                return false;
+            Guid view;
+            if (!ScaledView(c, s.GetModel(), p, view, error))
+                return false;
+            if (const Json* v = Get(p, "scale"))
+            {
+                if (!v->is_number() || !(v->get<double>() >= GraphicsOf::MinScale && v->get<double>() <= GraphicsOf::MaxScale))
+                    return Fail(error, c, "`scale` is the n of 1 : n, from 1 to 100000, not " + Show(*v) +
+                                              (v->is_null() ? ": a view always has a scale (1 : 100, or 1/8\" = 1'-0\" in feet and inches, until it is given one)" : ""));
+                if (!OwnToSet(c, s.GetModel(), view, Group::Scale, "scale", error))
+                    return false;
+                const double n = v->get<double>();
+                ChangeGraphics(s, view, [&](Graphics& g) { g.scale = n; });
+            }
+            const Model& m = s.GetModel();
+            result = Json{ { "view", *m.elements.IdOf(view) }, { "name", *m.ViewName(view) }, { "scale", m.ScaleOf(view) } };
+            return true;
+        }
+
+        bool DetailCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "detail";
+            if (!Only(c, p, { "view", "level", "detail" }, error))
+                return false;
+            Guid view;
+            if (!ScaledView(c, s.GetModel(), p, view, error))
+                return false;
+            if (const Json* v = Get(p, "detail"); v && !v->is_null())
+            {
+                const auto d = v->is_string() ? DetailOf::Parse(v->get<std::string>()) : std::nullopt;
+                if (!d)
+                    return Fail(error, c, "`detail` is coarse, medium or fine, not " + Show(*v));
+                if (!OwnToSet(c, s.GetModel(), view, Group::Detail, "detail level", error))
+                    return false;
+                ChangeGraphics(s, view, [&](Graphics& g) { g.detail = *d; });
+            }
+            const Model& m = s.GetModel();
+            const Graphics* g = m.ViewGraphics(view);
+            result = Json{ { "view", *m.elements.IdOf(view) },
+                           { "name", *m.ViewName(view) },
+                           { "detail", Text::AsciiLower(DetailOf::Name(g ? g->Resolved(m).detail : Detail::Fine)) } };
+            return true;
+        }
+
+        bool VisualStyleCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "visual_style";
+            if (!Only(c, p, { "view", "style" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            // 默认三维视图，除非给了别的；第一次改动它时建出来
+            std::optional<Guid> view;
+            if (Absent(p, "view") || Is3D(p))
+            {
+                if (const auto id = m.Default3D())
+                    view = m.GuidOf(*id);
+            }
+            else
+            {
+                Guid g;
+                if (!AnyViewParam(c, m, p, g, error))
+                    return false;
+                const Element* e = m.elements.Get(g);
+                if (!e || !e->As<View3D>())
+                    return Fail(error, c, ViewTitle(m, g) + " isn't a 3D view; only those have a visual style");
+                view = g;
+            }
+            std::optional<VisualStyle> style;
+            if (const Json* v = Get(p, "style"); v && !v->is_null())
+            {
+                style = v->is_string() ? VisualStyleOf::Parse(v->get<std::string>()) : std::nullopt;
+                if (!style)
+                    return Fail(error, c, "`style` is shaded, hidden_line or wireframe, not " + Show(*v));
+            }
+            const auto has = [&](const Model& mm)
+            {
+                const Graphics* g = view ? mm.ViewGraphics(*view) : nullptr;
+                return g ? g->Resolved(mm).style : VisualStyle::Shaded;
+            };
+            if (style && *style != has(m))
+            {
+                if (view && !OwnToSet(c, m, *view, Group::Style, "visual style", error))
+                    return false;
+                if (!view)
+                {
+                    Model& mm = s.ModelMut();
+                    View3D v3;
+                    v3.name = View3D::DefaultName;
+                    view    = mm.GuidOf(mm.Insert(Element(std::move(v3))));
+                }
+                ChangeGraphics(s, *view, [&](Graphics& g) { g.style = *style; });
+            }
+            const Model& now = s.GetModel();
+            result = Json{ { "view", view ? Json(*now.elements.IdOf(*view)) : Json(nullptr) }, { "style", VisualStyleOf::Key(has(now)) } };
+            return true;
+        }
+
+        // 裁剪剖面或立面：区域是沿线（离起点）与高度的两角，线缩到区域的两边；null 取消裁剪；没给时裁到模型的高度。
+        // 视图里的文字、高程点跟着模型不动（起点挪了多远，它们沿线就往回挪多远）
+        bool CropSection(Session& s, const Section& was, Guid view, const Json* region, Json& result, std::string& error)
+        {
+            const char* c = "crop";
+            const Model& m = s.GetModel();
+            // Params 只存参数的引用：参数要活得比它长
+            const Json params = region ? Json{ { "region", *region } } : Json::object();
+            Params P(c, params, error);
+            Section v = was;
+            double shift = 0.0;
+            if (region && !region->is_null())
+            {
+                std::vector<P2> pts;
+                if (!P.Points("region", pts))
+                    return false;
+                if (pts.size() != 2)
+                    return P.Fail("`region` is two corners, [[x, y], [x, y]]");
+                const P2 a = pts[0], b = pts[1];
+                if (!(a.x < b.x - Tol && a.y < b.y - Tol))
+                    return P.Fail("a crop region runs from its bottom left corner to its top right one (in a plan, south-west to north-east)");
+                const P2 u = (v.end - v.start).Unit();
+                const P2 from = v.start;
+                v.start = Micron(from + u * a.x);
+                v.end   = Micron(from + u * b.x);
+                v.crop  = std::array<double, 2>{ a.y, b.y };
+                shift   = a.x;
+            }
+            else if (region)
+                v.crop.reset();
+            else
+                v.crop = Render::SectionHeights(m, view);
+            Model& mm = s.ModelMut();
+            Element* e = mm.elements.GetMut(view);
+            if (Section* x = e->As<Section>())
+                *x = v;
+            else if (Elevation* x = e->As<Elevation>())
+                static_cast<Section&>(*x) = v;
+            for (const auto& [id, el] : mm.elements.Items())
+            {
+                Element* n = mm.elements.GetMut(id);
+                if (Note* t = n->As<Note>(); t && mm.Same(t->view, view))
+                {
+                    t->at.x -= shift;
+                    if (t->leader)
+                        t->leader->x -= shift;
+                }
+                else if (Spot* sp = n->As<Spot>(); sp && mm.Same(sp->view, view))
+                    sp->at.x -= shift;
+            }
+            result = Json{ { "view", *mm.elements.IdOf(view) }, { "crop", v.crop ? Json::array({ (*v.crop)[0], (*v.crop)[1] }) : Json(nullptr) } };
+            return true;
+        }
+
+        bool CropCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "crop";
+            if (!Only(c, p, { "view", "level", "region" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            Guid view;
+            if (!AnyViewParam(c, m, p, view, error))
+                return false;
+            const Json* region = p.is_object() && p.contains("region") ? &p["region"] : nullptr;
+            if (const Section* sv = m.GetSection(view))
+                return CropSection(s, *sv, view, region, result, error);
+            if (!m.PlanLevel(view))
+                return P.Fail(ViewTitle(m, view) + " isn't a plan, a section or an elevation; only those crop");
+            std::optional<std::array<P2, 2>> crop;
+            if (region && !region->is_null())
+            {
+                std::vector<P2> pts;
+                if (!P.Points("region", pts))
+                    return false;
+                if (pts.size() != 2)
+                    return P.Fail("`region` is two corners, [[x, y], [x, y]]");
+                crop = std::array<P2, 2>{ pts[0], pts[1] };
+            }
+            else if (!region)
+            {
+                // 没给区域：裁到视图现在显示的（四周各留 1 米）
+                const auto pts = Render::PlanShows(m, view);
+                if (pts.empty())
+                    return P.Fail(ViewTitle(m, view) + " shows nothing to crop to");
+                P2 lo = pts.front(), hi = pts.front();
+                for (const P2& q : pts)
+                {
+                    lo = P2{ std::min(lo.x, q.x), std::min(lo.y, q.y) };
+                    hi = P2{ std::max(hi.x, q.x), std::max(hi.y, q.y) };
+                }
+                crop = std::array<P2, 2>{ Micron(lo - P2{ 1000.0, 1000.0 }), Micron(hi + P2{ 1000.0, 1000.0 }) };
+            }
+            Model& mm = s.ModelMut();
+            Element* e = mm.elements.GetMut(view);
+            if (Level* l = e->As<Level>())
+                l->crop = crop;
+            else if (PlanView* v = e->As<PlanView>())
+                v->crop = crop;
+            result = Json{ { "view", *mm.elements.IdOf(view) },
+                           { "crop", crop ? Json::array({ ToJson((*crop)[0]), ToJson((*crop)[1]) }) : Json(nullptr) } };
+            return true;
+        }
+
+        // ── 管理（第 5f 步，移植自 BIMCraft 的 parameter、line_pattern、line_style、fill_pattern、purge、line_weights、object_styles）──
+        // name 去掉前后空白；没给或只有空白时为空
+        bool NameParam(Params& P, const char* key, std::optional<std::string>& out)
+        {
+            std::optional<std::string> v;
+            if (!P.String(key, v))
+                return false;
+            out.reset();
+            if (v && !Text::Trim(*v).empty())
+                out = std::string(Text::Trim(*v));
+            return true;
+        }
+
+        // kind 的库条目 from 改叫 to：库里的条目（GUID 不变），以及用到它的
+        void RenameEntry(Model& m, const Kind& kind, const std::string& from, const std::string& to)
+        {
+            m.library.Renamed(kind, from, to);
+            m.LibRefsMut([&](const Kind& k, std::string& n)
+            {
+                if (k == kind && n == from)
+                    n = to;
+            });
+        }
+
+        // 每个视图与视图样板的图形：按类别、过滤器、元素的覆盖
+        void EachOverride(Model& m, const std::function<void(Override&)>& f)
+        {
+            const auto graphics = [&](Graphics& g)
+            {
+                for (auto& [_, o] : g.categories)
+                    f(o);
+                for (Applied& a : g.filters)
+                    f(a.over);
+                for (auto& [_, o] : g.elements)
+                    f(o);
+            };
+            std::vector<Guid> views;
+            for (const auto& [id, _] : m.elements.Items())
+                views.push_back(m.GuidOf(id));
+            for (const Guid v : views)
+                if (const Graphics* g = m.ViewGraphics(v))
+                {
+                    Graphics copy = *g;
+                    graphics(copy);
+                    if (!(copy == *g))
+                        *m.ViewGraphicsMut(v) = std::move(copy);
+                }
+            for (auto& [_, t] : m.viewTemplates)
+                graphics(t.graphics);
+        }
+
+        // 覆盖里用到填充图案 name 的地方
+        bool OverrideUses(const Override& o, const std::string& name)
+        {
+            for (const Style* s : { &o.projection, &o.cut })
+                for (const std::optional<PatternFill>* layer : { &s->foreground, &s->background })
+                    if (*layer && (*layer)->pattern == name)
+                        return true;
+            return false;
+        }
+
+        bool ParameterCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "parameter";
+            if (!Only(c, p, { "name", "kind", "categories", "rename", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given;
+            if (!NameParam(P, "name", given))
+                return false;
+            if (!given)
+                return P.Fail("`name` is required");
+            const std::string name = *given;
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            const Model& m0 = s.GetModel();
+            // 一个用在它上面有规则的视图过滤器：拿掉会改变过滤器挑出的东西
+            const auto inUse = [&](const std::vector<std::string>& gone) -> bool
+            {
+                for (const auto& [fn, f] : m0.viewFilters)
+                {
+                    const bool cats = std::any_of(f.categories.begin(), f.categories.end(),
+                                                  [&](const std::string& k) { return std::find(gone.begin(), gone.end(), NormalizeCategory(k)) != gone.end(); });
+                    if (cats && std::any_of(f.rules.begin(), f.rules.end(), [&](const Schedules::Filter& r) { return r.field == name; }))
+                        return P.Fail("view filter `" + fn + "` has a rule on `" + name + "`; take the rule off before the parameter goes"), true;
+                }
+                return false;
+            };
+            // 不再用于 gone 里的类别：那些元素的值，以及那些类别的明细表的这一列、按它的过滤与排序。构件的同名族参数是族的，留着
+            const auto clear = [&](Model& m, const std::vector<std::string>& gone)
+            {
+                std::vector<Id> ids;
+                for (const auto& [id, _] : m.elements.Items())
+                    ids.push_back(id);
+                for (const Id id : ids)
+                {
+                    const Element* e = m.elements.Get(id);
+                    if (const Schedule* sc = e->As<Schedule>())
+                    {
+                        if (std::find(gone.begin(), gone.end(), NormalizeCategory(sc->of)) == gone.end())
+                            continue;
+                        Schedule x = *sc;
+                        std::erase_if(x.fields, [&](const Schedules::Field& f) { return f.name == name && !f.formula; });
+                        std::erase_if(x.filters, [&](const Schedules::Filter& f) { return f.field == name; });
+                        std::erase_if(x.sort, [&](const Schedules::Sort& f) { return f.field == name; });
+                        if (!(x == *sc))
+                            *m.elements.GetMut(id)->As<Schedule>() = std::move(x);
+                        continue;
+                    }
+                    const auto* params = e->Params();
+                    if (!params || !params->count(name) || std::find(gone.begin(), gone.end(), e->Category()) == gone.end())
+                        continue;
+                    if (const auto fo = e->FamilyOf())
+                        if (const auto f = m.families.find(fo->first); f != m.families.end() &&
+                            std::any_of(f->second.parameters.begin(), f->second.parameters.end(), [&](const Fam::Parameter& q) { return q.name == name; }))
+                            continue;
+                    m.elements.GetMut(id)->ParamsMut()->erase(name);
+                }
+            };
+            if (del)
+            {
+                const auto was = m0.parameters.find(name);
+                if (was == m0.parameters.end())
+                    return P.Fail("there's no parameter `" + name + "`");
+                const std::vector<std::string> cats = was->second.categories;
+                if (inUse(cats))
+                    return false;
+                Model& m = s.ModelMut();
+                m.parameters.erase(name);
+                clear(m, cats);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            ProjectParameter param;
+            if (const auto it = m0.parameters.find(name); it != m0.parameters.end())
+                param = it->second;
+            const ProjectParameter before = param;
+            if (!P.Absent("kind"))
+            {
+                const Json& v = *Get(p, "kind");
+                const auto k = v.is_string() ? ParameterKindOf::Parse(v.get<std::string>()) : std::nullopt;
+                if (!k)
+                    return P.Fail("`kind`: " + Show(v) + " isn't one of text, number, length, yesno");
+                // 它的类别的元素自己的值（构件的同名族参数的值不算）
+                bool valued = false;
+                for (const auto& [_, e] : m0.elements.Items())
+                    valued = valued || (m0.ParameterOf(*e, name) && e->Params()->count(name));
+                if (*k != param.kind && valued)
+                    return P.Fail("`" + name + "` has values of its kind; take them away before it holds another");
+                param.kind = *k;
+            }
+            std::vector<std::string> gone;
+            if (!P.Absent("categories"))
+            {
+                const Json& v = *Get(p, "categories");
+                if (!v.is_array())
+                    return P.Fail("`categories` is a list of categories, not " + Show(v));
+                std::vector<std::string> list;
+                for (const Json& k : v)
+                {
+                    if (!k.is_string())
+                        return P.Fail("`categories` is a list of categories, not " + Show(v));
+                    const std::string cat = NormalizeCategory(k.get<std::string>());
+                    if (std::find(ParameterCategories.begin(), ParameterCategories.end(), cat) == ParameterCategories.end())
+                    {
+                        std::string all;
+                        for (const char* x : ParameterCategories)
+                            all += (all.empty() ? "" : ", ") + std::string(x);
+                        return P.Fail("`" + k.get<std::string>() + "` isn't a category it can be for; there are " + all);
+                    }
+                    list.push_back(cat);
+                }
+                std::sort(list.begin(), list.end());
+                list.erase(std::unique(list.begin(), list.end()), list.end());
+                for (const std::string& k : param.categories)
+                    if (std::find(list.begin(), list.end(), k) == list.end())
+                        gone.push_back(k);
+                if (inUse(gone))
+                    return false;
+                param.categories = std::move(list);
+            }
+            std::optional<std::string> rename;
+            if (!NameParam(P, "rename", rename))
+                return false;
+            if (!P.Absent("rename") && !rename)
+                return P.Fail("`rename` needs a name");
+            const std::string now = rename ? *rename : name;
+            if (now != name && m0.parameters.count(now))
+                return P.Fail("there's a parameter `" + now + "` already");
+            if (now == name && m0.parameters.count(name) && before == param)
+            {
+                result = Json{ { "name", name }, { "parameter", Json{ { "kind", ParameterKindOf::Name(param.kind) }, { "categories", param.categories } } } };
+                return true;
+            }
+            Model& m = s.ModelMut();
+            clear(m, gone);
+            if (now != name && m.parameters.count(name))
+            {
+                m.parameters.erase(name);
+                m.library.Renamed(Kind::Of(Kind::Tag::Parameter), name, now);
+                const auto mine = [&](const std::string& cat)
+                {
+                    return std::find(param.categories.begin(), param.categories.end(), NormalizeCategory(cat)) != param.categories.end();
+                };
+                for (auto& [_, f] : m.viewFilters)
+                    if (std::any_of(f.categories.begin(), f.categories.end(), mine))
+                        for (Schedules::Filter& r : f.rules)
+                            if (r.field == name)
+                                r.field = now;
+                std::vector<Id> ids;
+                for (const auto& [id, _] : m.elements.Items())
+                    ids.push_back(id);
+                for (const Id id : ids)
+                {
+                    const Element* e = m.elements.Get(id);
+                    if (const Schedule* sc = e->As<Schedule>())
+                    {
+                        if (!mine(sc->of))
+                            continue;
+                        Schedule x = *sc;
+                        for (Schedules::Field& f : x.fields)
+                            if (!f.formula && f.name == name)
+                                f.name = now;
+                        for (Schedules::Filter& f : x.filters)
+                            if (f.field == name)
+                                f.field = now;
+                        for (Schedules::Sort& f : x.sort)
+                            if (f.field == name)
+                                f.field = now;
+                        if (!(x == *sc))
+                            *m.elements.GetMut(id)->As<Schedule>() = std::move(x);
+                        continue;
+                    }
+                    const auto* params = e->Params();
+                    if (!params || !params->count(name) || !mine(e->Category()))
+                        continue;
+                    auto& ps = *m.elements.GetMut(id)->ParamsMut();
+                    Json v = std::move(ps[name]);
+                    ps.erase(name);
+                    ps[now] = std::move(v);
+                }
+            }
+            m.parameters[now] = param;
+            result = Json{ { "name", now }, { "parameter", Json{ { "kind", ParameterKindOf::Name(param.kind) }, { "categories", param.categories } } } };
+            return true;
+        }
+
+        bool LinePatternCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "line_pattern";
+            if (!Only(c, p, { "name", "segments", "rename", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given, rename;
+            if (!NameParam(P, "name", given) || !NameParam(P, "rename", rename))
+                return false;
+            const Model& m0 = s.GetModel();
+            if (!given)
+            {
+                Json all = Json::object();
+                for (const auto& [n, x] : m0.linePatterns)
+                    all[n] = ToJson(x);
+                result = Json{ { "patterns", std::move(all) } };
+                return true;
+            }
+            const std::string name = *given;
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                if (!m0.linePatterns.count(name))
+                    return P.Fail("there's no line pattern `" + name + "`");
+                for (const auto& [user, st] : m0.lineStyles)
+                    if (st.pattern == name)
+                        return P.Fail("`" + name + "` is line style `" + user + "`'s pattern; give it another first");
+                s.ModelMut().linePatterns.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            LinePattern pattern;
+            const auto was = m0.linePatterns.find(name);
+            if (P.Absent("segments"))
+            {
+                if (was == m0.linePatterns.end())
+                {
+                    std::vector<std::string> there;
+                    for (const auto& [n, _] : m0.linePatterns)
+                        there.push_back(n);
+                    return P.Fail("there's no line pattern `" + name + "`; make one with `segments`" + KnownNames(there));
+                }
+                pattern = was->second;
+            }
+            else
+            {
+                std::string why;
+                if (!FromJson(*Get(p, "segments"), pattern, why))
+                    return P.Fail("`segments` is [{\"dash\": mm} | {\"space\": mm} | \"dot\", …]: " + why);
+            }
+            const std::string now = rename ? *rename : name;
+            if (now != name && m0.linePatterns.count(now))
+                return P.Fail("there's already a line pattern `" + now + "`");
+            if (Text::AsciiLower(now) == Text::AsciiLower(Lines::Solid))
+                return P.Fail(std::string(Lines::Solid) + " is a line with no pattern; name it another way");
+            if (!pattern.Check(now, error))
+            {
+                error = Bad(c, error);
+                return false;
+            }
+            if (now != name || was == m0.linePatterns.end() || !(was->second == pattern))
+            {
+                Model& m = s.ModelMut();
+                if (now != name && m.linePatterns.count(name))
+                {
+                    m.linePatterns.erase(name);
+                    RenameEntry(m, Kind::Of(Kind::Tag::LinePattern), name, now);
+                }
+                m.linePatterns[now] = pattern;
+            }
+            result = Json{ { "name", now }, { "segments", ToJson(pattern) } };
+            return true;
+        }
+
+        bool LineStyleCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "line_style";
+            if (!Only(c, p, { "name", "pen", "color", "pattern", "rename", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given, rename;
+            if (!NameParam(P, "name", given) || !NameParam(P, "rename", rename))
+                return false;
+            const Model& m0 = s.GetModel();
+            if (!given)
+            {
+                Json all = Json::object();
+                for (const auto& [n, x] : m0.lineStyles)
+                    all[n] = ToJson(x);
+                result = Json{ { "styles", std::move(all) } };
+                return true;
+            }
+            const std::string name = *given;
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                if (!m0.lineStyles.count(name))
+                    return P.Fail("there's no line style `" + name + "`");
+                for (const auto& [id, e] : m0.elements.Items())
+                {
+                    if (const DetailLine* l = e->As<DetailLine>(); l && l->style == name)
+                        return P.Fail("detail line " + std::to_string(id) + " is drawn in `" + name + "`; give it another style first");
+                    if (const FilledRegion* r = e->As<FilledRegion>())
+                    {
+                        const bool uses = r->lineStyle == name ||
+                                          std::any_of(r->sketch.begin(), r->sketch.end(), [&](const SketchLine& l) { return l.style == name; });
+                        if (uses)
+                            return P.Fail("filled region " + std::to_string(id) + " is bounded in `" + name + "`; give it another line style first");
+                    }
+                }
+                s.ModelMut().lineStyles.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            const auto was = m0.lineStyles.find(name);
+            LineStyle style;
+            if (was != m0.lineStyles.end())
+                style = was->second;
+            else if (P.Absent("pen"))
+                return P.Fail("there's no line style `" + name + "`; make one with `pen`");
+            else
+                style = LineStyle{ 1, {}, std::nullopt };
+            if (!P.Absent("pen"))
+            {
+                const auto pen = AsWhole(*Get(p, "pen"));
+                if (!pen || *pen > Pens::Max)
+                    return P.Fail("`pen` is a pen, 0 (a hairline) to 16, not " + Show(*Get(p, "pen")));
+                style.pen = static_cast<uint8_t>(*pen);
+            }
+            if (!P.Absent("color"))
+            {
+                const auto col = Colour(*Get(p, "color"));
+                if (!col)
+                    return P.Fail("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not " + Show(*Get(p, "color")));
+                style.color = *col;
+            }
+            if (p.is_object() && p.contains("pattern"))
+            {
+                const Json& v = p["pattern"];
+                if (v.is_null())
+                    style.pattern.reset();
+                else if (!v.is_string())
+                    return P.Fail("`pattern` is a line pattern's name, or \"" + std::string(Lines::Solid) + "\", not " + Show(v));
+                else
+                {
+                    const std::string n(Text::Trim(v.get<std::string>()));
+                    if (Text::AsciiLower(n) == Text::AsciiLower(Lines::Solid))
+                        style.pattern.reset();
+                    else
+                        style.pattern = n;
+                }
+            }
+            const std::string now = rename ? *rename : name;
+            if (now != name && m0.lineStyles.count(now))
+                return P.Fail("there's already a line style `" + now + "`");
+            if (!Lines::CheckStyle(style, now, m0.linePatterns, error))
+            {
+                error = Bad(c, error);
+                return false;
+            }
+            if (now != name || was == m0.lineStyles.end() || !(was->second == style))
+            {
+                Model& m = s.ModelMut();
+                if (now != name && m.lineStyles.count(name))
+                {
+                    m.lineStyles.erase(name);
+                    RenameEntry(m, Kind::Of(Kind::Tag::LineStyle), name, now);
+                }
+                m.lineStyles[now] = style;
+            }
+            result = Json{ { "name", now }, { "style", ToJson(style) } };
+            return true;
+        }
+
+        bool FillPatternCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "fill_pattern";
+            if (!Only(c, p, { "name", "target", "lines", "rename", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given, rename;
+            if (!NameParam(P, "name", given) || !NameParam(P, "rename", rename))
+                return false;
+            const Model& m0 = s.GetModel();
+            if (!given)
+            {
+                Json all = Json::object();
+                for (const auto& [n, x] : m0.fillPatterns)
+                    all[n] = ToJson(x);
+                result = Json{ { "patterns", std::move(all) } };
+                return true;
+            }
+            const std::string name = *given;
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                if (!m0.fillPatterns.count(name))
+                    return P.Fail("there's no fill pattern `" + name + "`");
+                for (const auto& [user, t] : m0.regionTypes)
+                    if (t.foreground == name || t.background == name)
+                        return P.Fail("filled region type `" + user + "` fills with `" + name + "`; give it another first");
+                bool shown = false;
+                Model probe = m0;
+                EachOverride(probe, [&](Override& o) { shown = shown || OverrideUses(o, name); });
+                if (shown)
+                    return P.Fail("a view's Visibility/Graphics fills with `" + name + "`; give it another first");
+                s.ModelMut().fillPatterns.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            const auto was = m0.fillPatterns.find(name);
+            FillPattern pattern;
+            if (was != m0.fillPatterns.end())
+                pattern = was->second;
+            else if (P.Absent("lines") && P.Absent("target"))
+            {
+                std::vector<std::string> there;
+                for (const auto& [n, _] : m0.fillPatterns)
+                    there.push_back(n);
+                return P.Fail("there's no fill pattern `" + name + "`; make one with `lines`" + KnownNames(there));
+            }
+            if (!P.Absent("target"))
+            {
+                const Json& v = *Get(p, "target");
+                if (!v.is_string() || (v.get<std::string>() != "drafting" && v.get<std::string>() != "model"))
+                    return P.Fail("`target` is drafting or model, not " + Show(v));
+                pattern.model = v.get<std::string>() == "model";
+            }
+            if (!P.Absent("lines"))
+            {
+                const Json& v = *Get(p, "lines");
+                const char* shape = "`lines` is [{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …]";
+                if (!v.is_array())
+                    return P.Fail(std::string(shape) + ", not " + Show(v));
+                std::vector<HatchLine> lines;
+                for (const Json& x : v)
+                {
+                    HatchLine l;
+                    std::string why;
+                    if (!FromJson(x, l, why))
+                        return P.Fail(std::string(shape) + ": " + why);
+                    lines.push_back(std::move(l));
+                }
+                pattern.lines = std::move(lines);
+            }
+            const std::string now = rename ? *rename : name;
+            if (now != name && m0.fillPatterns.count(now))
+                return P.Fail("there's already a fill pattern `" + now + "`");
+            if (!pattern.Check(now, error))
+            {
+                error = Bad(c, error);
+                return false;
+            }
+            if (now != name || was == m0.fillPatterns.end() || !(was->second == pattern))
+            {
+                Model& m = s.ModelMut();
+                if (now != name && m.fillPatterns.count(name))
+                {
+                    m.fillPatterns.erase(name);
+                    RenameEntry(m, Kind::Of(Kind::Tag::FillPattern), name, now);
+                    // 视图的可见性 / 图形里的图案跟着改名
+                    EachOverride(m, [&](Override& o)
+                    {
+                        for (Style* st : { &o.projection, &o.cut })
+                            for (std::optional<PatternFill>* layer : { &st->foreground, &st->background })
+                                if (*layer && (*layer)->pattern == name)
+                                    (*layer)->pattern = now;
+                    });
+                }
+                m.fillPatterns[now] = pattern;
+            }
+            result = Json{ { "name", now }, { "pattern", ToJson(pattern) } };
+            return true;
+        }
+
+        bool ImportFillPatterns(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "import_fill_patterns";
+            if (!Only(c, p, { "path", "text", "replace" }, error))
+                return false;
+            Params P(c, p, error);
+            bool replace = false;
+            std::optional<std::string> path;
+            if (!P.Flag("replace", replace) || !P.String("path", path))
+                return false;
+            // PAT 文件的文字比名称长得多：text 收得下一个文件那么长（Pat::ReadText 拒绝更长的）
+            std::optional<std::string> text;
+            if (!P.Absent("text"))
+            {
+                const Json& v = *Get(p, "text");
+                if (!v.is_string())
+                    return P.Fail("`text` must be the text of a PAT file");
+                text = v.get<std::string>();
+            }
+            if (path.has_value() == text.has_value())
+                return P.Fail("give `path`, a PAT file, or its `text`");
+            std::string body, why;
+            if (path)
+            {
+                std::error_code ec;
+                const uintmax_t size = std::filesystem::file_size(ToPath(*path), ec);
+                if (!ec && size > Pat::MaxText)
+                    return P.Fail(*path + " is too large (" + std::to_string(size) + " bytes)");
+                if (!ReadFile(*path, body, why))
+                    return P.Fail(why);
+                body = Pat::Decode(body);
+            }
+            else
+                body = *text;
+            Pat::Read read;
+            if (!Pat::ReadText(body, read, why))
+                return P.Fail(why);
+            // 恶意的文件可能留下几千个：回复列出前几个，数出全部
+            Json imported = Json::array(), leftOut = Json::array();
+            size_t count = read.leftOutCount;
+            Model next = s.GetModel();
+            for (auto& [name, pattern] : read.patterns)
+            {
+                if (next.fillPatterns.count(name) && !replace)
+                {
+                    ++count;
+                    if (leftOut.size() < Pat::MaxLeftOut)
+                        leftOut.push_back(Json{ { "name", name }, { "why", "the project has a pattern of that name" } });
+                    continue;
+                }
+                next.fillPatterns[name] = std::move(pattern);
+                imported.push_back(name);
+            }
+            for (const auto& [name, why2] : read.leftOut)
+                if (leftOut.size() < Pat::MaxLeftOut)
+                    leftOut.push_back(Json{ { "name", name }, { "why", why2 } });
+            if (!imported.empty())
+                s.ModelMut().fillPatterns = std::move(next.fillPatterns);
+            result = Json{ { "imported", std::move(imported) }, { "left_out", std::move(leftOut) }, { "left_out_count", count } };
+            return true;
+        }
+
+        bool ExportFillPatterns(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "export_fill_patterns";
+            if (!Only(c, p, { "path", "names" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<std::string> path;
+            if (!P.String("path", path))
+                return false;
+            std::optional<std::set<std::string>> names;
+            if (!P.Absent("names"))
+            {
+                const Json& v = *Get(p, "names");
+                if (!v.is_array() || !std::all_of(v.begin(), v.end(), [](const Json& x) { return x.is_string(); }))
+                    return P.Fail("`names` is [name, …], not " + Show(v));
+                names.emplace();
+                for (const Json& x : v)
+                {
+                    if (!m.fillPatterns.count(x.get<std::string>()))
+                        return P.Fail("there's no fill pattern `" + x.get<std::string>() + "`");
+                    names->insert(x.get<std::string>());
+                }
+            }
+            std::vector<std::pair<std::string, const FillPattern*>> chosen;
+            for (const auto& [n, x] : m.fillPatterns)
+                if (!names || names->count(n))
+                    chosen.emplace_back(n, &x);
+            const std::string text = Pat::Write(chosen);
+            if (path)
+            {
+                std::string why;
+                if (!AtomicWrite(*path, text, why))
+                    return P.Fail(why);
+                result = Json{ { "path", *path } };
+            }
+            else
+                result = Json{ { "text", text } };
+            return true;
+        }
+
+        // 清除未使用能清除的（BIMCraft 的 PURGE_KINDS；MiniBIM 没有图片，picture 什么也不清除）
+        constexpr std::array<const char*, 6> PurgeKinds = { "type", "family", "material", "picture", "filter", "template" };
+        constexpr int PurgePasses = 16;
+
+        // kinds 里没被用到的库条目，一遍清除会去掉的：每个类别留一个类型（默认的，否则第一个），每个族留一个类型；
+        // 族去掉时它的类型跟着去。去掉一些后可能又有没被用到的，下一遍再找
+        std::vector<std::pair<Kind, std::string>> UnusedEntries(const Model& m, const std::set<std::string>& kinds)
+        {
+            const auto uses = LibraryUses(m);
+            const auto has = [&](const char* k) { return kinds.count(k) > 0; };
+            const auto unused = [&](const Kind& k, const std::string& n) { return !uses.count({ k, n }); };
+            std::vector<std::pair<Kind, std::string>> out;
+            std::map<std::string, std::vector<std::string>> categories;
+            for (const auto& [kind, name] : m.LibraryNames())
+                if (kind.tag == Kind::Tag::Type)
+                    categories[kind.category].push_back(name);
+            if (has("type"))
+                for (const auto& [cat, names] : categories)
+                {
+                    const Kind kind = Kind::Type(cat);
+                    std::vector<std::string> gone;
+                    for (const std::string& n : names)
+                        if (unused(kind, n))
+                            gone.push_back(n);
+                    if (gone.size() == names.size())
+                    {
+                        const auto d = m.DefaultType(cat);
+                        const std::string keep = d && std::find(gone.begin(), gone.end(), *d) != gone.end() ? *d : gone.front();
+                        std::erase(gone, keep);
+                    }
+                    for (const std::string& n : gone)
+                        out.emplace_back(kind, n);
+                }
+            std::vector<std::string> familiesGone;
+            if (has("family"))
+                for (const auto& [f, _] : m.families)
+                    if (unused(Kind::Of(Kind::Tag::Family), f))
+                        familiesGone.push_back(f);
+            for (const std::string& f : familiesGone)
+                out.emplace_back(Kind::Of(Kind::Tag::Family), f);
+            if (has("type"))
+                for (const auto& [f, fam] : m.families)
+                {
+                    if (std::find(familiesGone.begin(), familiesGone.end(), f) != familiesGone.end())
+                        continue;
+                    std::vector<std::string> gone;
+                    for (const auto& [t, _] : fam.types)
+                        if (unused(Kind::Of(Kind::Tag::FamilyType), f + ": " + t))
+                            gone.push_back(f + ": " + t);
+                    if (!gone.empty() && gone.size() == fam.types.size())
+                        gone.pop_back();
+                    for (const std::string& n : gone)
+                        out.emplace_back(Kind::Of(Kind::Tag::FamilyType), n);
+                }
+            if (has("material"))
+                for (const auto& [n, _] : m.materials)
+                    if (unused(Kind::Of(Kind::Tag::Material), n))
+                        out.emplace_back(Kind::Of(Kind::Tag::Material), n);
+            // 视图过滤器：视图与样板套用的；视图样板：视图跟随的
+            std::set<std::string> filters, templates;
+            const auto look = [&](const Graphics& g)
+            {
+                for (const Applied& a : g.filters)
+                    filters.insert(a.filter);
+                if (g.templateName)
+                    templates.insert(*g.templateName);
+            };
+            for (const auto& [id, _] : m.elements.Items())
+                if (const Graphics* g = m.ViewGraphics(m.GuidOf(id)))
+                    look(*g);
+            for (const auto& [_, t] : m.viewTemplates)
+                look(t.graphics);
+            if (has("filter"))
+                for (const auto& [n, _] : m.viewFilters)
+                    if (!filters.count(n))
+                        out.emplace_back(Kind::Of(Kind::Tag::ViewFilter), n);
+            if (has("template"))
+                for (const auto& [n, _] : m.viewTemplates)
+                    if (!templates.count(n))
+                        out.emplace_back(Kind::Of(Kind::Tag::ViewTemplate), n);
+            return out;
+        }
+
+        // 去掉库条目：有没有这个
+        bool RemoveEntry(Model& m, const Kind& kind, const std::string& name)
+        {
+            switch (kind.tag)
+            {
+            case Kind::Tag::Type:
+                return WithTypes(m, kind.category, [&](auto& t) { return t.erase(name) > 0; });
+            case Kind::Tag::Family:
+                return m.families.erase(name) > 0;
+            case Kind::Tag::FamilyType:
+            {
+                const size_t colon = name.find(": ");
+                const auto f = colon == std::string::npos ? m.families.end() : m.families.find(name.substr(0, colon));
+                return f != m.families.end() && f->second.types.erase(name.substr(colon + 2)) > 0;
+            }
+            case Kind::Tag::Material:
+                return m.materials.erase(name) > 0;
+            case Kind::Tag::ViewFilter:
+                return m.viewFilters.erase(name) > 0;
+            case Kind::Tag::ViewTemplate:
+                return m.viewTemplates.erase(name) > 0;
+            default:
+                return false;
+            }
+        }
+
+        bool PurgeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "purge";
+            if (!Only(c, p, { "kinds", "dry_run" }, error))
+                return false;
+            Params P(c, p, error);
+            std::set<std::string> kinds{ "type", "family" };
+            if (!P.Absent("kinds"))
+            {
+                const Json& v = *Get(p, "kinds");
+                if (!v.is_array())
+                    return P.Fail("`kinds` is a list of what to purge, not " + Show(v));
+                kinds.clear();
+                for (const Json& k : v)
+                {
+                    if (!k.is_string() || std::find_if(PurgeKinds.begin(), PurgeKinds.end(), [&](const char* x) { return k.get<std::string>() == x; }) == PurgeKinds.end())
+                        return P.Fail("`kinds` holds type, family, material, picture, filter, template, not " + Show(k));
+                    kinds.insert(k.get<std::string>());
+                }
+            }
+            bool dryRun = false;
+            if (!P.Flag("dry_run", dryRun))
+                return false;
+            // 在副本上一遍一遍地清：试清的列表就是真清时会去掉的
+            Model model = s.GetModel();
+            std::vector<std::pair<Kind, std::string>> removed;
+            for (int pass = 0; pass < PurgePasses; ++pass)
+            {
+                const auto unused = UnusedEntries(model, kinds);
+                if (unused.empty())
+                    break;
+                for (const auto& [kind, name] : unused)
+                    if (RemoveEntry(model, kind, name))
+                        removed.emplace_back(kind, name);
+                model.SyncLibrary();
+            }
+            if (!dryRun && !removed.empty())
+                s.ModelMut() = std::move(model);
+            Json listed = Json::array();
+            for (const auto& [kind, name] : removed)
+                listed.push_back(Json{ { "kind", kind.Label() }, { "name", name } });
+            result = Json{ { "removed", listed }, { "count", listed.size() }, { "dry_run", dryRun } };
+            return true;
+        }
+
+        bool LineWeightsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "line_weights";
+            if (!Only(c, p, { "model", "annotation", "reset" }, error))
+                return false;
+            Params P(c, p, error);
+            if (!P.Absent("reset") && !Get(p, "reset")->is_boolean())
+                return P.Fail("`reset` is true or false, not " + Show(*Get(p, "reset")));
+            bool reset = false;
+            if (!P.Flag("reset", reset))
+                return false;
+            const Model& m0 = s.GetModel();
+            const auto row = [&](const Json& v, PenRow& out)
+            {
+                if (!v.is_array() || v.size() != out.size())
+                    return false;
+                for (size_t i = 0; i < out.size(); ++i)
+                {
+                    if (!v[i].is_number())
+                        return false;
+                    out[i] = v[i].get<double>();
+                }
+                return true;
+            };
+            if (reset)
+            {
+                if (m0.lineWeights)
+                    s.ModelMut().lineWeights.reset();
+            }
+            else if (!P.Absent("model") || !P.Absent("annotation"))
+            {
+                LineWeights lw = m0.LineWeightsOf();
+                if (!P.Absent("model"))
+                {
+                    const Json& v = *Get(p, "model");
+                    const std::string shape = "`model` is [{scale, widths: [the 16 pens' widths, mm]}, …]";
+                    if (!v.is_array())
+                        return P.Fail(shape + ", not " + Show(v));
+                    lw.model.clear();
+                    for (const Json& col : v)
+                    {
+                        ScalePens sp;
+                        if (!col.is_object() || !col.contains("scale") || !col["scale"].is_number() || !col.contains("widths") ||
+                            !row(col["widths"], sp.widths) || col.size() != 2)
+                            return P.Fail(shape + ", not " + Show(col));
+                        sp.scale = col["scale"].get<double>();
+                        lw.model.push_back(sp);
+                    }
+                }
+                if (!P.Absent("annotation") && !row(*Get(p, "annotation"), lw.annotation))
+                    return P.Fail("`annotation` is the 16 pens' widths, mm, not " + Show(*Get(p, "annotation")));
+                lw.Sort();
+                if (!lw.Check(error))
+                {
+                    error = Bad(c, error);
+                    return false;
+                }
+                if (!m0.lineWeights || !(*m0.lineWeights == lw))
+                    s.ModelMut().lineWeights = std::move(lw);
+            }
+            const Model& m = s.GetModel();
+            const LineWeights lw = m.LineWeightsOf();
+            Json model = Json::array();
+            for (const ScalePens& col : lw.model)
+                model.push_back(Json{ { "scale", col.scale }, { "name", UnitsOf::Scale(m.units, col.scale) }, { "widths", col.widths } });
+            result = Json{ { "model", std::move(model) }, { "annotation", lw.annotation }, { "own", m.lineWeights.has_value() } };
+            return true;
+        }
+
+        bool ObjectStylesCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "object_styles";
+            if (!Only(c, p, { "categories", "reset" }, error))
+                return false;
+            Params P(c, p, error);
+            if (!P.Absent("reset") && !Get(p, "reset")->is_boolean())
+                return P.Fail("`reset` is true or false, not " + Show(*Get(p, "reset")));
+            bool reset = false;
+            if (!P.Flag("reset", reset))
+                return false;
+            const Model& m0 = s.GetModel();
+            if (reset)
+            {
+                if (!m0.objectStyles.empty())
+                    s.ModelMut().objectStyles.clear();
+            }
+            else if (!P.Absent("categories"))
+            {
+                const Json& v = *Get(p, "categories");
+                const std::string shape = "`categories` is {category: {projection?: pen, cut?: pen}, …}";
+                if (!v.is_object())
+                    return P.Fail(shape + ", not " + Show(v));
+                std::map<std::string, ObjectStyle> styles = m0.objectStyles;
+                for (auto it = v.begin(); it != v.end(); ++it)
+                {
+                    const std::string cat = it.key();
+                    if (!ObjectStyles::Known(cat))
+                    {
+                        std::string all;
+                        for (const char* k : GraphicsOf::Model)
+                            all += (all.empty() ? "" : ", ") + std::string(k);
+                        return P.Fail("`" + cat + "` isn't a model category; Object Styles has: " + all);
+                    }
+                    if (!it->is_object())
+                        return P.Fail(shape + ", not " + Show(*it));
+                    ObjectStyle st = m0.ObjectStyleOf(cat);
+                    for (auto k = it->begin(); k != it->end(); ++k)
+                    {
+                        uint8_t* slot = k.key() == "projection" ? &st.projection : k.key() == "cut" ? &st.cut : nullptr;
+                        if (!slot)
+                            return P.Fail(shape + ": `" + k.key() + "` isn't one of projection, cut");
+                        const auto pen = AsWhole(*k);
+                        if (!pen)
+                            return P.Fail("`" + cat + "` " + k.key() + ": a pen is a whole number, 0 (a hairline) to 16, not " + Show(*k));
+                        if (*pen > Pens::Max)
+                            return P.Fail("object style `" + cat + "` " + k.key() + ": a line weight is a pen, 0 (a hairline) to 16, not " +
+                                          std::to_string(*pen));
+                        *slot = static_cast<uint8_t>(*pen);
+                    }
+                    if (st == ObjectStyles::Default(cat))
+                        styles.erase(cat);
+                    else
+                        styles[cat] = st;
+                }
+                if (styles != m0.objectStyles)
+                    s.ModelMut().objectStyles = std::move(styles);
+            }
+            const Model& m = s.GetModel();
+            Json all = Json::array();
+            for (const char* cat : GraphicsOf::Model)
+            {
+                const ObjectStyle st = m.ObjectStyleOf(cat);
+                all.push_back(Json{ { "category", cat }, { "projection", st.projection }, { "cut", st.cut }, { "own", m.objectStyles.count(cat) > 0 } });
+            }
+            result = Json{ { "categories", std::move(all) } };
+            return true;
+        }
+
+        // ── 图纸与视口（第 5e4 步，移植自 BIMCraft 的 sheet、place）──
+        bool SheetCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "sheet";
+            if (!Only(c, p, { "number", "name", "size" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> number, name, size;
+            if (!P.String("number", number) || !P.String("name", name) || !P.String("size", size))
+                return false;
+            const Model& m = s.GetModel();
+            Sheet sh;
+            if (number)
+                sh.number = *number;
+            else
+            {
+                // 没给编号时取 A101、A102……里第一个没用的
+                std::set<std::string> taken;
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const Sheet* x = e->As<Sheet>())
+                        taken.insert(x->number);
+                for (int n = 101;; ++n)
+                    if (!taken.count("A" + std::to_string(n)))
+                    {
+                        sh.number = "A" + std::to_string(n);
+                        break;
+                    }
+            }
+            sh.name = name ? *name : LanguageOf::Word(m.language, "Unnamed");
+            sh.size = size ? Text::AsciiUpper(Text::Trim(*size)) : std::string("A3");
+            const std::string made = sh.number;
+            const Id id = s.ModelMut().Insert(Element(std::move(sh)));
+            result = Json{ { "id", id }, { "number", made } };
+            return true;
+        }
+
+        bool PlaceCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "place";
+            if (!Only(c, p, { "sheet", "view", "at", "scale" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            // 图纸：编号、名称或 ID
+            std::optional<Id> sheet;
+            const Json* sj = Get(p, "sheet");
+            if (!sj || sj->is_null())
+                return P.Fail("`sheet`, a sheet's number or id, is required");
+            if (sj->is_string())
+            {
+                const std::string n = sj->get<std::string>();
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const Sheet* sh = e->As<Sheet>(); sh && (sh->number == n || sh->name == n))
+                    {
+                        sheet = id;
+                        break;
+                    }
+                if (!sheet)
+                    return P.Fail("no sheet numbered `" + n + "`");
+            }
+            else if (sj->is_number_unsigned() && m.GetSheet(m.GuidOf(sj->get<Id>())))
+                sheet = sj->get<Id>();
+            else
+                return P.Fail("`sheet`: " + Show(*sj) + " is not a sheet");
+            std::optional<double> scale;
+            std::optional<P2> at;
+            if (!P.Num("scale", scale) || !P.PointOpt("at", at))
+                return false;
+            // 视图：名称或 ID；明细表与三维视图第一次放上图纸时才建出来：内置的明细表按任何一种语言的名称，用项目语言的名称
+            const Json* vj = Get(p, "view");
+            if (!vj || vj->is_null())
+                return P.Fail("`view`, a level's, section's, elevation's, schedule's or 3D view's name or id, is required");
+            std::optional<Guid> view;
+            std::optional<Element> made;
+            if (vj->is_string() && !Guid::Parse(vj->get<std::string>()))
+            {
+                const std::string n = vj->get<std::string>();
+                for (const auto& [id, e] : m.elements.Items())
+                    if (const std::string* name = m.ViewName(m.GuidOf(id)); name && *name == n)
+                    {
+                        view = m.GuidOf(id);
+                        break;
+                    }
+                if (!view)
+                {
+                    if (const auto found = Schedules::Named(m, n))
+                        view = m.GuidOf(*found);
+                    else if (const auto b = Schedules::BuiltinOf(&n, nullptr))
+                    {
+                        Schedule sc;
+                        sc.name = LanguageOf::Word(m.language, b->name);
+                        sc.of   = b->category;
+                        made    = Element(std::move(sc));
+                    }
+                    else if (n == View3D::DefaultName || n == "3D")
+                    {
+                        View3D v3;
+                        v3.name = View3D::DefaultName;
+                        made    = Element(std::move(v3));
+                    }
+                    else
+                        return P.Fail("no level, section, elevation, schedule or 3D view named `" + n + "`");
+                }
+            }
+            else
+            {
+                Guid g;
+                std::string why;
+                const auto found = FromJson(*vj, g, why) ? m.elements.IdOf(g) : std::nullopt;
+                if (!found || !m.ViewName(m.GuidOf(*found)))
+                    return P.Fail("`view`: " + Show(*vj) + " is not a plan, a section, an elevation, a schedule or a 3D view");
+                view = m.GuidOf(*found);
+            }
+            if (view && m.elements.Get(*view)->As<PlanView>() && m.elements.Get(*view)->As<PlanView>()->parent)
+                return P.Fail(ViewTitle(m, *view) + " is a dependent view; place its parent");
+            Model& mm = s.ModelMut();
+            if (made)
+                view = mm.GuidOf(mm.Insert(std::move(*made)));
+            const Guid sg = mm.GuidOf(*sheet);
+            // 视图自己的比例，除非给了别的
+            const double n = scale ? *scale : mm.ScaleOf(*view);
+            Viewport vp;
+            vp.sheet = sg;
+            vp.view  = *view;
+            vp.scale = n;
+            vp.at    = at ? *at : Render::SpotOn(mm, sg, *view, n);
+            const P2 placed = vp.at;
+            const Id id = mm.Insert(Element(std::move(vp)));
+            result = Json{ { "id", id }, { "at", ToJson(placed) } };
+            return true;
+        }
+
+        // ── 剖面与立面（第 5e3 步，移植自 BIMCraft 的 section、elevation）──
+        bool SectionCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "section";
+            if (!Only(c, p, { "start", "end", "depth", "name" }, error))
+                return false;
+            Params P(c, p, error);
+            Section v;
+            std::optional<std::string> name;
+            if (!P.PointReq("start", v.start) || !P.PointReq("end", v.end) || !P.Num("depth", v.depth) || !P.String("name", name))
+                return false;
+            const Model& m = s.GetModel();
+            v.name = name ? *name : m.FreeViewName(LanguageOf::Word(m.language, "Section"), true);
+            const std::string made = v.name;
+            const Id id = s.ModelMut().Insert(Element(std::move(v)));
+            result = Json{ { "id", id }, { "name", made } };
+            return true;
+        }
+
+        bool ElevationCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "elevation";
+            if (!Only(c, p, { "facing", "at", "start", "end", "depth", "name" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<double> depth;
+            std::optional<std::string> name, facingName;
+            std::optional<P2> at, start, end;
+            if (!P.Num("depth", depth) || !P.String("name", name) || !P.String("facing", facingName) || !P.PointOpt("at", at) ||
+                !P.PointOpt("start", start) || !P.PointOpt("end", end))
+                return false;
+            std::optional<Facing> facing;
+            if (facingName)
+            {
+                facing = FacingOf::Parse(*facingName);
+                if (!facing)
+                    return P.Fail("`facing` is north, south, east or west, not `" + *facingName + "`");
+            }
+            const std::string nothing = "there are no walls or floors to look at; draw some, or give `start` and `end`";
+            std::vector<std::tuple<std::string, P2, P2>> lines;
+            if (start && end)
+                lines.emplace_back(name ? *name : m.FreeViewName(LanguageOf::Word(m.language, "Elevation"), true), *start, *end);
+            else if (!start && !end)
+            {
+                std::vector<Facing> sides;
+                if (facing)
+                    sides = { *facing };
+                else if (at)
+                {
+                    const auto f = m.FacingFrom(*at);
+                    if (!f)
+                        return P.Fail(nothing);
+                    sides = { *f };
+                }
+                else
+                {
+                    // 没给什么：还没有的建筑立面（按项目语言的名称认）
+                    for (const Facing f : FacingOf::All)
+                    {
+                        const std::string word = LanguageOf::Word(m.language, FacingOf::Name(f));
+                        bool there = false;
+                        for (const auto& [id, e] : m.elements.Items())
+                            if (const Elevation* ev = e->As<Elevation>(); ev && ev->name == word)
+                                there = true;
+                        if (!there)
+                            sides.push_back(f);
+                    }
+                    if (sides.empty())
+                        return P.Fail("the four building elevations are there already");
+                }
+                for (const Facing f : sides)
+                {
+                    const auto line = m.ElevationLine(f, at);
+                    if (!line)
+                        return P.Fail(nothing);
+                    lines.emplace_back(name ? *name : m.FreeViewName(LanguageOf::Word(m.language, FacingOf::Name(f)), false), line->first, line->second);
+                }
+            }
+            else
+                return P.Fail("give both `start` and `end`, or neither");
+            Model& mm = s.ModelMut();
+            std::vector<Id> made;
+            for (const auto& [n, a, b] : lines)
+            {
+                Elevation ev;
+                ev.name  = n;
+                ev.start = a;
+                ev.end   = b;
+                ev.depth = depth;
+                made.push_back(mm.Insert(Element(std::move(ev))));
+            }
+            if (made.size() == 1)
+                result = Json{ { "id", made[0] }, { "name", std::get<0>(lines[0]) } };
+            else
+                result = Json{ { "ids", made } };
+            return true;
+        }
+
+        // Revit 的复制视图，平面的：同一标高的一个新平面视图
+        // ── 明细表、视图过滤器与视图样板（第 5e2 步，移植自 BIMCraft 的 schedule 与 graphics）────
+        // key 给的一列：每项是对象，或只是名称（写成 {by: 名称}）；给了时整个替换
+        bool NamedList(const char* c, const Json& p, const char* key, const char* by, std::optional<Json>& out, std::string& error)
+        {
+            const Json* v = Get(p, key);
+            if (!v || v->is_null())
+                return true;
+            if (!v->is_array())
+                return Fail(error, c, "`" + std::string(key) + "` is a list, not " + Show(*v));
+            Json list = Json::array();
+            for (const Json& x : *v)
+                list.push_back(x.is_string() ? Json{ { by, x } } : x);
+            out = std::move(list);
+            return true;
+        }
+
+        template <class T>
+        bool ReadEach(const char* c, const char* key, const Json& list, std::vector<T>& out, std::string& error)
+        {
+            out.clear();
+            for (const Json& x : list)
+            {
+                T t;
+                std::string why;
+                if (!FromJson(x, t, why))
+                    return Fail(error, c, "`" + std::string(key) + "`: " + why);
+                out.push_back(std::move(t));
+            }
+            return true;
+        }
+
+        bool ScheduleCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "schedule";
+            if (!Only(c, p, { "name", "category", "fields", "filters", "sort", "grouped", "path" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            std::optional<std::string> name, cat, path;
+            if (!P.String("name", name) || !P.String("category", cat) || !P.String("path", path))
+                return false;
+            if (name)
+            {
+                name = std::string(Text::Trim(*name));
+                if (name->empty())
+                    name.reset();
+            }
+            if (cat)
+            {
+                const std::string k = NormalizeCategory(*cat);
+                if (!Schedules::IsCategory(k))
+                {
+                    std::string all;
+                    for (const std::string& x : Schedules::Categories())
+                        all += (all.empty() ? "" : ", ") + x;
+                    return P.Fail("`" + *cat + "` isn't a category schedules are of; there are: " + all);
+                }
+                cat = k;
+            }
+            const auto builtin = Schedules::BuiltinOf(name ? &*name : nullptr, cat ? &*cat : nullptr);
+            std::optional<Id> found = name ? Schedules::Named(m, *name) : std::nullopt;
+            if (!found && builtin)
+                found = Schedules::Named(m, builtin->name);
+            Schedule sc;
+            if (found)
+            {
+                const Schedule* had = m.elements.Get(*found)->As<Schedule>();
+                if (!had)
+                    return P.Fail("element " + std::to_string(*found) + " isn't a schedule");
+                sc = *had;
+            }
+            else if (builtin)
+            {
+                sc.name = LanguageOf::Word(m.language, builtin->name);
+                sc.of   = builtin->category;
+            }
+            else if (name && cat)
+            {
+                sc.name = *name;
+                sc.of   = *cat;
+            }
+            else if (name)
+                return P.Fail("there's no schedule `" + *name + "`; a new one needs `category` too");
+            else if (cat)
+                sc.of = *cat;
+            else
+                return P.Fail("`name` or `category` is required");
+            if (cat && *cat != NormalizeCategory(sc.of))
+                return P.Fail("`" + sc.name + "` schedules " + sc.of + "s, not " + *cat + "s; make another for those");
+            // 给了的各项整个替换：字段或排序字段可以只写名称
+            bool changed = false;
+            std::optional<Json> fields, filters, sort;
+            if (!NamedList(c, p, "fields", "name", fields, error) || !NamedList(c, p, "filters", "field", filters, error) ||
+                !NamedList(c, p, "sort", "field", sort, error))
+                return false;
+            if (fields && (changed = true, !ReadEach(c, "fields", *fields, sc.fields, error)))
+                return false;
+            if (filters && (changed = true, !ReadEach(c, "filters", *filters, sc.filters, error)))
+                return false;
+            if (sort && (changed = true, !ReadEach(c, "sort", *sort, sc.sort, error)))
+                return false;
+            if (const Json* g = Get(p, "grouped"); g && !g->is_null())
+            {
+                if (!g->is_boolean())
+                    return P.Fail("`grouped` is true or false, not " + Show(*g));
+                sc.grouped = g->get<bool>();
+                changed    = true;
+            }
+            // 新的不管给了什么都建出来
+            changed = changed || (!found && !builtin);
+            std::optional<Id> id = found;
+            if (changed && found)
+                s.ModelMut().elements.Insert(*found, Element(Schedule(sc)));
+            else if (changed && !sc.name.empty())
+                id = s.ModelMut().Insert(Element(Schedule(sc)));
+            const Model& now = s.GetModel();
+            // 先要成立才做表；文件只写模型留下的
+            std::string why;
+            if (!Schedules::Check(now, sc, why))
+                return P.Fail(why);
+            Schedules::Table t;
+            if (!Schedules::TableOf(now, sc, t, why))
+                return P.Fail(why);
+            if (path)
+            {
+                if (changed && !now.Check(why))
+                    return P.Fail(why);
+                if (Text::EndsWith(Text::AsciiLower(*path), ".xlsx"))
+                    return P.Fail("`path`: .xlsx workbooks aren't in MiniBIM yet; give a .csv path");
+                std::ofstream out(ToPath(*path), std::ios::binary | std::ios::trunc);
+                const std::string csv = Schedules::ToCsv(t);
+                if (!out || !out.write(csv.data(), static_cast<std::streamsize>(csv.size())))
+                    return P.Fail(*path + ": could not write it");
+            }
+            Json columns = Json::array(), rows = Json::array(), ids = Json::array(), available = Json::array();
+            for (const Schedules::Column& col : t.columns)
+                columns.push_back(Schedules::Heading(Units::Millimetres, col));
+            for (const auto& r : t.rows)
+                rows.push_back(r);
+            for (const auto& r : t.ids)
+                ids.push_back(r);
+            for (const auto& [n, _] : Schedules::Fields(now, NormalizeCategory(sc.of)))
+                available.push_back(n);
+            result = Json{ { "id", id ? Json(*id) : Json(nullptr) }, { "name", sc.name },          { "category", NormalizeCategory(sc.of) },
+                           { "columns", std::move(columns) },         { "rows", std::move(rows) }, { "elements", std::move(ids) },
+                           { "available", std::move(available) } };
+            if (t.totals)
+                result["totals"] = *t.totals;
+            return true;
+        }
+
+        bool FilterCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "filter";
+            if (!Only(c, p, { "name", "categories", "rules", "delete" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given;
+            if (!P.String("name", given))
+                return false;
+            const std::string name = given ? std::string(Text::Trim(*given)) : std::string();
+            if (name.empty())
+                return P.Fail("`name` is required");
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                Model& m = s.ModelMut();
+                if (!m.viewFilters.erase(name))
+                    return P.Fail("there's no view filter `" + name + "`");
+                // 视图与样板不再套用它
+                std::vector<Id> ids;
+                for (const auto& [id, e] : m.elements.Items())
+                    ids.push_back(id);
+                const auto drop = [&](Graphics& g) { std::erase_if(g.filters, [&](const Applied& a) { return a.filter == name; }); };
+                for (const Id id : ids)
+                    if (Graphics* g = m.ViewGraphicsMut(m.GuidOf(id)); g && std::any_of(g->filters.begin(), g->filters.end(), [&](const Applied& a) { return a.filter == name; }))
+                        drop(*g);
+                for (auto& [_, t] : m.viewTemplates)
+                    drop(t.graphics);
+                result = Json{ { "name", name }, { "deleted", true } };
+                return true;
+            }
+            const Model& m = s.GetModel();
+            const auto wasIt = m.viewFilters.find(name);
+            const std::optional<ViewFilter> was = wasIt == m.viewFilters.end() ? std::nullopt : std::optional<ViewFilter>(wasIt->second);
+            ViewFilter f = was.value_or(ViewFilter{});
+            if (const Json* cats = Get(p, "categories"); !cats || cats->is_null())
+            {
+                if (!was)
+                    return P.Fail("a new filter needs `categories`, [\"walls\", \"doors\"…]");
+            }
+            else
+            {
+                if (!cats->is_array() || cats->size() > 32)
+                    return P.Fail("`categories` is a list of categories, [\"walls\", \"doors\"…], not " + Show(*cats));
+                f.categories.clear();
+                for (const Json& v : *cats)
+                {
+                    if (!v.is_string())
+                        return P.Fail("`categories`: " + Show(v) + " is not a category");
+                    const std::string k = NormalizeCategory(v.get<std::string>());
+                    if (!Schedules::IsCategory(k))
+                    {
+                        std::string all;
+                        for (const std::string& x : Schedules::Categories())
+                            all += (all.empty() ? "" : ", ") + x;
+                        return P.Fail("`" + v.get<std::string>() + "` isn't a category filters pick from; there are: " + all);
+                    }
+                    f.categories.push_back(k);
+                }
+                std::sort(f.categories.begin(), f.categories.end());
+                f.categories.erase(std::unique(f.categories.begin(), f.categories.end()), f.categories.end());
+            }
+            if (const Json* rules = Get(p, "rules"); rules && !rules->is_null())
+            {
+                if (!rules->is_array() || rules->size() > Schedules::MaxFields)
+                    return P.Fail("`rules` is [{field, op, value}, …] (up to " + std::to_string(Schedules::MaxFields) + "), not " + Show(*rules));
+                f.rules.clear();
+                for (const Json& r : *rules)
+                {
+                    Schedules::Filter x;
+                    std::string why;
+                    if (!FromJson(r, x, why))
+                        return P.Fail("rule " + Show(r) + ": " + why);
+                    f.rules.push_back(std::move(x));
+                }
+            }
+            if (was != f)
+            {
+                // 在这里就拒绝，报错带上命令名
+                std::string why;
+                if (!Schedules::CheckRules(m, f.categories, f.rules, why))
+                    return P.Fail(why);
+                s.ModelMut().viewFilters[name] = f;
+            }
+            Json matches = Json::array();
+            for (const Id id : Schedules::Picks(s.GetModel(), f.categories, f.rules))
+                matches.push_back(id);
+            Json rules = Json::array();
+            for (const auto& r : f.rules)
+                rules.push_back(ToJson(r));
+            result = Json{ { "name", name }, { "categories", f.categories }, { "rules", std::move(rules) }, { "matches", std::move(matches) } };
+            return true;
+        }
+
+        bool TemplateCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "template";
+            if (!Only(c, p, { "name", "from", "controls", "view_range", "hide", "show", "categories", "filters", "reset", "hide_elements", "show_elements",
+                              "elements", "phase", "phase_filter", "options", "scale", "detail", "visual_style", "delete", "template", "layers" }, error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given;
+            if (!P.String("name", given))
+                return false;
+            const std::string name = given ? std::string(Text::Trim(*given)) : std::string();
+            if (name.empty())
+                return P.Fail("`name` is required");
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                Model& m = s.ModelMut();
+                if (!m.viewTemplates.erase(name))
+                    return P.Fail("there's no view template `" + name + "`");
+                // 跟随它的视图留着自己的设置，不再跟随
+                std::vector<Id> ids;
+                for (const auto& [id, e] : m.elements.Items())
+                    ids.push_back(id);
+                for (const Id id : ids)
+                {
+                    const Element* e = m.elements.Get(id);
+                    const Graphics* g = e && (e->As<Level>() || e->As<PlanView>() || e->As<View3D>() || e->As<Section>() || e->As<Elevation>())
+                                          ? m.ViewGraphics(m.GuidOf(id)) : nullptr;
+                    if (g && g->templateName == name)
+                        m.ViewGraphicsMut(m.GuidOf(id))->templateName.reset();
+                }
+                result = Json{ { "name", name }, { "deleted", true } };
+                return true;
+            }
+            const Model& m = s.GetModel();
+            const auto wasIt = m.viewTemplates.find(name);
+            const std::optional<ViewTemplate> was = wasIt == m.viewTemplates.end() ? std::nullopt : std::optional<ViewTemplate>(wasIt->second);
+            bool makes = p.contains("template");
+            for (const char* k : { "from", "controls", "view_range", "hide", "show", "categories", "filters", "reset", "hide_elements", "show_elements", "elements",
+                                   "phase", "phase_filter", "options", "scale", "detail", "visual_style", "layers" })
+                makes = makes || !Absent(p, k);
+            if (!was && !makes)
+            {
+                std::string there;
+                for (const auto& [n, _] : m.viewTemplates)
+                    there += (there.empty() ? " (there are: " : ", ") + n;
+                return P.Fail("there's no view template `" + name + "`; make one with `from` (a view), or `controls`" + (there.empty() ? "" : there + ")"));
+            }
+            ViewTemplate t;
+            if (was)
+                t = *was;
+            else
+                t.controls = std::set<Group>(GroupOf::All.begin(), GroupOf::All.end());
+            // 由视图做出：它现在的图形与平面的视图范围
+            if (!Absent(p, "from"))
+            {
+                Guid view;
+                if (!AnyViewParam(c, m, Json{ { "view", p["from"] } }, view, error))
+                    return false;
+                const Graphics* own = m.ViewGraphics(view);
+                if (!own)
+                    return P.Fail(ViewTitle(m, view) + " isn't a plan, a section, an elevation or a 3D view; templates are made from those");
+                const Graphics r = own->Resolved(m);
+                t.graphics             = Graphics{};
+                t.graphics.categories  = r.categories;
+                t.graphics.filters     = r.filters;
+                t.graphics.phase       = r.phase;
+                t.graphics.phaseFilter = r.phaseFilter;
+                t.graphics.options     = r.options;
+                t.graphics.scale       = r.scale;
+                t.graphics.detail      = r.detail;
+                t.graphics.style       = r.style;
+                t.viewRange.reset();
+                if (m.PlanLevel(view))
+                    t.viewRange = m.ViewRangeOf(view);
+            }
+            if (const Json* v = Get(p, "controls"); v && !v->is_null())
+            {
+                if (!v->is_array())
+                    return P.Fail("`controls` is a list of what it controls: categories, filters, range, phase, options, scale, detail, style");
+                t.controls.clear();
+                for (const Json& x : *v)
+                {
+                    const auto g = x.is_string() ? GroupOf::Parse(x.get<std::string>()) : std::nullopt;
+                    if (!g)
+                        return P.Fail("`controls` is a list of what it controls: categories, filters, range, phase, options, scale, detail, style: unknown " +
+                                      Show(x));
+                    t.controls.insert(*g);
+                }
+            }
+            if (const Json* v = Get(p, "view_range"); v && !v->is_null())
+            {
+                if (!v->is_object())
+                    return P.Fail("`view_range` is {top?, cut?, bottom?, depth?} in mm, not " + Show(*v));
+                // 合并进它的范围：借一个平面视图读写
+                PlanView pv;
+                pv.viewRange = t.viewRange.value_or(ViewRange{});
+                Json now = ToJson(Element(pv));
+                Merge(now["view_range"], *v);
+                Element e;
+                std::string why;
+                if (!FromJson(now, e, why))
+                    return P.Fail("`view_range`: " + why);
+                t.viewRange = e.As<PlanView>()->viewRange;
+            }
+            if (!EditGraphics(c, m, p, t.graphics, true, error))
+                return false;
+            if (const Json* v = Get(p, "scale"); v)
+            {
+                if (!v->is_number() || !(v->get<double>() >= GraphicsOf::MinScale && v->get<double>() <= GraphicsOf::MaxScale))
+                    return P.Fail("`scale` is the n of 1 : n, from 1 to 100000, not " + Show(*v));
+                t.graphics.scale = v->get<double>();
+            }
+            if (const Json* v = Get(p, "detail"); v && !v->is_null())
+            {
+                const auto d = v->is_string() ? DetailOf::Parse(v->get<std::string>()) : std::nullopt;
+                if (!d)
+                    return P.Fail("`detail` is coarse, medium or fine, not " + Show(*v));
+                t.graphics.detail = *d;
+            }
+            if (const Json* v = Get(p, "visual_style"); v && !v->is_null())
+            {
+                const auto st = v->is_string() ? VisualStyleOf::Parse(v->get<std::string>()) : std::nullopt;
+                if (!st)
+                    return P.Fail("`visual_style` is shaded, hidden_line or wireframe, not " + Show(*v));
+                t.graphics.style = *st;
+            }
+            if (was != t)
+            {
+                std::string why;
+                if (!t.graphics.Check(m, why))
+                    return P.Fail(why);
+                s.ModelMut().viewTemplates[name] = t;
+            }
+            const Model& now = s.GetModel();
+            result = GraphicsReply(now, t.graphics);
+            result["name"] = name;
+            Json controls = Json::array(), views = Json::array();
+            for (const Group g : t.controls)
+                controls.push_back(GroupOf::Key(g));
+            result["controls"]   = std::move(controls);
+            result["view_range"] = t.viewRange ? ToJson(Element(PlanView{ {}, {}, *t.viewRange }))["view_range"] : Json(nullptr);
+            for (const auto& [id, e] : now.elements.Items())
+                if (e->As<Level>() || e->As<PlanView>() || e->As<View3D>() || e->As<Section>() || e->As<Elevation>())
+                    if (const Graphics* g = now.ViewGraphics(now.GuidOf(id)); g && g->templateName == name && !(e->As<PlanView>() && e->As<PlanView>()->parent))
+                        views.push_back(id);
+            result["views"] = std::move(views);
+            return true;
+        }
+
+        bool DuplicateViewCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "duplicate_view";
+            if (!Only(c, p, { "view", "level", "mode", "name" }, error))
+                return false;
+            const Model& m = s.GetModel();
+            Params P(c, p, error);
+            Guid view;
+            if (!AnyViewParam(c, m, p, view, error))
+                return false;
+            const auto level = m.PlanLevel(view);
+            if (!level)
+                return P.Fail(ViewTitle(m, view) + " isn't a plan: plans are duplicated, sections, elevations, schedules, sheets and the 3D view not yet");
+            std::optional<std::string> modeName, name;
+            if (!P.String("mode", modeName) || !P.String("name", name))
+                return false;
+            const std::string mode = modeName.value_or("duplicate");
+            if (mode != "duplicate" && mode != "detailing" && mode != "dependent")
+                return P.Fail("`mode` is duplicate, detailing or dependent, not `" + mode + "`");
+            const PlanView* from = m.GetPlanView(view);
+            const bool dependent = mode == "dependent";
+            if (dependent && from && from->parent)
+                return P.Fail(ViewTitle(m, view) + " is a dependent view, which has none of its own: make it of its parent");
+            if (!name)
+                name = m.FreeViewName(ViewTitle(m, view) + " " + LanguageOf::Word(m.language, dependent ? "Dependent" : "Copy"), true);
+            // 起初的设置：源视图画时用的，相关视图的是它父视图的
+            PlanView nv;
+            nv.level = *level;
+            nv.name  = *name;
+            nv.crop  = m.CropOf(view);
+            if (const Element* held = m.elements.Get(m.PlanSource(view)); held && !dependent)
+            {
+                if (const Level* l = held->As<Level>())
+                {
+                    nv.viewRange  = l->viewRange;
+                    nv.graphics   = l->graphics;
+                    nv.sectionBox = l->sectionBox;
+                }
+                else if (const PlanView* v = held->As<PlanView>())
+                {
+                    nv.viewRange  = v->viewRange;
+                    nv.graphics   = v->graphics;
+                    nv.sectionBox = v->sectionBox;
+                }
+            }
+            if (dependent)
+                nv.parent = view;
+            // 带细节复制时，源视图自己（不是它父视图）里的尺寸、标记、文字……复制进新视图
+            std::vector<Element> notes;
+            if (mode == "detailing")
+                for (const auto& [_, e] : m.elements.Items())
+                    if (const auto at = m.AnnotationPlan(*e); at && m.Same(*at, view))
+                        notes.push_back(*e);
+            Model& mm = s.ModelMut();
+            const Id id = mm.Insert(Element(std::move(nv)));
+            const Guid g = mm.GuidOf(id);
+            for (Element& e : notes)
+            {
+                if (Dimension* d = e.As<Dimension>())
+                    d->view = g;
+                else if (Tag* t = e.As<Tag>())
+                    t->view = g;
+                else if (Note* n = e.As<Note>())
+                    n->view = g;
+                else if (Spot* sp = e.As<Spot>())
+                    sp->view = g;
+                else if (DetailLine* l = e.As<DetailLine>())
+                    l->view = g;
+                else if (FilledRegion* r = e.As<FilledRegion>())
+                    r->view = g;
+                mm.Insert(std::move(e));
+            }
+            result = Json{ { "id", id }, { "name", *name }, { "level", *mm.elements.IdOf(*level) }, { "annotations", notes.size() } };
+            return true;
+        }
+
+        // ── 注释（移植自 BIMCraft 的注释选项卡，第 5d 步）─────────────
+
+        // 注释在的视图：view（标高或平面视图的名称、ID 或 GUID），没给时为 level 的平面（默认最低的标高）。
+        // MiniBIM 还没有剖面、立面与图纸
+        bool ViewParam(const char* c, const Model& m, const Json& p, Guid& out, std::string& error)
+        {
+            Guid level;
+            std::optional<Guid> view;
+            if (!PlanParam(c, m, p, Absent(p, "view") ? "level" : "view", level, view, error))
+                return false;
+            out = view.value_or(level);
+            return true;
+        }
+
+        bool DimensionCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "dimension";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            std::optional<Guid> plan;
+            P2 at;
+            std::optional<std::string> kindName;
+            if (!PlanParam(c, m, p, "level", level, plan, error) || !P.PointReq("at", at) || !P.String("kind", kindName))
+                return false;
+            DimKind kind = DimKind::Aligned;
+            if (kindName)
+            {
+                if (*kindName == "angular")
+                    kind = DimKind::Angular;
+                else if (*kindName == "radial")
+                    kind = DimKind::Radial;
+                else if (*kindName != "aligned")
+                    return P.Fail("`kind` is aligned, angular or radial, not `" + *kindName + "`");
+            }
+            const Json* given = Get(p, "refs");
+            if (!given || !given->is_array())
+                return P.Fail("`refs` [ref, …] is required");
+            if (given->size() > MaxPoints)
+                return P.Fail("`refs` has more than " + std::to_string(MaxPoints) + " references");
+            std::vector<Reference> refs;
+            for (const Json& v : *given)
+            {
+                const auto near = [&](P2 q, const char* what)
+                {
+                    return P.Fail(std::string("no ") + what + " at [" + Num(q.x) + ", " + Num(q.y) + "] on " + LevelName(m, level));
+                };
+                if (const auto q = PointOf(v))
+                {
+                    std::optional<Reference> r;
+                    if (kind == DimKind::Radial)
+                    {
+                        if (!(r = ArcNear(m, level, *q)))
+                            return near(*q, "round column's edge");
+                    }
+                    else
+                    {
+                        // 第一条之后：对齐的与它平行，角度的与它相交
+                        std::optional<Segment> first;
+                        Segment l;
+                        std::string why;
+                        if (!refs.empty() && m.ReferenceLine(refs.front(), l, why))
+                            first = l;
+                        const auto keep = [&](const Segment& x)
+                        {
+                            return !first || Geom::Parallel(first->first, first->second, x.first, x.second) == (kind == DimKind::Aligned);
+                        };
+                        if (!(r = ReferenceNear(m, level, *q, keep)))
+                            return near(*q, "wall face, wall centre line, wall end, door, window or grid line");
+                    }
+                    refs.push_back(*r);
+                    continue;
+                }
+                const std::string shape = Show(v) + " is not a reference {id, face?} or a point [x, y]";
+                if (!v.is_object())
+                    return P.Fail(shape);
+                for (auto it = v.begin(); it != v.end(); ++it)
+                    if (it.key() != "id" && it.key() != "face")
+                        return P.Fail(shape + ": unknown field `" + it.key() + "`");
+                Reference r;
+                std::string why;
+                if (!v.contains("id") || !FromJson(v["id"], r.id, why))
+                    return P.Fail(shape + ": `id` is required");
+                if (v.contains("face") && !v["face"].is_null())
+                {
+                    const auto f = v["face"].is_string() ? FaceOf::FromName(v["face"].get<std::string>()) : std::nullopt;
+                    if (!f)
+                        return P.Fail(shape + ": `face` is centre, left, right, start or end");
+                    r.face = *f;
+                }
+                refs.push_back(r);
+            }
+            Dimension d{ level, plan, kind, std::move(refs), at };
+            Json values = Json::array();
+            for (const double x : m.DimensionValues(d))
+                values.push_back(Hundredth(x));
+            const Id id = s.ModelMut().Insert(Element(std::move(d)));
+            result = Json{ { "id", id }, { "values", std::move(values) } };
+            return true;
+        }
+
+        bool TagCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "tag";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<P2> offset;
+            bool leader = false;
+            std::optional<std::string> label, category;
+            Guid level;
+            std::optional<Guid> plan;
+            if (!P.PointOpt("offset", offset) || !P.Flag("leader", leader) || !P.String("label", label) || !P.String("category", category) ||
+                !PlanParam(c, m, p, "level", level, plan, error))
+                return false;
+            if (label && Text::Trim(*label).empty())
+                label.reset();
+            std::vector<Id> hosts;
+            if (P.Absent("ids") && P.Absent("id"))
+            {
+                // 全部标记：这个平面上还没有标记的门窗，或 category 的
+                const std::optional<std::string> of = category ? std::optional<std::string>(NormalizeCategory(*category)) : std::nullopt;
+                std::set<Guid> tagged;
+                for (const auto& [_, e] : m.elements.Items())
+                    if (const Tag* t = e->As<Tag>(); t && m.AnnotationIn(*e, plan.value_or(level)))
+                        tagged.insert(m.GuidOf(t->host));
+                for (const auto& [id, e] : m.elements.Items())
+                {
+                    const bool wanted = of ? e->Category() == *of : e->AsOpening() != nullptr;
+                    if (wanted && !tagged.count(m.GuidOf(id)) && m.LevelOf(*e) == std::optional<Guid>(level))
+                        hosts.push_back(id);
+                }
+                if (hosts.empty())
+                    return P.Fail("nothing to tag: " + LevelName(m, level) + " has no " + of.value_or("door and window") + " without a tag");
+            }
+            else if (!IdsParam(c, m, p, hosts, error))
+                return false;
+            std::vector<Tag> tags;
+            for (const Id h : hosts)
+            {
+                const Guid g = m.GuidOf(h);
+                tags.push_back(Tag{ g, plan, offset.value_or(m.TagOffset(g)), leader, label });
+            }
+            Model& mm = s.ModelMut();
+            Json ids = Json::array();
+            for (Tag& t : tags)
+                ids.push_back(mm.Insert(Element(std::move(t))));
+            result = Json{ { "ids", std::move(ids) } };
+            return true;
+        }
+
+        // 文字注释的 runs：[{from, to, bold?, italic?, underline?}, …]
+        bool RunsParam(Params& P, const Json& p, std::vector<TextRun>& out)
+        {
+            out.clear();
+            const Json* v = Get(p, "runs");
+            if (!v || v->is_null())
+                return true;
+            const std::string shape = "`runs` is [{from, to, bold?, italic?, underline?}, …], counted in characters";
+            if (!v->is_array() || v->size() > TextTypes::MaxRuns)
+                return P.Fail(shape);
+            for (const Json& r : *v)
+            {
+                if (!r.is_object())
+                    return P.Fail(shape);
+                TextRun run;
+                for (auto it = r.begin(); it != r.end(); ++it)
+                {
+                    const std::string& k = it.key();
+                    if (k == "from" || k == "to")
+                    {
+                        const auto n = AsWhole(*it);
+                        if (!n || *n > 1000000)
+                            return P.Fail(shape);
+                        (k == "from" ? run.from : run.to) = static_cast<size_t>(*n);
+                    }
+                    else if (k == "bold" || k == "italic" || k == "underline")
+                    {
+                        if (it->is_null())
+                            continue;
+                        if (!it->is_boolean())
+                            return P.Fail("`runs`: `" + k + "` is true or false");
+                        (k == "bold" ? run.bold : k == "italic" ? run.italic : run.underline) = it->get<bool>();
+                    }
+                    else
+                        return P.Fail("`runs`: unknown field `" + k + "`");
+                }
+                if (!r.contains("from") || !r.contains("to"))
+                    return P.Fail(shape);
+                out.push_back(run);
+            }
+            return true;
+        }
+
+        bool TextCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "text";
+            if (!Absent(p, "size"))
+                return Fail(error, c, "a note's size is its text type's: give `type` (`text_type` lists them, and makes one of a size)");
+            if (!Only(c, p, { "text", "at", "view", "level", "type", "angle", "leader", "override_format", "runs" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            const Json* t = Get(p, "text");
+            if (!t || t->is_null())
+                return P.Fail("`text` is required");
+            if (!t->is_string() || Text::CharCount(t->get_ref<const std::string&>()) > TextTypes::MaxNote)
+                return P.Fail("`text` must be text of at most " + std::to_string(TextTypes::MaxNote) + " characters, got " + Show(*t));
+            Note n;
+            n.text = t->get<std::string>();
+            std::optional<std::string> type;
+            std::optional<double> angle;
+            if (!P.PointReq("at", n.at) || !ViewParam(c, m, p, n.view, error) || !P.String("type", type) || !P.Num("angle", angle) ||
+                !P.PointOpt("leader", n.leader) || !P.Flag("override_format", n.overrideFormat) || !RunsParam(P, p, n.runs))
+                return false;
+            if (type)
+                n.typeName = std::string(Text::Trim(*type));
+            else if (const std::string* d = TextTypes::Default(m.textTypes))
+                n.typeName = *d;
+            else
+                return P.Fail("the project has no text type; make one first");
+            n.angle = angle.value_or(0.0);
+            const Id id = s.ModelMut().Insert(Element(std::move(n)));
+            result = Json{ { "id", id } };
+            return true;
+        }
+
+        bool TextTypeCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "text_type";
+            if (!Only(c, p, { "name", "like", "rename", "delete", "font", "size", "bold", "italic", "underline", "width_factor", "color", "border",
+                              "border_offset", "border_pen" },
+                      error))
+                return false;
+            Params P(c, p, error);
+            std::optional<std::string> given, like, font, rename;
+            if (!P.String("name", given) || !P.String("like", like) || !P.String("font", font) || !P.String("rename", rename))
+                return false;
+            if (!given || Text::Trim(*given).empty())
+            {
+                Json types = Json::object();
+                for (const auto& [n, t] : s.GetModel().textTypes)
+                    types[n] = ToJson(t);
+                result = Json{ { "types", std::move(types) } };
+                return true;
+            }
+            const std::string name(Text::Trim(*given));
+            const Kind kind = Kind::Of(Kind::Tag::TextType);
+            bool del = false;
+            if (!P.Flag("delete", del))
+                return false;
+            if (del)
+            {
+                const Model& m0 = s.GetModel();
+                if (!m0.textTypes.count(name))
+                    return P.Fail("there's no text type `" + name + "`");
+                for (const auto& [id, e] : m0.elements.Items())
+                    if (const Note* n = e->As<Note>(); n && n->typeName == name)
+                        return P.Fail("note " + std::to_string(id) + " is of `" + name + "`; give it another type first");
+                s.ModelMut().textTypes.erase(name);
+                result = Json{ { "deleted", name } };
+                return true;
+            }
+            const Model& m0 = s.GetModel();
+            TextType t;
+            if (const auto it = m0.textTypes.find(name); it != m0.textTypes.end())
+                t = it->second;
+            else if (like)
+            {
+                const auto from = m0.textTypes.find(std::string(Text::Trim(*like)));
+                if (from == m0.textTypes.end())
+                    return P.Fail("there's no text type `" + *like + "` to start from");
+                t = from->second;
+            }
+            // 字体名记着（MiniBIM 只有一种单线字，都用它画）
+            if (font)
+            {
+                const std::string f(Text::Trim(*font));
+                if (f.empty())
+                    return P.Fail("`font` needs a font's name");
+                t.font = f;
+            }
+            for (const auto& [key, slot] : { std::pair{ "size", &t.size }, std::pair{ "width_factor", &t.widthFactor }, std::pair{ "border_offset", &t.borderOffset } })
+            {
+                std::optional<double> x;
+                if (!P.Num(key, x))
+                    return false;
+                if (x)
+                    *slot = *x;
+            }
+            for (const auto& [key, slot] : { std::pair{ "bold", &t.bold }, std::pair{ "italic", &t.italic }, std::pair{ "underline", &t.underline },
+                                             std::pair{ "border", &t.border } })
+                if (!P.Absent(key) && !P.Flag(key, *slot))
+                    return false;
+            if (!P.Absent("color"))
+            {
+                const auto col = Colour(*Get(p, "color"));
+                if (!col)
+                    return P.Fail("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not " + Show(*Get(p, "color")));
+                t.color = *col;
+            }
+            if (!P.Absent("border_pen"))
+            {
+                const auto pen = AsWhole(*Get(p, "border_pen"));
+                if (!pen || *pen > 16)
+                    return P.Fail("`border_pen` is a pen, 0 to 16, not " + Show(*Get(p, "border_pen")));
+                t.borderPen = static_cast<uint8_t>(*pen);
+            }
+            std::string now = name;
+            if (rename)
+            {
+                const std::string to(Text::Trim(*rename));
+                if (to.empty())
+                    return P.Fail("`rename` needs a name");
+                if (to != name && m0.textTypes.count(to))
+                    return P.Fail("there's already a text type `" + to + "`");
+                now = to;
+            }
+            if (!t.Check("text type `" + now + "`", error))
+            {
+                error = Bad(c, error);
+                return false;
+            }
+            if (now != name || m0.textTypes.find(name) == m0.textTypes.end() || !(m0.textTypes.at(name) == t))
+            {
+                Model& m = s.ModelMut();
+                if (now != name && m.textTypes.count(name))
+                {
+                    m.textTypes.erase(name);
+                    m.library.Renamed(kind, name, now);
+                    std::vector<Id> notes;
+                    for (const auto& [id, e] : m.elements.Items())
+                        if (const Note* n = e->As<Note>(); n && n->typeName == name)
+                            notes.push_back(id);
+                    for (const Id id : notes)
+                        m.elements.GetMut(id)->As<Note>()->typeName = now;
+                }
+                m.textTypes[now] = t;
+            }
+            result = Json{ { "name", now }, { "type", ToJson(t) } };
+            return true;
+        }
+
+        bool SpotCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "spot";
+            if (!Only(c, p, { "at", "view", "level", "host" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Spot sp;
+            if (!P.PointReq("at", sp.at) || !ViewParam(c, m, p, sp.view, error) || !P.IdOpt("host", sp.host))
+                return false;
+            if (!sp.host)
+            {
+                const auto h = m.SpotHost(sp.view, sp.at);
+                if (!h)
+                    return P.Fail("nothing to read at [" + Num(sp.at.x) + ", " + Num(sp.at.y) + "] on " + LevelName(m, sp.view) +
+                                  "; place it on a floor, a roof, a stair, a wall or a column");
+                sp.host = m.GuidOf(*h);
+            }
+            const auto elevation = m.SpotValue(sp);
+            const auto host = m.elements.IdOf(*sp.host);
+            const Id id = s.ModelMut().Insert(Element(std::move(sp)));
+            result = Json{ { "id", id }, { "elevation", elevation ? Json(Hundredth(*elevation)) : Json() }, { "host", host ? Json(*host) : Json() } };
+            return true;
+        }
+
+        // 点到微米、圆弧的转角到十亿分之一度：本来就整的（三下点出的四分之一圆是 90，不是 90.00000000000001）
+        Curve Rounded(Curve cv)
+        {
+            for (P2& q : cv.points)
+                q = Micron(q);
+            for (double& a : cv.arcs)
+                a = std::round(a * 1e9) / 1e9 + 0.0;
+            if (std::all_of(cv.arcs.begin(), cv.arcs.end(), [](double a) { return a == 0.0; }))
+                cv.arcs.clear();
+            cv.centre = Micron(cv.centre);
+            return cv;
+        }
+
+        bool DetailLineCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "detail_line";
+            if (!Only(c, p, { "view", "level", "style", "insulation", "centre_mark", "cloud", "revision", "start", "end", "through", "arc", "points", "arcs",
+                              "closed", "centre", "radius", "radii", "angle", "span", "control", "knots", "fit", "start_tangent", "end_tangent" },
+                      error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid view;
+            std::optional<std::string> style;
+            if (!ViewParam(c, m, p, view, error) || !P.String("style", style))
+                return false;
+            if (style)
+                style = std::string(Text::Trim(*style));
+            else if (const std::string* d = Lines::DefaultStyle(m.lineStyles, m.language))
+                style = *d;
+            else
+                return P.Fail("the project has no line style; make one first");
+            // 读法与文件里的详图线相同
+            Json v = p;
+            v.erase("level");
+            v["category"] = "line";
+            v["view"]     = ToJson(view);
+            v["style"]    = *style;
+            Element e;
+            std::string why;
+            if (!FromJson(v, e, why))
+            {
+                if (Text::StartsWith(why, "element: "))
+                    why.erase(0, 9);
+                return P.Fail(why);
+            }
+            DetailLine& l = *e.As<DetailLine>();
+            if (!l.curve.Check("the line", why))
+                return P.Fail(why);
+            l.curve = Rounded(l.curve);
+            if (!l.curve.Check("the line", why))
+                return P.Fail(why);
+            const Id id = s.ModelMut().Insert(std::move(e));
+            result = Json{ { "id", id } };
+            return true;
+        }
+
+        bool FilledRegionCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "filled_region";
+            if (!Only(c, p, { "sketch", "view", "level", "type", "line_style" }, error))
+                return false;
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<std::vector<SketchLine>> lines;
+            if (!SketchParam(P, p, "sketch", {}, lines, true))
+                return false;
+            if (!lines)
+                return P.Fail("`sketch`, its outlines' lines, is required");
+            Sketch::Profile profile;
+            std::vector<Sketch::Problem> problems;
+            if (!Sketch::Solve(*lines, profile, problems))
+                return P.Fail("the sketch doesn't close into loops: " + Sketch::Say(problems, Sketch::Namer(*lines)));
+            FilledRegion r;
+            std::optional<std::string> type;
+            if (!ViewParam(c, m, p, r.view, error) || !P.String("type", type))
+                return false;
+            // 实心黑色，项目语言里的或英文的，否则第一个
+            if (type)
+                r.typeName = std::string(Text::Trim(*type));
+            else if (const std::string* d = Fills::DefaultRegionType(m.regionTypes, m.language))
+                r.typeName = *d;
+            else
+                return P.Fail("the project has no filled region type; make one first");
+            // 没说时为细线；null（或 Invisible）不画
+            const Json* ls = Get(p, "line_style");
+            if (!ls)
+            {
+                if (const std::string* d = Lines::DefaultStyle(m.lineStyles, m.language))
+                    r.lineStyle = *d;
+            }
+            else if (ls->is_string())
+            {
+                const std::string n(Text::Trim(ls->get<std::string>()));
+                if (Text::AsciiLower(n) != "invisible")
+                    r.lineStyle = n;
+            }
+            else if (!ls->is_null())
+                return P.Fail("`line_style` is a line style's name, or null for invisible lines, not " + Show(*ls));
+            r.sketch = std::move(*lines);
+            const Id id = s.ModelMut().Insert(Element(std::move(r)));
+            result = Json{ { "id", id }, { "area_m2", M2(profile.Area()) } };
+            return true;
+        }
+
+        bool MeasureCmd(Session&, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "measure";
+            Params P(c, p, error);
+            P2 a, b;
+            if (!P.PointReq("from", a) || !P.PointReq("to", b))
+                return false;
+            const Snap::Ruler r = Snap::Measure(a, b);
+            const auto to = [](double x, double k) { return std::round(x * k) / k + 0.0; };
+            result = Json{ { "length", to(r.length, 100.0) }, { "dx", to(r.dx, 100.0) }, { "dy", to(r.dy, 100.0) }, { "angle", to(r.angle, 1e4) } };
+            return true;
+        }
+
+        // ── 查询与设置 ───────────────────────────────────────────
+        bool UnitsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "units";
+            Params P(c, p, error);
+            std::optional<std::string> name;
+            if (!P.String("length", name))
+                return false;
+            if (name)
+            {
+                const auto u = UnitsOf::FromName(*name);
+                if (!u)
+                    return P.Fail("`length` is mm, cm, m, in, ft or ft-in, not `" + *name + "`");
+                if (*u != s.GetModel().units)
+                    s.ModelMut().units = *u;
+            }
+            result = Json{ { "length", UnitsOf::Name(s.GetModel().units) } };
+            return true;
+        }
+
+        bool RoomAreaCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "room_area";
+            Params P(c, p, error);
+            if (p.is_object())
+                for (auto it = p.begin(); it != p.end(); ++it)
+                    if (it.key() != "at")
+                        return P.Fail("`" + it.key() + "` isn't one of its parameters: at");
+            if (p.is_object() && p.contains("at") && !p["at"].is_null() && !p["at"].is_string())
+                return P.Fail("`at` is centre or finish");
+            std::optional<std::string> name;
+            if (!P.String("at", name))
+                return false;
+            const auto nameOf = [](RoomArea a) { return a == RoomArea::Centre ? "centre" : "finish"; };
+            if (name)
+            {
+                std::optional<RoomArea> at;
+                if (*name == "centre")
+                    at = RoomArea::Centre;
+                else if (*name == "finish")
+                    at = RoomArea::Finish;
+                else
+                    return P.Fail("`at` is centre or finish, not `" + *name + "`");
+                if (*at != s.GetModel().roomArea)
+                    s.ModelMut().roomArea = *at;
+            }
+            result = Json{ { "at", nameOf(s.GetModel().roomArea) } };
+            return true;
+        }
+
+        Json ValuesJson(const Fam::Values& values)
+        {
+            Json out = Json::object();
+            for (const auto& [k, x] : values)
+            {
+                if (const double* d = std::get_if<double>(&x))
+                    out[k] = *d;
+                else
+                    out[k] = std::get<std::string>(x);
+            }
+            return out;
+        }
+
+        // 族：各自的类别、类型与参数名
+        Json FamiliesJson(const Model& m)
+        {
+            Json all = Json::object();
+            for (const auto& [n, f] : m.families)
+            {
+                Json types = Json::array(), params = Json::array();
+                for (const auto& [t, _] : f.types)
+                    types.push_back(t);
+                for (const Fam::Parameter& q : f.parameters)
+                    params.push_back(q.name);
+                all[n] = Json{ { "category", Fam::CategoryOf::Name(f.category) }, { "types", types }, { "parameters", params } };
+            }
+            return all;
+        }
+
+        // 项目参数：{名称: {kind, categories}}
+        Json ParametersJson(const Model& m)
+        {
+            Json out = Json::object();
+            for (const auto& [n, p] : m.parameters)
+                out[n] = Json{ { "kind", ParameterKindOf::Name(p.kind) }, { "categories", p.categories } };
+            return out;
+        }
+
+        bool Inspect(Session& s, const Json&, Json& result, std::string&)
+        {
+            const Model& m = s.GetModel();
+            std::map<std::string, uint64_t> counts;
+            for (const auto& [_, e] : m.elements.Items())
+                ++counts[e->Category()];
+            Json levels = Json::array();
+            for (const auto& [id, l] : m.Levels())
+                levels.push_back(Json{ { "id", id }, { "name", l->name }, { "elevation", l->elevation } });
+            Json countsJson = Json::object();
+            for (const auto& [k, n] : counts)
+                countsJson[k] = n;
+            result = Json{ { "name", m.name },
+                           { "units", "mm" },
+                           { "project_units", UnitsOf::Name(m.units) },
+                           { "room_area", m.roomArea == RoomArea::Finish ? "finish" : "centre" },
+                           { "language", LanguageOf::Code(m.language) },
+                           { "path", s.Path() ? Json(*s.Path()) : Json(nullptr) },
+                           { "levels", levels },
+                           { "counts", countsJson },
+                           { "types", Bim::ToJson(m.types) },
+                           { "materials", Bim::ToJson(m.materials) },
+                           { "families", FamiliesJson(m) },
+                           { "parameters", ParametersJson(m) },
+                           { "warnings", Json::array() },
+                           { "history", s.History() } };
+            return true;
+        }
+
+        bool ElementsCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "elements";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            std::optional<std::string> category;
+            if (!P.String("category", category))
+                return false;
+            const std::optional<std::string> cat = category ? std::optional<std::string>(NormalizeCategory(*category)) : std::nullopt;
+            std::optional<Guid> level;
+            if (!P.Absent("level"))
+            {
+                Guid g;
+                if (!LevelParam(c, m, p, "level", g, error))
+                    return false;
+                level = g;
+            }
+            size_t limit = 500, offset = 0;
+            if (!P.Count("limit", 500, limit) || !P.Count("offset", 0, offset))
+                return false;
+            std::vector<Id> hits;
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                if (cat && e->Category() != *cat)
+                    continue;
+                if (level && m.LevelOf(*e) != level)
+                    continue;
+                hits.push_back(id);
+            }
+            Json page = Json::array();
+            for (size_t i = offset; i < hits.size() && page.size() < limit; ++i)
+                page.push_back(ElementJson(m, hits[i]));
+            result = Json{ { "count", hits.size() }, { "returned", page.size() }, { "elements", page } };
+            return true;
+        }
+    }
+
+    // ── 命令表 ───────────────────────────────────────────────────
+    const std::vector<Command>& Commands()
+    {
+        // edit：可撤销；other：不算撤销步骤（只读，或换掉整个项目）
+        static const std::vector<Command> all = {
+            { "new", N_("New"), {}, "{name?, language?: en|pt|es} an empty project with Level 1 (0) and Level 2 (3000), named in its language", New, false },
+            { "open", N_("Open"), {}, "{path} a .minibim (or BIMCraft .bimcraft) project; what this version doesn't know of it is left out, listed in `left_out`; its links that can't be read are listed in `links_not_loaded` ({name, error}). An .ifc (IFC2x3 or IFC4) comes in as a new project: what MiniBIM has no element for, or what breaks a rule, is listed in `skipped`", Open, false },
+            { "autosave", N_("Autosave"), {}, "{path} atomically write a recovery snapshot, keeping the project path and undo history", AutosaveCmd, false },
+            { "recover", N_("Recover"), {}, "{path, project?} open and validate a recovery snapshot; Save targets `project`, or asks for Save As without it", Recover, false },
+            { "insert", N_("Insert from File"), {}, "{path, ids?: [id, …]} elements of another project (.minibim, .bimcraft or .ifc) brought into this one: those `ids` names (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is this project's of the same name, where it has one). Each keeps its id unless this project has that id, and its GUID unless this project has that GUID: then it's a copy, with a GUID of its own (the same file inserted into itself is copied whole). What they point at among themselves follows them. A name or a number taken here gets ` 2`, ` 3`…; types, families, materials and parameters this project hasn't come by name, and so do the line styles, fill patterns and filled region types a detail line or a filled region uses. Returns `ids` {there: here}, `copies`, `library`, `left_out`", InsertFrom, true },
+            { "link", N_("Link Model"), { "LK" }, "{path, name?, at?: [x, y], angle?: degrees} another project (.minibim, .bimcraft or .ifc) shown in this one as a reference that can't be edited: its walls, floors, roofs, columns, stairs and the rest of what it builds are drawn in the plans, sections and 3D views, halftone; nothing of it is selected, scheduled, checked or exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`", LinkModel, true },
+            { "reload", N_("Reload Links"), {}, "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` (the names) and `failed` ({name, error})", Reload, false },
+            { "point_cloud", N_("Point Cloud"), {}, "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?} brings in a laser scan (`path`: PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` where its file's coordinates put it; `offset` raises its middle over the level, `angle` turns it. Returns its id, the scan's name, the points kept and read, and where its middle was in the file", PointCloudCmd, true },
+            { "import_cad", N_("Import CAD"), {}, "{path | cad, name?, level?, view?, at?: [x, y], position?, units?, scale?, angle?, layers?, colors?, link?} brings in a DXF drawing (`path`: an ASCII DXF of any version; save a DWG as DXF first) or places one the project holds again (`cad`, its name), as an element in every plan of `level`, or with `view` (a plan) in that view only. `units` of the drawing: auto (the default: what its file says, else mm), mm, cm, m, in or ft; or `scale`, mm to each of its units. `position`: center (the default: the middle of the drawing on `at`, the origin unless given) or origin (its origin on `at`); `angle` turns it about `at`, degrees. `layers`: visible (the default: those its file has on and thawed), all, or a list of those to show. `colors`: preserve (the default), invert or black. `link: true` remembers the file, so `reload_cad` and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents in the model, how many entities lie far from the rest (they're left out of its extents) and what was left out", ImportCad, true },
+            { "cad_layers", N_("CAD Layers"), {}, "{id, hide?: [layer, …], show?: [layer, …], view?} a CAD import's layers, each with its colour and linetype and whether it's shown; `hide` and `show` change which it shows in every view, or with `view` in that view only (its Visibility/Graphics, by the drawing's name)", CadLayers, true },
+            { "reload_cad", N_("Reload CAD"), {}, "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project does too). Returns whether it changed", ReloadCad, true },
+            { "cad_query", N_("Query"), {}, "{id, at: [x, y], reach?} what of a CAD import lies nearest `at`, within `reach` mm (100 unless given): its kind, layer, colour, linetype and weight, as Revit's Query", CadQuery, false },
+            { "save", N_("Save"), {}, "{path?} saves the project (Save As with a path) as .minibim; the format is BIMCraft's, which opens it too. A path ending .ifc exports IFC4 and leaves the project's own path as it was", Save, false },
+            { "undo", N_("Undo"), {}, "{count?} takes back the last `count` steps (1 by default)", Undo, false },
+            { "redo", N_("Redo"), {}, "{count?} does again the last `count` steps undone (1 by default)", Redo, false },
+            { "level", N_("Level"), { "LL" },
+              "{elevation, name?, extent?: [[x,y],[x,y]]} a level at an elevation in mm; `extent`, the rectangle in plan its plane stretches over "
+              "(south-west corner, then north-east)", LevelCmd, true },
+            { "grid", N_("Grid"), { "GR" }, "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", GridCmd, true },
+            { "wall", N_("Wall"), { "WA" },
+              "{points: [[x,y],…], closed?, type?, level?, top_level?, height?, base_offset?, arc?, location?, attach_top?, attach_base?} one wall "
+              "per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up to `top_level`. `arc`: degrees "
+              "each turns from its start to its end, counter-clockwise. `location`: centre (the default), core-centre, exterior-finish, "
+              "interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls drawn "
+              "clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands on", WallCmd, true },
+            { "door", N_("Door"), { "DR" },
+              "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, or in `wall` "
+              "centred `offset` mm from its start; of the project's door `type`, or of a door `family` and its `type`", DoorCmd, true },
+            { "window", N_("Window"), { "WN" },
+              "{at: [x,y] | wall: id, offset?, sill?, type?, level?, mark?, flip_facing?} like door; `sill` defaults to the type's", WindowCmd, true },
+            { "floor", N_("Floor"), {},
+              "{boundary?: [[x,y],…], openings?: [[[x,y],…],…], level?, type?, offset?, slope?, arrow?: [[x,y],[x,y]], structural?} a slab, its top "
+              "at the level, or `offset` mm above it, open through `openings`; no boundary = the outline of the level's walls along their centre "
+              "lines, open over each loop of them standing free inside (a courtyard). Sloped: its top rises `slope` degrees along the slope "
+              "arrow, from its tail toward its head", FloorCmd, true },
+            { "ceiling", N_("Ceiling"), {},
+              "{point: [x,y] | boundary: [[x,y],…], openings?: [[[x,y],…],…], level?, type?, offset?} a ceiling, its underside `offset` mm "
+              "(2600) above the level, open through `openings` (holes inside it, apart): in the room around `point`, out to its walls' faces "
+              "and round the walls standing inside it, or along `boundary`", CeilingCmd, true },
+            { "room", N_("Room"), { "RM" }, "{point: [x,y], level?, name?, number?} bounded by the walls and the room separation lines around the point",
+              RoomCmd, true },
+            { "room_separator", N_("Room Separator"), {},
+              "{points: [[x,y],…], level?, closed?} room separation lines along `points`, one per segment (`closed` joins the last to the "
+              "first): they bound rooms as walls do, to split an open space (a living room and its corridor) into rooms, and are nothing "
+              "else, with no solid, no cut and no area. Returns their ids", RoomSeparatorCmd, true },
+            { "column", N_("Column"), { "CL" },
+              "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column, its width along `angle` degrees; up to "
+              "the next level, or `height` mm tall, or up to `top_level`", ColumnCmd, true },
+            { "structural_column", N_("Structural Column"), { "CL" },
+              "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column of the structure, as `column` makes one but "
+              "in its own category with its own types (`type` with category structural column): up to the next level, or `height` mm "
+              "tall, or up to `top_level`. CL is `column`'s too; on the desktop's Structure tab it is this one", StructuralColumnCmd, true },
+            { "footing", N_("Isolated Footing"), { "FI" },
+              "{at: [x,y], type?, thickness?, offset?, angle?, level?} an isolated (pad) footing, its plan the type's (category "
+              "footing), `thickness` mm thick (400) with its top `offset` mm over the level (0: at it), so it hangs below", FootingCmd, true },
+            { "beam", N_("Beam"), { "BM" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a beam for each "
+              "segment of the points: its section the type's (category beam: `width` across, `depth` deep, or round), its `justify` "
+              "line (top by default) `offset` mm over the level at its start (0: at the level, so it hangs below) and `end_offset` at "
+              "its end (the same: level), for a single segment; `system` names the system it belongs to. It slopes up to 75°", BeamCmd, true },
+            { "strip_footing", N_("Wall Footing"), { "FW" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, system?} a continuous footing under a wall for each segment of the "
+              "points, its section the type's (category stripfooting), its top `offset` mm over the level (0: at it)", StripFootingCmd, true },
+            { "pipe", N_("Pipe"), { "PI" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a pipe for each "
+              "segment of the points: its section the type's (category pipe: round, `width` the outside diameter), its `justify` line "
+              "(centre by default) `offset` mm over the level at its start (0: at the level) and `end_offset` at its end (the same: level), "
+              "for a single segment, so a drain falls and a riser rises; the same point twice and two heights make one stand upright. "
+              "`system` names the system it belongs to (\"Água fria\", \"Esgoto\")", PipeCmd, true },
+            { "conduit", N_("Conduit"), { "CN" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a conduit (eletroduto) "
+              "for each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit", ConduitCmd, true },
+            { "cable_tray", N_("Cable Tray"), { "CT" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a cable tray (eletrocalha) "
+              "for each segment of the points, as `pipe` lays them: its section the type's `width` across by `depth` deep", CableTrayCmd, true },
+            { "wire", N_("Wire"), { "EW" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a wire (condutor) for "
+              "each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit", WireCmd, true },
+            { "down_conductor", N_("Down Conductor"), { "DC" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a down conductor "
+              "(condutor de descida, NBR 5419) for each segment of the points, as `pipe` lays them: round, or a flat strip; the same point "
+              "twice and two heights make one stand upright down a wall; `system` names the protection system it belongs to", DownConductorCmd, true },
+            { "ground_conductor", N_("Earthing Conductor"), { "GC" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} an earthing conductor "
+              "(condutor de aterramento, the ring or mesh of NBR 5419) for each segment of the points, as `pipe` lays them, usually under "
+              "the level (a negative `offset`)", GroundConductorCmd, true },
+            { "cabling", N_("Cabling"), { "CB" },
+              "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} structured cabling "
+              "(cabeamento estruturado, NBR 14565) for each segment of the points, as `pipe` lays them: round, `width` the cable's outside "
+              "diameter; `system` names the link or the network it belongs to", CablingCmd, true },
+
+            { "mass", N_("Mass"), { "MS" },
+              "{level?, boundary: [[x,y],…], top?: [[x,y],…] | lean?: [dx,dy], top_level?, height?, base_offset?, name?} a conceptual "
+              "mass: the footprint `boundary` on `level`, `base_offset` mm above it, rising to `top_level` or `height` mm (by default to the "
+              "level above, or 3000). `top`, a ring with as many points, lofts it to that outline at the top; `lean` moves the top sideways",
+              MassCmd, true },
+            { "mass_floors", N_("Mass Floors"), { "MF" },
+              "{mass?, type?, prune?} a floor on each level the mass (or every mass) crosses, along its outline there; run again it updates "
+              "them, and reports the floors on levels it no longer crosses as `stale` (`prune` deletes them)", MassFloorsCmd, true },
+            { "wall_by_face", N_("Wall by Face"), { "WB" },
+              "{mass, faces?: [edge, …], type?, location?} walls on the mass's upright faces (edge i of its footprint runs from point i to "
+              "the next; by default every plumb one), their outside on the face, as high as the mass", WallByFaceCmd, true },
+            { "floor_by_face", N_("Floor by Face"), { "FB" }, "{mass, type?} a floor on the mass's top face", FloorByFaceCmd, true },
+            { "roof_by_face", N_("Roof by Face"), { "RB" }, "{mass, type?, slope?, overhang?} a roof on the mass's top face, flat by default",
+              RoofByFaceCmd, true },
+            { "update_by_face", N_("Update to Face"), { "UF" },
+              "{mass? | ids?} rebuilds the walls, floors and roofs made by face (of the mass, or `ids`, or all) to the mass as it is now",
+              UpdateByFaceCmd, true },
+            { "dimension", N_("Aligned Dimension"), { "DI" },
+              "{refs: [ref, …], at: [x, y], level?, kind?: aligned|angular|radial} aligned (the default): the distances between parallel references, "
+              "along a line through `at`; angular: the angle between two references that meet, on the side of `at`; radial: a round column's radius, "
+              "toward `at`. A ref is {id, face?}: a wall's centre (the default), left or right face (of its start-to-end direction), start or end; a "
+              "door's or window's centre, or its jamb toward its wall's start or end; a grid's line; a straight detail line, or its start or end "
+              "(radial: a circle or an arc of one). Or a point [x, y] on one of those (for radial, on a round column's edge). It follows what it measures",
+              DimensionCmd, true },
+            { "text", N_("Text"), { "TX" },
+              "{text, at: [x, y], view?, type?, angle?, leader?: [x, y], override_format?, runs?: [{from, to, bold?, italic?, underline?}, …]} a text "
+              "note, its first line's top left at `at`, in a level's plan (`view`, the lowest by default). Lettered as its text `type` says (2.5mm unless "
+              "told; `text_type` lists and makes them), turned `angle` degrees counter-clockwise; with `leader`, a line to that point. Lines break at \\n. "
+              "With `override_format`, each run makes characters `from` up to `to` bold, italic or underlined (true), or not (false)",
+              TextCmd, true },
+            { "text_type", N_("Text Types"), {},
+              "{name?, font?, size?, bold?, italic?, underline?, width_factor?, color?, border?, border_offset?, border_pen?, like?, rename?, delete?: true} "
+              "a text type of the project's: its font's name (kept; MiniBIM letters every note in its single-stroke font), its capitals' height on paper "
+              "(`size`, mm, 2.5 for a new one), bold, italic, underlined, `width_factor`, colour, and a border `border_offset` mm out in pen `border_pen`. "
+              "A new one starts as `like` says, or as 2.5mm Arial. `rename` renames it, its notes following; `delete` takes it away while no note is of "
+              "it. Without `name`, it lists every type",
+              TextTypeCmd, true },
+            { "spot", N_("Spot Elevation"), { "EL" },
+              "{at: [x, y], view?, host?} a spot elevation in a level's plan (the lowest by default): the height of the top of what stands on the level "
+              "at `at` (or of `host`), following it",
+              SpotCmd, true },
+            { "tag", N_("Tag by Category"), { "TG" },
+              "{ids?: [id,…], label?, level?, category?, offset?: [dx, dy], leader?} tags elements with a field of theirs: a door's or window's mark, a "
+              "room's name, else the type, or `label`, another field of its category's. `offset` mm from the point it names (beside the wall for a door "
+              "or window, else up and right); without ids, every door and window on the level not tagged yet, or of `category`",
+              TagCmd, true },
+            { "detail_line", N_("Detail Line"), { "DL" },
+              "{view?, style?, and a curve: `points` [[x, y], …] (with `arcs`, each segment's turn in degrees, and `closed`), `start` and `end` (with "
+              "`arc` degrees or a `through` point), or `centre` and `radius` (a circle)} a detail line in a level's plan (the lowest by default), drawn "
+              "in line style `style` (Thin Lines unless told), only there; `insulation` (a width), `cloud` (an arc length) and `revision` are kept; "
+              "with `centre_mark` true, a small cross marks the centre of its arcs or circle",
+              DetailLineCmd, true },
+            { "filled_region", N_("Filled Region"), { "FR" },
+              "{sketch: [[[x,y],[x,y]],…], view?, type?, line_style?: name | null} a filled region in a level's plan (the lowest by default): the loops "
+              "its sketch closes into (a loop inside one a hole, one inside that an island), filled as type `type` (Solid Black unless told) says, its "
+              "boundary in line style `line_style` (Thin Lines unless told; null, unseen). A sketch line may have its own `style`, or be `invisible`. "
+              "It draws over the model, under the annotation; edit its sketch with edit_boundary",
+              FilledRegionCmd, true },
+            { "measure", N_("Measure"), { "ME" },
+              "{from: [x, y], to: [x, y]} what a ruler laid between two points reads (mm): its `length`, its parts `dx` and `dy`, and its `angle` in "
+              "degrees from east, counter-clockwise; it changes nothing",
+              MeasureCmd, false },
+            { "graphics", N_("Visibility/Graphics"), { "VV", "VG" },
+              "{view?: a level's or plan view's name or id, or {3D} (the lowest level's plan unless given), hide?: [category, …], show?: […], "
+              "hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: {id: override | null, …}, "
+              "reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with none of those, the view's "
+              "settings as they are. A category hidden (walls, floors, rooms, grids, dimensions…, in any case, singular or plural) leaves all its "
+              "elements out of that view, and `hide_elements` the elements given. An override is {hidden?, projection?: style, cut?: style, "
+              "halftone?, transparency?}, a style {color?, weight? (a pen, 0 to 16), dash? (solid, dashed, dotted), fill?, foreground?, "
+              "background?}, a colour [r, g, b] or \"#rrggbb\". Projection is what a plan sees below its cut plane and the annotation; cut is "
+              "what the view cuts; `fill` is the cut's poché. Halftone draws it halfway to the paper. Overrides merge into the last (null takes "
+              "a field or the override away); an element's own prevail over its category's. A dependent view follows its parent's. The default "
+              "3D view is made when its graphics first change",
+              GraphicsCmd, true },
+            { "scale", N_("View Scale"), {},
+              "{view, scale?: 1 | … | 100000} a plan's scale, 1 : `scale`: the paper the view stands for. Its annotation (lettering, grid "
+              "bubbles, tags, dimension ticks…) and its line weights are that paper's. Every view has one: 1 : 100 (1/8\" = 1'-0\" in feet and "
+              "inches) until it is given another, and null is refused. Without `scale` it only says what the view has",
+              ScaleCmd, true },
+            { "detail", N_("Detail Level"), {},
+              "{view, detail?: coarse | medium | fine} how much a plan draws of what it cuts: coarse, medium or fine (the default). Without "
+              "`detail` it only says what the view has",
+              DetailCmd, true },
+            { "visual_style", N_("Visual Style"), {},
+              "{view?: \"{3D}\" | a 3D view's name or id, style?: shaded | hidden_line | wireframe} how a 3D view draws its surfaces; "
+              "without `style` it only says what the view has",
+              VisualStyleCmd, true },
+            { "crop", N_("Crop View"), {},
+              "{view, region?: [[x, y], [x, y]] | null} crops a plan to the region's south-west and north-east corners (plan mm), a section or "
+              "an elevation to its bottom-left and top-right corners (mm along its line from its start, and up), its line shortened to the "
+              "region's sides; null uncrops it; without a region, a plan crops to what it shows now, a section to the model's heights",
+              CropCmd, true },
+            // ── 管理 ──
+            { "parameter", N_("Project Parameters"), {},
+              "{name, kind?: text|number|length|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|column|component|mass|"
+              "structuralcolumn|footing|beam|stripfooting|pipe|conduit|cabletray|wire|downconductor|groundconductor|cable, …], rename?, "
+              "delete?: true} a project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each element of "
+              "its categories may have of its own, set with `modify {id, params: {name: value}}` (lengths in mm, yes or no as true or "
+              "false). Off a category, that category's elements lose their values of it; deleted, every element does; renamed, they "
+              "follow it, and so do schedules' fields and view filters' rules. `inspect` lists them",
+              ParameterCmd, true },
+            { "line_pattern", N_("Line Patterns"), {},
+              "{name?, segments?: [{dash: mm} | {space: mm} | \"dot\", …], rename?, delete?: true} a line pattern of the project's: "
+              "dashes, spaces and dots repeating along a line, lengths in mm on paper. A new one needs `segments`. `rename` renames it, "
+              "the line styles drawing in it following; `delete` takes it away while no line style uses it. Without `name`, it lists "
+              "every pattern",
+              LinePatternCmd, true },
+            { "line_style", N_("Line Styles"), {},
+              "{name?, pen?, color?: \"#rrggbb\" | [r, g, b], pattern?: name | \"Solid\", rename?, delete?: true} a line style of the "
+              "project's, as Revit's: the pen (0, a hairline, to 16) its lines draw in, their colour (black unless told) and their line "
+              "pattern. A new one needs `pen`; one changed keeps what it isn't given. A project starts with Hairline, Thin Lines, Medium "
+              "Lines, Wide Lines, Hidden Lines, Centre Lines and Overhead Lines. `rename` renames it, the lines drawn in it following; "
+              "`delete` takes it away, while no line is drawn in it. Without `name`, it lists every style",
+              LineStyleCmd, true },
+            { "fill_pattern", N_("Fill Patterns"), {},
+              "{name?, target?: drafting|model, lines?: [{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …], rename?, "
+              "delete?: true} a fill pattern of the project's, as Revit's (and a PAT file's): families of parallel lines, each at `angle` "
+              "degrees through `origin`, its lines `spacing` apart and each `shift` along from the last, whole or dashed (`dashes`: a "
+              "dash's length, a space's as a negative one, 0 a dot); no lines, it fills solid. A drafting pattern's lengths are mm on "
+              "paper, the same at any scale; a model pattern's mm in the building. `rename` renames it, the region types and views "
+              "filling with it following; `delete` takes it away while nothing fills with it. Without `name`, it lists every pattern",
+              FillPatternCmd, true },
+            { "import_fill_patterns", N_("Import Fill Patterns"), {},
+              "{path | text, replace?: false} the fill patterns of a PAT file, from the file at `path` or as `text`: each `*Name` and "
+              "its families of lines, in mm unless the file says `;%UNITS=INCH`, drafting unless a pattern says `;%TYPE=MODEL`. A "
+              "pattern the project already has is left as it is unless `replace`; one that can't be a pattern (no lines, an offset of "
+              "0, dashes that are all spaces, too many families) is left out. A file is read up to its first 2000 patterns. It returns "
+              "those `imported`, those `left_out` (the first 100, each with why) and `left_out_count`, all of them",
+              ImportFillPatterns, true },
+            { "export_fill_patterns", N_("Export Fill Patterns"), {},
+              "{path?, names?: [name, …]} the project's fill patterns (those `names` says, else all but the solid ones, which a PAT "
+              "file can't hold) as a PAT file in mm, written to `path`, or returned as `text` without it",
+              ExportFillPatterns, false },
+            { "purge", N_("Purge Unused"), { "PU" },
+              "{kinds?: [type|family|material|picture|filter|template, …], dry_run?} takes out what nothing uses, again for what that "
+              "leaves unused: types and families unless `kinds` says; a category keeps a type and a family a type; with `dry_run` it "
+              "lists what would go and changes nothing",
+              PurgeCmd, true },
+            { "line_weights", N_("Line Weights"), {},
+              "{model?: [{scale, widths}, …], annotation?: [16 widths], reset?: true} the project's line weights, as Revit's Manage > "
+              "Line Weights: what each pen draws on paper, mm. `model` gives, whole, the model's pens 1 to 16 at each of its scales "
+              "(1 to 32 of them, 1 : `scale`): a view draws its walls, doors, patterns and the rest of the model in the column of the "
+              "scale nearest its own (by how many times finer or coarser; the finer of two as near). `annotation` gives the 16 pens "
+              "that dimensions, tags, text, grids, levels and marks draw in, at any scale. Each width is 0.01 to 20 mm; pen 0 is "
+              "always a hairline. `reset` goes back to what a project in its units starts with (the model's pens wider at finer "
+              "scales; at 1 : 100, pen 4 is 0.18 mm and pen 10 0.35 mm). Without any, it says what they are, each scale named as the "
+              "project's units name it, and `own` whether the project has set them",
+              LineWeightsCmd, true },
+            { "object_styles", N_("Object Styles"), {},
+              "{categories?: {category: {projection?: pen, cut?: pen}, …}, reset?: true} the project's object styles, as Revit's "
+              "Manage > Object Styles: the pen (0, a hairline, to 16) each model category draws its lines in where it is seen "
+              "(`projection`) and where a view cuts it (`cut`), in every plan and section; a view's Visibility/Graphics overrides "
+              "them. A category given keeps the pen it isn't given. The rest of an element's lines keep their own: a compound wall's "
+              "layers, a door's jambs. `reset` goes back to what a project starts with (cut pen 10 and seen pen 4; a door's and a "
+              "window's cut 6, a railing seen 6, a mass 4 both). Without either, it says each model category's, `own` whether the "
+              "project has set it apart",
+              ObjectStylesCmd, true },
+            { "sheet", N_("Sheet"), {},
+              "{number?, name?, size?: A0|A1|A2|A3|A4} a sheet: paper of an ISO size, landscape (A3 unless given), with a title block. "
+              "Numbered A101, A102… unless given; named `Unnamed` in the project's language unless given",
+              SheetCmd, true },
+            { "place", N_("Place View"), {},
+              "{sheet: number, name or id, view: name or id, at?: [x, y], scale?} puts a level's plan, a plan view, a section, an elevation, "
+              "a schedule or the 3D view on a sheet, its middle `at` mm from the paper's bottom left corner (right of the views on it unless "
+              "given), at the view's own scale unless given (a schedule keeps its size). A view goes on one sheet; `move` moves a viewport "
+              "on its sheet, in paper mm. Built-in schedules and {3D} come to be as they're first placed",
+              PlaceCmd, true },
+            { "section", N_("Section"), { "CR" },
+              "{start: [x,y], end: [x,y], depth?, name?} a section view along the line, looking to its left (drawn west to east, it looks north): "
+              "it cuts the model at the line and sees `depth` mm past it, or everything. Named `Section 1`, `Section 2`… in the project's language",
+              SectionCmd, true },
+            { "elevation", N_("Elevation View"), {},
+              "{facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an elevation view of the building's side `facing` "
+              "(North shows the north side, looking south), from 3 m out, or through `at`; with `at` alone, of the side it's on; with `start` "
+              "and `end`, along that line, looking to its left; with none, the four not there yet",
+              ElevationCmd, true },
+            { "duplicate_view", N_("Duplicate View"), { "DP" },
+              "{view, mode?: duplicate|detailing|dependent, name?} a new plan view of a plan's level (a level's own plan, or a plan view): "
+              "`duplicate` (the default) has the same view range, crop and graphics and no annotation of its own; `detailing` copies the "
+              "dimensions, tags, notes and spot elevations in it too, as its own; `dependent` follows its parent's view range, graphics, scale "
+              "and detail, has a crop of its own and shows its parent's annotation as well as its own. Named `name`, else `<view> Copy 1` "
+              "(`<view> Dependent 1`). Commands that take a level take a plan view too, and what is dimensioned, tagged or noted there is in it",
+              DuplicateViewCmd, true },
+            { "schedule", N_("Schedule"), {},
+              "{name?, category?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, and its table: "
+              "columns, rows, the `elements` each row lists, and totals (and a .csv file with a path). A new one needs `name` and `category`: rooms, "
+              "doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, pipes, conduits, cable "
+              "trays, cables, down conductors, earthing conductors, wires, components, masses, mass floors or levels; `category` alone reads its own "
+              "(Room Schedule, Door Schedule, Window Schedule, Wall Schedule, Floor Schedule, Level Schedule, each the project's once changed). "
+              "`fields`: its columns, in order, each a field's name (`available` lists them: its category's own, Count, a component's family's "
+              "parameters) or {name, formula?, kind?: number|length|area|yesno, heading?, total?}; with a formula, a calculated field worked out "
+              "from the row's other fields as a family's formulas are (lengths in mm, areas in m²; `Area * 120`); `total` sums it in a totals row. "
+              "`filters`: [{field, op: equals|not-equals|greater|greater-or-equal|less|less-or-equal|contains|not-contains|begins-with|"
+              "not-begins-with|ends-with|not-ends-with|has-value|has-no-value, value}, …], the elements all of them keep (text in any case, "
+              "numbers as the schedule shows them, an unset yes or no as no). `sort`: [field or {field, descending?}, …], in turn (its first "
+              "column unless it says); `grouped`, a row for each set of the sort fields' values: Count and totals summed, and a field whose "
+              "values differ left empty. Each one given replaces the last; `fields: []` goes back to its category's",
+              ScheduleCmd, true },
+            { "filter", N_("View Filter"), {},
+              "{name, categories?: [category, …], rules?: [{field, op, value}, …], delete?: true} a view filter, as Revit's parameter filters "
+              "are: the elements of its categories (any a schedule can be of: walls, doors, rooms, components…) that hold every rule, a "
+              "schedule filter's (`field` of the category, `op` as a schedule's, `value`), and every element of them without rules. A view "
+              "applies it with `graphics {filters}`, hiding what it picks out or drawing it another way. Gone, views stop applying it. Replies "
+              "with the filter and the ids it picks out; `name` alone reads one",
+              FilterCmd, true },
+            { "template", N_("View Template"), {},
+              "{name, from?: a level's, plan view's or 3D view's name or id, controls?: [categories, filters, range, phase, options, scale, "
+              "detail, style], view_range?: {top?, cut?, bottom?, depth?}, scale?: 1 | … | 100000, detail?: coarse | medium | fine, "
+              "visual_style?: shaded | hidden_line | wireframe, hide?, show?, categories?, filters?, reset?, delete?: true} a view template, "
+              "as Revit's: settings under a name for views to follow with `graphics {template}`. `from` takes a view's categories (hidden and "
+              "overridden), filters and, a plan's, view range, its scale, detail level and visual style; `controls` is what views following it "
+              "get from it (all eight unless it says) and cannot change for themselves. `hide`, `show`, `categories`, `filters`, `scale`, "
+              "`detail`, `visual_style` and `reset` change it as they change a view; `view_range` merges into its range. Changed, every view "
+              "following it follows. Gone, they keep their own settings. `name` alone reads one",
+              TemplateCmd, true },
+            { "roof", N_("Roof"), {},
+              "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, extrusion?, "
+              "openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its base `offset` mm above it. "
+              "Over `boundary` or else the walls of the level below, `overhang` mm (500) past their faces, round any `courtyards` (holes in "
+              "it, inside it and apart, with eaves of their own; over the walls, by default each loop of them standing free inside, joined "
+              "to none of the outer ones and with no room in it): flat at `slope` 0, else every edge sloping up at `slope` degrees (30), "
+              "hips, valleys and ridges where the slopes meet, but the edges in `gables` (edge i runs from point i to the next, the "
+              "courtyards' edges numbered on after the boundary's) left upright, gable ends; `gable` leaves a rectangle's short ends "
+              "upright. Or with `extrusion` {line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}: its underside's profile in the "
+              "upright plane through `line`, along it from its start and up from the base, swept square to it from `from` (0) to `to` mm "
+              "to its left. `openings` are holes through it in plan; with `join`, a roof it runs into, it ends where it meets that one's top",
+              RoofCmd, true },
+            { "type", N_("Edit Type"), {},
+              "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|beam|stripfooting|pipe|conduit|cabletray|wire|"
+              "downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation?, grid? | width?, depth?, round?, material?} creates the type, or changes it "
+              "everywhere it's used. A wall or floor type may have `layers` [{function?: structure|substrate|thermal|membrane|finish, material?, "
+              "thickness}, …], a wall's from its exterior side in, a floor's from the top down: it's as thick as they are, and a new `thickness` "
+              "goes to its structure. A roof's or a ceiling's layers too, from the top down; a ceiling type may have `grid`: its square tiles' "
+              "width, mm, which reflected ceiling plans draw (0, none). A column's, a structural column's or a footing's: `width` by `depth`, or `round`, "
+              "`width` across; a run's (a beam's, a pipe's, a cable tray's…) too, made of a `material` of the library", TypeCmd, true },
+            { "material", N_("Materials"), {},
+              "{name, color?: \"#rrggbb\" | [r, g, b], cut?, surface?, rename?, delete?: true} a material of the project's library, created or "
+              "changed: its colour in shaded 3D views, the pattern its cut shows and the one its surfaces show", MaterialCmd, true },
+            { "family", N_("Load Family"), {},
+              "{name, category?: furniture|casework|plumbing|lighting|generic|door|window, parameters?: [{name, kind?: length|number|"
+              "angle|yesno|material, instance?, value?, formula?}], types?: {type: {parameter: value}}, forms?: [{plane?: xy|xz|yz, "
+              "profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, void?}], "
+              "symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to}, visible?}], operation?: swing|double-swing|sliding|"
+              "double-sliding|folding|fixed (a door's or window's, for IFC and schedules), rename?, delete?: true, path?, save?} a family of the "
+              "project's, MiniBIM's own parametric component (ported from BIMCraft): created, changed, or loaded from the .json file at `path` "
+              "(a family as `inspect` shows it, with its `name`). Its forms are profiles drawn in its own axes (x along a component's angle, y "
+              "to its left, z up from its base) and swept: `xy` up from `from` to `to`, `xz` along y, `yz` along x. With an `axis`, a line in "
+              "that plane, the profile is turned about it instead, `from` to `to` degrees (up to 360). A `void` is no solid: it cuts the solid "
+              "forms listed before it that it passes through, and is never seen itself. A `door` or `window` family stands in a wall, placed "
+              "with `door` or `window` and a `family`: its forms are drawn in the opening's axes (x along the wall from the middle of the "
+              "opening, y across it, 0 in the middle of the wall and + toward its exterior, z up from the sill), it must have length "
+              "parameters `Width` and `Height`, and its formulas read `Wall Thickness`, the wall's. Its `symbols` are the lines its plan "
+              "draws. Sizes are mm, or formulas over its parameters as Revit's are: `Width / 2`, `if(Depth > 600, 4, 2)`. A parameter is "
+              "each type's, or with `instance` each component's. `types` merges into its types (a null takes one away); `parameters` and "
+              "`forms` replace its own", FamilyCmd, true },
+            { "component", N_("Component"), { "CM" },
+              "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}} a family's type placed, its first "
+              "by default: at a point on a level, turned `angle` degrees counter-clockwise, `offset` mm up from the level, and with `mirrored` "
+              "flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null taking one back to the "
+              "family's)", ComponentCmd, true },
+            { "flip", N_("Flip"), {},
+              "{ids: [wall,…]} turns walls round about their location lines: their exterior sides go to the other side, their doors and "
+              "windows stay where they are", Flip, true },
+            { "modify", N_("Modify"), {},
+              "{id | ids: [id,…], …fields} change fields as `elements` shows them, of one element or several; `level` and `top_level` may be names",
+              Modify, true },
+            { "move", N_("Move"), { "MV" },
+              "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay joined, and "
+              "doors and windows slide along their walls. With `end`, only that end of one wall moves", MoveCmd, true },
+            { "copy", N_("Copy"), { "CO" }, "{ids: [id,…], by: [dx, dy]} copies elements, with the doors and windows of copied walls; returns the copies' ids",
+              CopyCmd, true },
+            { "delete_type", N_("Delete Type"), {},
+              "{category?: wall|floor|door|window|column|roof|ceiling|structuralcolumn, family?, type?} deletes a type of a category (`category` and `type`), a "
+              "family (`family`) or one of a family's types (`family` and `type`), as Revit's Delete on one in the Project Browser does; "
+              "refused while an element uses it (it says how many), and for the last type of a category or of a family", DeleteTypeCmd, true },
+            { "rename_type", N_("Rename Type"), {},
+              "{category?: wall|floor|door|window|column|roof|ceiling|structuralcolumn, family?, type, name} renames a type of a category (`category` and `type`) "
+              "or one of a family's types (`family` and `type`) to `name`, as Rename in Type Properties does: the elements of it follow, "
+              "and it keeps its GUID; refused for a name another type of it has", RenameTypeCmd, true },
+            { "edit_boundary", N_("Edit Boundary"), {},
+              "{id, sketch?: [[[x,y],[x,y]],…]} redraws a floor's, a ceiling's or a roof's footprint's outline and its holes (a floor's or a "
+              "ceiling's openings, a roof's courtyards) as a sketch, all at once (see `sketch`); a roof's gable edges stay gables where the new "
+              "footprint has the same edge. Without `sketch`, gives the outline and holes it has now, as the lines to edit (a line it kept from "
+              "its last sketch with its `id`: send it back with it to keep it)", EditBoundaryCmd, true },
+            { "sketch", N_("Sketch"), {},
+              "{lines: [[[x,y],[x,y]],…]} solves a sketch without making anything, as Finish Edit Mode does: lines in any order, either way "
+              "round, joined end to end (within 1 mm) into closed loops; a loop inside no other (or inside a hole) an outline, counter-clockwise, "
+              "one inside an outline a hole in it, clockwise. A line is [[x,y],[x,y]], an arc [[x,y],[x,y],[x,y]] (its ends, then a point it "
+              "passes through) or {start, end, arc?}. Gives each region's `outline`, `holes` and `area_m2`, or every problem with the lines it's "
+              "about (numbered from 0). `sketch` on floor, ceiling and roof, and `edit_boundary`, take lines the same way", SketchCmd, false },
+            { "align", N_("Align"), { "AL" },
+              "{id, reference: [[x,y],[x,y]], line: [[x,y],[x,y]]} aligns an element's picked line with a reference in plan: turns by the "
+              "smaller angle about the picked line's midpoint, then moves it onto the reference, keeping its size. Doors and windows slide "
+              "along their host wall; they cannot turn independently. Returns {aligned, angle, by}", AlignCmd, true },
+            { "rotate", N_("Rotate"), { "RO" },
+              "{ids: [id,…], about: [x, y], angle, copy?} turns elements about a point by `angle` degrees, counter-clockwise; walls joined "
+              "to them stay joined, and doors and windows turn with their walls", RotateCmd, true },
+            { "mirror", N_("Mirror"), { "MM", "DM" },
+              "{ids: [id,…], axis: [[x, y], [x, y]], copy?} mirrors elements across the line through two points; mirrored doors and "
+              "windows face the other way", MirrorCmd, true },
+            { "corner", N_("Trim/Extend to Corner"), { "TR" },
+              "{ids: [a, b], keep?: [[x, y], [x, y]]} trims or extends two walls to meet where their lines cross; `keep` is a point on "
+              "the part of each to keep", CornerCmd, true },
+            { "split", N_("Split"), { "SL" },
+              "{id, at: [x, y]} splits a wall in two at `at`: its doors and windows go with their part", SplitCmd, true },
+            { "delete", N_("Delete"), { "DE" }, "{ids: [id,…]} deleting a wall deletes its doors and windows", DeleteCmd, true },
+            { "units", N_("Project Units"), { "UN" },
+              "{length?: mm|cm|m|in|ft|ft-in} how lengths are shown and typed; the model, and every command, keep millimetres", UnitsCmd, true },
+            { "room_area", N_("Area and Volume Computations"), {},
+              "{at?: centre|finish} where the project measures its rooms' areas and perimeters, as Revit's Area and Volume Computations: "
+              "at the walls' centre lines (`centre`, as a project starts) or at their finish faces (`finish`, the floor inside the walls). "
+              "Rooms keep their points; only their measured outline changes", RoomAreaCmd, true },
+            { "inspect", N_("Inspect"), {}, "{} levels, element counts, types, materials and undo history", Inspect, false },
+            { "elements", N_("Elements"), {},
+              "{category?, level?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, never "
+              "changed), fields and derived values (length, height, area_m2…); what an element points at it holds by GUID", ElementsCmd, false },
+        };
+        return all;
+    }
+
+    // ── 给别处用的 ───────────────────────────────────────────────
+    // level 的平面剖切到的东西（墙的面、中心线与端头，门窗的中心与两边，轴网）里 keep 认的、离 p 最近的参照线，100 毫米以内
+    std::optional<Reference> ReferenceNear(const Model& m, Guid level, P2 p, const std::function<bool(const Segment&)>& keep)
+    {
+        const auto cut = [&](const Wall* w) { return w && m.CutBy(*w, level); };
+        std::optional<std::pair<Reference, double>> best;
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            const Opening* o = e->AsOpening();
+            if (!(cut(e->As<Wall>()) || (o && cut(m.GetWall(o->host))) || e->As<Grid>()))
+                continue;
+            const auto r = m.ReferenceAt(m.GuidOf(id), p, keep);
+            if (r && r->second <= 100.0 && (!best || r->second < best->second))
+                best = r;
+        }
+        return best ? std::optional<Reference>(best->first) : std::nullopt;
+    }
+
+    // level 上圆柱的边离 p 最近（100 毫米以内）的那根
+    std::optional<Reference> ArcNear(const Model& m, Guid level, P2 p)
+    {
+        std::optional<std::pair<Reference, double>> best;
+        for (const auto& [id, e] : m.elements.Items())
+        {
+            const Column* col = e->AsColumn();
+            if (!col || !m.Same(col->level, level))
+                continue;
+            const Reference r{ m.GuidOf(id), Face::Centre };
+            P2 centre;
+            double radius = 0.0;
+            std::string why;
+            if (!m.ReferenceArc(r, centre, radius, why))
+                continue;
+            const double d = std::abs(p.Dist(centre) - radius);
+            if (d <= 100.0 && (!best || d < best->second))
+                best = std::pair{ r, d };
+        }
+        return best ? std::optional<Reference>(best->first) : std::nullopt;
+    }
+
+    bool OpeningOf(const Model& m, const Json& p, bool isDoor, Opening& out, std::string& error)
+    {
+        return BuildOpening(m, p, isDoor, out, error);
+    }
+
+    bool Moved(const Model& m, Id id, const std::function<P2(P2)>& map, const std::set<Id>& with, Element& out, std::string& error)
+    {
+        return Transformed("move", m, id, Motion{ map }, with, out, error);
+    }
+
+    Json ElementJson(const Model& m, Id id)
+    {
+        const Element* e = m.elements.Get(id);
+        if (!e)
+            return nullptr;
+        Json v = ToJson(*e);
+        v["id"]   = id;
+        v["guid"] = ToJson(m.GuidOf(id));
+        // 类型的 GUID，放在名称旁边
+        Element copy = *e;
+        copy.LibRefsMut([&](const Kind& kind, std::string& name)
+        {
+            if (kind.tag == Kind::Tag::Type)
+                if (const auto g = m.library.GuidOf(kind, name))
+                    v["type_guid"] = ToJson(*g);
+        });
+        if (const Link* l = e->As<Link>())
+        {
+            const auto it = m.loaded.find(l->path);
+            v["loaded"]   = it != m.loaded.end();
+            v["elements"] = it != m.loaded.end() ? Json(it->second->elements.Items().size()) : Json();
+        }
+        else if (const PointCloud* pc = e->As<PointCloud>())
+        {
+            if (const auto it = m.clouds.find(pc->cloud); it != m.clouds.end())
+            {
+                v["points"] = it->second.Size();
+                v["source"] = it->second.Source();
+                if (!it->second.Stations().empty())
+                {
+                    Json st = Json::array();
+                    for (const Clouds::Station& t : it->second.Stations())
+                        st.push_back(Json{ { "source", t.source }, { "points", t.points } });
+                    v["stations"] = std::move(st);
+                }
+            }
+        }
+        else if (const CadImport* ci = e->As<CadImport>())
+        {
+            if (const auto it = m.cads.find(ci->cad); it != m.cads.end())
+            {
+                const Dxf::Drawing& d = it->second.Drawing();
+                v["source"]   = it->second.Source();
+                v["entities"] = d.entities.size();
+                v["layers"]   = d.layers.size();
+                v["unit"]     = d.unit;
+                if (it->second.Path())
+                    v["linked"] = *it->second.Path();
+            }
+            if (const auto b = m.CadBox(id))
+                v["extents"] = Json::array({ ToJson((*b)[0]), ToJson((*b)[1]) });
+        }
+        else if (const Wall* w = e->As<Wall>())
+        {
+            const Walls::Axis axis = Walls::Axis::Of(*w);
+            v["length"]    = Hundredth(axis.Length() * 1e4) / 1e4;
+            v["height"]    = Hundredth(m.TopZ(*w) - m.BaseZ(*w));
+            v["thickness"] = m.Thickness(*w);
+            if (const auto r = axis.Radius())
+                v["radius"] = Hundredth(*r);
+        }
+        else if (const Opening* o = e->AsOpening())
+        {
+            const auto t = m.OpeningTypeOf(*e);
+            const Wall* host = m.GetWall(o->host);
+            if (t && host)
+            {
+                v["width"]  = t->width;
+                v["height"] = t->height;
+                if (t->operation)
+                    v["operation"] = OperationOf::Name(*t->operation);
+                v["level"] = ToJson(host->level);
+                v["at"]    = ToJson(Walls::Axis::Of(*host).At(o->offset, 0.0));
+                // 族的：每个参数算出的值
+                if (o->family)
+                    if (const auto f = m.families.find(*o->family); f != m.families.end())
+                    {
+                        Fam::Values values;
+                        std::string why;
+                        if (f->second.ValuesIn(o->typeName, o->params, m.Thickness(*host), values, why))
+                            v["values"] = ValuesJson(values);
+                    }
+            }
+        }
+        else if (const Component* cp = e->As<Component>())
+        {
+            // 每个参数算出的值，以及它高出底部多少
+            if (const auto f = m.families.find(cp->family); f != m.families.end())
+            {
+                Fam::Values values;
+                std::string why;
+                if (f->second.Values(cp->typeName, cp->params, values, why))
+                    v["values"] = ValuesJson(values);
+            }
+            const double base = m.Elevation(cp->level) + cp->offset;
+            double top = base;
+            for (const Fam::Piece& pc : m.ComponentPieces(*cp))
+                top = std::max(top, pc.top);
+            v["height"] = Hundredth(top - base);
+        }
+        else if (const Column* col = e->AsColumn())
+        {
+            const auto [bottom, top] = m.ColumnSpan(*col);
+            v["height"] = top - bottom;
+            if (const ColumnType* t = m.ColumnTypeOf(*e))
+            {
+                v["width"] = t->width;
+                v["depth"] = t->depth;
+                v["round"] = t->round;
+            }
+        }
+        // 截面、沿轴线多长、中心线两端的高度
+        else if (e->AsRun())
+        {
+            const RunType* t = m.RunTypeOf(*e);
+            const auto g = m.RunGeom(*e);
+            if (t && g)
+            {
+                v["width"]  = t->width;
+                v["depth"]  = t->depth;
+                v["round"]  = t->round;
+                v["length"] = Hundredth(g->Length());
+                Json axis = Json::array();
+                for (const P3& q : { g->a, g->b })
+                    axis.push_back(Json::array({ Hundredth(q[0]), Hundredth(q[1]), Hundredth(q[2]) }));
+                v["axis"] = axis;
+            }
+        }
+        else if (const Floor* f = e->As<Floor>())
+        {
+            double left = 0.0;
+            for (const auto& [face, _] : m.FloorSlabs(*f))
+            {
+                Ring ring;
+                for (const P3& q : face)
+                    ring.emplace_back(q[0], q[1]);
+                left += std::abs(Geom::Area(ring));
+            }
+            v["area_m2"] = M2(left);
+            const auto t = m.types.floor.find(f->typeName);
+            v["thickness"] = t == m.types.floor.end() ? 0.0 : t->second.thickness;
+            // 顶面最低与最高处的高度
+            const Plane top = m.FloorTop(*f);
+            double lo = INFINITY, hi = -INFINITY;
+            for (const P2& q : f->boundary)
+            {
+                lo = std::min(lo, top.At(q));
+                hi = std::max(hi, top.At(q));
+            }
+            v["top"] = Json::array({ Hundredth(lo), Hundredth(hi) });
+            // 顶面模型图案的起点与转角：默认值也显示，供 modify 设置
+            v["pattern_origin"] = ToJson(f->patternOrigin);
+            v["pattern_angle"]  = f->patternAngle;
+        }
+        else if (const RoomSeparator* rs = e->As<RoomSeparator>())
+            v["length"] = Hundredth(rs->start.Dist(rs->end));
+        else if (const Ceiling* cl = e->As<Ceiling>())
+        {
+            // 竖井还没移植：天花板的面积即各板块的面积
+            double left = 0.0;
+            for (const auto& [face, _] : m.CeilingSlabs(*cl))
+            {
+                Ring ring;
+                for (const P3& q : face)
+                    ring.emplace_back(q[0], q[1]);
+                left += std::abs(Geom::Area(ring));
+            }
+            v["area_m2"] = M2(left);
+            if (const auto t = m.types.ceiling.find(cl->typeName); t != m.types.ceiling.end())
+            {
+                v["thickness"] = t->second.thickness;
+                v["grid"]      = t->second.grid;
+            }
+        }
+        else if (const Mass* ms = e->As<Mass>())
+        {
+            const auto [area, height, volume] = MassSize(m, *ms);
+            v["area_m2"]   = area;
+            v["height"]    = height;
+            v["volume_m3"] = volume;
+            double gross = 0.0;
+            Json levels  = Json::array();
+            for (const auto& sl : m.MassSlices(*ms))
+            {
+                gross += std::abs(Geom::Area(m.MassOutline(*ms, sl.z)));
+                levels.push_back(sl.level);
+            }
+            v["gross_floor_area_m2"] = M2(gross);
+            v["levels"]              = std::move(levels);
+        }
+        else if (e->IsAnnotation())
+        {
+            const auto level = m.LevelOf(*e);
+            const auto levelId = level ? m.elements.IdOf(*level) : std::nullopt;
+            if (const Dimension* d = e->As<Dimension>())
+            {
+                Json values = Json::array();
+                for (const double x : m.DimensionValues(*d))
+                    values.push_back(Hundredth(x));
+                v["values"] = std::move(values);
+            }
+            else if (const Tag* t = e->As<Tag>())
+            {
+                v["text"]  = m.TagText(*t);
+                v["level"] = levelId ? Json(*levelId) : Json();
+                const auto a = m.Anchor(t->host);
+                v["at"] = a ? ToJson(*a + t->offset) : Json();
+            }
+            else if (const Note* n = e->As<Note>())
+            {
+                v["level"] = levelId ? Json(*levelId) : Json();
+                const auto it = m.textTypes.find(n->typeName);
+                v["size"] = it != m.textTypes.end() ? Json(it->second.size) : Json();
+            }
+            else if (const FilledRegion* r = e->As<FilledRegion>())
+            {
+                Sketch::Profile profile;
+                std::vector<Sketch::Problem> problems;
+                v["area_m2"]        = M2(Sketch::Solve(r->sketch, profile, problems) ? profile.Area() : 0.0);
+                v["level"]          = levelId ? Json(*levelId) : Json();
+                v["pattern_origin"] = ToJson(r->patternOrigin);
+                v["pattern_angle"]  = r->patternAngle;
+            }
+            else if (const DetailLine* l = e->As<DetailLine>())
+            {
+                v["shape"]  = l->curve.Name();
+                v["length"] = Hundredth(l->curve.Length());
+                v["level"]  = levelId ? Json(*levelId) : Json();
+            }
+            else if (const Spot* sp = e->As<Spot>())
+            {
+                const auto z = m.SpotValue(*sp);
+                v["elevation"] = z ? Json(Hundredth(*z)) : Json();
+                v["level"]     = levelId ? Json(*levelId) : Json();
+            }
+        }
+        else if (const Sheet* sh = e->As<Sheet>())
+        {
+            if (const auto paper = PaperOf(sh->size))
+                v["paper"] = Json::array({ paper->x, paper->y });
+            Json on = Json::array();
+            for (const auto& [vid, x] : m.elements.Items())
+                if (const Viewport* vp = x->As<Viewport>(); vp && m.Same(vp->sheet, m.GuidOf(id)))
+                    on.push_back(vid);
+            v["viewports"] = std::move(on);
+        }
+        else if (const Viewport* vp = e->As<Viewport>())
+        {
+            const std::string* name = m.ViewName(vp->view);
+            v["title"] = name ? Json(*name) : Json(nullptr);
+            const auto size = Render::ViewportSize(m, vp->view, vp->scale);
+            v["size"] = size ? Json::array({ size->x, size->y }) : Json(nullptr);
+        }
+        else if (const Section* sv = m.GetSection(m.GuidOf(id)))
+        {
+            const P2 l = sv->Looking();
+            v["length"]  = sv->start.Dist(sv->end);
+            // 加 0：不写 -0
+            v["looking"] = Json::array({ l.x + 0.0, l.y + 0.0 });
+        }
+        else if (const Room* r = e->As<Room>())
+        {
+            const auto region = m.RoomRegion(*r);
+            v["enclosed"]    = region.has_value();
+            v["area_m2"]     = region ? M2(region->Area()) : 0.0;
+            v["perimeter_m"] = region ? std::round(region->Perimeter() / 10.0) / 100.0 : 0.0;
+        }
+        else if (const Roof* r = e->As<Roof>())
+        {
+            std::vector<Slope> faces;
+            std::string why;
+            if (!m.RoofFaces(*r, faces, why))
+                faces.clear();
+            double ridge = m.Elevation(r->level) + r->offset;
+            for (const auto& [loops, p] : faces)
+                for (const Ring& l : loops)
+                    for (const P2& q : l)
+                        ridge = std::max(ridge, p.At(q));
+            const Ring outline = m.RoofOutline(*r);
+            double courtyards = 0.0;
+            for (const Ring& c : r->courtyards)
+                courtyards += std::abs(Geom::Area(c));
+            v["ridge"]   = Hundredth(ridge);
+            v["area_m2"] = M2(std::abs(Geom::Area(outline)) - courtyards);
+            Json o = Json::array();
+            for (const P2& q : outline)
+                o.push_back(ToJson(Micron(q)));
+            v["outline"] = std::move(o);
+        }
+        return v;
+    }
+
+    std::optional<std::pair<Ring, std::vector<Ring>>> FloorOutline(const Model& m, Guid level)
+    {
+        // 各连通块的外轮廓（顺时针），大的在前
+        std::vector<Ring> pieces;
+        for (Ring& f : Geom::Faces(m.WallLines(level), Tol))
+            if (Geom::Area(f) < -Tol * Tol)
+                pieces.push_back(std::move(f));
+        std::stable_sort(pieces.begin(), pieces.end(), [](const Ring& a, const Ring& b) { return Geom::Area(a) < Geom::Area(b); });
+        if (pieces.empty())
+            return std::nullopt;
+        const Ring& outer = pieces.front();
+        // 轮廓里面独立的环：其余在它里面的块
+        std::vector<const Ring*> loops;
+        for (size_t i = 1; i < pieces.size(); ++i)
+            if (std::all_of(pieces[i].begin(), pieces[i].end(), [&](const P2& q) { return Geom::Contains(outer, q); }))
+                loops.push_back(&pieces[i]);
+        auto nested = [&](size_t a)
+        {
+            for (size_t b = 0; b < loops.size(); ++b)
+                if (b != a && std::all_of(loops[a]->begin(), loops[a]->end(), [&](const P2& q) { return Geom::Contains(*loops[b], q); }))
+                    return true;
+            return false;
+        };
+        // 围着一点的最里面的环（环是顺时针的，面积为负，最大的即最小的环），也就是房间所在的环
+        auto around = [&](P2 p) -> std::optional<size_t>
+        {
+            std::optional<size_t> best;
+            for (size_t a = 0; a < loops.size(); ++a)
+                if (Geom::Contains(*loops[a], p) && (!best || Geom::Area(*loops[a]) >= Geom::Area(*loops[*best])))
+                    best = a;
+            return best;
+        };
+        std::vector<size_t> indoors;
+        for (const auto& [_, e] : m.elements.Items())
+            if (const Room* r = e->As<Room>(); r && r->level == level)
+                if (const auto a = around(r->point))
+                    indoors.push_back(*a);
+        // 天井：最外层、没有房间的环
+        std::vector<Ring> courtyards;
+        for (size_t a = 0; a < loops.size(); ++a)
+            if (!nested(a) && std::find(indoors.begin(), indoors.end(), a) == indoors.end())
+                courtyards.push_back(Tidy(*loops[a]));
+        return std::pair{ Ring(outer.rbegin(), outer.rend()), std::move(courtyards) };
+    }
+
+    std::optional<std::pair<Ring, std::vector<Ring>>> RoofFootprint(const Model& m, Guid level, double overhang, std::string& error)
+    {
+        const double z = m.Elevation(level);
+        std::optional<Id> below;
+        for (const auto& [id, l] : m.Levels())
+            if (l->elevation < z - Tol)
+                below = id;
+        if (!below)
+        {
+            error = LevelName(m, level) + " has no level below to roof over; give `boundary`";
+            return std::nullopt;
+        }
+        const Guid under = m.GuidOf(*below);
+        const auto outline = FloorOutline(m, under);
+        if (!outline)
+        {
+            error = "no walls enclose an area on " + LevelName(m, under) + "; give `boundary`";
+            return std::nullopt;
+        }
+        // 这一层最厚的墙定墙面在哪里（BIMCraft 的简化：外轮廓混用几种墙时也只取最厚的）
+        double face = 0.0;
+        for (const auto& [_, e] : m.elements.Items())
+            if (const Wall* w = e->As<Wall>(); w && m.CutBy(*w, under))
+                face = std::max(face, m.Thickness(*w) / 2.0);
+        // 檐口离墙中心线多远：逆时针的环向外，顺时针的向里
+        const double d = face + overhang;
+        // 伸出后仍敞开的天井：往里收，太小的会翻过来，边反着走
+        std::vector<Ring> courtyards;
+        for (const Ring& l : outline->second)
+        {
+            const Ring grown = Geom::Grow(l, d);
+            const auto before = Geom::RingEdges(l), after = Geom::RingEdges(grown);
+            bool open = true;
+            for (size_t i = 0; open && i < std::min(before.size(), after.size()); ++i)
+                open = (before[i].second - before[i].first).Dot(after[i].second - after[i].first) > 0.0;
+            if (open)
+                courtyards.push_back(Tidy(grown));
+        }
+        return std::pair{ Tidy(Geom::Grow(outline->first, d)), std::move(courtyards) };
+    }
+
+    Ring Tidy(const Ring& ring)
+    {
+        Ring out;
+        for (const P2& p : Geom::Corners(ring))
+            out.push_back(Micron(p));
+        if (out.empty())
+            return out;
+        size_t first = 0;
+        for (size_t i = 1; i < out.size(); ++i)
+            if (out[i].y < out[first].y || (out[i].y == out[first].y && out[i].x < out[first].x))
+                first = i;
+        std::rotate(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(first), out.end());
+        return out;
+    }
+
+    std::string NextNumber(const std::vector<std::string>& takenIn)
+    {
+        std::vector<std::string> taken;
+        for (const std::string& t : takenIn)
+            taken.emplace_back(Text::Trim(t));
+        // 每个序列按前缀：有几个、最大的数、补零的位数
+        struct Series
+        {
+            size_t   count = 0;
+            uint64_t last  = 0;
+            size_t   width = 0;
+        };
+        std::map<std::string, Series> series;
+        for (const std::string& t : taken)
+        {
+            if (t.size() > MaxText)
+                continue;
+            size_t digits = 0;
+            while (digits < t.size() && t[t.size() - 1 - digits] >= '0' && t[t.size() - 1 - digits] <= '9')
+                ++digits;
+            const std::string prefix = t.substr(0, t.size() - digits), number = t.substr(t.size() - digits);
+            const auto n = Guid::Parse(number);
+            if (number.empty() || !n || !n->Pending())
+                continue;
+            Series& s = series[prefix];
+            ++s.count;
+            s.last = std::max(s.last, *n->Pending());
+            if (number.size() > 1 && number[0] == '0')
+                s.width = std::max(s.width, digits);
+        }
+        const size_t plain = series.count("") ? series[""].count : 0;
+        std::string prefix;
+        Series best;
+        bool found = false;
+        for (const auto& [p, s] : series)
+        {
+            if (!(p.empty() || (s.count >= 2 && s.count > plain)))
+                continue;
+            // 数目多的、数大的优先；都一样时前缀小的
+            if (!found || std::tie(s.count, s.last) > std::tie(best.count, best.last) ||
+                (std::tie(s.count, s.last) == std::tie(best.count, best.last) && p < prefix))
+            {
+                prefix = p;
+                best   = s;
+                found  = true;
+            }
+        }
+        // 太长的标记不开始序列，所以位数不超过 MaxText
+        const size_t width = prefix.empty() ? 0 : std::min(best.width, MaxText);
+        uint64_t n = best.last;
+        for (;;)
+        {
+            n = n == UINT64_MAX ? n : n + 1;
+            std::string digits = std::to_string(n);
+            if (digits.size() < width)
+                digits.insert(0, width - digits.size(), '0');
+            const std::string next = prefix + digits;
+            if (std::find(taken.begin(), taken.end(), next) == taken.end() || n == UINT64_MAX)
+                return next;
+        }
+    }
+
+    const char* CommandOf(std::string_view category)
+    {
+        static const std::pair<const char*, const char*> table[] = {
+            { "structuralcolumn", "structural_column" }, { "stripfooting", "strip_footing" }, { "beam", "beam" }, { "pipe", "pipe" },
+            { "conduit", "conduit" }, { "cabletray", "cable_tray" }, { "wire", "wire" }, { "downconductor", "down_conductor" },
+            { "groundconductor", "ground_conductor" }, { "cable", "cabling" }, { "footing", "footing" },
+        };
+        for (const auto& [cat, command] : table)
+            if (category == cat)
+                return command;
+        return "column";
+    }
+
+    std::optional<const char*> RunCategoryOf(std::string_view command)
+    {
+        for (const char* c : RunCategories)
+            if (command == CommandOf(c))
+                return c;
+        return std::nullopt;
+    }
+
+    bool RunsOf(const Model& m, const Json& p, std::string_view category, std::vector<Element>& out, std::string& error)
+    {
+        return RunsOfImpl(m, p, std::string(category), out, error);
+    }
+
+    bool StoodOf(const Model& m, const Json& p, std::string_view category, Element& out, std::string& error)
+    {
+        return StoodOfImpl(m, p, std::string(category), out, error);
+    }
+}

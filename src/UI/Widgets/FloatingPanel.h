@@ -43,6 +43,7 @@ namespace MiniGUI
 
         void SetOnClose   (std::function<void()> cb) { m_onClose    = std::move(cb); }   // 点了 ×
         void SetOnRedock  (std::function<void()> cb) { m_onRedock   = std::move(cb); }   // 双击标题栏
+        void SetOnMenu    (std::function<void(Vec2 windowPos)> cb) { m_onMenu = std::move(cb); }   // 右键标题栏
         void SetOnMoved   (std::function<void()> cb) { m_onMoved    = std::move(cb); }   // 用户拖动或改大小结束（宿主保存布局）
         void SetOnActivate(std::function<void()> cb) { m_onActivate = std::move(cb); }   // 在面板上按下：宿主置前
         void SetOnMaximize(std::function<void()> cb);                                    // 点了最大化 / 还原（设置后才显示这个按钮）
@@ -83,6 +84,7 @@ namespace MiniGUI
         Rect m_resizeRect;
 
         std::function<void()>                m_onClose, m_onRedock, m_onMoved, m_onActivate, m_onMaximize;
+        std::function<void(Vec2)>            m_onMenu;
         std::function<void(DragPhase, Vec2)> m_onDrag;
     };
 }

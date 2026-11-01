@@ -78,6 +78,43 @@ namespace
         Check(Near(xc, xb + 10.0, 1e-6) && Near(yc, yb, 1e-6), "平移 10 像素，点也右移 10 像素");
     }
 
+    // 浮动布局：视口铺满窗口，左边、上边、下边叠着面板；框住范围时放进没被挡住的区域，环绕时模型仍在那里
+    void TestFitInsets()
+    {
+        OrbitCamera cam;
+        cam.SetViewportSize(1000, 600);
+        cam.SetFitInsets(300.0, 150.0, 0.0, 30.0);      // 没被挡住的区域：x 300～1000，y 150～570，中心 (650, 360)
+        const AABB box({ 0, 0, 0 }, { 9000, 6000, 3000 });
+        cam.HomeView(box);
+        bool inside = true;
+        for (int i = 0; i < 8; ++i)
+        {
+            double x, y, z;
+            ToPixel(cam, { (i & 1) ? 9000.0 : 0.0, (i & 2) ? 6000.0 : 0.0, (i & 4) ? 3000.0 : 0.0 }, x, y, z);
+            inside = inside && x > 300 && x < 1000 && y > 150 && y < 570;
+        }
+        Check(inside, "留边后包围盒的八个角都在没被挡住的区域里");
+        double x, y, z;
+        ToPixel(cam, cam.GetTarget(), x, y, z);
+        Check(Near(x, 650.0, 1e-6) && Near(y, 360.0, 1e-6), "目标点画在没被挡住的区域中心");
+
+        cam.Orbit(120.0, -40.0);
+        ToPixel(cam, cam.GetTarget(), x, y, z);
+        Check(Near(x, 650.0, 1e-6) && Near(y, 360.0, 1e-6), "环绕时目标点不动（模型绕自己的中心转）");
+
+        cam.SetFitInsets(0.0, 0.0, 0.0, 0.0);
+        ToPixel(cam, cam.GetTarget(), x, y, z);
+        Check(Near(x, 650.0, 1e-6) && Near(y, 360.0, 1e-6), "留边变了（拖动面板）不挪动画面，下次框住范围时才用");
+
+        // 目标点不在视口中心时，滚轮缩放仍是光标下的点不动
+        const Math::Point3 p = cam.GetTarget() + cam.GetRight() * 800.0 - cam.GetUp() * 300.0;
+        double xa, ya, za, xb, yb, zb;
+        ToPixel(cam, p, xa, ya, za);
+        cam.ZoomAt(xa, ya, 0.7);
+        ToPixel(cam, p, xb, yb, zb);
+        Check(Near(xa, xb, 1e-6) && Near(ya, yb, 1e-6), "有偏移时缩放，光标下的点不动");
+    }
+
     void TestOrbitClamp()
     {
         OrbitCamera cam;
@@ -92,6 +129,7 @@ int main()
 {
     TestFrontView();
     TestFitAndZoom();
+    TestFitInsets();
     TestOrbitClamp();
     std::printf("%s：%d 项失败\n", g_failed ? "FAILED" : "OK", g_failed);
     return g_failed ? 1 : 0;

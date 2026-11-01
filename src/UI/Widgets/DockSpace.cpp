@@ -153,6 +153,7 @@ namespace MiniGUI
         // 停靠区叠在绘图区上（SolidCraft 的浮动布局）、卡片样式：只对停靠区本身；浮动窗口里是紧贴的面板
         bool Overlay()   const { return !m_view && m_dock->IsFloating(); }
         bool CardStyle() const { return !m_view && m_dock->IsCardStyle(); }
+        bool FloatCard() const { return Overlay() && CardStyle(); }     // 叠在绘图区上的圆角卡片（四角下面是绘图区）
 
         // 浮动停靠区里没有标题栏的组（文档区）：透明、点击穿透，露出下面的绘图区
         bool IsHole() const { return Overlay() && !HasHeader(); }
@@ -182,7 +183,7 @@ namespace MiniGUI
                 total += w;
             }
             const float scale = total > avail && total > 0.0f ? avail / total : 1.0f;     // 放不下时等比缩窄
-            float x = Overlay() ? 0.0f : 2.0f;      // 浮动卡片：第一个标签贴着卡片的圆角
+            float x = FloatCard() ? 0.0f : 2.0f;    // 浮动卡片：第一个标签贴着卡片的圆角
             for (size_t i = 0; i < widths.size(); ++i)
             {
                 const float w  = std::floor(widths[i] * scale);
@@ -213,7 +214,7 @@ namespace MiniGUI
             const Vec2 size = GetSize();
             SetHitTestVisible(!IsHole());
             Rect content{ 0.0f, HeaderHeight(), size.x, std::max(size.y, HeaderHeight()) };
-            if (Overlay() && !IsHole())
+            if (FloatCard() && !IsHole())
                 content = Rect{ kFloatInset, content.min.y, std::max(kFloatInset, size.x - kFloatInset), std::max(content.min.y, size.y - kFloatInset) };
             for (const auto& c : GetChildren())
                 c->SetBounds(content);
@@ -232,7 +233,7 @@ namespace MiniGUI
         {
             if (IsHole())
                 return;
-            const bool     floating = Overlay();
+            const bool     floating = FloatCard();
             const ColorRef body     = BodyColor();
             dl.AddRectFilled(r, body, floating ? Theme::RadiusLg : 0.0f);
             if (!HasHeader())
@@ -346,6 +347,17 @@ namespace MiniGUI
 
             case PointerEventType::Down:
             {
+                if (e.button == MouseButton::Right && m_dock->m_onPanelMenu && m_pressTab < 0)
+                {
+                    // 右键标签：宿主弹出这个面板的菜单（回调可能改布局、销毁本节点，之后不再访问成员）
+                    const int tab = TabAt(e.localPosition);
+                    if (tab < 0)
+                        return;
+                    e.handled = true;
+                    auto cb = m_dock->m_onPanelMenu;
+                    cb(m_leaf->panels[static_cast<size_t>(tab)], DockPos(e.position));
+                    return;
+                }
                 if (e.button != MouseButton::Left)
                     return;
                 const int tab = TabAt(e.localPosition);
@@ -583,6 +595,7 @@ namespace MiniGUI
             fp->SetOnClosed(nullptr);
             fp->SetOnClose(nullptr);
             fp->SetOnRedock(nullptr);
+            fp->SetOnMenu(nullptr);
             fp->SetOnMoved(nullptr);
             fp->SetOnMaximize(nullptr);
             fp->SetOnActivate(nullptr);
@@ -601,6 +614,7 @@ namespace MiniGUI
             DockSpace* d = &dock;
             fp->SetOnClose   ([d, id] { d->CloseFloat(id); });
             fp->SetOnRedock  ([d, id] { d->RedockFloat(id); });
+            fp->SetOnMenu    ([d, id](Vec2 pos) { d->PanelMenuOfFloat(id, pos); });
             fp->SetOnMoved   ([d]     { d->LayoutChanged(); });
             fp->SetOnMaximize([d, fp] { fp->SetMaximized(!fp->IsPanelMaximized()); d->LayoutChanged(); });   // 铺满窗口 / 还原
             fp->SetOnActivate([ctx, fp, d, id] { ctx->RaisePopup(fp); d->RaiseFloat(id); });
@@ -1506,6 +1520,19 @@ namespace MiniGUI
         DockToRemembered(id);
         ActivatePanel(id);
         LayoutChanged();
+    }
+
+    void DockSpace::PanelMenuOfFloat(const std::string& floatId, Vec2 windowPos)
+    {
+        const Float* f = FindFloatById(floatId);
+        if (!f || !f->root || !m_onPanelMenu || m_drag.active)
+            return;
+        const Tree* first = FirstLeaf(f->root.get());
+        if (first->panels.empty())
+            return;
+        const std::string id = first->panels[static_cast<size_t>(std::clamp(first->active, 0, static_cast<int>(first->panels.size()) - 1))];
+        auto cb = m_onPanelMenu;    // 复制再调用：回调可能改布局、关掉这个浮动窗口
+        cb(id, windowPos);
     }
 
     void DockSpace::RedockFloat(const std::string& floatId)

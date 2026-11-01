@@ -35,11 +35,22 @@ target_link_libraries(MiniBIMWin PRIVATE
     MiniBIM
     MiniGUI_Win32
     MiniBIMRender
+    comdlg32        # 项目文件的打开 / 保存对话框
 )
 
 # 三维实体内核（SMLib）
 if(MINIBIM_WITH_SOLID)
     target_link_libraries(MiniBIMWin PRIVATE MiniBIMSolid)
+endif()
+
+# Revit 文件读取器（Apache-2.0，cmake/Rvt.cmake）：得到宏 MINIBIM_WITH_RVT，GuiMain.cpp 接上它；许可原文与 NOTICE 放在可执行文件旁
+if(TARGET MiniBIMRvt)
+    target_link_libraries(MiniBIMWin PRIVATE MiniBIMRvt)
+    add_custom_command(TARGET MiniBIMWin POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/src/Rvt/LICENSE" "$<TARGET_FILE_DIR:MiniBIMWin>/LICENSE-Rvt"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/src/Rvt/NOTICE" "$<TARGET_FILE_DIR:MiniBIMWin>/NOTICE-Rvt"
+        COMMENT "Copy the Revit reader's license for MiniBIMWin"
+    )
 endif()
 
 if(MSVC)

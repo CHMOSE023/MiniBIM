@@ -10,6 +10,8 @@
 #include "Platform/Win32/Win32Frame.h"
 #include "Platform/Win32/Win32Input.h"
 #include "Widgets/TitleBar.h"
+#include "I18n/Translator.h"
+#include <commdlg.h>
 #include <shellapi.h>
 #include <algorithm>
 #include <filesystem>
@@ -22,6 +24,7 @@ namespace MiniBIM
     namespace
     {
         constexpr UINT kMsgPosted = WM_APP + 1;     // lParam：new 出来的 std::function<void()>（Post）
+        constexpr UINT_PTR kFirstDelayTimer = 0x4D420000;   // PostDelayed 的定时器 ID 从这里起
 
         std::wstring ToWide(const std::string& utf8)
         {
@@ -96,6 +99,7 @@ namespace MiniBIM
         });
 
         WatchUiFile();
+        DragAcceptFiles(m_hwnd, TRUE);      // 拖进窗口的文件交给 MainFrame::OpenFiles
         ShowWindow(m_hwnd, SW_SHOW);
         return true;
     }
@@ -228,11 +232,42 @@ namespace MiniBIM
             m_main.RequestExit();
             return 0;
 
+        case WM_DROPFILES:
+        {
+            const HDROP drop = reinterpret_cast<HDROP>(wParam);
+            const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+            std::vector<std::string> paths;
+            paths.reserve(count);
+            for (UINT i = 0; i < count; ++i)
+            {
+                const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+                std::vector<wchar_t> path(static_cast<size_t>(length) + 1);
+                if (DragQueryFileW(drop, i, path.data(), length + 1))
+                    paths.push_back(ToUtf8(path.data()));
+            }
+            DragFinish(drop);
+            m_main.OpenFiles(paths);
+            return 0;
+        }
+
         case kMsgPosted:
         {
             std::unique_ptr<std::function<void()>> fn(reinterpret_cast<std::function<void()>*>(lParam));
             if (*fn)
                 (*fn)();
+            return 0;
+        }
+
+        case WM_TIMER:
+        {
+            const auto it = m_delayed.find(wParam);
+            if (it == m_delayed.end())
+                break;
+            KillTimer(hwnd, wParam);
+            const std::function<void()> fn = std::move(it->second);
+            m_delayed.erase(it);
+            if (fn)
+                fn();
             return 0;
         }
 
@@ -299,6 +334,13 @@ namespace MiniBIM
             delete pending;
     }
 
+    void Win32Window::PostDelayed(unsigned ms, std::function<void()> fn)
+    {
+        const UINT_PTR id = kFirstDelayTimer + (m_nextDelayed++ & 0xFFFF);
+        if (SetTimer(m_hwnd, id, std::max<UINT>(ms, USER_TIMER_MINIMUM), nullptr))
+            m_delayed[id] = std::move(fn);
+    }
+
     void Win32Window::BeginUiPass()
     {
         m_graphics->BeginUiPass();
@@ -345,6 +387,87 @@ namespace MiniBIM
             return {};
         const std::u8string u8 = (std::filesystem::path(buf) / L"MiniBIM").u8string();
         return std::string(u8.begin(), u8.end());
+    }
+
+    // 打开 / 保存的文件对话框（系统对话框是模态的：选完才返回）。筛选器的文字随界面语言
+    void Win32Window::PickFile(FileKind kind, std::function<void(const std::string&)> done)
+    {
+        const std::string path = ShowProjectDialog(kind == FileKind::Shortcuts      ? FileDialog::Shortcuts
+                                                 : kind == FileKind::FillPatterns   ? FileDialog::Pat
+                                                 : kind == FileKind::Dxf            ? FileDialog::Dxf
+                                                 : kind == FileKind::PointCloud     ? FileDialog::PointCloud
+                                                 : kind == FileKind::ProjectOrRevit ? FileDialog::OpenRevit
+                                                                                    : FileDialog::Open, {});
+        if (!path.empty() && done)
+            done(path);
+    }
+
+    std::string Win32Window::ChooseSavePath(SaveKind kind, const std::string& suggestedName)
+    {
+        return ShowProjectDialog(kind == SaveKind::Ifc            ? FileDialog::SaveIfc
+                                 : kind == SaveKind::FillPatterns ? FileDialog::SavePat
+                                                                  : FileDialog::SaveProject, suggestedName);
+    }
+
+    std::string Win32Window::ShowProjectDialog(FileDialog kind, const std::string& suggestedName)
+    {
+        const bool save = kind == FileDialog::SaveProject || kind == FileDialog::SaveIfc || kind == FileDialog::SavePat;
+        // 筛选器：名称\0模式\0……\0\0；名称经 Tr 翻译
+        std::wstring filter;
+        auto add = [&](const std::string& label, const wchar_t* pattern)
+        {
+            filter += ToWide(label);
+            filter += L'\0';
+            filter += pattern;
+            filter += L'\0';
+        };
+        if (kind == FileDialog::SaveProject)
+            add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
+        else if (kind == FileDialog::SaveIfc)
+            add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
+        else if (kind == FileDialog::Shortcuts)
+            add(Tr("Shortcuts file") + " (*.json;*.xml;*.txt;*.md)", L"*.json;*.xml;*.txt;*.md");
+        else if (kind == FileDialog::Pat || kind == FileDialog::SavePat)
+            add(Tr("Fill pattern file") + " (*.pat)", L"*.pat");
+        else if (kind == FileDialog::Dxf)
+            add(Tr("DXF drawings") + " (*.dxf;*.dwg)", L"*.dxf;*.dwg");
+        else if (kind == FileDialog::PointCloud)
+            add(Tr("Point clouds") + " (*.pts;*.xyz;*.txt;*.ply;*.las;*.laz;*.e57;*.rcp;*.rcs)", L"*.pts;*.xyz;*.txt;*.ply;*.las;*.laz;*.e57;*.rcp;*.rcs");
+        else if (kind == FileDialog::OpenRevit)
+        {
+            add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", L"*.minibim;*.bimcraft;*.ifc;*.rvt");
+            add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
+            add(Tr("BIMCraft project") + " (*.bimcraft)", L"*.bimcraft");
+            add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
+            add(Tr("Revit project") + " (*.rvt)", L"*.rvt");
+        }
+        else
+        {
+            add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc)", L"*.minibim;*.bimcraft;*.ifc");
+            add(Tr("MiniBIM project") + " (*.minibim)", L"*.minibim");
+            add(Tr("BIMCraft project") + " (*.bimcraft)", L"*.bimcraft");
+            add(Tr("IFC file") + " (*.ifc)", L"*.ifc");
+        }
+        add(Tr("All files") + " (*.*)", L"*.*");
+        filter += L'\0';
+
+        std::vector<wchar_t> buf(32768, L'\0');
+        if (save && !suggestedName.empty())
+        {
+            const std::wstring name = ToWide(suggestedName);
+            std::copy_n(name.begin(), std::min(name.size(), buf.size() - 1), buf.begin());
+        }
+        OPENFILENAMEW ofn = {};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner   = m_hwnd;
+        ofn.lpstrFilter = filter.c_str();
+        ofn.lpstrFile   = buf.data();
+        ofn.nMaxFile    = static_cast<DWORD>(buf.size());
+        ofn.lpstrDefExt = kind == FileDialog::SaveIfc ? L"ifc" : kind == FileDialog::SavePat ? L"pat" : L"minibim";
+        ofn.Flags       = OFN_NOCHANGEDIR | OFN_EXPLORER | (save ? OFN_OVERWRITEPROMPT : (OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST));
+        if (!(save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn)))
+            return {};
+        return ToUtf8(buf.data());
     }
 
     std::string Win32Window::GetSystemLanguage() const

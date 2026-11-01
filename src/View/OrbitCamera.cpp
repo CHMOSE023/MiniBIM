@@ -71,11 +71,24 @@ namespace MiniBIM
             halfW = std::max(halfW, std::abs(Math::Dot(d, right)));
             halfH = std::max(halfH, std::abs(Math::Dot(d, up)));
         }
-        const double aspect = static_cast<double>(m_width) / static_cast<double>(m_height);
-        m_viewHeight = std::max(2.0 * std::max(halfH, halfW / aspect) * 1.15, 1.0);
+        // 放进去掉留边后的区域（留边过大、区域不到视口的 20% 时按 20% 算），目标点画在区域中心
+        const double W = m_width, H = m_height;
+        const double areaW = std::max(W - m_insets[0] - m_insets[2], W * 0.2), areaH = std::max(H - m_insets[1] - m_insets[3], H * 0.2);
+        m_offsetX = std::clamp((m_insets[0] - m_insets[2]) * 0.5, -W * 0.4, W * 0.4);
+        m_offsetY = std::clamp((m_insets[1] - m_insets[3]) * 0.5, -H * 0.4, H * 0.4);
+        const double perPixel = std::max(2.0 * halfH / areaH, 2.0 * halfW / areaW) * 1.15;
+        m_viewHeight = std::max(perPixel * H, 1.0);
 
         const Math::Vec3 diagonal = bounds.Max - bounds.Min;
         m_depth = std::max(1.0e4, diagonal.Length() * 4.0);
+    }
+
+    void OrbitCamera::SetFitInsets(double left, double top, double right, double bottom)
+    {
+        m_insets[0] = std::max(left, 0.0);
+        m_insets[1] = std::max(top, 0.0);
+        m_insets[2] = std::max(right, 0.0);
+        m_insets[3] = std::max(bottom, 0.0);
     }
 
     void OrbitCamera::Orbit(double dxPixels, double dyPixels)
@@ -93,8 +106,8 @@ namespace MiniBIM
     Math::Point3 OrbitCamera::PixelToPlane(double pixelX, double pixelY) const
     {
         const double s = WorldPerPixel();
-        const double x = (pixelX - m_width * 0.5) * s;
-        const double y = (m_height * 0.5 - pixelY) * s;
+        const double x = (pixelX - m_width * 0.5 - m_offsetX) * s;
+        const double y = (m_height * 0.5 + m_offsetY - pixelY) * s;
         return m_target + GetRight() * x + GetUp() * y;
     }
 
@@ -122,6 +135,8 @@ namespace MiniBIM
         view.m[14] = -Math::Dot(t, f);
 
         const double aspect = static_cast<double>(m_width) / static_cast<double>(m_height);
-        return view * Math::Mat4::OrthoLH(m_viewHeight * aspect, m_viewHeight, -m_depth, m_depth);
+        // 目标点不在视口中心时（框住范围时按留边定的偏移），投影后整体平移
+        const Math::Mat4 shift = Math::Mat4::Translation({ 2.0 * m_offsetX / m_width, -2.0 * m_offsetY / m_height, 0.0 });
+        return view * Math::Mat4::OrthoLH(m_viewHeight * aspect, m_viewHeight, -m_depth, m_depth) * shift;
     }
 }

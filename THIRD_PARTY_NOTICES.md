@@ -1,7 +1,7 @@
 # 第三方声明
 
 MiniBIM 本身按 [MIT 许可证](LICENSE) 发布。下面是它包含或移植自的第三方代码与资源，以及各自的许可证。
-发布包里随可执行文件附带 `LICENSE`、本文件和 `LICENSE-SMLib`。
+发布包里随可执行文件附带 `LICENSE`、本文件、`LICENSE-SMLib`，以及 Revit 读取器的 `LICENSE-Rvt` 与 `NOTICE-Rvt`。
 
 ## MiniCAD
 
@@ -15,10 +15,11 @@ MiniBIM 本身按 [MIT 许可证](LICENSE) 发布。下面是它包含或移植�
 ## BIMCraft
 
 MiniBIM 计划把 [BIMCraft](https://github.com/IPedrax/BIMCraft)（Rust）的模型、命令与界面移植为 C++（见 `docs/PLAN.md`）。
-移植过来的代码与译文按 BIMCraft 的 MIT 选项使用，原文如下。移植开始后，每个含移植代码的源文件开头写明对应的 BIMCraft 文件与基准提交。
+移植过来的代码与译文按 BIMCraft 的 MIT 选项使用，原文如下。每个含移植代码的源文件开头写明对应的 BIMCraft 文件与基准提交
+（第 2 阶段起：`src/Model/`、`src/Commands/`、`src/View/ModelScene.*` 与对应的测试）。
 
 - 移植基准提交：`f3bbb33f3b8b6cc6f80b3bd6611e33c330cb448f`（2026-10-28）
-- 不移植 `crates/rvt`（Revit 文件读取器）：它只有 Apache-2.0 许可，含 rvt-rs 的代码，并且依赖对 Revit 格式的逆向分析
+- `crates/rvt`（Revit 文件读取器）**不在 MIT 之列**：它只有 Apache-2.0，见下面的"BIMCraft Revit 读取器"
 - 不使用 BIMCraft 的名称、标志与图标
 
 ```
@@ -44,6 +45,80 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Noto Sans SC
+
+Linux 版、网页版的界面字体 `assets/fonts/NotoSansSC-UI.ttf` 由 Noto Sans SC 生成（`tools/make_web_font.py`，复制自 MiniCAD：固定为 Regular 字重，
+只保留 GB2312 字符、常用符号和源码、词典里出现的字符）。
+
+- 来源：Google Noto Fonts（https://github.com/notofonts/noto-cjk）
+- 许可证：SIL Open Font License 1.1（https://openfontlicense.org），字体文件的 name 表里附有版权与许可声明
+
+## nlohmann/json
+
+`3rd/nlohmann`：[nlohmann/json](https://github.com/nlohmann/json) 3.11.3 的单头文件 `json.hpp`，模型核心读写 JSON（命令参数、项目文件）用，
+MIT 许可，全文另见 `3rd/nlohmann/LICENSE.MIT`；没有修改（见 `3rd/nlohmann/README.md`）。
+
+```
+MIT License
+
+Copyright (c) 2013-2022 Niels Lohmann
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## SDL3
+
+Linux 版（`MiniBIMLinux`）的窗口、输入、剪贴板与文件对话框使用 SDL3，发布包里以静态库链入。
+
+- 来源：https://github.com/libsdl-org/SDL（版本见 `.github/workflows/build.yml` 的 `SDL3_VERSION`）
+- 许可证：zlib，原文如下
+
+```
+Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
+
+This software is provided 'as-is', without any express or implied
+warranty.  In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
+```
+
+## BIMCraft Revit 读取器（Apache-2.0）
+
+`src/Rvt/`（目标 `MiniBIMRvt`，开关 `MINIBIM_WITH_RVT`）移植自 BIMCraft 的 `crates/rvt`（基准提交同上），它的一部分又移植自
+[rvt-rs](https://github.com/DrunkOnJava/rvt-rs)（提交 `b6086d41b9758fd9b92f42f0a47b8345b9c58056`）。这部分按 **Apache License 2.0** 使用，不是 MIT：
+
+- 版权：Copyright (c) 2026 IPedrax and the BIMCraft contributors；rvt-rs：Copyright 2026 Griffin Long
+- 许可证全文：`src/Rvt/LICENSE`（发布包里为 `LICENSE-Rvt`）；归属声明：`src/Rvt/NOTICE`（发布包里为 `NOTICE-Rvt`）
+- 改动：按 Apache-2.0 第 4(b) 条，每个文件开头写明移植自哪个文件、已改写为 C++
+- Revit 格式没有公开规范，读法的来源与风险见 BIMCraft 的 `docs/rvt-provenance.md`；MiniBIM 不附带任何 Autodesk 的文件、族、样板或图标
 
 ## SMLib（NVIDIA USD BRep）
 

@@ -425,10 +425,12 @@ namespace MiniGUI
         if (target == m_hovered)
             return;
 
-        const uint64_t version = m_treeVersion;
         Node* old = m_hovered;
         m_hovered = target;
         OnHoverChangedForTooltip();
+        // 版本号在关掉提示之后再取：提示节点移走也算改了树，先取的话指针从显示着提示的控件直接跳到相邻控件时
+        // （中间没经过空白处），Leave 之后就提前返回，新控件收不到 Enter、IsHovered 一直为 false，点了不触发
+        const uint64_t version = m_treeVersion;
 
         PointerEvent e;
         e.position  = m_pointerPos;
@@ -1294,8 +1296,11 @@ namespace MiniGUI
     {
         if (IsBlockedByOwner())
             return m_modalOwner->TextInput(utf8);
-        if (!m_focus || utf8.empty())
+        if (utf8.empty())
             return false;
+        auto unhandled = [&] { return m_unhandledText && !m_composing && !GetTopPopup() && m_unhandledText(utf8); };
+        if (!m_focus)
+            return unhandled();
 
         TextInputEvent e;
         e.text = std::string(utf8);
@@ -1310,6 +1315,8 @@ namespace MiniGUI
             if (e.handled || version != m_treeVersion)
                 break;
         }
+        if (!e.handled && version == m_treeVersion)
+            return unhandled();
         return e.handled;
     }
 

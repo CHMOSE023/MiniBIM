@@ -1,19 +1,74 @@
 # ── MiniBIM 核心库（平台无关，源码在 src，头文件以 src 为根："I18n/Translator.h"、"Core/Math/Vec3.hpp"）──
 # 命名空间 MiniBIM。源文件逐个列出（不用通配），新增 .cpp 要加到这里。
-# 移植 BIMCraft 的模型（bimcraft-core）时按 docs/PLAN.md 的分组往下加：Model/、Commands/、Ifc/ ……
+# 移植自 BIMCraft 的模型（bimcraft-core）在命名空间 MiniBIM::Bim，按 docs/PLAN.md 的分组往下加：Model/、Commands/、Ifc/（MiniBIM::Bim::Ifc）……
 
 add_library(MiniBIM STATIC
     # 多语言：PO 词典、当前语言（docs/i18n.md）
     src/I18n/Catalog.cpp
     src/I18n/Translator.cpp
-    # 视图
+    # 模型（移植自 BIMCraft crates/core）：几何、单位、ID、元素与类型、库、墙、项目文件
+    src/Model/Align.cpp
+    src/Model/Annotate.cpp
+    src/Model/Cad.cpp
+    src/Model/Cloud.cpp
+    src/Model/Csg.cpp
+    src/Model/Curve.cpp
+    src/Model/Dxf.cpp
+    src/Model/E57.cpp
+    src/Model/Family.cpp
+    src/Model/FamilyLibrary.cpp
+    src/Model/Font.cpp
+    src/Model/Geom.cpp
+    src/Model/Ids.cpp
+    src/Model/Insert.cpp
+    src/Model/Language.cpp
+    src/Model/Library.cpp
+    src/Model/Model.cpp
+    src/Model/ModelJson.cpp
+    src/Model/Render.cpp
+    src/Model/Runs.cpp
+    src/Model/Massing.cpp
+    src/Model/Sketch.cpp
+    src/Model/Skeleton.cpp
+    src/Model/Snap.cpp
+    src/Model/Styles.cpp
+    src/Model/Graphics.cpp
+    src/Model/Views.cpp
+    src/Model/Schedule.cpp
+    src/Model/Sheets.cpp
+    src/Model/Manage.cpp
+    src/Model/Pens.cpp
+    src/Model/Pat.cpp
+    src/Model/Text.cpp
+    src/Model/Units.cpp
+    src/Model/Walls.cpp
+    src/Model/Zlib.cpp
+    # IFC 交换（移植自 BIMCraft step.rs、ifc.rs、import.rs）
+    src/Ifc/Export.cpp
+    src/Ifc/Import.cpp
+    src/Ifc/Step.cpp
+    # 命令与会话（移植自 BIMCraft commands.rs、engine.rs、sample.rs、autosave.rs）
+    src/Commands/Autosave.cpp
+    src/Commands/Commands.cpp
+    src/Commands/Session.cpp
+    src/Commands/Sample.cpp
+    # 视图：相机，模型经实体内核生成的三维场景
     src/View/OrbitCamera.cpp
+    src/View/ModelScene.cpp
 )
 
 target_include_directories(MiniBIM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# 自动保存的工作线程（Commands/Autosave.cpp）。网页版不开 pthread（AppPlatform::HasBackgroundThread 为 false，不自动保存）
+if(NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+    target_link_libraries(MiniBIM PUBLIC Threads::Threads)
+endif()
+# nlohmann/json（3rd/nlohmann，MIT）：命令的参数与结果、项目文件
+target_include_directories(MiniBIM SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/3rd/nlohmann/include)
 
 if(MSVC)
-    target_compile_options(MiniBIM PRIVATE /utf-8 /W4)
+    # 命令表一个文件（Commands.cpp）的节数超过默认的对象文件格式上限
+    target_compile_options(MiniBIM PRIVATE /utf-8 /W4 /bigobj)
 endif()
 
 # ── 三维实体内核的适配层（唯一包含 SMLib 头文件的地方）─────────────────

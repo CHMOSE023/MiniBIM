@@ -1,12 +1,14 @@
 # 运行桌面版并截下主窗口（类名 MiniBIMWin），用来核对界面改动与各语言的显示。
-#   pwsh -NoProfile -ExecutionPolicy Bypass -File .agents/skills/ui-check/scripts/shot.ps1 [-Lang zh_CN] [-Keys "%f"] [-Name 文件名] [-Wait 毫秒] [-Release]
-# -Lang：--lang 启动参数（只对这一次有效）；-Keys：截图前按的键（SendKeys 语法，"%f" = Alt+F 打开文件菜单，"{DOWN}{ENTER}" …）
+#   pwsh -NoProfile -ExecutionPolicy Bypass -File .agents/skills/ui-check/scripts/shot.ps1 [-Lang zh_CN] [-Open 项目文件] [-Run view.plan] [-Keys "%f"] [-Name 文件名] [-Wait 毫秒] [-Release]
+# -Lang：--lang 启动参数（只对这一次有效）；-Run：--run 启动参数，打开示例房屋后执行的界面命令（不用抢焦点，可给多个，逗号分隔）；-Open：启动时打开的项目文件（给了它时 -Run 在这个项目上执行，不打开示例房屋）；-Keys：截图前按的键（SendKeys 语法，"%f" = Alt+F 打开文件菜单，"{DOWN}{ENTER}" …）
 # 输出 out/tmp/shots/<Name>.png；程序截完即关闭。用户设置 settings.json 先备份、结束后还原（按键可能切换了语言）
 # 退出码：0 成功；1 没等到窗口；2 给了 -Keys 但窗口没能置到前台、没有按键
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$Lang = '',
+    [string]$Open = '',
     [string]$Keys = '',
+    [string[]]$Run = @(),
     [string]$Name = '',
     [int]$Wait = 3000,
     [switch]$Release
@@ -36,6 +38,7 @@ public static class MiniBimShot {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     // FindWindow 在这台机器的工具环境里找不到窗口，按进程枚举顶层窗口
     public static IntPtr Find(uint pid, string cls) {
         IntPtr found = IntPtr.Zero;
@@ -45,6 +48,8 @@ public static class MiniBimShot {
     }
 }
 "@
+# 屏幕有缩放时，不感知 DPI 的进程拿到的窗口矩形是缩小过的，PrintWindow 却按实际像素画，只截到左上一块
+[MiniBimShot]::SetProcessDPIAware() | Out-Null
 
 $settings = Join-Path $env:LOCALAPPDATA 'MiniBIM/settings.json'
 $backup   = Join-Path $outDir 'settings.backup.json'
@@ -52,7 +57,9 @@ $hadSettings = Test-Path $settings
 if ($hadSettings) { Copy-Item $settings $backup -Force }
 
 $argsList = @()
+if ($Open) { $argsList += '"' + (Resolve-Path $Open).Path + '"' }
 if ($Lang) { $argsList += @('--lang', $Lang) }
+foreach ($id in ($Run -join ',') -split ',' | Where-Object { $_ }) { $argsList += @('--run', $id.Trim()) }
 $p = Start-Process -FilePath $exe -ArgumentList $argsList -WorkingDirectory (Split-Path $exe) -PassThru
 try {
     $deadline = (Get-Date).AddSeconds(30)

@@ -3,28 +3,328 @@
 // 多语言：title / label / tooltip / text 一律写英文原文，显示时按当前语言翻译（词典在 assets/i18n）；
 //   改了这里的文字后运行 python tools/extract_messages.py 更新词典，再补上译文
 // - 菜单文字不写助记符 &：菜单上不显示下划线，也不显示 "(F)" 这样的字母（键盘用 F10 激活菜单栏、方向键选择）
-// - menus 的项是命令 ID，"-" 为分隔线；{ "title": …, "dynamic": "languages" } 是程序生成的语言列表
-// - 宿主提供的面板：viewport（三维视口）、statusbar（状态栏）
+// - menus / toolbars 的项是命令 ID，"-" 为分隔线；{ "title": …, "dynamic": "languages" } 是程序生成的语言列表
+// - ribbons：功能区（布局里 { "type": "ribbon", "id": … } 引用）：选项卡 → 组 → 命令
+// - 宿主提供的面板：canvas（视图：三维或平面）、viewport（停靠区里视图的位置：透明的"洞"，范围是视图没被挡住的部分）、
+//   options（选项栏：当前工具的选项）、properties（特性）、browser（项目浏览器）、statusbar（状态栏）
+// - dock：停靠区，root 为布局树（split: row / column，tabs: 面板列表，size: 尺寸）；拖动面板标签可停靠到别处、合并为标签或浮出
 // - 图标（commands 的 "icon"、titlebar 的 "icon"）都在 assets/icons，由 tools/make_icons.py 生成：要新图标先在脚本里加，
-//   再在这里引用（python tools/make_icons.py --check 核对引用）。菜单项不显示图标，命令图标给以后的功能区、工具栏用
+//   再在这里引用（python tools/make_icons.py --check 核对引用）。菜单项不显示图标
+// - 布局（设置 > 界面 > 布局）：默认"浮动"，功能区、选项栏、停靠面板、状态栏是叠在视图上的圆角卡片（"card": true，停靠区 "gap" > 0），
+//   之间留缝露出视图；"紧凑"时程序选用变体 compact，各节点 "variants": { "compact": { … } } 里的属性覆盖原来的（去掉缝、方角贴边）
 {
   "commands": {
+    "file.new":     { "icon": "New.png", "shortcut": "Ctrl+N" },
+    "file.open":    { "icon": "Open.png", "shortcut": "Ctrl+O" },
+    "file.save":    { "icon": "Save.png", "shortcut": "Ctrl+S" },
+    "file.saveAs":  { "icon": "SaveAs.png", "shortcut": "Ctrl+Shift+S" },
+    "file.exportIfc": { "icon": "ExportIfc.png" },
+    "file.sample":  { "icon": "SampleHouse.png" },
+    "file.start":   { "icon": "StartPage.png", "shortcut": "Ctrl+D" },
+    "file.settings": { "icon": "Settings.png" },
+    "file.shortcuts": { "icon": "Shortcuts.png" },
     "file.exit":    { "icon": "Exit.png" },
+    "edit.undo":    { "icon": "Undo.png", "shortcut": "Ctrl+Z" },
+    "edit.redo":    { "icon": "Redo.png", "shortcut": "Ctrl+Y" },
+    "edit.delete":  { "icon": "Delete.png", "shortcut": "Delete" },
+    "edit.escape":  { "shortcut": "Esc" },
+    "modify.select": { "icon": "Select.png" },
+    "modify.flip":  { "icon": "FlipWall.png" },
+    "modify.typeProperties": { "icon": "TypeProperties.png" },
+    "manage.materials":      { "icon": "Materials.png" },
+    "manage.parameters":     { "icon": "ProjectParameters.png" },
+    "manage.objectStyles":   { "icon": "ObjectStyles.png" },
+    "manage.lineWeights":    { "icon": "LineWeights.png" },
+    "manage.lineStyles":     { "icon": "LineStyles.png" },
+    "manage.fillPatterns":   { "icon": "FillPatterns.png" },
+    "manage.purge":          { "icon": "Purge.png" },
+    "insert.link":           { "icon": "LinkModel.png" },
+    "insert.manageLinks":    { "icon": "ManageLinks.png" },
+    "insert.fromFile":       { "icon": "InsertFromFile.png" },
+    "insert.importCad":      { "icon": "ImportCad.png" },
+    "insert.linkCad":        { "icon": "LinkCad.png" },
+    "insert.pointCloud":     { "icon": "PointCloud.png" },
+    "modify.align":      { "icon": "Align.png" },
+    "modify.offset":     { "icon": "Offset.png" },
+    "modify.mirrorPick": { "icon": "MirrorPick.png" },
+    "modify.mirrorDraw": { "icon": "MirrorDraw.png" },
+    "modify.split":      { "icon": "Split.png" },
+    "modify.move":       { "icon": "Move.png" },
+    "modify.copy":       { "icon": "Copy.png" },
+    "modify.rotate":     { "icon": "Rotate.png" },
+    "modify.trim":       { "icon": "Trim.png" },
+    "modify.editBoundary": { "icon": "EditBoundary.png" },
+    "sketch.finish":     { "icon": "FinishSketch.png" },
+    "sketch.cancel":     { "icon": "CancelSketch.png" },
+    "sketch.line":       { "icon": "SketchLine.png" },
+    "sketch.rectangle":  { "icon": "SketchRectangle.png" },
+    "sketch.pickWalls":  { "icon": "PickWalls.png" },
+    "arch.wall":      { "icon": "Wall.png" },
+    "arch.door":      { "icon": "Door.png" },
+    "arch.window":    { "icon": "Window.png" },
+    "arch.column":    { "icon": "Column.png" },
+    "arch.component": { "icon": "Component.png" },
+    "arch.roof":      { "icon": "Roof.png" },
+    "arch.floor":     { "icon": "Floor.png" },
+    "arch.ceiling":   { "icon": "Ceiling.png" },
+    "arch.room":      { "icon": "Room.png" },
+    "arch.level":     { "icon": "Level.png" },
+    "arch.grid":      { "icon": "Grid.png" },
+    "struct.column":  { "icon": "StructuralColumn.png" },
+    "struct.beam":    { "icon": "Beam.png" },
+    "struct.floor":   { "icon": "StructuralFloor.png" },
+    "struct.footing": { "icon": "Footing.png" },
+    "struct.wallFooting": { "icon": "WallFooting.png" },
+    "mep.pipe":       { "icon": "Pipe.png" },
+    "mep.plumbing":   { "icon": "PlumbingFixture.png" },
+    "mep.fitting":    { "icon": "PipeFitting.png" },
+    "mep.accessory":  { "icon": "PipeAccessory.png" },
+    "mep.equipment":  { "icon": "ElectricalEquipment.png" },
+    "mep.device":     { "icon": "Device.png" },
+    "mep.lighting":   { "icon": "LightingFixture.png" },
+    "mep.conduit":    { "icon": "Conduit.png" },
+    "mep.cableTray":  { "icon": "CableTray.png" },
+    "mep.wire":       { "icon": "Wire.png" },
+    "mep.airTerminal": { "icon": "AirTerminal.png" },
+    "mep.downConductor": { "icon": "DownConductor.png" },
+    "mep.earthing":   { "icon": "EarthingElectrode.png" },
+    "mep.inspection": { "icon": "InspectionBox.png" },
+    "mep.groundConductor": { "icon": "GroundConductor.png" },
+    "mep.dataOutlet": { "icon": "DataOutlet.png" },
+    "mep.voiceOutlet": { "icon": "VoiceOutlet.png" },
+    "mep.rack":       { "icon": "Rack.png" },
+    "mep.patchPanel": { "icon": "PatchPanel.png" },
+    "mep.cabling":    { "icon": "Cabling.png" },
+    "massing.mass":   { "icon": "Mass.png" },
+    "annotate.aligned":       { "icon": "DimAligned.png" },
+    "annotate.angular":       { "icon": "DimAngular.png" },
+    "annotate.radial":        { "icon": "DimRadial.png" },
+    "annotate.spot":          { "icon": "SpotElevation.png" },
+    "annotate.detailLine":    { "icon": "DetailLine.png" },
+    "annotate.filledRegion":  { "icon": "FilledRegion.png" },
+    "annotate.maskingRegion": { "icon": "MaskingRegion.png" },
+    "annotate.text":          { "icon": "Text.png" },
+    "annotate.measure":       { "icon": "Measure.png" },
+    "annotate.tag":           { "icon": "Tag.png" },
+    "annotate.tagAll":        { "icon": "TagAll.png" },
+    "massing.floors": { "icon": "MassFloors.png" },
+    "massing.wallByFace":   { "icon": "WallByFace.png" },
+    "massing.floorByFace":  { "icon": "FloorByFace.png" },
+    "massing.roofByFace":   { "icon": "RoofByFace.png" },
+    "massing.updateByFace": { "icon": "UpdateByFace.png" },
+    "view.3d":        { "icon": "View3D.png" },
+    "view.plan":      { "icon": "FloorPlan.png" },
+    "view.levelUp":   { "icon": "LevelUp.png", "shortcut": "PageUp" },
+    "view.levelDown": { "icon": "LevelDown.png", "shortcut": "PageDown" },
     "view.home":    { "icon": "HomeView.png" },
     "view.zoomFit": { "icon": "ZoomFit.png" },
+    "view.properties": { "icon": "Properties.png" },
+    "view.browser":    { "icon": "ProjectBrowser.png" },
+    "view.visibility": { "icon": "VisibilityGraphics.png" },
+    "view.crop":       { "icon": "CropView.png" },
+    "view.duplicate":  { "icon": "DuplicateView.png" },
+    "view.detailing":  { "icon": "DuplicateDetailing.png" },
+    "view.dependent":  { "icon": "DependentView.png" },
+    "view.schedule":   { "icon": "Schedule.png" },
+    "view.section":    { "icon": "Section.png" },
+    "view.elevation":  { "icon": "Elevation.png" },
+    "view.sheet":      { "icon": "Sheet.png" },
+    "view.placeView":  { "icon": "PlaceView.png" },
+    "view.filters":    { "icon": "ViewFilters.png" },
+    "view.template":   { "icon": "ViewTemplate.png" },
     "help.about":   { "icon": "About.png" }
   },
   "menus": [
-    { "title": "File", "items": [ { "title": "Language", "dynamic": "languages" }, "-", "file.exit" ] },
-    { "title": "View", "items": [ "view.home", "view.zoomFit" ] },
+    { "title": "File", "items": [ "file.new", "file.open", { "title": "Open Recent", "dynamic": "recent" }, "file.save", "file.saveAs",
+                                  "file.exportIfc", "file.revitReport", "-", "file.start", "file.sample", "-",
+                                  { "title": "Language", "dynamic": "languages" }, "file.settings", "file.shortcuts", "-", "file.exit" ] },
+    { "title": "Edit", "items": [ "edit.undo", "edit.redo", "-", "edit.delete", "modify.flip" ] },
+    { "title": "View", "items": [ "view.3d", "view.plan", "view.levelUp", "view.levelDown", "-", "view.home", "view.zoomFit", "-",
+                                  "view.properties", "view.browser" ] },
     { "title": "Help", "items": [ "help.about" ] }
   ],
+  "toolbars": {
+    "quick": [ "file.start", "file.open", "file.save", "edit.undo", "edit.redo" ]
+  },
+  "ribbons": {
+    "main": {
+      "search": false,
+      "tabs": [
+        {
+          "title": "Architecture",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Build", "items": [ "arch.wall", "arch.door", "arch.window", "arch.column", "arch.component", "arch.roof", "arch.floor", "arch.ceiling" ] },
+            { "title": "Room & Area", "items": [ "arch.room" ] },
+            { "title": "Datum", "items": [ "arch.level", "arch.grid" ] }
+          ]
+        },
+        {
+          "title": "Structure",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Structure", "items": [ "struct.column", "struct.beam", "struct.floor" ] },
+            { "title": "Foundation", "items": [ "struct.footing", "struct.wallFooting" ] },
+            { "title": "Datum", "items": [ "arch.level", "arch.grid" ] }
+          ]
+        },
+        // 卫浴、电气、防雷、数据（BIMCraft 的四个专业选项卡；防雷与数据 Revit 没有）
+        {
+          "title": "Plumbing",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Plumbing & Piping", "items": [ "mep.pipe", "mep.plumbing", "mep.fitting", "mep.accessory" ] }
+          ]
+        },
+        {
+          "title": "Electrical",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Electrical", "items": [ "mep.equipment", "mep.device", "mep.lighting" ] },
+            { "title": "Conduit & Wire", "items": [ "mep.conduit", "mep.cableTray", "mep.wire" ] }
+          ]
+        },
+        {
+          "title": "Lightning Protection",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Capture & Descent", "items": [ "mep.airTerminal", "mep.downConductor" ] },
+            { "title": "Earthing", "items": [ "mep.earthing", "mep.inspection", "mep.groundConductor" ] }
+          ]
+        },
+        {
+          "title": "Data",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Outlets & Equipment", "items": [ "mep.dataOutlet", "mep.voiceOutlet", "mep.rack", "mep.patchPanel" ] },
+            { "title": "Cabling", "items": [ "mep.cableTray", "mep.cabling" ] }
+          ]
+        },
+        // 插入：链接的模型、从文件插入（CAD 与点云随第 5g2、5g3 步加进来）
+        {
+          "title": "Insert",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Link", "items": [ "insert.link", "insert.pointCloud", "insert.linkCad", "insert.manageLinks" ] },
+            { "title": "Import", "items": [ "insert.importCad", "insert.fromFile" ] }
+          ]
+        },
+        // 注释：标高平面里的尺寸、详图线、区域、文字、测量与标记
+        {
+          "title": "Annotate",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Dimension", "items": [ "annotate.aligned", "annotate.angular", "annotate.radial", "annotate.spot" ] },
+            { "title": "Detail", "items": [ "annotate.detailLine" ] },
+            { "title": "Region", "items": [ "annotate.filledRegion", "annotate.maskingRegion" ] },
+            { "title": "Text", "items": [ "annotate.text" ] },
+            { "title": "Measure", "items": [ "annotate.measure" ] },
+            { "title": "Tag", "items": [ "annotate.tag", "annotate.tagAll" ] }
+          ]
+        },
+        // 体量：概念体量；按面建模对选中的体量（没选体量时灰掉）。显示体量随视图的可见性移植
+        {
+          "title": "Massing",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Conceptual Mass", "items": [ "massing.mass" ] },
+            { "title": "Model by Face", "items": [ "massing.floors", "massing.wallByFace", "massing.floorByFace", "massing.roofByFace",
+                                                   "massing.updateByFace" ] }
+          ]
+        },
+        {
+          "title": "Modify",
+          "panels": [
+            { "title": "Select", "items": [ "modify.select" ] },
+            { "title": "Properties", "items": [ "view.properties", "modify.typeProperties" ] },
+            { "title": "Modify", "items": [ "modify.align", "modify.offset", "modify.mirrorPick", "modify.mirrorDraw", "modify.split",
+                                            "modify.move", "modify.copy", "modify.rotate", "modify.trim", "edit.delete" ] },
+            { "title": "Wall", "items": [ "modify.flip" ] },
+            // 草图模式（编辑边界，楼板、天花板、屋顶的边界线）：完成、取消与画草图线的工具，不在草图模式时灰掉
+            { "title": "Mode", "items": [ "modify.editBoundary", "sketch.finish", "sketch.cancel" ] },
+            { "title": "Draw", "items": [ "sketch.line", "sketch.rectangle", "sketch.pickWalls" ] }
+          ]
+        },
+        {
+          "title": "View",
+          "panels": [
+            { "title": "Graphics", "items": [ "view.visibility", "view.filters", "view.template", "view.crop" ] },
+            { "title": "Create", "items": [ "view.3d", "view.plan", "view.duplicate", "view.detailing", "view.dependent", "view.section", "view.elevation", "view.schedule", "view.levelUp", "view.levelDown" ] },
+            { "title": "Sheet Composition", "items": [ "view.sheet", "view.placeView" ] },
+            { "title": "Navigate", "items": [ "view.home", "view.zoomFit" ] },
+            { "title": "Palettes", "items": [ "view.properties", "view.browser" ] }
+          ]
+        },
+        {
+          "title": "Manage",
+          "panels": [
+            { "title": "Settings", "items": [ "manage.materials", "manage.objectStyles", "manage.lineStyles", "manage.lineWeights", "manage.fillPatterns", "manage.parameters" ] },
+            { "title": "Clean Up", "items": [ "manage.purge" ] }
+          ]
+        }
+      ]
+    }
+  },
   "layout": {
     "type": "column",
     "children": [
-      { "type": "titlebar", "icon": "app.png", "children": [ { "type": "menubar" } ] },
-      { "type": "panel", "name": "viewport", "grow": 1 },
-      { "type": "panel", "name": "statusbar" }
+      {
+        "type": "titlebar",
+        "icon": "app.png",
+        "shrink": 0,
+        "children": [
+          { "type": "menubar", "compact": true, "shrink": 0 },
+          { "type": "toolbar", "id": "quick", "iconSize": 18, "padding": [ 0, 3, 4, 3 ] }
+        ]
+      },
+      // 标题栏以下整个是视图（canvas：三维或平面），功能区、选项栏、停靠面板、状态栏叠在它上面（照 MiniCAD）。
+      // 浮动布局里它们是圆角卡片，四周与之间留 6 像素的缝露出视图；紧凑布局（变体 compact）里方角贴边、没有缝
+      {
+        "type": "column",
+        "grow": 1,
+        "children": [
+          { "type": "panel", "name": "canvas", "position": "absolute", "left": 0, "top": 0, "right": 0, "bottom": 0 },
+          // 叠在视图上的一层：空白处点击穿透到视图
+          {
+            "type": "column",
+            "position": "absolute", "left": 0, "top": 0, "right": 0, "bottom": 0,
+            "padding": 6,
+            "gap": 6,
+            "passThrough": true,
+            "variants": { "compact": { "padding": 0, "gap": 0 } },
+            "children": [
+              { "type": "ribbon", "id": "main", "shrink": 0, "variants": { "compact": { "card": false } } },
+              // 选项栏：当前工具的选项（墙的高度与定位线、屋顶的坡度……），没有工具时只有一行提示
+              { "type": "panel", "name": "options", "shrink": 0, "card": true, "variants": { "compact": { "card": false } } },
+              // 停靠区（"floating"：叠在视图上，空白处点击穿透）：特性在左上、项目浏览器在左下（同 Revit），
+              // 右边的 viewport 是视图的位置——透明的"洞"，露出下面的视图（框住模型时放进这里）
+              {
+                "type": "dock",
+                "id": "main",
+                "grow": 1,
+                "gap": 6,
+                "floating": true,
+                "variants": { "compact": { "gap": 0 } },
+                "root": {
+                  "split": "row",
+                  "children": [
+                    {
+                      "split": "column",
+                      "size": 300,
+                      "children": [
+                        { "tabs": [ "properties" ] },
+                        { "tabs": [ "browser" ], "size": 300 }
+                      ]
+                    },
+                    { "tabs": [ { "panel": "viewport", "header": false, "closable": false } ] }
+                  ]
+                }
+              },
+              { "type": "panel", "name": "statusbar", "shrink": 0, "card": true, "variants": { "compact": { "card": false } } }
+            ]
+          }
+        ]
+      }
     ]
   }
 }
