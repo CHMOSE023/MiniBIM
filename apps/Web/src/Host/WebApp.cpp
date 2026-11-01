@@ -327,6 +327,7 @@ namespace MiniBIM
         MiniBIMWeb_PickFile(id, kind == FileKind::Shortcuts      ? ".json,.xml,.txt,.md"
                               : kind == FileKind::FillPatterns   ? ".pat"
                               : kind == FileKind::Dxf            ? ".dxf,.dwg"
+                              : kind == FileKind::PointCloud     ? ".pts,.xyz,.txt,.ply,.las,.laz,.e57,.rcp,.rcs"
                               : kind == FileKind::ProjectOrRevit ? ".minibim,.bimcraft,.ifc,.rvt"
                                                                  : ".minibim,.bimcraft,.ifc");
     }

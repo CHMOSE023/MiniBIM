@@ -81,6 +81,7 @@ namespace MiniBIM::Bim
             }
             case Kind::Tag::Material:         return one(to.materials, from.materials);
             case Kind::Tag::Family:           return one(to.families, from.families);
+            case Kind::Tag::Cloud:            return one(to.clouds, from.clouds);
             case Kind::Tag::Cad:              return one(to.cads, from.cads);
             case Kind::Tag::Parameter:        return one(to.parameters, from.parameters);
             case Kind::Tag::LinePattern:      return one(to.linePatterns, from.linePatterns);

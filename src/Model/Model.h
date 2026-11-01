@@ -1,6 +1,7 @@
 // 移植自 BIMCraft crates/core/src/model.rs（f3bbb33），MIT 许可，见 THIRD_PARTY_NOTICES.md
 #pragma once
 #include "Model/Cad.h"
+#include "Model/Cloud.h"
 #include "Model/Family.h"
 #include "Model/Geom.h"
 #include "Model/Graphics.h"
@@ -229,6 +230,18 @@ namespace MiniBIM::Bim
         // 平面上 q 处是图纸的哪一点：Place 的反向
         P2 Unplace(P2 q) const;
         bool operator==(const CadImport&) const = default;
+    };
+
+    // 放好的扫描（第 5g3 步，移植自 BIMCraft model.rs 的 PointCloud）：项目的扫描 cloud，它的中心在平面上的 at、高出 level offset 毫米，
+    // 绕中心逆时针转 angle 度。它没有 params：阶段与涂色不碰它
+    struct PointCloud
+    {
+        std::string cloud;
+        Guid        level;
+        P2          at;
+        double      offset = 0.0;
+        double      angle  = 0.0;
+        bool operator==(const PointCloud&) const = default;
     };
 
     struct Grid
@@ -773,7 +786,7 @@ namespace MiniBIM::Bim
         using Variant = std::variant<Level, Grid, RoomSeparator, Wall, Floor, Ceiling, Door, Window, Room, Roof, Component, Column, StructuralColumn,
                                      Footing, Beam, StripFooting, Pipe, Conduit, CableTray, Wire, DownConductor, GroundConductor, Cable, Mass,
                                      Dimension, Note, Spot, Tag, DetailLine, FilledRegion, PlanView, View3D, Schedule, Section, Elevation,
-                                     Sheet, Viewport, Link, CadImport>;
+                                     Sheet, Viewport, Link, CadImport, PointCloud>;
         Variant v;
 
         Element() = default;
@@ -988,6 +1001,8 @@ namespace MiniBIM::Bim
         std::map<std::string, std::shared_ptr<const Model>> loaded;
         // 带进来的 CAD 图纸，按名称（第 5g2 步）：每张存一份，CadImport 放它；没有导入放的随最后一个导入删掉
         std::map<std::string, Cad> cads;
+        // 带进来的扫描，按名称（第 5g3 步）：每次扫描存一份，PointCloud 放它；没有点云放的随最后一个点云删掉
+        std::map<std::string, Cloud> clouds;
 
         // 空项目：两个标高，几种起步用的类型与材质
         static Model New(std::string_view name, Language language = Language::English);
@@ -1029,6 +1044,13 @@ namespace MiniBIM::Bim
         // 各视图的图形不再隐藏这几张图纸的图层（图纸删掉了）
         void ForgetCadLayers(const std::vector<std::string>& names);
 
+        // ── 点云 ────────────────────────────────────────────────
+        // 放好的扫描的点 p（离扫描中心）在模型里的哪里，毫米：转 angle，移到 at，高出它的标高 offset
+        P3 CloudPlace(const PointCloud& pc, const Clouds::F3& p) const;
+        // 没有点云放的扫描
+        std::vector<std::string> UnplacedClouds() const;
+        // 放好的扫描的点在模型里外面的框，毫米，最低的角在前；id 放的不是扫描时为空
+        std::optional<std::pair<P3, P3>> CloudBox(Id id) const;
 
         // ── 墙 ──────────────────────────────────────────────────
         double Thickness(const Wall& w) const;

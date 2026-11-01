@@ -37,6 +37,10 @@ msgstr "链接模型"
 msgid "Reload Links"
 msgstr "重新载入链接"
 
+#: src/Commands/Commands.cpp src/Model/Snap.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Point Cloud"
+msgstr "点云"
+
 #: src/Commands/Commands.cpp apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Import CAD"
 msgstr "导入 CAD"
@@ -1001,6 +1005,42 @@ msgstr "反转"
 msgid "Black and White"
 msgstr "黑白"
 
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "Units"
+msgstr "单位"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Spacing (mm)"
+msgstr "间距（毫米）"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "all the points"
+msgstr "全部点"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Positioning"
+msgstr "定位"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Auto - Center to Center"
+msgstr "自动 - 中心到中心"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Its middle on the project's origin and its foot on the level"
+msgstr "中心放在项目原点上，底部放在标高上"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Auto - Origin to Origin"
+msgstr "自动 - 原点到原点"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp
+msgid "Where its file's coordinates put it, as the survey placed it"
+msgstr "放在文件坐标所在的位置，与测量时一致"
+
+#: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/Parameters.cpp
+msgid "`{0}` is not a number"
+msgstr "“{0}”不是数"
+
 #: apps/Common/src/GUI/InsertDialogs.cpp apps/Common/src/GUI/MainCommands.cpp
 msgid "Link CAD"
 msgstr "链接 CAD"
@@ -1026,20 +1066,8 @@ msgid "Auto-Detect"
 msgstr "自动检测"
 
 #: apps/Common/src/GUI/InsertDialogs.cpp
-msgid "Positioning"
-msgstr "定位"
-
-#: apps/Common/src/GUI/InsertDialogs.cpp
-msgid "Auto - Center to Center"
-msgstr "自动 - 中心到中心"
-
-#: apps/Common/src/GUI/InsertDialogs.cpp
 msgid "Its middle on the project's origin"
 msgstr "它的中心放在项目原点上"
-
-#: apps/Common/src/GUI/InsertDialogs.cpp
-msgid "Auto - Origin to Origin"
-msgstr "自动 - 原点到原点"
 
 #: apps/Common/src/GUI/InsertDialogs.cpp
 msgid "Its origin on the project's origin, where its file's coordinates put it"
@@ -1305,6 +1333,10 @@ msgstr "把另一个项目的图元放进此项目"
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Import CAD: a DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "导入 CAD：把 DXF 图纸带进项目，画在标高的平面里、模型的下面，保留它的图层、颜色与线型，可以捕捉"
+
+#: apps/Common/src/GUI/MainCommands.cpp
+msgid "Point Cloud: a laser scan (PTS, XYZ, PLY, LAS or E57) brought into the project, drawn in the 3D view and the plans and snapped to"
+msgstr "点云：把激光扫描（PTS、XYZ、PLY、LAS 或 E57）带进项目，显示在三维视图与平面中，可以捕捉"
 
 #: apps/Common/src/GUI/MainCommands.cpp
 msgid "Link CAD: a DXF drawing shown in the plans of a level, read again from its file on Reload and when the project opens"
@@ -2485,16 +2517,20 @@ msgid "Linked File"
 msgstr "链接的文件"
 
 #: apps/Common/src/GUI/Parameters.cpp
-msgid "Units"
-msgstr "单位"
-
-#: apps/Common/src/GUI/Parameters.cpp
 msgid "Entities"
 msgstr "图元"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Position"
 msgstr "位置"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Scan"
+msgstr "扫描"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Points"
+msgstr "点数"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Base Level"
@@ -2555,10 +2591,6 @@ msgstr "是"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "No"
 msgstr "否"
-
-#: apps/Common/src/GUI/Parameters.cpp
-msgid "`{0}` is not a number"
-msgstr "“{0}”不是数"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "`{0}` is not a point; type x, y"
@@ -2691,6 +2723,10 @@ msgstr "CAD 导入"
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "CAD Imports"
 msgstr "CAD 导入"
+
+#: apps/Common/src/GUI/Parameters.cpp
+msgid "Point Clouds"
+msgstr "点云"
 
 #: apps/Common/src/GUI/Parameters.cpp
 msgid "Masses"
@@ -3910,6 +3946,10 @@ msgstr "填充样式文件"
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "DXF drawings"
 msgstr "DXF 图纸"
+
+#: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
+msgid "Point clouds"
+msgstr "点云"
 
 #: apps/Linux/src/Host/LinuxApp.cpp apps/Win32/src/Host/Win32Window.cpp
 msgid "All projects"

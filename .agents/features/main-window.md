@@ -153,7 +153,8 @@ covers: assets/ui/minibim_ui.json, apps/Common/src/GUI/MainFrame.*, apps/Common/
   "插入"选项卡在 `InsertDialogs.cpp`：链接模型（`MainFrame::LinkModel`：选项目或 IFC 文件，在项目文件夹里的存相对路径）、管理链接（`MainFrame::OpenManageLinks`：
   每个链接读到没有，再读、去掉，全部再读）、从文件插入（`MainFrame::InsertFromFile`：之后选中放进来的）、
   导入 CAD 与链接 CAD（`MainFrame::ImportCad` 选 DXF 文件经 `FileKind::Dxf`，`MainFrame::OpenImportCad`：名称、颜色、图层、单位、定位、仅当前视图，运行 `import_cad`，
-  放在显示的平面的标高上），管理链接对话框也列出链接的 CAD 图纸，可重新载入（`reload_cad`）。打开时读不到的链接弹窗说明。
+  放在显示的平面的标高上），点云（`MainFrame::InsertPointCloud` 选扫描文件经 `FileKind::PointCloud`，`MainFrame::OpenPointCloud`：名称、单位、间距、
+  定位（中心到中心或原点到原点），运行 `point_cloud`，放在显示的平面的标高上），管理链接对话框也列出链接的 CAD 图纸，可重新载入（`reload_cad`）。打开时读不到的链接弹窗说明。
   平面、剖面、图纸、三维场景与捕捉都画 `MainFrame::SeenModel`（`RebuildScene` 时由 `Links::Seen` 算好；场景还没跟上项目时就是项目），项目浏览器有"链接的模型"
   特性面板在选中的元素下列出它类别的项目参数（"项目参数"组：是 / 否为复选框，其余写着改，清空即去掉值），改时 `modify {ids, params: {名称: 值}}`
 - 两块面板在模型、选择集、视图、语言变了时重建（`MainFrame::RefreshPanels` 经 `AppPlatform::Post` 推到当前消息之后，合并成一次；不在控件自己的回调里拆掉它）。

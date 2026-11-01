@@ -37,23 +37,30 @@ namespace MiniBIM
             // 梁、基础与其他 run（管道、线管……）
             int runs    = 0;
             int masses  = 0;
+            // 点云（放好的扫描）
+            int clouds  = 0;
         };
 
         // kernel 为空（构建时关掉了 SMLib）时返回 false；个别元素建模失败时其余照样显示，也返回 false。
         // 原因放在 error（英文原文，显示前 Tr；元素的失败另记日志）
         bool Build(const Bim::Model& model, Solid::ISolidKernel* kernel, std::string& error);
 
-        bool                                Empty() const { return m_triangles.empty(); }
+        bool                                Empty() const { return m_triangles.empty() && m_points.empty(); }
         const AABB&                         GetBounds() const { return m_bounds; }
         const Counts&                       GetCounts() const { return m_counts; }
         // 已按固定的平行光着色的三角形（每 3 个顶点一个）
         const std::vector<Vertex_P3_C4>&    GetTriangles() const { return m_triangles; }
         // 实体的边，每两个点一段
         const std::vector<Math::Point3>&    GetEdges() const { return m_edges; }
-        // 从 origin 沿 dir 的射线最先碰到的三角形是哪个元素的：三维视图里单击拾取（正交相机，射线都朝视线方向）
-        std::optional<Bim::Id> Pick(const Math::Point3& origin, const Math::Vec3& dir) const;
+        // 点云的点（第 5g3 步）：每个一个顶点，用扫描的颜色（没有时灰色）；各扫描加起来不超过 Bim::Clouds::Drawn 个，多的每隔几个取一个
+        const std::vector<Vertex_P3_C4>&    GetPoints() const { return m_points; }
+        // 从 origin 沿 dir 的射线最先碰到的三角形是哪个元素的：三维视图里单击拾取（正交相机，射线都朝视线方向）。
+        // 离射线不到 pointReach 毫米的点云的点也算
+        std::optional<Bim::Id> Pick(const Math::Point3& origin, const Math::Vec3& dir, double pointReach = 0.0) const;
         // 元素 id 的三角形在 GetTriangles() 里的顶点范围 [first, last)；没有时为空范围
         std::pair<size_t, size_t> RangeOf(Bim::Id id) const;
+        // 点云 id 的点在 GetPoints() 里的范围 [first, last)；没有时为空范围
+        std::pair<size_t, size_t> PointsOf(Bim::Id id) const;
 
         // 剖面或立面看到的（移植自 BIMCraft view3d.rs 的 cuts 与 cut_in，做法不同：用场景的三角形算）
         struct SectionCut
@@ -77,6 +84,8 @@ namespace MiniBIM
         std::vector<Math::Point3> m_edges;
         std::vector<std::pair<size_t, Bim::Id>> m_owners;   // 每个元素的三角形从 m_triangles 的哪个顶点起（按顺序，到下一个元素为止）
         std::vector<std::pair<size_t, Bim::Id>> m_edgeOwners;   // 同上，边从 m_edges 的哪个点起
+        std::vector<Vertex_P3_C4> m_points;
+        std::vector<std::pair<size_t, Bim::Id>> m_pointOwners;  // 同上，点从 m_points 的哪个起
         AABB                      m_bounds = AABB::Empty();
         Counts                    m_counts;
     };

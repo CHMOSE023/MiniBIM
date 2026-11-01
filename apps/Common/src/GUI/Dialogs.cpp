@@ -1048,6 +1048,9 @@ namespace MiniBIM
             for (const char* c : Bim::GraphicsOf::Model)
                 if (*Props::CategoryName(c, true))
                     model.push_back(c);
+            for (const char* c : Bim::GraphicsOf::Scans)
+                if (*Props::CategoryName(c, true))
+                    model.push_back(c);
             for (const char* c : Bim::GraphicsOf::Annotation)
                 if (*Props::CategoryName(c, true))
                     annotation.push_back(c);

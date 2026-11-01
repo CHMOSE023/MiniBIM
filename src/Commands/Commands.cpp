@@ -1123,6 +1123,181 @@ namespace MiniBIM::Bim
             return true;
         }
 
+        // 带进一次扫描（文件，或一次扫描的几个测站的文件），或再放一次项目存的，作为元素：中心放在 at、脚放在标高上，或在文件坐标说的地方
+        bool PointCloudCmd(Session& s, const Json& p, Json& result, std::string& error)
+        {
+            const char* c = "point_cloud";
+            Params P(c, p, error);
+            const Model& m = s.GetModel();
+            Guid level;
+            if (!LevelParam(c, m, p, "level", level, error))
+                return false;
+            std::optional<std::vector<std::string>> paths;
+            if (const Json* v = Get(p, "path"); v && !v->is_null())
+            {
+                if (v->is_string())
+                    paths = std::vector<std::string>{ v->get<std::string>() };
+                else if (v->is_array() && v->empty())
+                    return P.Fail("`path` is a scan file, or a list of the files of one scan's stations, not an empty list");
+                else if (v->is_array() && v->size() > Clouds::MaxStations)
+                    return P.Fail("a scan comes from up to " + std::to_string(Clouds::MaxStations) + " files, not " + std::to_string(v->size()));
+                else if (v->is_array())
+                {
+                    paths.emplace();
+                    for (const Json& x : *v)
+                    {
+                        if (!x.is_string())
+                            return P.Fail("`path` lists files by their paths, not " + Show(x));
+                        paths->push_back(x.get<std::string>());
+                    }
+                }
+                else
+                    return P.Fail("`path` is a scan file, or a list of the files of one scan's stations, not " + Show(*v));
+            }
+            std::optional<std::string> held;
+            if (!P.String("cloud", held))
+                return false;
+            if (paths && held)
+                return P.Fail("give `path`, a scan file to bring in, or `cloud`, a scan the project holds; not both");
+            if (!paths && !held)
+                return P.Fail("give `path`, a scan file (PTS, XYZ, PLY, LAS or E57) to bring in, or `cloud`, the name of a scan the project holds");
+            std::string name;
+            Cloud scan;
+            bool fresh = false;
+            if (held)
+            {
+                const auto it = m.clouds.find(*held);
+                if (it == m.clouds.end())
+                {
+                    std::string names;
+                    for (const auto& [n, _] : m.clouds)
+                        names += (names.empty() ? "" : ", ") + n;
+                    return P.Fail("the project holds no scan named `" + *held + "` (it holds: " + (names.empty() ? std::string("none") : names) + ")");
+                }
+                name = *held;
+                scan = it->second;
+            }
+            else
+            {
+                std::vector<Clouds::Format> formats;
+                for (const std::string& path : *paths)
+                {
+                    const std::u8string e = ToPath(path).extension().u8string();
+                    Clouds::Format f{};
+                    std::string why;
+                    if (!Clouds::FormatFrom(std::string(e.begin(), e.end()), f, why))
+                        return P.Fail(path + ": " + why);
+                    formats.push_back(f);
+                }
+                const std::u8string stem = ToPath(paths->front()).stem().u8string();
+                std::optional<std::string> given;
+                if (!P.String("name", given))
+                    return false;
+                name = given ? *given : stem.empty() ? std::string("scan") : Text::TakeChars(std::string(stem.begin(), stem.end()), MaxText);
+                if (Text::Trim(name).empty())
+                    return P.Fail("a scan needs a `name`");
+                if (m.clouds.count(name))
+                    return P.Fail("the project already holds a scan named `" + name + "`: place it again with `cloud`, or bring this file in under another `name`");
+                if (m.clouds.size() >= Clouds::MaxClouds)
+                    return P.Fail("the project holds " + std::to_string(Clouds::MaxClouds) + " scans already; delete the point clouds of one first");
+                std::optional<std::string> units;
+                std::optional<double> spacingOpt;
+                if (!P.String("units", units) || !P.Num("spacing", spacingOpt))
+                    return false;
+                double scale = 1000.0;
+                if (units)
+                {
+                    const auto u = Clouds::Unit(*units);
+                    if (!u)
+                        return P.Fail("`units` is one of mm, cm, m, in, ft, not " + *units);
+                    scale = *u;
+                }
+                const double spacing = spacingOpt.value_or(0.0);
+                // 项目别的扫描留下的点数，各文件分
+                size_t points = 0;
+                for (const auto& [_, x] : m.clouds)
+                    points += x.Size();
+                const size_t cap = points >= Clouds::MaxPoints ? 0 : Clouds::MaxPoints - points;
+                if (cap == 0)
+                    return P.Fail("the project's scans hold " + std::to_string(points) + " points, all it may; delete the point clouds of one first");
+                Clouds::Options o;
+                o.scale   = scale;
+                o.spacing = spacing;
+                o.cap     = std::max<size_t>(cap / paths->size(), 1);
+                std::vector<std::pair<std::string, Clouds::Scan>> scans;
+                for (size_t i = 0; i < paths->size(); ++i)
+                {
+                    const std::string& path = (*paths)[i];
+                    std::error_code ec;
+                    const uintmax_t size = std::filesystem::file_size(ToPath(path), ec);
+                    if (ec)
+                        return P.Fail(path + ": " + ec.message());
+                    if (size > Clouds::MaxBytes)
+                        return P.Fail(path + " is too large (" + std::to_string(size) + " bytes; up to " + std::to_string(Clouds::MaxBytes) + ")");
+                    std::ifstream in(ToPath(path), std::ios::binary);
+                    if (!in)
+                        return P.Fail(path + ": can't be read");
+                    std::ostringstream ss;
+                    ss << in.rdbuf();
+                    const std::string bytes = ss.str();
+                    Clouds::Scan read;
+                    std::string why;
+                    if (!Clouds::Read(bytes, formats[i], o, read, why))
+                        return P.Fail(path + ": " + why);
+                    const std::u8string file = ToPath(path).filename().u8string();
+                    scans.emplace_back(std::string(file.begin(), file.end()), std::move(read));
+                }
+                std::string why;
+                bool ok = false;
+                if (scans.size() == 1)
+                    ok = Cloud::Make(scans.front().first, std::move(scans.front().second), scan, why);
+                else
+                {
+                    Clouds::Scan merged;
+                    std::vector<Clouds::Station> stations;
+                    ok = Clouds::Merge(std::move(scans), spacing, merged, stations, why) && Cloud::OfStations(std::move(merged), std::move(stations), scan, why);
+                }
+                if (!ok)
+                    return P.Fail(why);
+                fresh = true;
+            }
+            const double foot = scan.Bounds().first[2];
+            const Clouds::D3 origin = scan.Origin();
+            std::optional<std::string> originName;
+            if (!P.String("origin", originName))
+                return false;
+            P2 at(0.0, 0.0);
+            double offset = -foot;
+            if (!originName || *originName == "centre" || *originName == "center")
+                ;
+            else if (*originName == "file")
+            {
+                const double z = origin[2] - m.Elevation(level);
+                if (!(std::abs(origin[0]) <= MaxCoord && std::abs(origin[1]) <= MaxCoord && std::abs(z) <= MaxCoord))
+                    return P.Fail("the scan's middle lies at [" + Num(origin[0]) + ", " + Num(origin[1]) + ", " + Num(origin[2]) + "] mm in its file, past the " +
+                                  Num(MaxCoord) + " mm a model reaches: place it by its `centre`");
+                at     = P2(origin[0], origin[1]);
+                offset = z;
+            }
+            else
+                return P.Fail("`origin` is centre (its middle on `at`, its foot on the level) or file (where its file puts it), not " + *originName);
+            std::optional<P2> atGiven;
+            std::optional<double> offsetGiven, angle;
+            if (!P.PointOpt("at", atGiven) || !P.Num("offset", offsetGiven) || !P.Num("angle", angle))
+                return false;
+            if (atGiven)
+                at = *atGiven;
+            if (offsetGiven)
+                offset = *offsetGiven;
+            const size_t points = scan.Size(), read = scan.Read();
+            Model& mm = s.ModelMut();
+            if (fresh)
+                mm.clouds.emplace(name, std::move(scan));
+            const Id id = mm.Insert(Element(PointCloud{ name, level, at, offset, angle.value_or(0.0) }));
+            result = Json{ { "id", id }, { "cloud", name }, { "points", points }, { "read", read }, { "origin", Json::array({ origin[0], origin[1], origin[2] }) } };
+            return true;
+        }
+
         // 导入的图层，以及它显示哪些：在每个视图，或在一个视图（它的可见性/图形的"导入的类别"）
         bool CadLayers(Session& s, const Json& p, Json& result, std::string& error)
         {
@@ -3614,6 +3789,12 @@ namespace MiniBIM::Bim
                 if (mo.mirror)
                     return Fail(error, c, "CAD import " + std::to_string(id) + " can't be mirrored; mirror it in the program that made the drawing, or turn it");
                 std::tie(ci->at, ci->angle) = Turned(f, ci->at, ci->angle);
+            }
+            else if (PointCloud* pc = out.As<PointCloud>())
+            {
+                if (mo.mirror)
+                    return Fail(error, c, "point cloud " + std::to_string(id) + " can't be mirrored: a scan is what was measured; move it or turn it");
+                std::tie(pc->at, pc->angle) = Turned(f, pc->at, pc->angle);
             }
             else if (Roof* r = out.As<Roof>())
             {
@@ -7377,6 +7558,7 @@ namespace MiniBIM::Bim
             { "insert", N_("Insert from File"), {}, "{path, ids?: [id, …]} elements of another project (.minibim, .bimcraft or .ifc) brought into this one: those `ids` names (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is this project's of the same name, where it has one). Each keeps its id unless this project has that id, and its GUID unless this project has that GUID: then it's a copy, with a GUID of its own (the same file inserted into itself is copied whole). What they point at among themselves follows them. A name or a number taken here gets ` 2`, ` 3`…; types, families, materials and parameters this project hasn't come by name, and so do the line styles, fill patterns and filled region types a detail line or a filled region uses. Returns `ids` {there: here}, `copies`, `library`, `left_out`", InsertFrom, true },
             { "link", N_("Link Model"), { "LK" }, "{path, name?, at?: [x, y], angle?: degrees} another project (.minibim, .bimcraft or .ifc) shown in this one as a reference that can't be edited: its walls, floors, roofs, columns, stairs and the rest of what it builds are drawn in the plans, sections and 3D views, halftone; nothing of it is selected, scheduled, checked or exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`", LinkModel, true },
             { "reload", N_("Reload Links"), {}, "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` (the names) and `failed` ({name, error})", Reload, false },
+            { "point_cloud", N_("Point Cloud"), {}, "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?} brings in a laser scan (`path`: PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` where its file's coordinates put it; `offset` raises its middle over the level, `angle` turns it. Returns its id, the scan's name, the points kept and read, and where its middle was in the file", PointCloudCmd, true },
             { "import_cad", N_("Import CAD"), {}, "{path | cad, name?, level?, view?, at?: [x, y], position?, units?, scale?, angle?, layers?, colors?, link?} brings in a DXF drawing (`path`: an ASCII DXF of any version; save a DWG as DXF first) or places one the project holds again (`cad`, its name), as an element in every plan of `level`, or with `view` (a plan) in that view only. `units` of the drawing: auto (the default: what its file says, else mm), mm, cm, m, in or ft; or `scale`, mm to each of its units. `position`: center (the default: the middle of the drawing on `at`, the origin unless given) or origin (its origin on `at`); `angle` turns it about `at`, degrees. `layers`: visible (the default: those its file has on and thawed), all, or a list of those to show. `colors`: preserve (the default), invert or black. `link: true` remembers the file, so `reload_cad` and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents in the model, how many entities lie far from the rest (they're left out of its extents) and what was left out", ImportCad, true },
             { "cad_layers", N_("CAD Layers"), {}, "{id, hide?: [layer, …], show?: [layer, …], view?} a CAD import's layers, each with its colour and linetype and whether it's shown; `hide` and `show` change which it shows in every view, or with `view` in that view only (its Visibility/Graphics, by the drawing's name)", CadLayers, true },
             { "reload_cad", N_("Reload CAD"), {}, "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project does too). Returns whether it changed", ReloadCad, true },
@@ -7851,6 +8033,21 @@ namespace MiniBIM::Bim
             const auto it = m.loaded.find(l->path);
             v["loaded"]   = it != m.loaded.end();
             v["elements"] = it != m.loaded.end() ? Json(it->second->elements.Items().size()) : Json();
+        }
+        else if (const PointCloud* pc = e->As<PointCloud>())
+        {
+            if (const auto it = m.clouds.find(pc->cloud); it != m.clouds.end())
+            {
+                v["points"] = it->second.Size();
+                v["source"] = it->second.Source();
+                if (!it->second.Stations().empty())
+                {
+                    Json st = Json::array();
+                    for (const Clouds::Station& t : it->second.Stations())
+                        st.push_back(Json{ { "source", t.source }, { "points", t.points } });
+                    v["stations"] = std::move(st);
+                }
+            }
         }
         else if (const CadImport* ci = e->As<CadImport>())
         {

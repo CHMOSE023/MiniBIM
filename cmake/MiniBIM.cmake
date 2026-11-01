@@ -10,9 +10,11 @@ add_library(MiniBIM STATIC
     src/Model/Align.cpp
     src/Model/Annotate.cpp
     src/Model/Cad.cpp
+    src/Model/Cloud.cpp
     src/Model/Csg.cpp
     src/Model/Curve.cpp
     src/Model/Dxf.cpp
+    src/Model/E57.cpp
     src/Model/Family.cpp
     src/Model/FamilyLibrary.cpp
     src/Model/Font.cpp

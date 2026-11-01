@@ -12,6 +12,7 @@
 #include "Model/Pat.h"
 #include "Model/Render.h"
 #include "Model/Snap.h"
+#include "Model/Text.h"
 #include "Model/Walls.h"
 #include "Model/Zlib.h"
 #include <algorithm>
@@ -26,6 +27,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #ifdef _WIN32
@@ -4517,6 +4519,372 @@ namespace
         Check(Zlib::Unbase64(" aGVs\nbG8 ") == std::optional<std::string>("hello") && Zlib::Base64("hello") == "aGVsbG8=", "Zlib：base64");
     }
 
+    // ── 点云（移植自 BIMCraft crates/core/src/cloud_tests.rs） ──
+    // 这个测试自己的目录里的扫描文件，名称就是它的文件名
+    std::string CloudFile(const std::string& test, const std::string& name, const std::string& text)
+    {
+        const std::filesystem::path d = FsPath(Temp("cloud-" + test));
+        std::filesystem::create_directories(d);
+        const std::filesystem::path p = d / FsPath(name);
+        std::ofstream(p, std::ios::binary) << text;
+        return Utf8(p);
+    }
+
+    // 测量坐标里 4 × 3 × 2.5 米的一个盒子，米，角点有颜色
+    constexpr const char* CloudBox = "500000 7000000 10 255 0 0\n500004 7000000 10 0 255 0\n500004 7000003 10 0 0 255\n500000 7000003 12.5 255 255 255\n";
+
+    bool Near3(const P3& a, double x, double y, double z) { return std::abs(a[0] - x) < 0.5 && std::abs(a[1] - y) < 0.5 && std::abs(a[2] - z) < 0.5; }
+
+    bool NearJ3(const Json& v, double x, double y, double z)
+    {
+        return v.is_array() && v.size() == 3 && NearNum(v[0], x, 0.5) && NearNum(v[1], y, 0.5) && NearNum(v[2], z, 0.5);
+    }
+
+    // 放好的点云的点外面的框，模型里，毫米
+    std::pair<P3, P3> CloudBounds(const Session& s, Id id)
+    {
+        const auto b = s.GetModel().CloudBox(id);
+        if (!b)
+            std::printf("  %llu 不是放好的点云\n", static_cast<unsigned long long>(id));
+        return b.value_or(std::pair<P3, P3>{});
+    }
+
+    Json CloudOne(Session& s)
+    {
+        const Json all = Run(s, "elements", R"({"category": "pointcloud"})");
+        Check(all["count"] == 1, "点云：只有一个：" + all.dump());
+        return all["elements"][0];
+    }
+
+    // 从上往下看的地板，米：原点上与东北 4 米处两块 2 米见方的红色，半米高；第一块上面 2 米高一块蓝色
+    std::string CloudFloors()
+    {
+        std::string text;
+        const std::tuple<double, double, double, const char*> patches[] = { { 0.0, 0.0, 0.5, "255 0 0" }, { 4.0, 4.0, 0.5, "255 0 0" }, { 0.0, 0.0, 2.0, "0 0 255" } };
+        for (const auto& [x0, y0, z, rgb] : patches)
+            for (int i = 0; i <= 100; ++i)
+                for (int k = 0; k <= 100; ++k)
+                    text += Text::Shortest(x0 + i * 0.02) + " " + Text::Shortest(y0 + k * 0.02) + " " + Text::Shortest(z) + " " + rgb + "\n";
+        return text;
+    }
+
+    // 一面墙的扫描：y = 0 上 2 × 2 米，每 20 毫米一个点，米，红色
+    std::string CloudSheet()
+    {
+        std::string text;
+        for (int i = 0; i <= 100; ++i)
+            for (int k = 0; k <= 100; ++k)
+                text += Text::Shortest(i * 0.02) + " 0 " + Text::Shortest(k * 0.02) + " 255 0 0\n";
+        return text;
+    }
+
+    bool Bluish(Render::Rgb c) { return c.b > 200 && c.r < 60 && c.g < 60; }
+
+    void TestCloud()
+    {
+        // 中心在原点、脚在标高上进来
+        {
+            Session s;
+            const Json r = Run(s, "point_cloud", Json{ { "path", CloudFile("centre", "box.xyz", CloudBox) } });
+            Check(r["cloud"] == "box" && r["points"] == 4 && r["read"] == 4, "点云：名称与点数：" + r.dump());
+            Check(NearJ3(r["origin"], 500002000.0, 7000001500.0, 11250.0), "点云：文件里的中心：" + r["origin"].dump());
+            const Id id = r["id"].get<Id>();
+            const Json e = CloudOne(s);
+            Check(e["id"] == id && e["cloud"] == "box" && e["at"] == Pt(0, 0) && e["offset"] == 1250.0 && e["angle"] == 0.0, "点云：元素：" + e.dump());
+            const auto [lo, hi] = CloudBounds(s, id);
+            Check(Near3(lo, -2000, -1500, 0) && Near3(hi, 2000, 1500, 2500), "点云：中心在原点，脚在标高上");
+            // 放在别的标高上时站在那个标高上
+            const Id up = Run(s, "point_cloud", R"({"cloud": "box", "level": "Level 2"})")["id"].get<Id>();
+            const double level2 = s.GetModel().Elevation(G(s, TwoLevels(s).second));
+            Check(level2 > 0.0 && Near3(CloudBounds(s, up).first, -2000, -1500, level2), "点云：站在 Level 2 上");
+        }
+        // 原点到原点：模型放得下时照文件的坐标
+        {
+            Session s;
+            Check(Contains(Refused(s, "point_cloud", Json{ { "path", CloudFile("origin", "box.xyz", CloudBox) }, { "origin", "file" } }), "centre"),
+                  "点云：测量坐标太远，说按中心放");
+            const std::string home = CloudFile("origin", "near.xyz", "1 2 0\n3 4 1\n");
+            Id id = Run(s, "point_cloud", Json{ { "path", home }, { "origin", "file" } })["id"].get<Id>();
+            auto [lo, hi] = CloudBounds(s, id);
+            Check(Near3(lo, 1000, 2000, 0) && Near3(hi, 3000, 4000, 1000), "点云：照文件的坐标");
+            const std::string e = Refused(s, "point_cloud", R"({"cloud": "near", "origin": "nowhere"})");
+            Check(Contains(e, "centre") && Contains(e, "file"), "点云：origin 说可以是什么：" + e);
+            // 手放：中心在 at，转 90 度，4 米朝北
+            id = Run(s, "point_cloud", R"({"cloud": "near", "at": [10000, 0], "offset": 3000, "angle": 90})")["id"].get<Id>();
+            std::tie(lo, hi) = CloudBounds(s, id);
+            Check(Near3(lo, 9000, -1000, 2500) && Near3(hi, 11000, 1000, 3500), "点云：手放、转 90 度");
+        }
+        // 单位、间距与读不了的文件
+        {
+            Session s;
+            const std::string feet = CloudFile("units", "feet.xyz", "0 0 0\n10 0 0\n");
+            const auto [lo, hi] = CloudBounds(s, Run(s, "point_cloud", Json{ { "path", feet }, { "units", "ft" } })["id"].get<Id>());
+            Check(std::abs(hi[0] - lo[0] - 3048.0) < 0.5, "点云：英尺");
+            std::string grid;
+            for (int i = 0; i < 1000; ++i)
+                grid += std::to_string(i % 10) + " " + std::to_string(i / 10 % 10) + " " + std::to_string(i / 100) + "\n";
+            const Json r = Run(s, "point_cloud", Json{ { "path", CloudFile("units", "grid.xyz", grid) }, { "spacing", 2000 } });
+            Check(r["points"] == 125 && r["read"] == 1000, "点云：每 2 米的立方体留一个：" + r.dump());
+            std::string gone = CloudFile("units", "gone", "x");
+            gone.replace(gone.rfind("gone"), 4, "not-there.xyz");
+            const std::pair<Json, const char*> refused[] = {
+                { Json{ { "path", feet }, { "units", "furlong" }, { "name", "f2" } }, "mm, cm, m, in, ft" },
+                { Json{ { "path", feet }, { "spacing", -1 }, { "name", "f3" } }, "spacing" },
+                { Json{ { "path", CloudFile("units", "plan.dwg", "x") } }, "PTS, XYZ, PLY, LAS or E57" },
+                { Json{ { "path", CloudFile("units", "scan.laz", "x") } }, "LAZ" },
+                { Json{ { "path", gone } }, "not-there.xyz" },
+                { Json{ { "path", CloudFile("units", "bad.xyz", "0 0 zero\n") } }, "line 1" },
+                { Json::object(), "path" },
+                { Json{ { "cloud", "nope" } }, "nope" },
+            };
+            for (const auto& [p, says] : refused)
+            {
+                const std::string e = Refused(s, "point_cloud", p);
+                Check(Contains(e, says), "点云：拒绝 " + p.dump() + "：" + e);
+            }
+        }
+        // 几个文件进来是一次扫描，每个一个测站
+        {
+            Session s;
+            const std::string east = CloudFile("stations", "east.xyz", "0 0 0 255 0 0\n4 0 0 255 0 0\n");
+            const std::string west = CloudFile("stations", "west.xyz", "4 0 0\n8 0 2\n");
+            Json r = Run(s, "point_cloud", Json{ { "path", { east, west } } });
+            Check(r["cloud"] == "east" && r["points"] == 4 && r["read"] == 4, "点云：两个测站：" + r.dump());
+            Check(NearJ3(r["origin"], 4000, 0, 1000), "点云：两个测站的中心：" + r["origin"].dump());
+            const auto [lo, hi] = CloudBounds(s, r["id"].get<Id>());
+            Check(Near3(lo, -4000, 0, 0) && Near3(hi, 4000, 0, 2000), "点云：两个测站的框");
+            const Json e = CloudOne(s);
+            Check(e["stations"] == Json::parse(R"([{"source": "east.xyz", "points": 2}, {"source": "west.xyz", "points": 2}])"), "点云：测站：" + e.dump());
+            const auto* colours = s.GetModel().clouds.at("east").Colours();
+            Check(colours && (*colours)[0] == Clouds::Rgb{ 255, 0, 0 } && (*colours)[2] == Clouds::Rgb{ Clouds::Grey, Clouds::Grey, Clouds::Grey },
+                  "点云：没有颜色的测站是灰色");
+            r = Run(s, "point_cloud", Json{ { "path", { east, west } }, { "name", "thinned" }, { "spacing", 100 } });
+            Check(r["points"] == 3 && r["read"] == 4, "点云：测站重叠处留一个点：" + r.dump());
+            const auto& stations = s.GetModel().clouds.at("thinned").Stations();
+            Check(stations.size() == 2 && stations[0].points == 2 && stations[1].points == 1, "点云：抽稀后各测站的点数");
+            const auto before = s.GetModel().clouds;
+            const std::string file = Temp("cloud-stations.minibim");
+            Run(s, "save", Json{ { "path", file } });
+            Session t;
+            Run(t, "open", Json{ { "path", file } });
+            Check(t.GetModel().clouds == before, "点云：存了再打开，测站还在");
+            Remove(file);
+            Run(s, "point_cloud", Json{ { "path", { east } }, { "name", "alone" } });
+            Check(s.GetModel().clouds.at("alone").Stations().empty(), "点云：一个文件的列表就是那个文件");
+            const std::pair<Json, std::string> refused[] = {
+                { Json{ { "path", Json::array() } }, "path" },
+                { Json{ { "path", { Json(east), Json(3) } }, { "name", "n" } }, "path" },
+                { Json{ { "path", std::vector<std::string>(Clouds::MaxStations + 1, east) }, { "name", "n" } }, std::to_string(Clouds::MaxStations) },
+            };
+            for (const auto& [p, says] : refused)
+            {
+                const std::string why = Refused(s, "point_cloud", p);
+                Check(Contains(why, says), "点云：测站拒绝：" + why);
+            }
+        }
+        // 一次扫描带进来一次，放几次都行
+        {
+            Session s;
+            const std::string path = CloudFile("again", "box.xyz", CloudBox);
+            Run(s, "point_cloud", Json{ { "path", path } });
+            Run(s, "point_cloud", R"({"cloud": "box", "at": [10000, 0]})");
+            Check(s.GetModel().clouds.size() == 1 && Count(s, "pointcloud") == 2, "点云：一次扫描放两次");
+            const std::string e = Refused(s, "point_cloud", Json{ { "path", path } });
+            Check(Contains(e, "already") && Contains(e, "`cloud`") && Contains(e, "`name`"), "点云：同名说怎么做：" + e);
+            Run(s, "point_cloud", Json{ { "path", path }, { "name", "box 2" } });
+            Check(s.GetModel().clouds.size() == 2, "点云：换个名称再带进来");
+            for (size_t i = 2; i < Clouds::MaxClouds; ++i)
+                Run(s, "point_cloud", Json{ { "path", path }, { "name", "box " + std::to_string(i + 1) } });
+            const std::string many = Refused(s, "point_cloud", Json{ { "path", path }, { "name", "one too many" } });
+            Check(Contains(many, std::to_string(Clouds::MaxClouds)), "点云：项目最多放几次扫描：" + many);
+        }
+        // 跟着元素移动、旋转、复制，不能镜像
+        {
+            Session s;
+            const Id id = Run(s, "point_cloud", Json{ { "path", CloudFile("edit", "box.xyz", CloudBox) } })["id"].get<Id>();
+            Run(s, "move", Json{ { "ids", { id } }, { "by", Pt(1000, 500) } });
+            Check(CloudOne(s)["at"] == Pt(1000, 500), "点云：移动");
+            Run(s, "rotate", Json{ { "ids", { id } }, { "about", Pt(0, 0) }, { "angle", 90 } });
+            const Json e = CloudOne(s);
+            Check(NearNum(e["at"][0], -500, 1e-6) && NearNum(e["at"][1], 1000, 1e-6) && e["angle"] == 90.0, "点云：旋转：" + e.dump());
+            Run(s, "copy", Json{ { "ids", { id } }, { "by", Pt(0, 10000) } });
+            Check(Count(s, "pointcloud") == 2 && s.GetModel().clouds.size() == 1, "点云：复制的元素放同一次扫描");
+            std::string why = Refused(s, "mirror", Json{ { "ids", { id } }, { "axis", { Pt(0, 0), Pt(0, 1000) } } });
+            Check(Contains(why, "mirror") && Contains(why, "scan"), "点云：不能镜像：" + why);
+            why = Refused(s, "modify", Json{ { "id", id }, { "cloud", "nope" } });
+            Check(Contains(why, "nope"), "点云：改成没有的扫描：" + why);
+            why = Refused(s, "modify", Json{ { "id", id }, { "at", Pt(2e9, 0) } });
+            Check(Contains(why, "at"), "点云：放得太远：" + why);
+        }
+        // 没有元素放它时扫描跟着删掉，撤销带回来
+        {
+            Session s;
+            const Id id = Run(s, "point_cloud", Json{ { "path", CloudFile("delete", "box.xyz", CloudBox) } })["id"].get<Id>();
+            const Id copy = Run(s, "point_cloud", R"({"cloud": "box", "at": [10000, 0]})")["id"].get<Id>();
+            Run(s, "delete", Json{ { "ids", { id } } });
+            Check(s.GetModel().clouds.size() == 1, "点云：还有一个放它");
+            Run(s, "delete", Json{ { "ids", { copy } } });
+            Check(s.GetModel().clouds.empty(), "点云：没有放它的，扫描删掉");
+            Run(s, "undo", Json::object());
+            Check(s.GetModel().clouds.size() == 1, "点云：撤销带回扫描");
+        }
+        // 跟项目存起来，打开时照原样
+        {
+            Session s;
+            Run(s, "point_cloud", Json{ { "path", CloudFile("save", "box.xyz", CloudBox) }, { "angle", 30 }, { "at", Pt(100, 200) } });
+            const Json before = CloudOne(s);
+            const auto clouds = s.GetModel().clouds;
+            const std::string file = Temp("cloud-save.minibim");
+            Run(s, "save", Json{ { "path", file } });
+            Session t;
+            Run(t, "open", Json{ { "path", file } });
+            Check(CloudOne(t) == before && t.GetModel().clouds == clouds, "点云：存了再打开一样");
+            const Cloud& c = t.GetModel().clouds.at("box");
+            Check(c.Size() == 4 && c.Colours(), "点云：打开后的点与颜色");
+            Remove(file);
+        }
+        // IFC 不带扫描，同 Revit
+        {
+            Session s;
+            Run(s, "wall", R"({"points": [[0, 0], [4000, 0]]})");
+            const auto entities = [](Session& s, const std::string& name)
+            {
+                const std::string file = Temp("cloud-" + name + ".ifc");
+                Run(s, "save", Json{ { "path", file } });
+                std::ifstream in(FsPath(file), std::ios::binary);
+                size_t n = 0;
+                std::string line, first;
+                for (bool head = true; std::getline(in, line); head = false)
+                {
+                    if (head)
+                        first = line;
+                    n += !line.empty() && line[0] == '#';
+                }
+                in.close();
+                Remove(file);
+                return first.rfind("ISO-10303-21;", 0) == 0 ? n : 0;
+            };
+            const size_t without = entities(s, "without");
+            Run(s, "point_cloud", Json{ { "path", CloudFile("ifc", "box.xyz", CloudBox) } });
+            Check(without > 0 && entities(s, "with") == without, "点云：IFC 里没有它");
+        }
+        // 从文件插入时扫描跟着放它的元素
+        {
+            Session from;
+            const Id id = Run(from, "point_cloud", Json{ { "path", CloudFile("insert", "box.xyz", CloudBox) }, { "at", Pt(500, 0) } })["id"].get<Id>();
+            const std::string file = Temp("cloud-insert.minibim");
+            Run(from, "save", Json{ { "path", file } });
+            Session s;
+            Run(s, "insert", Json{ { "path", file }, { "ids", { id } } });
+            const Json e = CloudOne(s);
+            Check(e["cloud"] == "box" && e["at"] == Pt(500, 0), "点云：插入的元素：" + e.dump());
+            Check(s.GetModel().clouds.count("box") && s.GetModel().clouds.at("box") == from.GetModel().clouds.at("box"), "点云：插入带上扫描");
+            Remove(file);
+        }
+        // 三维场景的点：每个点归它的元素（ModelSceneTests 看画出来的样子），这里只看平面
+        // 平面显示视图范围里的点，在点上拾取
+        {
+            Session s;
+            const Id id = Run(s, "point_cloud", Json{ { "path", CloudFile("plan", "floors.xyz", CloudFloors()) }, { "origin", "file" } })["id"].get<Id>();
+            const auto [one, two] = TwoLevels(s);
+            // Level 1 剖在 1200、往下看到标高：红色的两块，看不到上面的蓝色
+            const Render::Drawing d = Render::Plan(s.GetModel(), G(s, one), 600, 600);
+            Check(Drawn(d, id, Reddish) > 0 && Drawn(d, id, Bluish) == 0, "点云：平面画视图范围里的点");
+            const auto at = [&](P2 q) { return d.view.ToPx(q); };
+            Check(d.Pick(at(P2(1000, 1000)), 3.0f) == std::optional<Id>(id) && d.Pick(at(P2(5000, 5000)), 3.0f) == std::optional<Id>(id), "点云：在点上拾取");
+            Check(!d.Pick(at(P2(3000, 3000)), 3.0f), "点云：两块之间没有点可拾取");
+            Check(!Owns(Render::Plan(s.GetModel(), G(s, two), 600, 600), id), "点云：视图范围在它上面的平面不画");
+            Check(!Render::PlanShows(s.GetModel(), G(s, one)).empty(), "点云：平面缩放到它");
+            // 视图给它颜色，或隐藏它
+            Run(s, "graphics", Json{ { "view", one }, { "elements", { { std::to_string(id), { { "projection", { { "fill", { 0, 0, 255 } } } } } } } } });
+            const Render::Drawing blue = Render::Plan(s.GetModel(), G(s, one), 600, 600);
+            Check(Drawn(blue, id, Reddish) == 0 && Drawn(blue, id, Bluish) > 0, "点云：视图给它颜色");
+            Run(s, "graphics", Json{ { "view", one }, { "reset", true }, { "hide_elements", { id } } });
+            Check(!Owns(Render::Plan(s.GetModel(), G(s, one), 600, 600), id), "点云：视图隐藏它");
+        }
+        // 平面捕捉剖切面剖到的点
+        {
+            Session s;
+            const Id id = Run(s, "point_cloud", Json{ { "path", CloudFile("snap", "face.xyz", CloudSheet()) }, { "origin", "file" } })["id"].get<Id>();
+            const auto [one, two] = TwoLevels(s);
+            const auto at = [&](Id level, P2 p, const Snap::Snaps& o = Snap::Snaps{})
+            { return Snap::At(s.GetModel(), G(s, level), p, Snap::Reach{ 100.0, 100.0 }, {}, false, o); };
+            Snap::Found f = at(one, P2(1003, 37));
+            Check(f.kind == Snap::Kind::Point && f.at == P2(1000, 0), "点云：捕捉点");
+            Check(std::string(Snap::Name(Snap::Kind::Point)) == "Point Cloud", "点云：捕捉的名称");
+            Check(at(one, P2(1000, 300)).kind == Snap::Kind::Free, "点云：够不着不捕捉");
+            Snap::Snaps off;
+            off.cloud = false;
+            Check(at(one, P2(1003, 37), off).kind == Snap::Kind::Free, "点云：关掉不捕捉");
+            Snap::Snaps only = Snap::Snaps::None();
+            only.cloud = true;
+            Check(at(one, P2(1003, 37), only).kind == Snap::Kind::Point, "点云：只开点云");
+            Check(at(two, P2(1003, 37)).kind == Snap::Kind::Free, "点云：Level 2 的剖切面在它上面");
+            // 模型可捕捉的先：墙的端点胜过离光标更近的点
+            Run(s, "wall", R"({"points": [[1000, 60], [1000, 3000]]})");
+            f = at(one, P2(1000, 20));
+            Check(f.kind == Snap::Kind::Endpoint && f.at == P2(1000, 60), "点云：墙的端点在先");
+            Run(s, "undo", Json::object());
+            // 再放一次、绕中心转 90 度，在它现在的地方捕捉
+            Run(s, "point_cloud", R"({"cloud": "face", "at": [10000, 0], "angle": 90})");
+            f = at(one, P2(10030, 500));
+            Check(f.kind == Snap::Kind::Point && f.at == P2(10000, 500), "点云：转过的捕捉");
+            Run(s, "graphics", Json{ { "view", one }, { "hide_elements", { id } } });
+            Check(at(one, P2(1003, 37)).kind == Snap::Kind::Free, "点云：视图隐藏的不捕捉");
+        }
+        // 大扫描的捕捉只看光标附近
+        {
+            Session s;
+            std::string text;
+            text.reserve(16'000'000);
+            for (int i = 0; i < 1000; ++i)
+                for (int k = 0; k < 1000; ++k)
+                    text += Text::Shortest(i * 0.1) + " " + Text::Shortest(k * 0.1) + " 1.2\n";
+            Run(s, "point_cloud", Json{ { "path", CloudFile("big", "big.xyz", text) }, { "origin", "file" } });
+            const Guid level = G(s, TwoLevels(s).first);
+            const Snap::Reach reach{ 80.0, 80.0 };
+            const Snap::Found first = Snap::At(s.GetModel(), level, P2(50010, 50020), reach, {}, false, Snap::Snaps{});
+            Check(first.kind == Snap::Kind::Point && first.at == P2(50000, 50000), "点云：大扫描捕捉");
+            const size_t before = Clouds::Looked();
+            bool all = true;
+            for (int i = 0; i < 100; ++i)
+                all = all && Snap::At(s.GetModel(), level, P2(1000.0 + i * 917.0, 2000.0 + i * 613.0), reach, {}, false, Snap::Snaps{}).kind == Snap::Kind::Point;
+            const size_t each = (Clouds::Looked() - before) / 100;
+            Check(all && each <= 2000, "点云：每次捕捉看 " + std::to_string(each) + " 个点");
+        }
+        // 项目文件的扫描太多时，多的那个拆开之前就拒绝
+        {
+            const auto projectFile = [](size_t n)
+            {
+                Session s;
+                const std::string path = CloudFile("file", "dot.xyz", "0 0 0\n1 0 0\n");
+                for (size_t i = 0; i < n; ++i)
+                    Run(s, "point_cloud", Json{ { "path", path }, { "name", "dot " + std::to_string(i) } });
+                std::string text, error;
+                s.GetModel().ToFile(text, error);
+                return Json::parse(text);
+            };
+            for (const size_t n : { size_t(0), size_t(1), size_t(3), Clouds::MaxClouds })
+            {
+                Model m;
+                std::vector<std::string> left;
+                std::string error;
+                Check(Model::Read(projectFile(n).dump(), m, left, error) && m.clouds.size() == n && left.empty(), "点云：读回 " + std::to_string(n) + " 次扫描：" + error);
+            }
+            Json file = projectFile(Clouds::MaxClouds);
+            file["clouds"]["zzz"] = Json{ { "nonsense", 1 } };
+            Model m;
+            std::vector<std::string> left;
+            std::string error;
+            Check(!Model::Read(file.dump(), m, left, error) && Contains(error, "scans") && Contains(error, std::to_string(Clouds::MaxClouds)), "点云：扫描太多的文件：" + error);
+        }
+        for (const char* test : { "centre", "origin", "units", "stations", "again", "edit", "delete", "save", "ifc", "insert", "plan", "snap", "big", "file" })
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(FsPath(Temp(std::string("cloud-") + test)), ec);
+        }
+    }
+
     void TestCad()
     {
         // 按文件的单位进来，中间在原点，文件里关闭的图层隐藏
@@ -4963,6 +5331,7 @@ int main()
     TestInsert();
     TestZlib();
     TestCad();
+    TestCloud();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

@@ -334,6 +334,7 @@ namespace MiniBIM::Bim
         {
             return std::find(Model.begin(), Model.end(), category) != Model.end() ||
                    std::find(Annotation.begin(), Annotation.end(), category) != Annotation.end() ||
+                   std::find(Scans.begin(), Scans.end(), category) != Scans.end() ||
                    std::find(Imported.begin(), Imported.end(), category) != Imported.end();
         }
 
@@ -343,6 +344,8 @@ namespace MiniBIM::Bim
             for (const char* c : Model)
                 out += (out.empty() ? "" : ", ") + std::string(c);
             for (const char* c : Annotation)
+                out += ", " + std::string(c);
+            for (const char* c : Scans)
                 out += ", " + std::string(c);
             for (const char* c : Imported)
                 out += ", " + std::string(c);

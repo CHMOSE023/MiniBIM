@@ -454,6 +454,7 @@ namespace MiniBIM::Bim
             const char* operator()(const Viewport&) const { return "viewport"; }
             const char* operator()(const Link&) const { return "link"; }
             const char* operator()(const CadImport&) const { return "cadimport"; }
+            const char* operator()(const PointCloud&) const { return "pointcloud"; }
         };
         return std::visit(Visitor{}, v);
     }
@@ -476,6 +477,7 @@ namespace MiniBIM::Bim
                 f(ci.level);
                 if (ci.view) f(*ci.view);
             }
+            void operator()(PointCloud& pc) const { f(pc.level); }
             void operator()(Viewport& v) const
             {
                 f(v.sheet);
@@ -593,6 +595,8 @@ namespace MiniBIM::Bim
             f(Kind::Of(Kind::Tag::TextType), n->typeName);
         else if (CadImport* ci = As<CadImport>())
             f(Kind::Of(Kind::Tag::Cad), ci->cad);
+        else if (PointCloud* pc = As<PointCloud>())
+            f(Kind::Of(Kind::Tag::Cloud), pc->cloud);
         else if (DetailLine* l = As<DetailLine>())
             f(Kind::Of(Kind::Tag::LineStyle), l->style);
         else if (FilledRegion* r = As<FilledRegion>())
@@ -1092,6 +1096,55 @@ namespace MiniBIM::Bim
         return Dxf::Union(corners);
     }
 
+    P3 Model::CloudPlace(const PointCloud& pc, const Clouds::F3& p) const
+    {
+        const double a = pc.angle * kPi / 180.0, sn = std::sin(a), cs = std::cos(a);
+        const double z = Elevation(pc.level) + pc.offset;
+        const double x = p[0], y = p[1];
+        return { pc.at.x + x * cs - y * sn, pc.at.y + x * sn + y * cs, z + static_cast<double>(p[2]) };
+    }
+
+    std::vector<std::string> Model::UnplacedClouds() const
+    {
+        if (clouds.empty())
+            return {};
+        std::set<std::string> placed;
+        for (const auto& [_, e] : elements.Items())
+            if (const PointCloud* pc = e->As<PointCloud>())
+                placed.insert(pc->cloud);
+        std::vector<std::string> out;
+        for (const auto& [n, _] : clouds)
+            if (!placed.count(n))
+                out.push_back(n);
+        return out;
+    }
+
+    std::optional<std::pair<P3, P3>> Model::CloudBox(Id id) const
+    {
+        const Element* e = elements.Get(id);
+        const PointCloud* pc = e ? e->As<PointCloud>() : nullptr;
+        if (!pc)
+            return std::nullopt;
+        const auto c = clouds.find(pc->cloud);
+        if (c == clouds.end())
+            return std::nullopt;
+        const auto [lo, hi] = c->second.Bounds();
+        P3 min{ INFINITY, INFINITY, INFINITY }, max{ -INFINITY, -INFINITY, -INFINITY };
+        for (int corner = 0; corner < 8; ++corner)
+        {
+            Clouds::F3 q{};
+            for (int k = 0; k < 3; ++k)
+                q[k] = static_cast<float>((corner >> k & 1) == 0 ? lo[k] : hi[k]);
+            const P3 p = CloudPlace(*pc, q);
+            for (int k = 0; k < 3; ++k)
+            {
+                min[k] = std::min(min[k], p[k]);
+                max[k] = std::max(max[k], p[k]);
+            }
+        }
+        return std::pair{ min, max };
+    }
+
     void Model::ForgetCadLayers(const std::vector<std::string>& names)
     {
         std::vector<Id> views;
@@ -1393,6 +1446,8 @@ namespace MiniBIM::Bim
             return v->level;
         if (const CadImport* ci = e.As<CadImport>())
             return ci->level;
+        if (const PointCloud* pc = e.As<PointCloud>())
+            return pc->level;
         // 文字、高程点、详图线、填充区域在标高的平面或平面视图里
         if (const auto plan = AnnotationPlan(e))
             return PlanLevel(*plan);
@@ -2083,6 +2138,22 @@ namespace MiniBIM::Bim
                 }
             }
         }
+        if (clouds.size() > Clouds::MaxClouds)
+        {
+            error = "the project has " + std::to_string(clouds.size()) + " scans; it holds up to " + std::to_string(Clouds::MaxClouds);
+            return false;
+        }
+        size_t points = 0;
+        for (const auto& [_, c] : clouds)
+            points += c.Size();
+        if (points > Clouds::MaxPoints)
+        {
+            error = "the project's scans hold " + std::to_string(points) + " points; it holds up to " + std::to_string(Clouds::MaxPoints);
+            return false;
+        }
+        for (const auto& [n, _] : clouds)
+            if (!TextOk("scan `" + n + "`", "name", n, error))
+                return false;
         if (cads.size() > Cads::MaxCads)
         {
             error = "the project has " + std::to_string(cads.size()) + " CAD drawings; it holds up to " + std::to_string(Cads::MaxCads);
@@ -2539,6 +2610,17 @@ namespace MiniBIM::Bim
                             error += "; place it nearer the origin (`position`: center), or at another `scale`";
                             return false;
                         }
+            }
+            else if (const PointCloud* pc = e.As<PointCloud>())
+            {
+                if (!clouds.count(pc->cloud))
+                {
+                    error = who + ": the project holds no scan named `" + pc->cloud + "`";
+                    return false;
+                }
+                if (!levelOk(pc->level) || !Point(who + " at", pc->at, error) || !Coord(who + " offset", pc->offset, error) ||
+                    !Coord(who + " angle", pc->angle, error))
+                    return false;
             }
             else if (const Viewport* vp = e.As<Viewport>())
             {

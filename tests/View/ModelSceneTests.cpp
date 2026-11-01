@@ -5,6 +5,8 @@
 #include "Solid/SMLib/SMLibKernel.h"
 #include "View/ModelScene.h"
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -259,6 +261,44 @@ namespace
     }
 }
 
+namespace
+{
+    // 点云：放好的扫描的点进场景（按它的颜色），归它的元素，按射线附近的点拾取
+    void TestPointCloud()
+    {
+        Bim::Session s = Sample();
+        const std::filesystem::path file = std::filesystem::temp_directory_path() / "minibim-scene-cloud.xyz";
+        {
+            // 8 × 6 米的地面，每 40 毫米一个点，蓝色 200
+            std::ofstream out(file, std::ios::binary);
+            for (int i = 0; i <= 200; ++i)
+                for (int k = 0; k <= 150; ++k)
+                    out << i * 0.04 << ' ' << k * 0.04 << ' ' << 0.3 + 0.2 * std::sin(i * 0.04) << ' ' << (i % 256) << ' ' << (k % 256) << " 200\n";
+        }
+        const std::u8string path = file.u8string();
+        Bim::Json r;
+        std::string error;
+        const bool ran = s.Execute("point_cloud", Bim::Json{ { "path", std::string(path.begin(), path.end()) }, { "origin", "file" } }, r, error);
+        std::filesystem::remove(file);
+        Check(ran, "三维场景：带进点云：" + error);
+        if (!ran)
+            return;
+        auto kernel = Solid::CreateSMLibKernel();
+        ModelScene scene;
+        const bool built = scene.Build(s.GetModel(), kernel.get(), error);
+        const Bim::Id id = r["id"].get<Bim::Id>();
+        const size_t n = 201 * 151;
+        const auto [first, last] = scene.PointsOf(id);
+        Check(built && scene.GetCounts().clouds == 1 && scene.GetPoints().size() == n && last - first == n, "三维场景：点云的每个点");
+        Check(scene.GetPoints()[first].color.b == 200, "三维场景：点云的点用扫描的颜色");
+        // 从上往下的射线：房子里的地面上有点，射线先碰到屋顶；房子外面的远处什么都没有
+        Check(scene.Pick(Math::Point3(4000.0, 3000.0, 50000.0), Math::Vec3(0.0, 0.0, -1.0), 30.0).has_value(), "三维场景：射线拾取到东西");
+        Check(!scene.Pick(Math::Point3(-40000.0, -30000.0, 50000.0), Math::Vec3(0.0, 0.0, -1.0), 30.0).has_value(), "三维场景：远处拾取不到");
+        // 起居室里离地 1 米往下：先碰到点云，不是楼板
+        Check(scene.Pick(Math::Point3(1000.0, 1000.0, 1000.0), Math::Vec3(0.0, 0.0, -1.0), 30.0) == std::optional<Bim::Id>(id), "三维场景：拾取点云");
+    }
+}
+
 int main()
 {
     TestNoKernel();
@@ -269,6 +309,7 @@ int main()
     TestMep();
     TestMassing();
     TestSectionCut();
+    TestPointCloud();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

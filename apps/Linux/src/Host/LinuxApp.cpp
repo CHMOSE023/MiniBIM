@@ -65,6 +65,8 @@ namespace MiniBIM
                 f.Add(Tr("Fill pattern file") + " (*.pat)", "pat");
             else if (kind == FileKind::Dxf)
                 f.Add(Tr("DXF drawings") + " (*.dxf;*.dwg)", "dxf;dwg");
+            else if (kind == FileKind::PointCloud)
+                f.Add(Tr("Point clouds") + " (*.pts;*.xyz;*.txt;*.ply;*.las;*.laz;*.e57;*.rcp;*.rcs)", "pts;xyz;txt;ply;las;laz;e57;rcp;rcs");
             else if (kind == FileKind::ProjectOrRevit)
             {
                 f.Add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", "minibim;bimcraft;ifc;rvt");

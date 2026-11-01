@@ -293,6 +293,7 @@ namespace MiniBIM::Bim::Snap
         case Kind::Centre:        return N_("Centre");
         case Kind::Perpendicular: return N_("Perpendicular");
         case Kind::Nearest:       return N_("Nearest");
+        case Kind::Point:         return N_("Point Cloud");
         case Kind::Angle:         return N_("Angle");
         case Kind::Free:          return "";
         }
@@ -302,7 +303,7 @@ namespace MiniBIM::Bim::Snap
     Snaps Snaps::None()
     {
         Snaps o;
-        o.endpoint = o.midpoint = o.intersection = o.centre = o.perpendicular = o.nearest = false;
+        o.endpoint = o.midpoint = o.intersection = o.centre = o.perpendicular = o.nearest = o.cloud = false;
         o.angle = 0.0;
         return o;
     }
@@ -331,6 +332,41 @@ namespace MiniBIM::Bim::Snap
             return std::nullopt;
         const double turn = Norm(Bearing(next - last) - Bearing(last - prev));
         return 180.0 - (turn > 180.0 ? 360.0 - turn : turn);
+    }
+
+    namespace
+    {
+        // 视图显示的扫描里离 level 的剖切面不到 CutBand 的点，从上往下看离 p 最近、不超过 reach 的
+        std::optional<P2> CloudPoint(const Model& m, Guid level, P2 p, double reach)
+        {
+            if (m.clouds.empty())
+                return std::nullopt;
+            const double cut = m.GetPlanRange(level).cut;
+            const Look look = m.LookOf(level);
+            std::optional<P2> best;
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const PointCloud* pc = e->As<PointCloud>();
+                if (!pc || !look.Shows(id))
+                    continue;
+                const auto it = m.clouds.find(pc->cloud);
+                if (it == m.clouds.end())
+                    continue;
+                // 光标在扫描自己的坐标里：离它的中心，转回去
+                const double base = m.Elevation(pc->level) + pc->offset;
+                const double a = pc->angle * 3.14159265358979323846 / 180.0, sn = std::sin(a), cs = std::cos(a);
+                const P2 d = p - pc->at;
+                const std::array<double, 2> local{ d.x * cs + d.y * sn, -d.x * sn + d.y * cs };
+                const auto q = it->second.Nearest(local, reach, { cut - CutBand - base, cut + CutBand - base });
+                if (!q)
+                    continue;
+                const P3 w = m.CloudPlace(*pc, *q);
+                const P2 at(w[0], w[1]);
+                if (!best || at.Dist(p) < best->Dist(p))
+                    best = at;
+            }
+            return best;
+        }
     }
 
     Found At(const Model& m, Guid level, P2 p, Reach reach, std::span<const P2> from, bool square, const Snaps& o,
@@ -404,6 +440,10 @@ namespace MiniBIM::Bim::Snap
         }
         if (hit)
             return Found{ hit->first, hit->second, std::nullopt };
+        // 否则剖切面剖到的扫描的点
+        if (o.cloud)
+            if (const auto at = CloudPoint(m, level, p, reach.point))
+                return Found{ Micron(*at), Kind::Point, std::nullopt };
 
         // 从最后一点作的垂足
         if (o.perpendicular && last)

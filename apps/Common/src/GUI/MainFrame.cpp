@@ -538,7 +538,9 @@ namespace MiniBIM
             {
                 const double x = 2.0 * e.pixel.x / m_camera.GetViewportWidth() - 1.0, y = 1.0 - 2.0 * e.pixel.y / m_camera.GetViewportHeight();
                 const Math::Point3 origin = Math::Mat4::Inverse(m_camera.GetViewProj()).TransformPoint({ x, y, 0.0 });
-                const std::optional<Bim::Id> hit = m_scene.Pick(origin, m_camera.GetForward());
+                // 点云的点按光标周围几个像素拾取
+                const double reach = 4.0 * m_dpiScale * m_camera.GetViewHeight() / m_camera.GetViewportHeight();
+                const std::optional<Bim::Id> hit = m_scene.Pick(origin, m_camera.GetForward(), reach);
                 const bool ctrl = (e.modifiers & static_cast<uint8_t>(ModifierKey::Ctrl)) != 0;
                 std::vector<Bim::Id> picked = ctrl ? m_selection : std::vector<Bim::Id>{};
                 if (hit)
@@ -614,6 +616,8 @@ namespace MiniBIM
         {
             const Math::Mat4 viewProj = m_camera.GetViewProj();
             renderer.SubmitCached(0, m_sceneVersion, m_scene.GetTriangles(), viewProj, PrimitiveType::Triangle, true);
+            if (!m_scene.GetPoints().empty())
+                renderer.SubmitCached(1, m_sceneVersion, m_scene.GetPoints(), viewProj, PrimitiveType::Point, true);
 
             // 边：沿视线往相机挪一个像素对应的长度（正交投影下屏幕位置不变），免得与所在的面争深度
             const Math::Vec3 toward = m_camera.GetForward() * (-std::max(0.5, m_camera.GetViewHeight() / pixelHeight));
@@ -642,6 +646,20 @@ namespace MiniBIM
             }
             if (!m_edgeVerts.empty())
                 renderer.Submit(m_edgeVerts, viewProj, PrimitiveType::Triangle, true);
+            // 选中的点云：它的点再画一遍，强调色
+            m_edgeVerts.clear();
+            for (const Bim::Id id : m_selection)
+            {
+                const auto [first, last] = m_scene.PointsOf(id);
+                for (size_t i = first; i < last; ++i)
+                {
+                    const auto& p = m_scene.GetPoints()[i].pos;
+                    const Math::Point3 q = Math::Point3{ p.x, p.y, p.z } + toward;
+                    m_edgeVerts.push_back({ { static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z) }, picked });
+                }
+            }
+            if (!m_edgeVerts.empty())
+                renderer.Submit(m_edgeVerts, viewProj, PrimitiveType::Point, true);
         }
         renderer.EndFrame();
 

@@ -205,7 +205,9 @@ namespace MiniBIM::Bim
         };
         inline constexpr std::array<const char*, 10> Annotation = { "dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section",
                                                                     "elevation" };
-        // 导入的类别：CAD 导入（BIMCraft 另有点云，随第 5g3 步移植）
+        // 点云：视图像 Revit 的可见性/图形那样在它们自己的一栏隐藏、覆盖；不是模型类别，对象样式没有它们的行
+        inline constexpr std::array<const char*, 1> Scans = { "pointcloud" };
+        // 导入的类别：CAD 导入，也在自己的一栏
         inline constexpr std::array<const char*, 1> Imported = { "cadimport" };
         // 视图画这一类吗
         bool Drawn(std::string_view category);

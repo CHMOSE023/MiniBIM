@@ -123,8 +123,38 @@ namespace MiniBIM
         m_edges.clear();
         m_owners.clear();
         m_edgeOwners.clear();
+        m_points.clear();
+        m_pointOwners.clear();
         m_bounds = AABB::Empty();
         m_counts = {};
+        // 点云：不经实体内核，每隔几个点取一个，各扫描加起来不超过 Clouds::Drawn 个
+        {
+            size_t total = 0;
+            for (const auto& [id, e] : m.elements.Items())
+                if (const Bim::PointCloud* pc = e->As<Bim::PointCloud>())
+                    if (const auto it = m.clouds.find(pc->cloud); it != m.clouds.end())
+                        total += it->second.Size();
+            const size_t step = Bim::Clouds::Every(total);
+            for (const auto& [id, e] : m.elements.Items())
+            {
+                const Bim::PointCloud* pc = e->As<Bim::PointCloud>();
+                const auto it = pc ? m.clouds.find(pc->cloud) : m.clouds.end();
+                if (it == m.clouds.end())
+                    continue;
+                m_pointOwners.emplace_back(m_points.size(), id);
+                const auto& points = it->second.Points();
+                const auto* colours = it->second.Colours();
+                for (size_t i = 0; i < points.size(); i += step)
+                {
+                    const Bim::P3 p = m.CloudPlace(*pc, points[i]);
+                    const auto c = colours && i < colours->size() ? (*colours)[i] : Bim::Clouds::Rgb{ Bim::Clouds::Grey, Bim::Clouds::Grey, Bim::Clouds::Grey };
+                    m_points.push_back({ { static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2]) },
+                                         VertexColor(c[0] / 255.0f, c[1] / 255.0f, c[2] / 255.0f, 1.0f) });
+                    m_bounds.Expand(Point3{ p[0], p[1], p[2] });
+                }
+                ++m_counts.clouds;
+            }
+        }
         if (!kernel)
         {
             error = N_("This build has no solid modeling kernel (MINIBIM_WITH_SOLID is off).");
@@ -453,7 +483,7 @@ namespace MiniBIM
         return true;
     }
 
-    std::optional<Bim::Id> ModelScene::Pick(const Math::Point3& origin, const Math::Vec3& dir) const
+    std::optional<Bim::Id> ModelScene::Pick(const Math::Point3& origin, const Math::Vec3& dir, double pointReach) const
     {
         // Möller–Trumbore：最近的正向交点
         auto cross = [](const Math::Vec3& a, const Math::Vec3& b) { return Math::Vec3{ a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x }; };
@@ -484,6 +514,28 @@ namespace MiniBIM
             {
                 best = t;
                 hit  = m_owners[owner].second;
+            }
+        }
+        // 点云的点：离射线不到 pointReach 的，最前面的那个
+        const double dd = dot(dir, dir);
+        if (pointReach > 0.0 && dd > 0.0)
+        {
+            size_t po = 0;
+            for (size_t i = 0; i < m_points.size(); ++i)
+            {
+                while (po + 1 < m_pointOwners.size() && m_pointOwners[po + 1].first <= i)
+                    ++po;
+                const auto& q = m_points[i].pos;
+                const Math::Vec3 v = Math::Point3{ q.x, q.y, q.z } - origin;
+                const double t = dot(v, dir) / dd;
+                if (!(t > 0.0 && t < best))
+                    continue;
+                const Math::Vec3 off{ v.x - dir.x * t, v.y - dir.y * t, v.z - dir.z * t };
+                if (dot(off, off) <= pointReach * pointReach * dd && po < m_pointOwners.size())
+                {
+                    best = t;
+                    hit  = m_pointOwners[po].second;
+                }
             }
         }
         // 链接造的东西挡着后面的，自己拾取不到
@@ -727,6 +779,14 @@ namespace MiniBIM
             }
         }
         return out;
+    }
+
+    std::pair<size_t, size_t> ModelScene::PointsOf(Bim::Id id) const
+    {
+        for (size_t i = 0; i < m_pointOwners.size(); ++i)
+            if (m_pointOwners[i].second == id)
+                return { m_pointOwners[i].first, i + 1 < m_pointOwners.size() ? m_pointOwners[i + 1].first : m_points.size() };
+        return { 0, 0 };
     }
 
     std::pair<size_t, size_t> ModelScene::RangeOf(Bim::Id id) const

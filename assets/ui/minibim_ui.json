@@ -43,6 +43,7 @@
     "insert.fromFile":       { "icon": "InsertFromFile.png" },
     "insert.importCad":      { "icon": "ImportCad.png" },
     "insert.linkCad":        { "icon": "LinkCad.png" },
+    "insert.pointCloud":     { "icon": "PointCloud.png" },
     "modify.align":      { "icon": "Align.png" },
     "modify.offset":     { "icon": "Offset.png" },
     "modify.mirrorPick": { "icon": "MirrorPick.png" },
@@ -204,7 +205,7 @@
           "title": "Insert",
           "panels": [
             { "title": "Select", "items": [ "modify.select" ] },
-            { "title": "Link", "items": [ "insert.link", "insert.linkCad", "insert.manageLinks" ] },
+            { "title": "Link", "items": [ "insert.link", "insert.pointCloud", "insert.linkCad", "insert.manageLinks" ] },
             { "title": "Import", "items": [ "insert.importCad", "insert.fromFile" ] }
           ]
         },

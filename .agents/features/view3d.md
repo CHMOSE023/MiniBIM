@@ -35,12 +35,15 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
   - 门窗（没有族时）：墙中间 50 毫米厚的板，与墙正交，门为木色、窗为玻璃色
   - 构件与带族的门窗：族的形体（`Model::ComponentPieces`、`Model::OpeningPieces`）本来就是朝外的三角形（族的扫掠、旋转与空心切割移植自 BIMCraft），
     直接交给渲染器，不经实体内核；按形体材质的颜色着色（库里没有时构件用米色、门窗用门或玻璃的颜色），边只画折角处（相邻面夹角超过 10°）和开口处
+  - 点云不经实体内核：放好的点（`Model::CloudPlace`）直接成 `ModelScene::GetPoints`，按扫描的颜色（没有颜色为灰色），各扫描加起来超过 `Clouds::Drawn` 时
+    每隔 `Clouds::Every` 个取一个；`ModelScene::PointsOf` 是一个元素的点，选中时用强调色再画一遍。点在面之后、边之前以 `PrimitiveType::Point` 画
   - `Tessellate` 出三角网格、`Edges` 出边线。顶点只有位置和颜色（`Vertex_P3_C4`），所以着色在 CPU 上按固定的平行光算好（不随视角变）
 - 什么时候重建：命令改了模型（`Bim::Session::Snapshot` 换了）之后 `MainFrame::OnModelChanged` → `MainFrame::RebuildScene`，场景版本加一
   （`IRenderer::SubmitCached` 的 version 变了，后端才重新上传）；换了项目时相机重新 `HomeView`
 - 绘制顺序：背景渐变（裁剪空间坐标、单位矩阵、不写深度）→ 面（`IRenderer::SubmitCached`，几何没变时后端复用上传过的缓冲）→ 边线（每帧沿视线往相机挪一点，见下）
   → 选中的元素（它的三角形 `ModelScene::RangeOf` 再画一遍，强调色，同样往相机挪一点）
 - 拾取：建场景时记下每个元素的三角形从哪个顶点起（按元素顺序），`ModelScene::Pick` 用射线与每个三角形求交（Möller–Trumbore），取最近的；
+  点云的点按离射线不超过 `pointReach`（视口里约 4 像素）算，与三角形一起取最近的；
   最近的是链接造的（ID 不小于 `Bim::Linked`）时什么都没拾取到（链接挡着后面的，自己选不中）。
   三维视图里左键单击（没拖动）时，`MainFrame::OnViewportPointer` 把像素经 `OrbitCamera::GetViewProj` 的逆矩阵变到近平面，沿 `OrbitCamera::GetForward` 拾取
 - 剖面：`ModelScene::Cut` 用竖直剖切面截每个元素的三角形，截线按端点连成环（外圈逆时针、洞顺时针），得到各元素剖到的环（沿线、向上的毫米）；
@@ -62,5 +65,5 @@ covers: src/View/*, src/Solid/*, apps/Render/*, src/Render/*
 
 - `ViewTests`（`tests/View/OrbitCameraTests.cpp`）：屏幕方向、框住包围盒（含留边）、缩放与平移时点的屏幕位置、有偏移时环绕与缩放
 - `SMLibSmokeTests`：SMLib 静态库能建模、布尔、求体积、离散化
-- `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗、天花板、屋顶、家具都建出来，范围（檐口到屋脊）对，墙在窗洞处扣掉，柱的范围与拾取，梁、圆梁与基础建出来、拾取得到；没有内核时不建
+- `ModelSceneTests`（`tests/View/ModelSceneTests.cpp`）：示例房屋的墙、楼板、门、窗、天花板、屋顶、家具都建出来，范围（檐口到屋脊）对，墙在窗洞处扣掉，柱的范围与拾取，梁、圆梁与基础建出来、拾取得到，点云的每个点进场景（扫描的颜色）、射线附近的点拾取到它；没有内核时不建
 - 画面不对时先用 skill `ui-check` 截图；换图形接口对比（`--gpu d3d11`、`--gpu warp`）

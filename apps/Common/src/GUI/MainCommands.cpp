@@ -101,6 +101,9 @@ namespace MiniBIM
         add("insert.importCad", N_("Import CAD"),
             N_("Import CAD: a DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"),
             [this] { ImportCad(false); });
+        add("insert.pointCloud", N_("Point Cloud"),
+            N_("Point Cloud: a laser scan (PTS, XYZ, PLY, LAS or E57) brought into the project, drawn in the 3D view and the plans and snapped to"),
+            [this] { InsertPointCloud(); });
         add("insert.linkCad", N_("Link CAD"),
             N_("Link CAD: a DXF drawing shown in the plans of a level, read again from its file on Reload and when the project opens"),
             [this] { ImportCad(true); });

@@ -865,6 +865,8 @@ namespace MiniBIM
                 world.m[13] = -ky * (Math::Dot(mid, up) + v.cy + oy);
                 world.m[14] = 0.5 - kz * Math::Dot(mid, back);
                 renderer.Submit(m_scene.GetTriangles(), world, PrimitiveType::Triangle, true);
+                if (!m_scene.GetPoints().empty())
+                    renderer.Submit(m_scene.GetPoints(), world, PrimitiveType::Point, true);
                 // 边往相机挪一点
                 const double toward = std::max(1.0, depth * 1e-4);
                 const VertexColor ink(0.18f, 0.18f, 0.20f, 1.0f);

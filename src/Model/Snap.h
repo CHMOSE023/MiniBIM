@@ -21,11 +21,15 @@ namespace MiniBIM::Bim::Snap
         Centre,
         Perpendicular,
         Nearest,        // 墙中心线上最近的点
+        Point,          // 平面的剖切面剖到的扫描的点
         Angle,          // 角度引导线上的点
         Free,           // 没有可捕捉的：最近的 10 毫米
     };
     // 叫什么（英文原文，显示前 Tr；Free 为空）
     const char* Name(Kind k);
+
+    // 点云的点离剖切面多远（毫米）还捕捉
+    inline constexpr double CutBand = 100.0;
 
     // 开着的捕捉
     struct Snaps
@@ -36,6 +40,8 @@ namespace MiniBIM::Bim::Snap
         bool centre        = true;
         bool perpendicular = true;
         bool nearest       = true;
+        // 平面的剖切面剖到的扫描的点
+        bool cloud         = true;
         // 方向捕捉的角度间隔（度），从正东和从前一段量，1 到 180；别的值为不捕捉角度
         double angle = 15.0;
 

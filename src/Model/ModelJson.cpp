@@ -968,6 +968,15 @@ namespace MiniBIM::Bim
                 out = Element(std::move(ci));
                 return true;
             }
+            if (category == "pointcloud")
+            {
+                PointCloud pc;
+                if (!f.Allow({ "cloud", "level", "at", "offset", "angle" }) || !f.String("cloud", pc.cloud, true) || !f.Id("level", pc.level, true) ||
+                    !f.Point("at", pc.at, true) || !f.Number("offset", pc.offset, false) || !f.Number("angle", pc.angle, false) || !f.Finish())
+                    return false;
+                out = Element(std::move(pc));
+                return true;
+            }
             if (category == "viewport")
             {
                 Viewport v;
@@ -2252,6 +2261,14 @@ namespace MiniBIM::Bim
             if (ci->colors != CadColors::Preserve)
                 j["colors"] = Name(ci->colors);
         }
+        else if (const PointCloud* pc = e.As<PointCloud>())
+        {
+            j["cloud"]  = pc->cloud;
+            j["level"]  = ToJson(pc->level);
+            j["at"]     = ToJson(pc->at);
+            j["offset"] = pc->offset;
+            j["angle"]  = pc->angle;
+        }
         else if (const Link* lk = e.As<Link>())
         {
             j["name"] = lk->name;
@@ -3001,6 +3018,13 @@ namespace MiniBIM::Bim
             }
             j["cads"] = std::move(cs);
         }
+        if (!clouds.empty())
+        {
+            Json cs = Json::object();
+            for (const auto& [n, c] : clouds)
+                cs[n] = c.ToJson();
+            j["clouds"] = std::move(cs);
+        }
         if (!objectStyles.empty())
         {
             Json os = Json::object();
@@ -3294,6 +3318,26 @@ namespace MiniBIM::Bim
                     return false;
                 held += cad.Size();
                 m.cads.emplace(it.key(), std::move(cad));
+            }
+        }
+        // 扫描：多出项目能放的那次在解开之前就拒绝，点数超出项目能放的那次也是（解开才占内存，Check 在之后）
+        if (const Json* cs = f.Raw("clouds"))
+        {
+            if (!cs->is_object())
+                return f.Fail("`clouds` must be an object of scans by name");
+            size_t held = 0;
+            for (auto it = cs->begin(); it != cs->end(); ++it)
+            {
+                if (m.clouds.size() >= Clouds::MaxClouds)
+                    return f.Fail("the file holds more than " + std::to_string(Clouds::MaxClouds) + " scans, all a project may hold");
+                Cloud cloud;
+                std::string why;
+                if (!Cloud::FromJson(it.value(), cloud, why))
+                    return f.Fail("scan `" + it.key() + "`: " + why);
+                held += cloud.Size();
+                if (held > Clouds::MaxPoints)
+                    return f.Fail("the file's scans hold more than " + std::to_string(Clouds::MaxPoints) + " points, all a project may hold");
+                m.clouds.emplace(it.key(), std::move(cloud));
             }
         }
         if (m.language != Language::English && m.lineStyles == Lines::Styles(Language::English) &&

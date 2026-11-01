@@ -162,6 +162,16 @@ namespace MiniBIM::Props
             { "Other", "scale", N_("Scale"), Number },
             { "Graphics", "colors", N_("Colors"), Shown },
         };
+        // 点云：它在的标高与高出多少，扫描、文件与点数，位置与转角可改
+        constexpr Row CloudRows[] = {
+            { "Constraints", "level", N_("Level"), Level },
+            { "Constraints", "offset", N_("Offset"), Length },
+            { "Identity Data", "cloud", N_("Scan"), Shown },
+            { "Identity Data", "source", N_("File"), Shown },
+            { "Identity Data", "points", N_("Points"), Shown },
+            { "Other", "at", N_("Origin"), Point },
+            { "Other", "angle", N_("Angle"), Number },
+        };
         constexpr Row Roof[] = {
             { "Constraints", "level", N_("Base Level"), Level },
             { "Constraints", "offset", "Base Offset", Length },
@@ -264,6 +274,7 @@ namespace MiniBIM::Props
         if (category == "region") return RegionRows;
         if (category == "link") return LinkRows;
         if (category == "cadimport") return CadRows;
+        if (category == "pointcloud") return CloudRows;
         return {};
     }
 
@@ -424,6 +435,7 @@ namespace MiniBIM::Props
             { "sheet", N_("Sheet"), N_("Sheets") },         { "viewport", N_("Viewport"), N_("Viewports") },
             { "link", N_("Linked Model"), N_("Linked Models") },
             { "cadimport", N_("CAD Import"), N_("CAD Imports") },
+            { "pointcloud", N_("Point Cloud"), N_("Point Clouds") },
             { "mass", N_("Mass"), N_("Masses") },           { "massfloor", N_("Mass Floor"), N_("Mass Floors") },
             { "dimension", N_("Dimension"), N_("Dimensions") }, { "text", N_("Text Note"), N_("Text Notes") },
             { "spot", N_("Spot Elevation"), N_("Spot Elevations") }, { "tag", N_("Tag"), N_("Tags") },

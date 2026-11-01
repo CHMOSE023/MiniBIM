@@ -395,6 +395,7 @@ namespace MiniBIM
         const std::string path = ShowProjectDialog(kind == FileKind::Shortcuts      ? FileDialog::Shortcuts
                                                  : kind == FileKind::FillPatterns   ? FileDialog::Pat
                                                  : kind == FileKind::Dxf            ? FileDialog::Dxf
+                                                 : kind == FileKind::PointCloud     ? FileDialog::PointCloud
                                                  : kind == FileKind::ProjectOrRevit ? FileDialog::OpenRevit
                                                                                     : FileDialog::Open, {});
         if (!path.empty() && done)
@@ -430,6 +431,8 @@ namespace MiniBIM
             add(Tr("Fill pattern file") + " (*.pat)", L"*.pat");
         else if (kind == FileDialog::Dxf)
             add(Tr("DXF drawings") + " (*.dxf;*.dwg)", L"*.dxf;*.dwg");
+        else if (kind == FileDialog::PointCloud)
+            add(Tr("Point clouds") + " (*.pts;*.xyz;*.txt;*.ply;*.las;*.laz;*.e57;*.rcp;*.rcs)", L"*.pts;*.xyz;*.txt;*.ply;*.las;*.laz;*.e57;*.rcp;*.rcs");
         else if (kind == FileDialog::OpenRevit)
         {
             add(Tr("All projects") + " (*.minibim;*.bimcraft;*.ifc;*.rvt)", L"*.minibim;*.bimcraft;*.ifc;*.rvt");

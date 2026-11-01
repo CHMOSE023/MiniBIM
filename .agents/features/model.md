@@ -31,6 +31,8 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
 | `src/Model/Insert.h` | `insert.rs`、`link.rs` | 从文件插入（`Bim::Insert`：要的元素与它们指着、这个项目没有的东西，ID 被占时另取、GUID 已有时是副本，库条目按 GUID 或名称）；链接的模型（`Links::Seen`：视图画的模型，项目加上每个读到的链接造的东西，ID 从 `Linked` 起，`Links::IsLinked`） |
 | `src/Model/Dxf.h` | `dxf.rs` | 读 DXF：组码对、表（图层、线型、文字样式）、块与插入（含阵列、嵌套的变换）、各图元成 `Dxf::Shape`（线、多段线、圆、圆弧、点、文字、填充），`Dxf::Read`（不是 UTF-8 的按 Latin-1）、单位 `$INSUNITS` |
 | `src/Model/Cad.h` | `cad.rs` | 导入的图纸 `Cad`（来源、链接的路径、读出的 `Dxf::Drawing`，主体的范围与远处的图元，`Cad::Packed` 存进文件的样子）、颜色怎样带进来 `CadColors`、图元的颜色线宽线型、`Cads::Nearest`（`cad_query`） |
+| `src/Model/Cloud.h` | `cloud.rs` | 点云：`Clouds::Read`（PTS、XYZ、PLY、LAS，按 `Clouds::Options` 的单位、间距、上限）、`Clouds::Merge`（几个测站合成一次扫描）、项目放的扫描 `Cloud`（绕中心的 float 点、颜色、测站，`Cloud::ToJson` 压过的样子，`Cloud::Nearest` 按 250 毫米的格子找捕捉的点） |
+| `src/Model/E57.cpp` | `e57.rs`（`cloud/` 下） | 读 E57：`Clouds::E57::Read`（分页与校验略过、XML 里的扫描与原型、压缩向量的包与位流、缩放的整数与球坐标、姿态），`Clouds::E57::Caps` 是读之前的上限 |
 | `src/Model/Zlib.h` | （MiniBIM 自己的） | 项目文件里的大块数据：zlib 压缩（固定哈夫曼）与解压（三种块，有上限）、base64，`Zlib::Pack` / `Zlib::Unpack` |
 | `src/Model/Sheets.cpp` | `sheet.rs` | 图纸：标题栏、视口的框（`Render::Frames`）与默认位置（`Render::SpotOn`）、明细表的表格，`Render::DrawSheet`（声明在 `Render.h`） |
 | `src/Model/Views.cpp` | `model.rs`、`graphics.rs` 的视图部分 | 平面视图与三维视图：`Model::PlanLevel`、`PlanSource`（相关视图跟父视图）、`ViewRangeOf`、`CropOf`、`ViewGraphics`、`ScaleOf`、`ViewName`、`FreeViewName`、`Default3D`、`LookOf`（类别覆盖 → 过滤器 → 元素覆盖）、`CheckFollowed` |
@@ -189,6 +191,12 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   读时先查个数与总大小再解压）；元素 `CadImport` 的 `cad` 存图纸的 GUID。`Session::Execute` 改了模型后去掉没有导入放的图纸（`Model::UnplacedCads`）
   与视图图形里它们的图层（`Model::ForgetCadLayers`）。视图的 `Graphics::layers` 按图纸名称记隐藏的图层，落到 `Look::layers`。
   平面在画别的之前画导入（`Render.cpp` 的 `CadImports`），`Render::PlanShows` 算进 `Model::CadBox`；捕捉（`Snap.cpp` 的 `CadScene`）与对齐认它的线
+- 点云（第 5g3 步）：扫描在 `Model::clouds`（按名称），是 `Kind::Tag::Cloud` 的库条目，项目文件里 `clouds` 按名称存（读时先查个数与总点数再解压）；
+  元素 `PointCloud` 的 `cloud` 是扫描的名称。`Session::Execute` 改了模型后去掉没有元素放的扫描（`Model::UnplacedClouds`）。
+  点在模型里的位置由 `Model::CloudPlace` 算（中心在 `at`、转 `angle`、加标高与偏移），`Model::CloudBox` 是它的框。平面在 `CadImports` 之前画点（`Render.cpp` 的 `Scans`：
+  视图范围里的点，每像素留最上面的，每行同色的连成矩形，一种颜色一个填充），`Render::PlanShows` 算进 `Model::CloudBox`（BIMCraft 不算）；
+  捕捉（`Snap.cpp` 的 `CloudPoint`）只看剖切面上下 `Snap::CutBand` 之内的点。三维场景另有点（`ModelScene::GetPoints`，每隔 `Clouds::Every` 个取一个），
+  `ModelScene::Pick` 按射线附近的点拾取到元素
 - 直骨架照 BIMCraft 用二叉堆排事件：同一时刻的事件顺序与 Rust 的堆可能不同，结果一样（`ModelTests` 的 2000 个随机迹线检查面积与平面性）
 
 ## 测试与排查
@@ -209,6 +217,9 @@ covers: src/Model/*, src/Commands/*, 3rd/nlohmann/*, tests/Model/*, tests/Comman
   读不到时、reload、恢复副本、move 与 modify、撤销、拒绝、链接的链接、不带进注释；插入自己、别的项目的 ID 与 GUID、同名的标高、副本另起名称、拒绝）
   与 CAD 导入（`TestZlib`、`TestCad`，移植自 `cad_tests.rs`：单位与定位、拒绝、DWG、仅当前视图、移动旋转复制与镜像、没人放时去掉与撤销、文件往返与插入、
   文件里坏的图纸、图层与视图的图层、链接与重新载入、查询、远处的图元、平面的颜色与拾取、视图隐藏、填充文字虚线、捕捉、平面的范围；平面数画的项而不是 PNG 的像素）
+  与点云（`TestCloud`，移植自 `cloud_tests.rs`：中心到中心与原点到原点、单位与间距、拒绝、测站、放几次、移动旋转复制与镜像、没人放时去掉与撤销、文件往返、
+  IFC 不带、插入、平面的颜色与拾取与隐藏、捕捉、大扫描的捕捉只看附近、文件里扫描太多；三维图片、剖面、GPU 与墨色的测试略去）；
+  `ModelTests` 的 `TestCloud` 是 `cloud.rs` 与 `e57.rs` 的测试（测试里自己写 LAS、PLY 与 E57 文件）
 - 用到还没移植的命令的 BIMCraft 测试（剖面、平面图、IFC……）略去了那些断言，移植那些命令时补回；BIMCraft 测试里的 `view3d::tops_at`
   （某点上各元素顶面的高度）还没移植，测试里由 `Model::RoofPieces`、`Model::CeilingSlabs`、`Walls::TopAt` 算
 - 结果对不上时，在 `D:\BIMCraft` 里 `cargo test -p bimcraft-core <名字>` 跑原来的测试对照（`.agents/features/porting.md`）

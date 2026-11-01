@@ -13,15 +13,23 @@
 #include "Model/Render.h"
 #include "Model/Skeleton.h"
 #include "Model/Snap.h"
+#include "Model/Text.h"
 #include "Model/Sketch.h"
 #include "Model/Units.h"
 #include "Model/Walls.h"
+#include "Model/Zlib.h"
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <limits>
+#include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace MiniBIM::Bim;
@@ -1856,6 +1864,814 @@ namespace
 }
 
 
+namespace
+{
+    // ---------- 点云（移植自 BIMCraft crates/core/src/cloud.rs 与 cloud/e57.rs 的测试） ----------
+
+    Clouds::Options CloudMm()
+    {
+        Clouds::Options o;
+        o.scale = 1.0;
+        return o;
+    }
+
+    bool Near3(const Clouds::D3& a, const Clouds::D3& b, double tol)
+    {
+        for (size_t k = 0; k < 3; ++k)
+            if (!(std::abs(a[k] - b[k]) <= tol))
+                return false;
+        return true;
+    }
+
+    std::vector<Clouds::D3> AllOf(const Clouds::Scan& s)
+    {
+        std::vector<Clouds::D3> out;
+        for (size_t i = 0; i < s.points.size(); ++i)
+            out.push_back(*s.Absolute(i));
+        return out;
+    }
+
+    // 读得出时为它，读不出时打印原因
+    std::optional<Clouds::Scan> CloudRead(std::string_view bytes, Clouds::Format f, const Clouds::Options& o = Clouds::Options{})
+    {
+        Clouds::Scan s;
+        std::string error;
+        if (!Clouds::Read(bytes, f, o, s, error))
+        {
+            std::printf("  读不出：%s\n", error.c_str());
+            return std::nullopt;
+        }
+        return s;
+    }
+
+    // 应当读不出：原因（读出了时为 "taken"）
+    std::string CloudRefused(std::string_view bytes, Clouds::Format f, const Clouds::Options& o = Clouds::Options{})
+    {
+        Clouds::Scan s;
+        std::string error;
+        return Clouds::Read(bytes, f, o, s, error) ? std::string("taken") : error;
+    }
+
+    template <class T>
+    void PutLe(std::string& b, size_t at, T v)
+    {
+        std::memcpy(b.data() + at, &v, sizeof(T));
+    }
+
+    struct LasPoint
+    {
+        std::array<int32_t, 3>  xyz;
+        uint16_t                intensity;
+        std::array<uint16_t, 3> rgb;
+    };
+
+    // LAS 文件：minor 版本、点格式、比例与偏移，每个点的记录的数、强度与颜色；头与点之间有 gap 字节的变长记录
+    std::string Las(uint8_t minor, uint8_t format, std::array<double, 3> scale, std::array<double, 3> offset, size_t gap, const std::vector<LasPoint>& pts)
+    {
+        const size_t header = minor >= 4 ? 375 : 227;
+        size_t len = 0;
+        switch (format)
+        {
+        case 0: len = 20; break;
+        case 1: len = 28; break;
+        case 2: len = 26; break;
+        case 3: len = 34; break;
+        case 6: len = 30; break;
+        case 7: len = 36; break;
+        default: break;
+        }
+        std::string b(header + gap, '\0');
+        b.replace(0, 4, "LASF");
+        b[24] = 1;
+        b[25] = static_cast<char>(minor);
+        PutLe<uint16_t>(b, 94, static_cast<uint16_t>(header));
+        PutLe<uint32_t>(b, 96, static_cast<uint32_t>(header + gap));
+        b[104] = static_cast<char>(format);
+        PutLe<uint16_t>(b, 105, static_cast<uint16_t>(len));
+        if (format >= 6)
+            PutLe<uint64_t>(b, 247, pts.size());
+        else
+            PutLe<uint32_t>(b, 107, static_cast<uint32_t>(pts.size()));
+        for (size_t k = 0; k < 3; ++k)
+        {
+            PutLe<double>(b, 131 + 8 * k, scale[k]);
+            PutLe<double>(b, 155 + 8 * k, offset[k]);
+        }
+        std::optional<size_t> colour;
+        if (format == 2) colour = 20;
+        if (format == 3) colour = 28;
+        if (format == 7) colour = 30;
+        for (const LasPoint& p : pts)
+        {
+            std::string r(len, '\0');
+            for (size_t k = 0; k < 3; ++k)
+                PutLe<int32_t>(r, 4 * k, p.xyz[k]);
+            PutLe<uint16_t>(r, 12, p.intensity);
+            if (colour)
+                for (size_t k = 0; k < 3; ++k)
+                    PutLe<uint16_t>(r, *colour + 2 * k, p.rgb[k]);
+            b += r;
+        }
+        return b;
+    }
+
+    // PLY 文件：点之间夹着法线的 x 与颜色，后面一个空的面元素
+    std::string Ply(const std::string& form, const std::vector<std::pair<std::array<float, 3>, std::array<uint8_t, 3>>>& pts)
+    {
+        std::string b = "ply\r\nformat " + form + " 1.0\ncomment made by hand\nelement vertex " + std::to_string(pts.size()) +
+                        "\nproperty float x\nproperty float y\nproperty float z\nproperty float nx\nproperty uchar red\nproperty uchar green\n"
+                        "property uchar blue\nelement face 0\nproperty list uchar int vertex_indices\nend_header\n";
+        for (const auto& [p, c] : pts)
+        {
+            if (form == "ascii")
+                b += Text::Shortest(p[0]) + " " + Text::Shortest(p[1]) + " " + Text::Shortest(p[2]) + " 0.5 " + std::to_string(c[0]) + " " +
+                     std::to_string(c[1]) + " " + std::to_string(c[2]) + "\n";
+            else
+            {
+                for (const float v : { p[0], p[1], p[2], 0.5f })
+                {
+                    char bytes[4];
+                    std::memcpy(bytes, &v, 4);
+                    if (form == "binary_big_endian")
+                        std::reverse(bytes, bytes + 4);
+                    b.append(bytes, 4);
+                }
+                b.append(reinterpret_cast<const char*>(c.data()), 3);
+            }
+        }
+        return b;
+    }
+
+    // ---- E57 的写法（测试用） ----
+    constexpr uint64_t E57Page = 1024, E57Data = 1020;
+
+    struct E57Field
+    {
+        std::string         xml;
+        bool                isFloat = false, isDouble = false;
+        int64_t             min = 0;
+        uint32_t            bits = 0;
+        double              scale = 1.0, offset = 0.0;
+        std::vector<double> values;
+    };
+
+    E57Field E57Float(const std::string& name, bool single, std::vector<double> values)
+    {
+        E57Field f;
+        f.xml     = "<" + name + " type=\"Float\"" + (single ? " precision=\"single\"" : "") + "/>";
+        f.isFloat = true;
+        f.isDouble = !single;
+        f.bits    = single ? 32 : 64;
+        f.values  = std::move(values);
+        return f;
+    }
+
+    E57Field E57Scaled(const std::string& name, int64_t min, int64_t max, double scale, double offset, std::vector<double> values)
+    {
+        const bool plain = scale == 1.0 && offset == 0.0;
+        E57Field f;
+        f.xml = "<" + name + " type=\"" + (plain ? "Integer" : "ScaledInteger") + "\" minimum=\"" + std::to_string(min) + "\" maximum=\"" +
+                std::to_string(max) + "\"" + (plain ? std::string() : " scale=\"" + Text::Shortest(scale) + "\" offset=\"" + Text::Shortest(offset) + "\"") +
+                ">0</" + name + ">";
+        f.min    = min;
+        f.bits   = static_cast<uint32_t>(std::bit_width(static_cast<uint64_t>(max) - static_cast<uint64_t>(min)));
+        f.scale  = scale;
+        f.offset = offset;
+        f.values = std::move(values);
+        return f;
+    }
+
+    E57Field E57Integer(const std::string& name, int64_t min, int64_t max, std::vector<double> values) { return E57Scaled(name, min, max, 1.0, 0.0, std::move(values)); }
+
+    struct E57Scan
+    {
+        std::vector<E57Field> fields;
+        std::string           more;
+    };
+
+    std::vector<E57Field> E57Cartesian(const std::vector<Clouds::D3>& pts)
+    {
+        std::vector<E57Field> out;
+        const char* names[3] = { "cartesianX", "cartesianY", "cartesianZ" };
+        for (size_t k = 0; k < 3; ++k)
+        {
+            std::vector<double> v;
+            for (const auto& p : pts)
+                v.push_back(p[k]);
+            out.push_back(E57Float(names[k], true, v));
+        }
+        return out;
+    }
+
+    // 字段的值的位，从低位起打包
+    std::string E57Stream(const E57Field& f)
+    {
+        std::string out;
+        size_t n = 0;
+        for (const double v : f.values)
+        {
+            uint64_t raw = 0;
+            if (f.isFloat)
+                raw = f.isDouble ? std::bit_cast<uint64_t>(v) : std::bit_cast<uint32_t>(static_cast<float>(v));
+            else
+                raw = static_cast<uint64_t>(static_cast<int64_t>(std::round((v - f.offset) / f.scale)) - f.min);
+            for (uint32_t b = 0; b < f.bits; ++b, ++n)
+            {
+                if (n / 8 >= out.size())
+                    out.push_back('\0');
+                if ((raw >> b) & 1)
+                    out[n / 8] = static_cast<char>(static_cast<uint8_t>(out[n / 8]) | (1u << (n % 8)));
+            }
+        }
+        return out;
+    }
+
+    uint64_t E57Physical(uint64_t logical) { return logical / E57Data * E57Page + logical % E57Data; }
+
+    void Append64(std::string& b, uint64_t v)
+    {
+        for (int i = 0; i < 8; ++i)
+            b.push_back(static_cast<char>((v >> (8 * i)) & 0xFF));
+    }
+
+    // 这几次扫描的 E57 文件：头，每次扫描的包的段（每个流按自己的长度切，值跨包，中间夹一个空包），再是 XML；分页，校验和为零
+    std::string E57File(const std::vector<E57Scan>& scans)
+    {
+        std::string logical(48, '\0');
+        std::string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- written by a test -->\n"
+                          "<e57Root type=\"Structure\" xmlns=\"http://www.astm.org/COMMIT/E57/2010-e57-v1.0\">\n"
+                          "<formatName type=\"String\"><![CDATA[ASTM E57 3D Imaging Data File]]></formatName>\n"
+                          "<data3D type=\"Vector\" allowHeterogeneousChildren=\"1\">\n";
+        for (size_t i = 0; i < scans.size(); ++i)
+        {
+            const E57Scan& scan = scans[i];
+            const uint64_t start = logical.size();
+            std::vector<std::string> streams;
+            for (const E57Field& f : scan.fields)
+                streams.push_back(E57Stream(f));
+            std::string packets;
+            std::vector<size_t> cut(streams.size(), 0);
+            bool first = true;
+            const auto left = [&]
+            {
+                for (size_t k = 0; k < streams.size(); ++k)
+                    if (cut[k] < streams[k].size())
+                        return true;
+                return false;
+            };
+            while (left())
+            {
+                std::vector<std::string> parts;
+                for (size_t k = 0; k < streams.size(); ++k)
+                {
+                    const size_t to = std::min(cut[k] + 5 + 3 * k, streams[k].size());
+                    parts.push_back(streams[k].substr(cut[k], to - cut[k]));
+                    cut[k] = to;
+                }
+                std::string p = { '\x01', '\0', '\0', '\0' };
+                p.push_back(static_cast<char>(parts.size() & 0xFF));
+                p.push_back(static_cast<char>(parts.size() >> 8));
+                for (const std::string& part : parts)
+                {
+                    p.push_back(static_cast<char>(part.size() & 0xFF));
+                    p.push_back(static_cast<char>(part.size() >> 8));
+                }
+                for (const std::string& part : parts)
+                    p += part;
+                while (p.size() % 4 != 0)
+                    p.push_back('\0');
+                const uint16_t len = static_cast<uint16_t>(p.size() - 1);
+                p[2] = static_cast<char>(len & 0xFF);
+                p[3] = static_cast<char>(len >> 8);
+                packets += p;
+                if (first)
+                {
+                    packets += std::string("\x02\0\x07\0\0\0\0\0", 8);
+                    first = false;
+                }
+            }
+            logical += std::string("\x01\0\0\0\0\0\0\0", 8);
+            Append64(logical, 32 + packets.size());
+            Append64(logical, E57Physical(start + 32));
+            Append64(logical, 0);
+            logical += packets;
+            while (logical.size() % 4 != 0)
+                logical.push_back('\0');
+            const size_t count = scan.fields.empty() ? 0 : scan.fields.front().values.size();
+            std::string prototype;
+            for (const E57Field& f : scan.fields)
+                prototype += f.xml;
+            xml += "<vectorChild type=\"Structure\">\n<name type=\"String\"><![CDATA[scan " + std::to_string(i) + " & more]]></name>\n" + scan.more +
+                   "\n<points type=\"CompressedVector\" fileOffset=\"" + std::to_string(E57Physical(start)) + "\" recordCount=\"" + std::to_string(count) +
+                   "\">\n<prototype type=\"Structure\">" + prototype + "</prototype>\n<codecs type=\"Vector\" allowHeterogeneousChildren=\"1\"></codecs>\n</points>\n</vectorChild>\n";
+        }
+        xml += "</data3D>\n<images2D type=\"Vector\" allowHeterogeneousChildren=\"1\"/>\n</e57Root>\n";
+        const uint64_t xmlAt = logical.size();
+        logical += xml;
+        // 头：现在知道各处在哪里了
+        const uint64_t pages = (logical.size() + E57Data - 1) / E57Data;
+        std::string h = "ASTM-E57";
+        h += std::string("\x01\0\0\0", 4);
+        h += std::string(4, '\0');
+        Append64(h, pages * E57Page);
+        Append64(h, E57Physical(xmlAt));
+        Append64(h, xml.size());
+        Append64(h, E57Page);
+        logical.replace(0, 48, h);
+        std::string file;
+        for (size_t at = 0; at < logical.size(); at += E57Data)
+        {
+            file += logical.substr(at, E57Data);
+            file.resize((file.size() + E57Page - 1) / E57Page * E57Page, '\0');
+        }
+        return file;
+    }
+
+    uint64_t Le64(const std::string& b, size_t at)
+    {
+        uint64_t v = 0;
+        for (int i = 7; i >= 0; --i)
+            v = (v << 8) | static_cast<uint8_t>(b[at + i]);
+        return v;
+    }
+
+    // 文件的 XML
+    std::string E57Xml(const std::string& file)
+    {
+        const uint64_t xmlAt = Le64(file, 24), xmlLen = Le64(file, 32);
+        uint64_t at = xmlAt / E57Page * E57Data + xmlAt % E57Page;
+        std::string out;
+        for (uint64_t j = 0; j < xmlLen; ++j, ++at)
+            out.push_back(file[E57Physical(at)]);
+        return out;
+    }
+
+    // 文件的 XML 就地改过（from 换成 to），头里的长度跟着
+    std::string E57Rewritten(const std::string& file, const std::string& from, const std::string& to)
+    {
+        const uint64_t xmlAt = Le64(file, 24);
+        const uint64_t start = xmlAt / E57Page * E57Data + xmlAt % E57Page;
+        const std::string xml = from.empty() ? E57Xml(file) : Text::ReplaceAll(E57Xml(file), from, to);
+        std::string b = file.substr(0, xmlAt);
+        std::string len;
+        Append64(len, xml.size());
+        b.replace(32, 8, len);
+        for (size_t j = 0; j < xml.size(); ++j)
+        {
+            const size_t at = static_cast<size_t>(E57Physical(start + j));
+            if (b.size() < at + 1)
+                b.resize(at + 1, '\0');
+            b[at] = xml[j];
+        }
+        return b;
+    }
+
+    // 这几个上限下读文件的每个点：几个，或读不出的原因
+    std::pair<size_t, std::string> E57Within(const std::string& file, const Clouds::E57::Caps& caps)
+    {
+        size_t n = 0;
+        std::string error;
+        const bool ok = Clouds::E57::Read(file, [&](const Clouds::Raw&, std::string&) { ++n; return true; }, error, caps);
+        return { n, ok ? std::string() : error };
+    }
+
+    std::vector<Clouds::D3> E57Grid(size_t n)
+    {
+        std::vector<Clouds::D3> out;
+        for (size_t i = 0; i < n; ++i)
+            out.push_back({ static_cast<double>(i) * 0.01, static_cast<double>(i % 7) * 0.5, -static_cast<double>(i) * 0.002 });
+        return out;
+    }
+
+    // 每个点，毫米，到千分之一
+    std::vector<Clouds::D3> E57All(const Clouds::Scan& s)
+    {
+        std::vector<Clouds::D3> out;
+        for (const auto& p : AllOf(s))
+            out.push_back({ std::round(p[0] * 1000.0) / 1000.0, std::round(p[1] * 1000.0) / 1000.0, std::round(p[2] * 1000.0) / 1000.0 });
+        return out;
+    }
+
+    E57Scan E57Plain(size_t n) { return E57Scan{ E57Cartesian(E57Grid(n)), "" }; }
+
+    void TestCloud()
+    {
+        using Clouds::Format;
+        // 扩展名说的格式，读不了的说为什么
+        {
+            const std::pair<const char*, Format> known[] = { { "pts", Format::Pts }, { "XYZ", Format::Xyz }, { "txt", Format::Xyz },
+                                                             { "ply", Format::Ply }, { ".las", Format::Las }, { "E57", Format::E57 } };
+            for (const auto& [ext, f] : known)
+            {
+                Format got{};
+                std::string e;
+                Check(Clouds::FormatFrom(ext, got, e) && got == f, std::string("点云：扩展名 ") + ext);
+            }
+            for (const auto& [ext, says] : { std::pair{ "laz", "LAZ" }, std::pair{ "rcp", "ReCap" }, std::pair{ "rcs", "ReCap" }, std::pair{ "dwg", "dwg" } })
+            {
+                Format got{};
+                std::string e;
+                Check(!Clouds::FormatFrom(ext, got, e) && e.find(says) != std::string::npos, std::string("点云：读不了的扩展名 ") + ext + "：" + e);
+            }
+        }
+        // 单位换成毫米
+        {
+            for (const auto& [name, mm] : { std::pair{ "mm", 1.0 }, std::pair{ "cm", 10.0 }, std::pair{ "m", 1000.0 }, std::pair{ "M", 1000.0 },
+                                            std::pair{ "in", 25.4 }, std::pair{ "ft", 304.8 } })
+                Check(Clouds::Unit(name) == mm, std::string("点云：单位 ") + name);
+            Check(!Clouds::Unit("furlong"), "点云：没有的单位");
+            Clouds::Options o;
+            o.scale = 304.8;
+            const auto s = CloudRead("1 2 3\n", Format::Xyz, o);
+            Check(s && Near3(*s->Absolute(0), { 304.8, 609.6, 914.4 }, 1e-3), "点云：英尺");
+        }
+        // PTS：点、强度与颜色
+        {
+            const auto s = CloudRead("2\n0 0 0 -2048 255 0 0\n1 0 0 2047 0 255 0\n\n# the second scan\n1\n0 1 0.5 0 0 0 255\n", Format::Pts, CloudMm());
+            Check(s && s->read == 3 && s->points.size() == 3, "点云：PTS 两次扫描三个点");
+            Check(s && AllOf(*s) == std::vector<Clouds::D3>{ { 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0.5 } }, "点云：PTS 的点");
+            Check(s && s->colours == std::vector<Clouds::Rgb>{ { 255, 0, 0 }, { 0, 255, 0 }, { 0, 0, 255 } }, "点云：PTS 的颜色");
+            const auto g = CloudRead("3\n0 0 0 -2048\n1 0 0 0\n2 0 0 2047\n", Format::Pts, CloudMm());
+            Check(g && g->colours && (*g->colours)[0][0] == 0 && (*g->colours)[2][0] == 255 && (*g->colours)[1][0] >= 120 && (*g->colours)[1][0] < 136,
+                  "点云：只有强度是灰色，从最暗到最亮");
+        }
+        // XYZ：三列或六列，空格、制表符或逗号分开
+        {
+            const auto s = CloudRead("0 0 0\n1\t2\t3\r\n4,5,6\n", Format::Xyz, CloudMm());
+            Check(s && AllOf(*s) == std::vector<Clouds::D3>{ { 0, 0, 0 }, { 1, 2, 3 }, { 4, 5, 6 } } && !s->colours, "点云：XYZ 三列");
+            const auto w = CloudRead("0 0 0 65535 0 32896\n1 1 1 0 65535 0\n", Format::Xyz, CloudMm());
+            Check(w && w->colours == std::vector<Clouds::Rgb>{ { 255, 0, 128 }, { 0, 255, 0 } }, "点云：十六位的颜色降到八位");
+            const auto f = CloudRead("0 0 0 1 0 0.5\n", Format::Xyz, CloudMm());
+            Check(f && f->colours == std::vector<Clouds::Rgb>{ { 255, 0, 128 } }, "点云：零到一的颜色");
+        }
+        // PLY：文本与两种字节序读出一样的
+        {
+            const std::vector<std::pair<std::array<float, 3>, std::array<uint8_t, 3>>> pts = {
+                { { 0, 0, 0 }, { 255, 0, 0 } }, { { 1.5f, -2.0f, 3.25f }, { 10, 20, 30 } }, { { 100, 0, 7 }, { 0, 0, 255 } } };
+            const auto text = CloudRead(Ply("ascii", pts), Format::Ply, CloudMm());
+            Check(text && AllOf(*text) == std::vector<Clouds::D3>{ { 0, 0, 0 }, { 1.5, -2, 3.25 }, { 100, 0, 7 } }, "点云：PLY 文本的点");
+            Check(text && text->colours == std::vector<Clouds::Rgb>{ { 255, 0, 0 }, { 10, 20, 30 }, { 0, 0, 255 } }, "点云：PLY 文本的颜色");
+            for (const char* form : { "binary_little_endian", "binary_big_endian" })
+            {
+                const auto b = CloudRead(Ply(form, pts), Format::Ply, CloudMm());
+                Check(b && text && *b == *text, std::string("点云：PLY ") + form);
+            }
+        }
+        // LAS：比例与偏移，跳过它自己的记录
+        {
+            const std::vector<LasPoint> pts = { { { 0, 0, 0 }, 100, { 65535, 0, 0 } }, { { 10000, 20000, 3000 }, 200, { 0, 65535, 0 } } };
+            const auto s = CloudRead(Las(2, 2, { 0.001, 0.001, 0.001 }, { 500000.0, 7000000.0, 10.0 }, 54, pts), Format::Las);
+            Check(s && s->read == 2, "点云：LAS 两个点");
+            Check(s && Near3(*s->Absolute(0), { 5e8, 7e9, 1e4 }, 1.0) && Near3(*s->Absolute(1), { 5e8 + 1e4, 7e9 + 2e4, 1.3e4 }, 1.0), "点云：LAS 的坐标");
+            Check(s && Near3(s->origin, { 5e8 + 5e3, 7e9 + 1e4, 1.15e4 }, 1e-6), "点云：LAS 的中心");
+            Check(s && s->colours == std::vector<Clouds::Rgb>{ { 255, 0, 0 }, { 0, 255, 0 } }, "点云：LAS 的颜色");
+            const auto i = CloudRead(Las(2, 1, { 0.001, 0.001, 0.001 }, { 0, 0, 0 }, 0, { { { 0, 0, 0 }, 0, {} }, { { 1, 0, 0 }, 1000, {} } }), Format::Las);
+            Check(i && i->colours == std::vector<Clouds::Rgb>{ { 0, 0, 0 }, { 255, 255, 255 } }, "点云：没有颜色的格式按强度");
+        }
+        // LAS 1.4：64 位的点数，新格式带颜色
+        {
+            const std::vector<LasPoint> pts = { { { 0, 0, 0 }, 0, { 255, 128, 0 } }, { { 1000, 0, 0 }, 0, { 0, 0, 255 } } };
+            const auto s = CloudRead(Las(4, 7, { 0.001, 0.001, 0.001 }, { 0, 0, 0 }, 0, pts), Format::Las);
+            Check(s && AllOf(*s) == std::vector<Clouds::D3>{ { 0, 0, 0 }, { 1000, 0, 0 } }, "点云：LAS 1.4 格式 7 的点");
+            Check(s && s->colours == std::vector<Clouds::Rgb>{ { 255, 128, 0 }, { 0, 0, 255 } }, "点云：LAS 1.4 格式 7 的颜色");
+            const auto t = CloudRead(Las(4, 6, { 0.01, 0.01, 0.01 }, { 0, 0, 0 }, 0, pts), Format::Las);
+            Check(t && AllOf(*t) == std::vector<Clouds::D3>{ { 0, 0, 0 }, { 10000, 0, 0 } }, "点云：LAS 1.4 格式 6");
+        }
+        // 远处的测量坐标绕中心仍精确到毫米
+        {
+            const auto s = CloudRead("500000.001 7000000.002 12.003\n504000.004 7003000.005 52.006\n", Format::Xyz);
+            Check(s && Near3(*s->Absolute(0), { 500000001.0, 7000000002.0, 12003.0 }, 1.0) && Near3(*s->Absolute(1), { 504000004.0, 7003000005.0, 52006.0 }, 1.0),
+                  "点云：远处的测量坐标");
+            bool small = s.has_value();
+            if (s)
+                for (const auto& p : s->points)
+                    for (const float v : p)
+                        small = small && std::abs(v) <= 2000002.0f;
+            Check(small, "点云：绕中心存");
+        }
+        // 抽稀每次一样，不超过上限
+        {
+            std::string text;
+            for (int i = 0; i < 1000; ++i)
+                text += std::to_string(i % 10) + " " + std::to_string(i / 10 % 10) + " " + std::to_string(i / 100) + "\n";
+            const auto keep = [&](double spacing, size_t cap)
+            {
+                Clouds::Options o;
+                o.scale   = 1.0;
+                o.spacing = spacing;
+                o.cap     = cap;
+                return CloudRead(text, Format::Xyz, o).value_or(Clouds::Scan{});
+            };
+            Check(keep(0.0, Clouds::MaxPoints).points.size() == 1000, "点云：不抽稀全留");
+            const Clouds::Scan thin = keep(2.0, Clouds::MaxPoints);
+            Check(thin.read == 1000 && thin.points.size() == 125 && thin == keep(2.0, Clouds::MaxPoints), "点云：每个 2 毫米的立方体留一个");
+            for (const auto& [spacing, cap] : { std::pair{ 0.0, size_t(100) }, std::pair{ 0.0, size_t(999) }, std::pair{ 2.0, size_t(50) }, std::pair{ 0.0, size_t(1) } })
+            {
+                const Clouds::Scan s = keep(spacing, cap);
+                Check(!s.points.empty() && s.points.size() <= cap && s == keep(spacing, cap), "点云：上限 " + std::to_string(cap));
+            }
+        }
+        // 不怀好意的文件拒绝，不会崩溃
+        {
+            const std::tuple<std::string, Format, const char*> bad[] = {
+                { "", Format::Xyz, "no points" },
+                { "# nothing but this\n", Format::Pts, "no points" },
+                { "0 0 zero\n", Format::Xyz, "line 1" },
+                { "0 0 0\n0 0 nan\n", Format::Xyz, "line 2" },
+                { "0 0 1e400\n", Format::Xyz, "line 1" },
+                { "0 0 1e20\n", Format::Xyz, "far" },
+                { "0 0 0 1 2\n", Format::Xyz, "columns" },
+                { "0 0 0\n30000 0 0\n", Format::Xyz, "wide" },
+                { "", Format::Ply, "PLY" },
+                { "ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\n", Format::Ply, "end_header" },
+                { "ply\nformat ascii 1.0\nelement vertex 1\nproperty float y\nproperty float z\nend_header\n0 0\n", Format::Ply, "x" },
+                { "ply\nformat ascii 1.0\nelement vertex -1\nproperty float x\nproperty float y\nproperty float z\nend_header\n", Format::Ply, "count" },
+                { "ply\nformat ascii 1.0\nelement vertex 5\nproperty float x\nproperty float y\nproperty float z\nend_header\n0 0 0\n", Format::Ply, "short" },
+                { "ply\nformat binary_little_endian 1.0\nelement vertex 99999999999\nproperty float x\nproperty float y\nproperty float z\nend_header\n", Format::Ply, "short" },
+                { "ply\nformat ascii 1.0\nelement vertex 1\nproperty quaternion x\nend_header\n0\n", Format::Ply, "quaternion" },
+                { "ply\nformat ascii 1.0\nelement vertex 1\nproperty list uchar float x\nend_header\n", Format::Ply, "list" },
+                { "ply\nformat binary_little_endian 1.0\nelement face 1\nproperty list uchar int i\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n", Format::Ply, "list" },
+                { "ply\nformat ebcdic 1.0\nend_header\n", Format::Ply, "ebcdic" },
+                { "LASF", Format::Las, "short" },
+                { std::string("PK\x03\x04", 4), Format::Las, "LAS" },
+            };
+            for (const auto& [bytes, f, says] : bad)
+            {
+                const std::string e = CloudRefused(bytes, f);
+                Check(e.find(says) != std::string::npos, std::string("点云：坏文件说 ") + says + "：" + e);
+            }
+            const std::string good = Las(2, 2, { 0.001, 0.001, 0.001 }, { 0, 0, 0 }, 0, { { { 0, 0, 0 }, 0, {} } });
+            std::string laz = good, shortRec = good, many = good, past = good, unknown = good, flat = good, nan = good;
+            laz[104] = static_cast<char>(static_cast<uint8_t>(laz[104]) | 0x80);
+            PutLe<uint16_t>(shortRec, 105, 10);
+            PutLe<uint32_t>(many, 107, 0xFFFFFFFFu);
+            PutLe<uint32_t>(past, 96, 0xFFFFFFFFu);
+            unknown[104] = 11;
+            PutLe<double>(flat, 131, 0.0);
+            PutLe<double>(nan, 163, std::numeric_limits<double>::quiet_NaN());
+            const std::pair<std::string, const char*> las[] = { { laz, "LAZ" },          { shortRec, "record" },  { many, "short" },
+                                                                { past, "short" },       { unknown, "format 11" }, { flat, "scale" },
+                                                                { nan, "offset" },       { good.substr(0, 200), "short" },
+                                                                { good.substr(0, good.size() - 1), "short" } };
+            for (const auto& [bytes, says] : las)
+            {
+                const std::string e = CloudRefused(bytes, Format::Las);
+                Check(e.find(says) != std::string::npos, std::string("点云：坏 LAS 说 ") + says + "：" + e);
+            }
+            // 没有意义的选项说出来，不照做
+            Clouds::Options a, b, c, d;
+            a.scale   = 0.0;
+            b.scale   = std::numeric_limits<double>::quiet_NaN();
+            c.spacing = -1.0;
+            d.cap     = 0;
+            for (const Clouds::Options& o : { a, b, c, d })
+                Check(CloudRefused("0 0 0\n", Format::Xyz, o) != "taken", "点云：没有意义的选项");
+            // 各种格式、各种长度的噪声：读出点或报错，不崩溃
+            uint64_t seed = 0x2545f4914f6cdd1dull;
+            const auto noise = [&](size_t n)
+            {
+                std::string out;
+                for (size_t i = 0; i < n; ++i)
+                {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    out.push_back(static_cast<char>(seed & 0xFF));
+                }
+                return out;
+            };
+            const std::string plyHead = "ply\nformat binary_big_endian 1.0\nelement vertex 40\nproperty double x\nproperty double y\nproperty double z\n"
+                                        "property ushort red\nproperty ushort green\nproperty ushort blue\nend_header\n";
+            for (const size_t n : { 0, 1, 4, 100, 227, 375, 1000, 5000 })
+                for (const Format f : { Format::Pts, Format::Xyz, Format::Ply, Format::Las })
+                {
+                    const std::string bytes = noise(n);
+                    (void)CloudRefused(bytes, f);
+                    const std::string head = f == Format::Ply ? plyHead : f == Format::Las ? good.substr(0, 227) : std::string();
+                    (void)CloudRefused(head + bytes, f);
+                }
+            Check(true, "点云：噪声不崩溃");
+        }
+        // 项目文件里的扫描照原样读回，坏的拒绝
+        {
+            const auto scan = CloudRead("0 0 0 255 0 0\n1 2 3 0 255 0\n", Format::Xyz);
+            Cloud cloud, back;
+            std::string e;
+            Check(scan && Cloud::Make("two.xyz", *scan, cloud, e), "点云：做成 Cloud：" + e);
+            const Json file = cloud.ToJson();
+            Check(Cloud::FromJson(Json::parse(file.dump()), back, e) && back == cloud, "点云：写出再读回一样：" + e);
+            Check(back.Size() == 2 && back.Read() == 2 && back.Source() == "two.xyz" && back.Colours() && back.Colours()->size() == 2, "点云：读回的点数、来源与颜色");
+            const auto packed = [](const std::string& bytes) { return Json(Zlib::Pack(bytes)); };
+            const auto floats = [](float first)
+            {
+                std::string b(24, '\0');
+                std::memcpy(b.data(), &first, 4);
+                return b;
+            };
+            Json manyStations = Json::array({ Json{ { "source", "a" }, { "points", std::numeric_limits<uint64_t>::max() } }, Json{ { "source", "b" }, { "points", 3 } } });
+            const std::tuple<const char*, Json, const char*> bad[] = {
+                { "points", "!!!", "base64" },
+                { "points", Zlib::Base64("not zlib"), "zlib" },
+                { "points", packed(std::string(13, '\0')), "cut short" },
+                { "points", packed(""), "points" },
+                { "points", packed(floats(std::numeric_limits<float>::quiet_NaN())), "past" },
+                { "points", packed(floats(1e9f)), "past" },
+                { "colours", packed("\x01\x02\x03"), "colour" },
+                { "read", 1, "read" },
+                { "origin", Json::array({ 1e13, 0, 0 }), "origin" },
+                { "extra", 1, "unknown" },
+                { "stations", Json::array({ Json{ { "source", "a" }, { "points", 1 } }, Json{ { "source", "b" }, { "points", 2 } } }), "stations" },
+                { "stations", manyStations, "stations" },
+            };
+            for (const auto& [key, v, says] : bad)
+            {
+                Json f = file;
+                f[key] = v;
+                Cloud c;
+                std::string why;
+                Check(!Cloud::FromJson(f, c, why) && why.find(says) != std::string::npos, std::string("点云：坏的 ") + key + " 说 " + says + "：" + why);
+            }
+            std::string out, why;
+            Check(!Zlib::Unpack("a cloud", Zlib::Pack(std::string(1000, '\0')), 999, out, why) && why.find("more than 999") != std::string::npos,
+                  "点云：解开超过上限的停下：" + why);
+        }
+        // E57：一次扫描带着颜色进来
+        {
+            const auto pts = E57Grid(700);
+            std::vector<E57Field> fields = E57Cartesian(pts);
+            const char* names[3] = { "colorRed", "colorGreen", "colorBlue" };
+            for (size_t k = 0; k < 3; ++k)
+            {
+                std::vector<double> shade;
+                for (size_t i = 0; i < pts.size(); ++i)
+                    shade.push_back(static_cast<double>((i * (k + 3)) % 256));
+                fields.push_back(E57Integer(names[k], 0, 255, shade));
+            }
+            const std::string file = E57File({ E57Scan{ fields, "" } });
+            Check(file.size() > 3 * E57Page, "E57：测试的文件跨几页");
+            const auto s = CloudRead(file, Format::E57);
+            Check(s && s->read == 700 && s->points.size() == 700, "E57：700 个点");
+            bool same = s.has_value();
+            if (s)
+            {
+                const auto got = E57All(*s);
+                for (size_t i = 0; i < pts.size(); ++i)
+                    for (size_t k = 0; k < 3; ++k)
+                        same = same && std::abs(got[i][k] - static_cast<double>(static_cast<float>(pts[i][k])) * 1000.0) < 0.01;
+            }
+            Check(same, "E57：点的坐标");
+            Check(s && s->colours && (*s->colours)[0] == Clouds::Rgb{ 0, 0, 0 } &&
+                      (*s->colours)[100] == Clouds::Rgb{ static_cast<uint8_t>(300 % 256), static_cast<uint8_t>(400 % 256), static_cast<uint8_t>(500 % 256) },
+                  "E57：点的颜色");
+        }
+        // E57：文件里的每次扫描按它的姿态放
+        {
+            const E57Scan one{ E57Cartesian({ { 1, 0, 0 } }), "" };
+            const std::string h = Text::Shortest(0.70710678118654752440);
+            const std::string pose = "<pose type=\"Structure\"><rotation type=\"Structure\"><w type=\"Float\">" + h + "</w><x type=\"Float\">0</x>"
+                                     "<y type=\"Float\">0</y><z type=\"Float\">" + h + "</z></rotation><translation type=\"Structure\"><x type=\"Float\">10</x>"
+                                     "<y type=\"Float\">0</y><z type=\"Float\">2</z></translation></pose>";
+            const E57Scan two{ E57Cartesian({ { 1, 0, 0 }, { 0, 1, 0 } }), pose };
+            const auto s = CloudRead(E57File({ one, two }), Format::E57);
+            Check(s && E57All(*s) == std::vector<Clouds::D3>{ { 1000, 0, 0 }, { 10000, 1000, 2000 }, { 9000, 0, 2000 } }, "E57：按姿态放每次扫描");
+        }
+        // E57：缩放的整数、球坐标与无效的点照规范读
+        {
+            const std::vector<E57Field> fields = {
+                E57Scaled("cartesianX", -1000, 2000, 0.001, 0.0, { 0.0, 1.234, -0.5 }),
+                E57Scaled("cartesianY", 0, 5, 0.5, 10.0, { 10.0, 11.5, 12.5 }),
+                E57Float("cartesianZ", false, { 0.25, 0.5, 0.75 }),
+                E57Float("intensity", false, { 0.0, 0.5, 1.0 }),
+                E57Integer("cartesianInvalidState", 0, 2, { 0.0, 0.0, 2.0 }),
+            };
+            const auto s = CloudRead(E57File({ E57Scan{ fields, "" } }), Format::E57);
+            Check(s && E57All(*s) == std::vector<Clouds::D3>{ { 0, 10000, 250 }, { 1234, 11500, 500 } }, "E57：缩放的整数，无效的点略去");
+            Check(s && s->colours && (*s->colours)[0][0] == 0 && (*s->colours)[1][0] == 255, "E57：强度从最暗到最亮");
+            const double q = 1.57079632679489661923;
+            const std::vector<E57Field> sph = { E57Float("sphericalRange", false, { 2.0, 1.0 }), E57Float("sphericalAzimuth", false, { q, 0.0 }),
+                                                E57Float("sphericalElevation", false, { 0.0, q }) };
+            const auto t = CloudRead(E57File({ E57Scan{ sph, "" } }), Format::E57);
+            Check(t && E57All(*t) == std::vector<Clouds::D3>{ { 0, 2000, 0 }, { 0, 0, 1000 } }, "E57：球坐标");
+        }
+        // E57：颜色范围说什么是满的
+        {
+            std::vector<E57Field> fields = E57Cartesian({ { 0, 0, 0 }, { 1, 0, 0 } });
+            for (const char* n : { "colorRed", "colorGreen", "colorBlue" })
+                fields.push_back(E57Integer(n, 0, 65535, { 65535.0, 0.0 }));
+            const std::string more = "<colorLimits type=\"Structure\"><colorRedMinimum type=\"Integer\">0</colorRedMinimum>"
+                                     "<colorRedMaximum type=\"Integer\">65535</colorRedMaximum></colorLimits>";
+            const auto s = CloudRead(E57File({ E57Scan{ fields, more } }), Format::E57);
+            Check(s && s->colours == std::vector<Clouds::Rgb>{ { 255, 255, 255 }, { 0, 0, 0 } }, "E57：颜色范围");
+        }
+        // E57：坏文件说为什么，不会崩溃
+        {
+            const std::string good = E57File({ E57Scan{ E57Cartesian(E57Grid(300)), "" } });
+            Check(CloudRefused(good, Format::E57) == "taken", "E57：好文件读得出");
+            const auto says = [&](const std::string& b, const char* what, const std::string& label)
+            {
+                const std::string e = CloudRefused(b, Format::E57);
+                Check(e.find(what) != std::string::npos, "E57：" + label + " 说 " + what + "：" + e);
+            };
+            says("not an e57 at all", "ASTM-E57", "不是 E57");
+            says(good.substr(0, 40), "cut short", "头截短");
+            says(good.substr(0, good.size() / 2), "cut short", "截掉一半");
+            std::string v2 = good;
+            v2[8] = 2;
+            says(v2, "version 2", "版本 2");
+            const auto with = [&](const std::string& from, const std::string& to) { return E57Rewritten(good, from, to); };
+            Check(CloudRefused(with("", ""), Format::E57) == "taken", "E57：原样重写读得出");
+            says(with("\"1\"></codecs>", "\"1\"><x/></codecs>"), "codec", "编解码器");
+            says(with("recordCount=\"300\"", "recordCount=\"900\""), "cut short", "点数远多于段");
+            says(with("recordCount=\"300\"", "recordCount=\"301\""), "missing", "点数多一个");
+            says(with("<data3D", "<data3X"), "broken", "XML 坏了");
+            says(with("type=\"Float\" precision", "type=\"String\" precision"), "String", "字段类型");
+            for (size_t i = 0; i < good.size(); i += 3)
+                for (const uint8_t v : { 0x00, 0xFF, 0x7F, 0x80 })
+                {
+                    std::string b = good;
+                    b[i] = static_cast<char>(v);
+                    (void)CloudRefused(b, Format::E57);
+                }
+            Check(true, "E57：改过字节的文件不崩溃");
+        }
+        // E57：文件的扫描与点不超过项目能用的，拆开之前就说
+        {
+            const Clouds::E57::Caps caps;
+            const std::string two = E57File({ E57Plain(5), E57Plain(5) });
+            Check(E57Within(two, caps).first == 10, "E57：两次扫描十个点");
+            Clouds::E57::Caps c = caps;
+            c.scans = 2;
+            Check(E57Within(two, c).second.empty(), "E57：扫描数正好");
+            c.scans = 1;
+            std::string e = E57Within(two, c).second;
+            Check(Contains(e, "2 scans") && Contains(e, "up to 1"), "E57：扫描太多：" + e);
+            c = caps;
+            c.points = 10;
+            Check(E57Within(two, c).second.empty(), "E57：点数正好");
+            c.points = 9;
+            e = E57Within(two, c).second;
+            Check(Contains(e, "scan 2") && Contains(e, "9 points together"), "E57：点数预算是文件的：" + e);
+            const std::string big = E57File({ E57Plain(300) });
+            for (const char* count : { "9000000000000", "9223372036854775807", "100000001" })
+            {
+                e = CloudRefused(E57Rewritten(big, "recordCount=\"300\"", std::string("recordCount=\"") + count + "\""), Format::E57);
+                Check(Contains(e, "together") || Contains(e, "cut short"), std::string("E57：点数 ") + count + "：" + e);
+            }
+            std::vector<E57Field> fields = E57Cartesian(E57Grid(3));
+            for (size_t k = 0; k < caps.fields; ++k)
+                fields.push_back(E57Float("extra" + std::to_string(k), true, { 0, 1, 2 }));
+            e = CloudRefused(E57File({ E57Scan{ fields, "" } }), Format::E57);
+            Check(Contains(e, "fields") && Contains(e, std::to_string(caps.fields)), "E57：字段太多：" + e);
+        }
+        // E57：不占位的字段不能让小文件要比上限多的点
+        {
+            const size_t n = 40;
+            std::vector<double> bit, five(n, 5.0);
+            for (size_t i = 0; i < n; ++i)
+                bit.push_back(static_cast<double>(i % 2));
+            std::vector<E57Field> fields;
+            for (const char* k : { "cartesianX", "cartesianY", "cartesianZ" })
+                fields.push_back(E57Integer(k, 5, 5, five));
+            fields.push_back(E57Integer("intensity", 0, 1, bit));
+            const std::string file = E57File({ E57Scan{ fields, "" } });
+            Clouds::E57::Caps caps;
+            Check(E57Within(file, caps).first == n, "E57：常量字段的点");
+            caps.points = 39;
+            Check(Contains(E57Within(file, caps).second, "together"), "E57：常量字段的点也算预算");
+            const std::string lie = E57Rewritten(file, "recordCount=\"" + std::to_string(n) + "\"", "recordCount=\"4000000\"");
+            const auto [handed, why] = E57Within(lie, Clouds::E57::Caps{});
+            Check(Contains(why, "cut short") && Contains(why, "4000000") && handed == 0, "E57：段放不下的点数在拆开之前就发现：" + why);
+        }
+        // E57：两次扫描不能读同一段
+        {
+            const std::string two = E57File({ E57Plain(5), E57Plain(5) });
+            const std::string xml = E57Xml(two);
+            std::vector<std::string> offsets;
+            for (size_t at = xml.find("fileOffset=\""); at != std::string::npos; at = xml.find("fileOffset=\"", at + 1))
+            {
+                const size_t from = at + 12;
+                offsets.push_back(xml.substr(from, xml.find('"', from) - from));
+            }
+            Check(offsets.size() == 2, "E57：两个段");
+            if (offsets.size() == 2)
+            {
+                const std::string e =
+                    CloudRefused(E57Rewritten(two, "fileOffset=\"" + offsets[1] + "\"", "fileOffset=\"" + offsets[0] + "\""), Format::E57);
+                Check(Contains(e, "scan 2") && Contains(e, "another scan"), "E57：同一段：" + e);
+            }
+        }
+        // E57：一个流等别的流不能超过几个包
+        {
+            const std::string file = E57File({ E57Plain(300) });
+            Check(E57Within(file, Clouds::E57::Caps{}).first == 300, "E57：300 个点");
+            Clouds::E57::Caps caps;
+            caps.ahead = 8;
+            const std::string e = E57Within(file, caps).second;
+            Check(Contains(e, "ahead of the others") && Contains(e, "up to 8"), "E57：流等太久：" + e);
+        }
+    }
+}
+
 int main()
 {
     // 不缓冲：崩溃时也看得到崩在哪一项之后
@@ -1872,6 +2688,7 @@ int main()
     TestFont();
     TestSnap();
     TestSketch();
+    TestCloud();
     std::printf("\n%s：%d 项失败\n", g_failed == 0 ? "全部通过" : "有失败", g_failed);
     return g_failed == 0 ? 0 : 1;
 }

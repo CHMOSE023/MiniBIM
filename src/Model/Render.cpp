@@ -1335,6 +1335,113 @@ namespace MiniBIM::Bim::Render
         // 图案填充的填充色：颜色往纸色走大半
         uint8_t Pale(uint8_t v) { return static_cast<uint8_t>(v + (255 - v) / 4 * 3); }
 
+        // 平面看得到的扫描的点，从剖切面往下到视图深度，同 Revit 在平面里画点云：从上往下看，每个点画成 Clouds::Dot 像素宽的点，
+        // 用它的颜色（或视图的），每个像素上最高的在上面，各扫描加起来不超过 Clouds::Drawn 个。每个扫描按颜色合成几块填充
+        //（BIMCraft 画成一张图片），只在有点的地方，所以能拾取它的点
+        void Scans(Drawing& d, const Model& m, const PlanRange& range, const Look& look)
+        {
+            struct Placed
+            {
+                Id                id;
+                const PointCloud* pc;
+                const Cloud*      cloud;
+            };
+            std::vector<Placed> placed;
+            size_t total = 0;
+            for (const auto& [id, e] : m.elements.Items())
+                if (const PointCloud* pc = e->As<PointCloud>(); pc && look.Shows(id))
+                    if (const auto it = m.clouds.find(pc->cloud); it != m.clouds.end())
+                    {
+                        placed.push_back({ id, pc, &it->second });
+                        total += it->second.Size();
+                    }
+            const size_t step = Clouds::Every(total);
+            const int64_t w = d.view.width, h = d.view.height, dot = Clouds::Dot;
+            const double half = Clouds::Dot / 2.0;
+            const Rgb grey{ Clouds::Grey, Clouds::Grey, Clouds::Grey };
+            for (const Placed& at : placed)
+            {
+                const auto* colours = at.cloud->Colours();
+                const auto& points = at.cloud->Points();
+                // 看得到的每个点：它的点的左上角（像素）、高度与颜色
+                struct Seen
+                {
+                    int64_t x, y;
+                    double  z;
+                    Rgb     c;
+                };
+                std::vector<Seen> seen;
+                int64_t lx = INT64_MAX, ly = INT64_MAX, hx = INT64_MIN, hy = INT64_MIN;
+                for (size_t i = 0; i < points.size(); i += step)
+                {
+                    const P3 p = m.CloudPlace(*at.pc, points[i]);
+                    if (!(p[2] >= range.depth - Tol && p[2] <= range.cut))
+                        continue;
+                    const Px px = d.view.ToPx(P2(p[0], p[1]));
+                    const double x0 = std::round(px.first - half), y0 = std::round(px.second - half);
+                    if (!(x0 > -static_cast<double>(dot) && y0 > -static_cast<double>(dot) && x0 < static_cast<double>(w) && y0 < static_cast<double>(h)))
+                        continue;
+                    const Rgb c = colours && i < colours->size() ? Rgb{ (*colours)[i][0], (*colours)[i][1], (*colours)[i][2] } : grey;
+                    seen.push_back({ static_cast<int64_t>(x0), static_cast<int64_t>(y0), p[2], c });
+                    lx = std::min(lx, seen.back().x);
+                    ly = std::min(ly, seen.back().y);
+                    hx = std::max(hx, seen.back().x);
+                    hy = std::max(hy, seen.back().y);
+                }
+                if (seen.empty())
+                    continue;
+                lx = std::max<int64_t>(lx, 0);
+                ly = std::max<int64_t>(ly, 0);
+                hx = std::min(hx + dot, w);
+                hy = std::min(hy + dot, h);
+                const size_t pw = static_cast<size_t>(std::max<int64_t>(hx - lx, 0)), ph = static_cast<size_t>(std::max<int64_t>(hy - ly, 0));
+                std::vector<double> top(pw * ph, -INFINITY);
+                std::vector<Rgb> rgb(pw * ph);
+                std::vector<bool> any(pw * ph, false);
+                for (const Seen& s : seen)
+                    for (int64_t py = std::max(s.y, ly); py < std::min(s.y + dot, hy); ++py)
+                        for (int64_t px = std::max(s.x, lx); px < std::min(s.x + dot, hx); ++px)
+                        {
+                            const size_t k = static_cast<size_t>(py - ly) * pw + static_cast<size_t>(px - lx);
+                            if (s.z > top[k])
+                            {
+                                top[k] = s.z;
+                                rgb[k] = s.c;
+                                any[k] = true;
+                            }
+                        }
+                // 每行同色相连的像素成一个矩形，同色的放在一块填充里
+                std::map<std::array<uint8_t, 3>, std::vector<std::vector<Px>>> byColour;
+                for (size_t y = 0; y < ph; ++y)
+                    for (size_t x = 0; x < pw;)
+                    {
+                        const size_t k = y * pw + x;
+                        if (!any[k])
+                        {
+                            ++x;
+                            continue;
+                        }
+                        size_t e = x + 1;
+                        while (e < pw && any[y * pw + e] && rgb[y * pw + e] == rgb[k])
+                            ++e;
+                        const float x0 = static_cast<float>(lx + static_cast<int64_t>(x)), x1 = static_cast<float>(lx + static_cast<int64_t>(e));
+                        const float y0 = static_cast<float>(ly + static_cast<int64_t>(y)), y1 = y0 + 1.0f;
+                        byColour[{ rgb[k].r, rgb[k].g, rgb[k].b }].push_back({ { x0, y0 }, { x1, y0 }, { x1, y1 }, { x0, y1 } });
+                        x = e;
+                    }
+                d.Own(at.id);
+                for (auto& [c, rings] : byColour)
+                {
+                    Prim p;
+                    p.kind  = Prim::Kind::Fill;
+                    p.rings = std::move(rings);
+                    p.color = Rgb{ c[0], c[1], c[2] };
+                    d.Push(std::move(p));
+                }
+            }
+            d.Own(std::nullopt);
+        }
+
         // 平面画的 CAD 图纸，在除点云以外的一切下面，同 Revit 在背景里画导入：放在它标高上、在它每个平面或只在这个平面里的，
         // 导入与视图显示的图层的。每个图元用它的颜色（没有时、或导入画成黑白时用视图的墨色）、它的笔与线型画；实心填充填满，
         // 图案填充画成它的颜色的淡色；文字照图纸的字高、转角与对齐写
@@ -1450,6 +1557,15 @@ namespace MiniBIM::Bim::Render
                     if (const auto b = m.CadBox(id))
                         extent.insert(extent.end(), b->begin(), b->end());
             }
+            // 点云：外框在视图范围里的（BIMCraft 不算它们；这里算上，只有扫描时缩放到全部也看得到它）
+            else if (e->As<PointCloud>())
+            {
+                if (const auto b = m.CloudBox(id); b && b->first[2] <= r.cut && b->second[2] >= r.depth)
+                {
+                    extent.push_back(P2(b->first[0], b->first[1]));
+                    extent.push_back(P2(b->second[0], b->second[1]));
+                }
+            }
             else if (const auto st = Stands(m, *e))
             {
                 const double flush = st->hangs ? Tol : 0.0;
@@ -1541,7 +1657,8 @@ namespace MiniBIM::Bim::Render
         d.paper   = PaperOf(n, view.scale);
         d.weights = Weights::Of(m.LineWeightsOf(), n);
         const PlanRange range = RangeOf(m, plan);
-        // CAD 图纸在其余一切下面
+        // 点云在其余一切下面，再是 CAD 图纸
+        Scans(d, m, range, look);
         CadImports(d, m, plan, level, look);
         // 剖切面以下、视图深度以上看得到顶面的楼板：轮廓与洞口的轮廓，坡楼板的坡度箭头
         for (const auto& [id, e] : items)

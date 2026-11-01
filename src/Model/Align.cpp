@@ -134,6 +134,8 @@ namespace MiniBIM::Bim::Align
                     Path(out, piece.outline, true);
             Axes(out, c->at, c->angle, 100.0);
         }
+        else if (const PointCloud* pc = e->As<PointCloud>())
+            Axes(out, pc->at, pc->angle, 100.0);
         else if (const Link* l = e->As<Link>())
             Axes(out, l->at, l->angle, 100.0);
         // CAD 导入：显示的直线、多段线与填充的边
